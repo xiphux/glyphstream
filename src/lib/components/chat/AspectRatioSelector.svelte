@@ -100,6 +100,14 @@
 		 * signal and speaks up.
 		 */
 		dismissedRatio?: string | null;
+		/**
+		 * The model name sharing the composer's action row, which is what this
+		 * control is competing with for space. '' when a comparison is selected,
+		 * since the picker then shows a short count instead of a name.
+		 *
+		 * Used only to decide whether to drop the glyph — see COMPACT_NAME_CHARS.
+		 */
+		modelLabel?: string;
 		disabled?: boolean;
 	}
 
@@ -109,9 +117,35 @@
 		seed = $bindable(null),
 		value = $bindable(),
 		promptText = '',
+		modelLabel = '',
 		dismissedRatio = $bindable(null),
 		disabled = false,
 	}: Props = $props();
+
+	/**
+	 * Model-name length past which the glyph is dropped at phone widths.
+	 *
+	 * A proxy for "the name is about to be truncated", calibrated by measurement
+	 * rather than taste: the picker's label renders at ~7.9px per character, and on
+	 * a 393px phone it gets about 67px of room with the glyph shown and 84px
+	 * without — so truncation starts somewhere around nine or ten characters, and
+	 * dropping the glyph buys roughly two or three more. A character count is a
+	 * crude stand-in for a text width and is deliberately set to err on the side of
+	 * KEEPING the glyph, because a name that fits is the case where the glyph costs
+	 * nothing and a measurement-based version would keep it too.
+	 *
+	 * Measuring the real thing would mean observing both the row's free space and
+	 * the picker's truncation — and observing the truncation directly oscillates,
+	 * since hiding the glyph un-truncates the name that caused it to be hidden. The
+	 * stable formulation is "how much room would there be with the glyph hidden",
+	 * which needs a resize observer plus a truncation report out of ModelPicker.
+	 * That is a live observer and a new cross-component contract for about 17px,
+	 * which is why this is a threshold and not a measurement.
+	 */
+	const COMPACT_NAME_CHARS = 10;
+	/** Long enough to be squeezing the name; the glyph goes first — the label beside
+	 *  it says the same thing, and unlike a 13px outline it says it unambiguously. */
+	const crowded = $derived(modelLabel.length > COMPACT_NAME_CHARS);
 
 	let open = $state(false);
 
@@ -358,7 +392,7 @@
 			composer ever has to sit in something narrow on a wide screen, a
 			container query on the row is the honest mechanism.
 		-->
-		<span class="contents max-[480px]:hidden">
+		<span class={crowded ? 'contents max-[480px]:hidden' : 'contents'}>
 			{@render shape(selected?.value ?? defaultValue ?? '1:1', 13, isDefault)}
 		</span>
 		<span class="tabular-nums">{selected?.value ?? 'Default'}</span>

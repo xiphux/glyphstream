@@ -11,7 +11,7 @@
 	import OfflineNotice from '$lib/components/chat/OfflineNotice.svelte';
 	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
 	import AspectRatioSelector from '$lib/components/chat/AspectRatioSelector.svelte';
-	import { agreedDefault, offeredRatios } from '$lib/aspect-ratio';
+	import { agreedDefault, offeredRatios, soleModelLabel } from '$lib/aspect-ratio';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { getModelCatalogue } from '$lib/model-catalogue.svelte';
 	import { baseIdOf } from '$lib/model-default';
@@ -378,6 +378,8 @@
 	// spanning several. Undefined then, and Default says "each model's own", which
 	// is exactly what it will do.
 	const ratioDefault = $derived(agreedDefault(selectedModels));
+	// Feeds the picker's crowding rule — see its `modelLabel` prop.
+	const ratioModelLabel = $derived(soleModelLabel(selectedModels));
 	// Clear the moment no selected model offers ratios, so a stale value can't
 	// ride a send the selector isn't shown for. Mirrors the split flag below.
 	$effect(() => {
@@ -955,6 +957,7 @@
 						bind:this={ratioRef}
 						options={ratioOptions}
 						defaultValue={ratioDefault}
+						modelLabel={ratioModelLabel}
 						promptText={text}
 						bind:seed={seedAspectRatio}
 						bind:value={aspectRatio}

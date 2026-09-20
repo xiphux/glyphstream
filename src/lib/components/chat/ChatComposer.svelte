@@ -16,7 +16,7 @@
 	import OfflineNotice from '$lib/components/chat/OfflineNotice.svelte';
 	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
 	import AspectRatioSelector from '$lib/components/chat/AspectRatioSelector.svelte';
-	import { agreedDefault, offeredRatios } from '$lib/aspect-ratio';
+	import { agreedDefault, offeredRatios, soleModelLabel } from '$lib/aspect-ratio';
 	import { stripSkillCommand } from '$lib/skill-command';
 	import { isSnippetKind } from '$lib/types/api';
 	import { imageAttachment } from '$lib/model-capabilities';
@@ -277,6 +277,8 @@
 	// spanning several. Undefined then, and Default says "each model's own", which
 	// is exactly what it will do.
 	const ratioDefault = $derived(agreedDefault(selectedModels));
+	// Feeds the picker's crowding rule — see its `modelLabel` prop.
+	const ratioModelLabel = $derived(soleModelLabel(selectedModels));
 	// Same reasoning as the split flag: clear the moment no selected model offers
 	// ratios, so a stale value can't ride a send the selector isn't shown for.
 	$effect(() => {
@@ -357,6 +359,7 @@
 					bind:this={ratioRef}
 					options={ratioOptions}
 					defaultValue={ratioDefault}
+					modelLabel={ratioModelLabel}
 					promptText={composerText}
 					bind:value={aspectRatio}
 					bind:dismissedRatio

@@ -438,22 +438,37 @@ test('the send button stays inside the composer when the row is crowded', async 
 	// the composer's border — not merely inside the viewport.
 	expect(overflow!.row).toBe(0);
 	expect(overflow!.pastEdge).toBeLessThanOrEqual(0);
+});
 
-	// The trigger's glyph is dropped at phone widths and its pixels go to the model
-	// name. The text beside it carries the same meaning without the ambiguity — at
-	// a 13px box, 16:9 / 3:2 / 4:3 differ by about a pixel and a half.
-	const glyphWidth = (): Promise<number> =>
-		page.evaluate(() => {
-			const svg = document
-				.querySelector('button[aria-label^="Aspect ratio"]')
-				?.querySelector('svg');
-			return svg ? Math.round(svg.getBoundingClientRect().width) : -1;
-		});
-	expect(await glyphWidth()).toBe(0);
+/** Width of the trigger's shape glyph, or -1 when the control isn't rendered. */
+async function glyphWidth(page: Page): Promise<number> {
+	return page.evaluate(() => {
+		const svg = document.querySelector('button[aria-label^="Aspect ratio"]')?.querySelector('svg');
+		return svg ? Math.round(svg.getBoundingClientRect().width) : -1;
+	});
+}
 
-	// …and comes back once there is room for it, so the drop is a response to
-	// pressure rather than a permanent amputation.
-	await page.setViewportSize({ width: 900, height: 720 });
+test('the glyph yields to a long model name, and only to a long one', async ({ page }) => {
+	// The glyph is the half of this control that can go: the label beside it says
+	// the same thing, and at a 13px box 16:9 / 3:2 / 4:3 differ by about a pixel
+	// and a half. But it only goes when something is actually squeezing the name —
+	// dropping it on a phone showing "Krea 2" would cost legibility and buy nothing.
+	await page.setViewportSize({ width: 393, height: 800 });
+	await gotoNewChat(page);
+
+	// Mock Image is short enough to fit, so the glyph stays even on a phone.
+	await selectModel(page, /Mock Image/);
 	await expect(selector(page)).toBeVisible();
-	expect(await glyphWidth()).toBeGreaterThan(0);
+	expect(await glyphWidth(page)).toBeGreaterThan(0);
+
+	// Mock Painter's name is long enough to start truncating; the glyph yields.
+	await selectModel(page, /Mock Painter/);
+	await expect(selector(page)).toBeVisible();
+	expect(await glyphWidth(page)).toBe(0);
+
+	// Given room, the long name keeps the glyph too — the drop is a response to
+	// pressure, not a permanent amputation.
+	await page.setViewportSize({ width: 900, height: 800 });
+	await expect(selector(page)).toBeVisible();
+	expect(await glyphWidth(page)).toBeGreaterThan(0);
 });
