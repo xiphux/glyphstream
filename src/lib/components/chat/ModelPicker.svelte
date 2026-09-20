@@ -677,11 +677,22 @@
 </script>
 
 <Popover.Root bind:open>
-	<div class={inline ? 'group/preview relative inline-flex' : 'group/preview relative w-full'}>
+	<!--
+		`min-w-0` on BOTH the wrapper and the inline trigger, or the truncation below
+		never engages. A flex item defaults to `min-width: auto`, i.e. it refuses to
+		shrink below its content — so in the composer's action row this element stayed
+		at its `max-w-[200px]` no matter how narrow the viewport got, the row
+		overflowed, and the send/stop button was pushed clean outside the box. Both
+		levels are needed: the wrapper is the row's flex item, and the trigger is the
+		wrapper's.
+	-->
+	<div
+		class={inline ? 'group/preview relative inline-flex min-w-0' : 'group/preview relative w-full'}
+	>
 		<Popover.Trigger
 			{disabled}
 			class={inline
-				? 'group inline-flex max-w-[200px] items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-fg-muted transition hover:bg-surface-raised focus:outline-none focus-visible:ring-1 focus-visible:ring-border-focus disabled:opacity-50'
+				? 'group inline-flex min-w-0 max-w-[200px] items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-fg-muted transition hover:bg-surface-raised focus:outline-none focus-visible:ring-1 focus-visible:ring-border-focus disabled:opacity-50'
 				: 'group flex w-full items-center justify-between gap-2 rounded-md border border-border bg-surface-panel px-3 py-2 text-sm shadow-sm transition hover:border-border-strong focus:border-border-focus focus:outline-none disabled:opacity-50'}
 			aria-label="Select model"
 		>

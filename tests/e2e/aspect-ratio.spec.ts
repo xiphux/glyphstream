@@ -409,3 +409,33 @@ test('a trailing ratio survives Enter on a follow-up turn too', async ({ page })
 	expect(sent).toHaveLength(2);
 	expect(sent[1].aspectRatio).toBe('16:9');
 });
+
+test('the send button stays inside the composer when the row is crowded', async ({ page }) => {
+	// A narrow phone with the shape selector present is the crowded case: attach,
+	// feature toggles, the selector, the model picker and send all share one
+	// non-wrapping row. The picker is the only elastic thing there, and a flex item
+	// defaults to refusing to shrink below its content — so without `min-w-0` it
+	// held its full width, the row overflowed, and the send button (or the Stop
+	// button during a generation, same box) was pushed outside the rounded panel
+	// and off the edge of the screen.
+	await page.setViewportSize({ width: 320, height: 720 });
+	await gotoNewChat(page);
+	await selectModel(page, /Mock Image/);
+	await expect(selector(page)).toBeVisible();
+
+	const overflow = await page.evaluate(() => {
+		const row = document.querySelector('form div.flex.items-center.gap-2');
+		const form = document.querySelector('form');
+		const send = document.querySelector('button[aria-label^="Send"], button[aria-label^="Stop"]');
+		if (!row || !form || !send) return null;
+		return {
+			row: row.scrollWidth - row.clientWidth,
+			pastEdge: Math.round(send.getBoundingClientRect().right - form.getBoundingClientRect().right),
+		};
+	});
+	expect(overflow).not.toBeNull();
+	// The row must not scroll, and the control must sit inside the panel that draws
+	// the composer's border — not merely inside the viewport.
+	expect(overflow!.row).toBe(0);
+	expect(overflow!.pastEdge).toBeLessThanOrEqual(0);
+});
