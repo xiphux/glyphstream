@@ -693,26 +693,29 @@ function readLaunchImageMatch(standalone: boolean): LaunchImageMatch | null {
 function readViewportMetrics(standalone: boolean): ViewportMetrics | null {
 	if (!standalone) return null;
 	const probe = document.createElement('div');
-	// content-box explicitly. NOT because border-box would break the reading —
-	// used content height floors at zero, so a border-box element with height:0
-	// and padding still reports the padding, and these measurements would come
-	// out the same. It is here so the probe means what it says: every value
-	// below is read as a plain border-box height, and none of them has to be
-	// reasoned about through a global box model that could change.
-	probe.style.cssText =
-		'position:absolute;top:0;left:0;width:0;box-sizing:content-box;' +
-		'visibility:hidden;pointer-events:none;';
-	document.body.appendChild(probe);
-	// One property at a time, from a cleared probe, so a value the engine can't
-	// parse reads as 0 instead of carrying the previous measurement forward.
-	const measure = (prop: 'height' | 'paddingTop' | 'paddingBottom', value: string): number => {
-		probe.style.height = '0px';
-		probe.style.paddingTop = '0px';
-		probe.style.paddingBottom = '0px';
-		probe.style[prop] = value;
-		return probe.getBoundingClientRect().height;
-	};
+	// Everything from here is inside the try, including the style write and the
+	// insert. They are the two steps most likely to fail on a hardened engine,
+	// so a guard that started after them would not cover what it exists for.
 	try {
+		// content-box explicitly. NOT because border-box would break the reading —
+		// used content height floors at zero, so a border-box element with height:0
+		// and padding still reports the padding, and these measurements would come
+		// out the same. It is here so the probe means what it says: every value
+		// below is read as a plain border-box height, and none of them has to be
+		// reasoned about through a global box model that could change.
+		probe.style.cssText =
+			'position:absolute;top:0;left:0;width:0;box-sizing:content-box;' +
+			'visibility:hidden;pointer-events:none;';
+		document.body.appendChild(probe);
+		// One property at a time, from a cleared probe, so a value the engine can't
+		// parse reads as 0 instead of carrying the previous measurement forward.
+		const measure = (prop: 'height' | 'paddingTop' | 'paddingBottom', value: string): number => {
+			probe.style.height = '0px';
+			probe.style.paddingTop = '0px';
+			probe.style.paddingBottom = '0px';
+			probe.style[prop] = value;
+			return probe.getBoundingClientRect().height;
+		};
 		return {
 			innerHeight: window.innerHeight,
 			vh: measure('height', '100vh'),
@@ -721,14 +724,15 @@ function readViewportMetrics(standalone: boolean): ViewportMetrics | null {
 			insetBottom: measure('paddingBottom', 'env(safe-area-inset-bottom, 0px)'),
 		};
 	} catch {
-		// Same contract as readLaunchImageMatch below: fail toward a missing row,
-		// never toward a broken panel. A throw here — a hardened WebView, a CSP
-		// that blocks inline style mutation — would otherwise propagate out of
-		// readDebugSources and replace every row with a read failure, taking the
-		// load timings down with it. Those are the numbers this panel exists for,
-		// and they have nothing to do with viewport geometry.
+		// Same contract as readLaunchImageMatch above: fail toward a missing row,
+		// never toward a broken panel. A throw here would otherwise propagate out
+		// of readDebugSources and replace every row with a read failure, taking
+		// the load timings down with it. Those are the numbers this panel exists
+		// for, and they have nothing to do with viewport geometry.
 		return null;
 	} finally {
+		// Safe even if the append never happened: remove() on a node with no
+		// parent is a no-op.
 		probe.remove();
 	}
 }

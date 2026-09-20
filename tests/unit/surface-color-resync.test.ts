@@ -29,26 +29,37 @@ function svelteFiles(dir: string): string[] {
 	return readdirSync(dir).flatMap((entry) => {
 		const full = `${dir}${entry}`;
 		if (statSync(full).isDirectory()) return svelteFiles(`${full}/`);
-		return entry.endsWith('.svelte') ? [full] : [];
+		return entry.endsWith('.svelte') || entry.endsWith('.svelte.ts') ? [full] : [];
 	});
 }
 
-/** `data-*` attributes app.css redefines --color-surface under. */
+/**
+ * `data-*` attributes app.css redefines --color-surface under.
+ *
+ * Matched off each rule's PRELUDE rather than by scanning for a `[data-…]`
+ * followed by a brace. The looser form found the right three by luck: it let a
+ * combined selector (`[data-scheme='dark'][data-contrast]`), a selector list,
+ * and a preceding comment each swallow the attribute that followed, so a newly
+ * added re-tint could land in any of those shapes and never be seen — this
+ * file's own drift check, passing vacuously.
+ *
+ * A comment inside a prelude can now contribute a spurious attribute. That is
+ * the safe direction: a spurious one only adds a sync requirement somewhere.
+ */
 function surfaceAttributes(): string[] {
 	const found = new Set<string>();
-	// Each block opener that carries a data- attribute, paired with whether that
-	// block redefines the surface token before the next block starts.
-	for (const m of appCss.matchAll(/\[data-([a-z-]+)[^\]]*\][^{]*\{([^}]*)\}/g)) {
-		if (m[2].includes('--color-surface:')) found.add(m[1]);
+	for (const rule of appCss.matchAll(/([^{}]*)\{([^{}]*)\}/g)) {
+		if (!rule[2].includes('--color-surface:')) continue;
+		for (const attr of rule[1].matchAll(/\[data-([a-z0-9-]+)/g)) found.add(attr[1]);
 	}
 	return [...found].sort();
 }
 
 /**
  * The `{ … }` body enclosing `index` — the effect or handler doing the write.
- * Brace-counted rather than regex-matched, because the bodies nest. Braces
- * inside strings would throw the count off; none of the call sites has one, and
- * a miscount fails toward reporting an offender, not toward silence.
+ * Brace-counted rather than regex-matched, because the bodies nest. A brace
+ * inside a string, a regex literal or a comment can throw the count off; see
+ * the fallback at the bottom for why that direction is safe.
  */
 function enclosingBlock(text: string, index: number): string {
 	let start = text.lastIndexOf('{', index);
@@ -63,7 +74,13 @@ function enclosingBlock(text: string, index: number): string {
 		}
 		start = text.lastIndexOf('{', start - 1);
 	}
-	return text;
+	// No enclosing block — a top-level write, or a brace the counter lost track
+	// of. Returns EMPTY, which reports an offender, never the whole file, which
+	// would not: the file almost certainly holds some other syncSurfaceChrome()
+	// call, and matching that is exactly the per-file check this helper exists
+	// to be stronger than. Verified against the real tree: every current write
+	// resolves to a real block, so nothing reaches here today.
+	return '';
 }
 
 describe('surface-color re-sync', () => {
@@ -81,6 +98,7 @@ describe('surface-color re-sync', () => {
 		// contained two others, for theme and scheme, so the file passed while the
 		// status bar was wrong. Mutation-checked against exactly that edit.
 		const offenders: string[] = [];
+		let writeSites = 0;
 		for (const path of svelteFiles(srcDir)) {
 			const text = readFileSync(path, 'utf-8');
 			for (const attr of surfaceAttributes()) {
@@ -90,12 +108,20 @@ describe('surface-color re-sync', () => {
 					'g',
 				);
 				for (const m of text.matchAll(write)) {
+					writeSites++;
 					if (!enclosingBlock(text, m.index).includes('syncSurfaceChrome(')) {
 						offenders.push(`${path.slice(srcDir.length)} (data-${attr})`);
 					}
 				}
 			}
 		}
+		// The second vacuity guard, and the one that matters if these writes ever
+		// move: the scan covers .svelte and .svelte.ts, so relocating them to a
+		// plain .ts module would leave `offenders` empty and this test green with
+		// zero coverage. (app.html also writes dataset.scheme, deliberately and
+		// without a sync — it is the pre-paint script — so the scan must not be
+		// widened to .html.)
+		expect(writeSites, 'found no surface-attribute writes at all to check').toBeGreaterThan(0);
 		expect(
 			offenders,
 			'this block changes --color-surface, so it must call syncSurfaceChrome() — ' +
