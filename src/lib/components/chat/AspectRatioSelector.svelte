@@ -131,11 +131,20 @@
 
 	// Seeded from the prop rather than '' so a mount starts level with the text
 	// already in the box — a restored draft, or the remount after a model switch.
-	// Starting empty would open a DETECT_DEBOUNCE_MS window in which `detected` is
-	// null for a prompt that plainly names a ratio, and the release below reads
-	// exactly that signal: it would fire inside the window and drop a dismissal the
-	// parent is holding, handing the reverted-pick bug back. Both are props, equal
-	// on server and client, so this costs no hydration mismatch.
+	// Starting empty would open a DETECT_DEBOUNCE_MS window in which the prompt
+	// looks blank, and the release below asks whether the dismissed ratio is still
+	// named in it: a blank prompt names nothing, so it would drop a dismissal the
+	// parent is holding and hand the reverted-pick bug back.
+	//
+	// Reading a prop at init depth is safe here, but NOT for the reason it first
+	// looks: `promptText` is not equal across SSR and hydration on the new-chat
+	// page, where the box is seeded from a saved draft that only exists on the
+	// client ((app)/+page.svelte). There is no mismatch because nothing
+	// prompt-derived reaches the SSR markup — the menu is portaled and shut, and
+	// the trigger's marker needs `fromPrompt`, which needs `value`, which is only
+	// ever written from an effect and so is still null on both sides at hydration.
+	// That last clause is load-bearing: give `value` an init-depth default derived
+	// from the prompt and this becomes a real mismatch.
 	// svelte-ignore state_referenced_locally
 	let debouncedPrompt = $state(promptText);
 	$effect(() => {
