@@ -67,6 +67,10 @@ export interface VideoRelayParams extends MediaRelayParams {
 	/** Whether video-prompt enhancement is enabled for this send (the feature
 	 *  category is not in the conversation's disabledFeatures). */
 	enhancementEnabled?: boolean;
+	/** Aspect ratio for this generation — already validated against the model's
+	 *  advertised list by the caller. Undefined leaves the upstream's own
+	 *  default, which is what a model with no ratio support always does. */
+	aspectRatio?: string;
 }
 
 export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8Array> {
@@ -116,6 +120,9 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 			};
 			if (params.inputReference) {
 				req.inputReference = params.inputReference;
+			}
+			if (params.aspectRatio) {
+				req.aspectRatio = params.aspectRatio;
 			}
 			if (DEBUG) {
 				const refSummary = params.inputReference

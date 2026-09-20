@@ -64,7 +64,7 @@ const TITLE_DELIVERY_BUDGET_MS = 5000;
 const DEBUG = logLevel() === 'debug';
 import { isMediaKind } from '$lib/fanout';
 import { isModelKind } from '$lib/types/api';
-import type { SendMessageRequest, SendMessageResponse } from '$lib/types/api';
+import type { ModelEntry, SendMessageRequest, SendMessageResponse } from '$lib/types/api';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, params, request, url }) => {
@@ -352,12 +352,17 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// relay can rewrite the prompt into the model's preferred format. Skip the
 			// lookup entirely when the feature is toggled off for this conversation.
 			const enhancementEnabled = !disabledFeatures.includes('image_prompt_enhancement');
+			const wantsRatio = typeof body.aspectRatio === 'string';
 			let promptStyle: string | null = null;
 			let promptHint: string | null = null;
-			if (enhancementEnabled) {
+			let aspectRatio: string | undefined;
+			if (enhancementEnabled || wantsRatio) {
 				const modelEntry = (await listAllModels()).find((m) => m.id === meta.modelId);
-				promptStyle = modelEntry?.promptStyle ?? null;
-				promptHint = modelEntry?.promptHint ?? null;
+				if (enhancementEnabled) {
+					promptStyle = modelEntry?.promptStyle ?? null;
+					promptHint = modelEntry?.promptHint ?? null;
+				}
+				aspectRatio = resolveAspectRatio(body.aspectRatio, modelEntry);
 			}
 			const stream = startImageRelay({
 				conversationId: params.id,
@@ -373,6 +378,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				promptStyle,
 				promptHint,
 				enhancementEnabled,
+				aspectRatio,
 				abortSignal: inFlight.controller.signal,
 				advanceActiveLeaf: !isFanout,
 				fanoutIndex,
@@ -413,12 +419,17 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// Skip the lookup entirely when the feature is toggled off. Mirrors the
 			// image branch above.
 			const enhancementEnabled = !disabledFeatures.includes('video_prompt_enhancement');
+			const wantsRatio = typeof body.aspectRatio === 'string';
 			let promptStyle: string | null = null;
 			let promptHint: string | null = null;
-			if (enhancementEnabled) {
+			let aspectRatio: string | undefined;
+			if (enhancementEnabled || wantsRatio) {
 				const modelEntry = (await listAllModels()).find((m) => m.id === meta.modelId);
-				promptStyle = modelEntry?.promptStyle ?? null;
-				promptHint = modelEntry?.promptHint ?? null;
+				if (enhancementEnabled) {
+					promptStyle = modelEntry?.promptStyle ?? null;
+					promptHint = modelEntry?.promptHint ?? null;
+				}
+				aspectRatio = resolveAspectRatio(body.aspectRatio, modelEntry);
 			}
 			const stream = startVideoRelay({
 				conversationId: params.id,
@@ -433,6 +444,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				promptStyle,
 				promptHint,
 				enhancementEnabled,
+				aspectRatio,
 				abortSignal: inFlight.controller.signal,
 				advanceActiveLeaf: !isFanout,
 				fanoutIndex,
@@ -825,6 +837,32 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		throw e;
 	}
 };
+
+/**
+ * The aspect ratio to forward upstream for this send.
+ *
+ * Gated on whether the model advertises ratios AT ALL — deliberately NOT on
+ * whether it advertises this particular one. The composer's menu is the union
+ * across the selected models, and a remembered preference outlives the model it
+ * was picked on, so a ratio this model doesn't list is routine rather than a
+ * client bug. Forwarding it lets the upstream snap to its nearest offered shape;
+ * filtering it here would instead drop the user back to the workflow's baked-in
+ * default, which for a portrait workflow means answering "ultrawide" with a
+ * portrait — further from the request than any option on the list. See
+ * `docs/aspect-ratios.md` in openai-api-bridge.
+ *
+ * A model advertising nothing gets nothing: it would ignore the field anyway,
+ * and an upstream that isn't the bridge has no business receiving it.
+ */
+function resolveAspectRatio(
+	requested: string | undefined,
+	model: ModelEntry | undefined,
+): string | undefined {
+	if (!requested || !model?.aspectRatios?.length) return undefined;
+	// Shape-check rather than membership-check: the value reaches the upstream
+	// verbatim, so this only keeps a malformed client from putting junk on the wire.
+	return /^\d+:\d+$/.test(requested) ? requested : undefined;
+}
 
 function mapUpstreamStatus(status: number | null): 502 | 504 | 400 {
 	if (status === null) return 502;

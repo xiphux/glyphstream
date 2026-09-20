@@ -38,6 +38,10 @@ export interface ImageRelayParams extends MediaRelayParams {
 	promptStyle?: string | null;
 	/** Per-model freeform enhancer hint, or null. */
 	promptHint?: string | null;
+	/** Aspect ratio for this generation — already validated against the model's
+	 *  advertised list by the caller. Undefined leaves the upstream's own
+	 *  default, which is what a model with no ratio support always does. */
+	aspectRatio?: string;
 	/** Whether image-prompt enhancement is enabled for this send (the feature
 	 *  category is not in the conversation's disabledFeatures). */
 	enhancementEnabled?: boolean;
@@ -107,6 +111,7 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 						prompt: effectivePrompt,
 						images,
 						n: 1,
+						...(params.aspectRatio ? { aspect_ratio: params.aspectRatio } : {}),
 						response_format: 'url',
 					},
 					abortSignal,
@@ -118,6 +123,7 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 						model: params.upstreamModelId,
 						prompt: effectivePrompt,
 						n: 1,
+						...(params.aspectRatio ? { aspect_ratio: params.aspectRatio } : {}),
 						response_format: 'url',
 					},
 					abortSignal,

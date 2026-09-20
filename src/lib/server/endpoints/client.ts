@@ -443,6 +443,14 @@ export interface ImageGenerationRequest {
 	prompt: string;
 	n?: number;
 	size?: string;
+	/**
+	 * openai-api-bridge extension: the shape to render, as one of the model's
+	 * advertised `aspect_ratios` values. An alternative to `size`, never a
+	 * companion — a model that advertises ratios has no pixel knob and ignores
+	 * `size`. A model that advertises none ignores this instead, so sending it
+	 * unasked is harmless but pointless; gate on `ModelEntry.aspectRatios`.
+	 */
+	aspect_ratio?: string;
 	response_format?: 'url' | 'b64_json';
 }
 
@@ -452,6 +460,13 @@ export interface ImageGenerationResponse {
 		url?: string;
 		b64_json?: string;
 		revised_prompt?: string;
+		/**
+		 * openai-api-bridge extension: the ratio actually rendered. Not
+		 * necessarily the one requested — a model whose menu lacks the requested
+		 * ratio snaps to its nearest — so this, not the request, is what to
+		 * persist. Absent from any upstream that doesn't deal in ratios.
+		 */
+		aspect_ratio?: string;
 	}>;
 }
 
@@ -501,6 +516,8 @@ export interface ImageEditRequest {
 	mask?: ImageEditInputFile;
 	n?: number;
 	size?: string;
+	/** See {@link ImageGenerationRequest.aspect_ratio}. */
+	aspect_ratio?: string;
 	response_format?: 'url' | 'b64_json';
 }
 
@@ -534,6 +551,7 @@ export async function imageEdit(
 	}
 	if (body.n !== undefined) fd.append('n', String(body.n));
 	if (body.size) fd.append('size', body.size);
+	if (body.aspect_ratio) fd.append('aspect_ratio', body.aspect_ratio);
 	if (body.response_format) fd.append('response_format', body.response_format);
 
 	// Don't set Content-Type — fetch fills it in with the right
@@ -584,6 +602,8 @@ export interface VideoCreateRequest {
 	model: string;
 	prompt: string;
 	size?: string;
+	/** See {@link ImageGenerationRequest.aspect_ratio}. */
+	aspectRatio?: string;
 	seconds?: number;
 	/**
 	 * Optional reference image for I2V workflows. Sent as the
@@ -603,6 +623,12 @@ export interface VideoJob {
 	progress: number | null;
 	seconds: number | null;
 	size: string | null;
+	/**
+	 * openai-api-bridge extension: the ratio this job renders at. Set from the
+	 * request at creation, then refined to what was actually used once the render
+	 * completes — so read it off the COMPLETED job, not the queued one.
+	 */
+	aspect_ratio?: string | null;
 	created_at?: number;
 	completed_at?: number | null;
 	error: { message?: string; type?: string; code?: string } | null;
@@ -619,6 +645,7 @@ export async function videoCreate(
 	form.append('model', body.model);
 	form.append('prompt', body.prompt);
 	if (body.size) form.append('size', body.size);
+	if (body.aspectRatio) form.append('aspect_ratio', body.aspectRatio);
 	if (body.seconds !== undefined) form.append('seconds', String(body.seconds));
 	if (body.inputReference) {
 		form.append(

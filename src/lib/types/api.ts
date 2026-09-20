@@ -338,6 +338,39 @@ export interface ModelEntry {
 	 * their own default rather than disabling the model.
 	 */
 	capabilities?: string[];
+	/**
+	 * openai-api-bridge `aspect_ratios`: the shapes this model will accept in
+	 * the request's `aspect_ratio`, in the order to render them. Drives the
+	 * composer's ratio selector for image and video models.
+	 *
+	 * Undefined when the upstream didn't say, which means "offer no selector" —
+	 * never "one fixed ratio". A model advertising these has no pixel knob: its
+	 * size budget is fixed upstream, so every listed ratio is safe to offer.
+	 *
+	 * `value` is opaque — echo it back, don't parse it as a fraction to
+	 * normalize. The bridge deliberately leaves `21:9` unreduced because that
+	 * is the name people use.
+	 */
+	aspectRatios?: AspectRatioOption[];
+	/**
+	 * The ratio this model produces when a request names none. NOT guaranteed
+	 * to appear in {@link aspectRatios} — a workflow can be saved at a ratio its
+	 * own menu doesn't list — so it can't be assumed selectable.
+	 */
+	aspectRatioDefault?: string;
+}
+
+/**
+ * One selectable aspect ratio, as advertised by openai-api-bridge.
+ *
+ * `label` is optional and freeform (absent when the upstream's option had no
+ * human name), so UI derives its icon from the two numbers in `value` rather
+ * than from a table of names — which is also what lets an unfamiliar ratio
+ * like `5:7` render with no client change.
+ */
+export interface AspectRatioOption {
+	value: string;
+	label?: string;
 }
 
 /**
@@ -387,6 +420,14 @@ export interface UpstreamModel {
 	 * per-endpoint `model_prompt_hints` config override.
 	 */
 	prompt_hint?: string | null;
+	/**
+	 * Additive extension (openai-api-bridge convention): the aspect ratios this
+	 * model accepts, in render order, plus the one it produces when a request
+	 * names none. See `docs/aspect-ratios.md` in openai-api-bridge for the
+	 * contract. Absent on every other vendor.
+	 */
+	aspect_ratios?: AspectRatioOption[] | null;
+	aspect_ratio_default?: string | null;
 	/**
 	 * Context-window signals, in order of preference (see
 	 * `extractContextWindow` in src/lib/server/endpoints/models.ts). None
@@ -1034,6 +1075,18 @@ export interface SendMessageRequest {
 	 * is disabled for the conversation.
 	 */
 	activatedSkillNames?: string[];
+	/**
+	 * Aspect ratio for this generation — a `value` from the composer's menu,
+	 * which is the union across the selected models. Forwarded as the upstream's
+	 * `aspect_ratio` whenever the target model advertises ratios at all, NOT only
+	 * when it advertises this one: the upstream snaps to its nearest offered
+	 * shape, which is what lets one selection serve a fan-out across models with
+	 * different menus. A model advertising none receives nothing.
+	 *
+	 * Ignored for a chat model, and for the avatar route, which pins 1:1 —
+	 * avatars render inside a circle, so any other shape is centre-cropped away.
+	 */
+	aspectRatio?: string;
 }
 
 /**

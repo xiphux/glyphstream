@@ -8,7 +8,7 @@
  */
 
 import { isModelKind } from '$lib/types/api';
-import type { ModelEntry, ModelKind, UpstreamModel } from '$lib/types/api';
+import type { AspectRatioOption, ModelEntry, ModelKind, UpstreamModel } from '$lib/types/api';
 import type { LoadedEndpoint } from './config';
 import { formatModelId } from './model-id';
 import { normalizeStyle } from '../streaming/prompt-styles';
@@ -209,6 +209,20 @@ export function normalizeUpstreamModel(endpoint: LoadedEndpoint, m: UpstreamMode
 	// ("upstream didn't say") downstream in `imageAttachment`.
 	const capabilities = lowerCaseCapabilities(m.capabilities).filter((c) => c.includes('-to-'));
 
+	// Aspect ratios, for media models only. No config override and no
+	// normalization: unlike `prompt_style`, the value drives nothing here — it's
+	// an opaque token echoed back to the upstream that offered it, so there is
+	// no vocabulary to validate against and nothing for an operator to disagree
+	// with. Kind-gated because a chat model reporting these would be nonsense we
+	// shouldn't render a selector for. Undefined (never []) when unusable, so
+	// absence keeps meaning "offer no selector".
+	const isMedia = detected === 'image' || detected === 'video';
+	const aspectRatios = isMedia ? usableAspectRatios(m.aspect_ratios) : undefined;
+	const aspectRatioDefault =
+		isMedia && typeof m.aspect_ratio_default === 'string' && m.aspect_ratio_default.length > 0
+			? m.aspect_ratio_default
+			: undefined;
+
 	return {
 		id: formatModelId(endpoint.id, m.id),
 		endpointId: endpoint.id,
@@ -224,5 +238,34 @@ export function normalizeUpstreamModel(endpoint: LoadedEndpoint, m: UpstreamMode
 		promptStyle,
 		promptHint,
 		capabilities: capabilities.length > 0 ? capabilities : undefined,
+		aspectRatios,
+		aspectRatioDefault,
 	};
+}
+
+/**
+ * Keep only well-formed options from an upstream `aspect_ratios` array.
+ *
+ * Defensive because this is an additive extension off an arbitrary upstream:
+ * the field's whole contract is that a client renders what the row says, so a
+ * malformed entry would otherwise reach the composer as a blank, unselectable
+ * chip. A `W:H` shape check is also what lets the UI derive an icon from the
+ * value without re-validating it. Duplicates are dropped so two rows can't
+ * share a selection key.
+ */
+function usableAspectRatios(raw: UpstreamModel['aspect_ratios']): AspectRatioOption[] | undefined {
+	if (!Array.isArray(raw)) return undefined;
+	const seen = new Set<string>();
+	const out: AspectRatioOption[] = [];
+	for (const entry of raw) {
+		if (typeof entry?.value !== 'string' || !/^\d+:\d+$/.test(entry.value)) continue;
+		if (seen.has(entry.value)) continue;
+		seen.add(entry.value);
+		out.push(
+			typeof entry.label === 'string' && entry.label.length > 0
+				? { value: entry.value, label: entry.label }
+				: { value: entry.value },
+		);
+	}
+	return out.length > 0 ? out : undefined;
 }

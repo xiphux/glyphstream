@@ -68,6 +68,16 @@ export interface SendOptions {
 	 * branch returns early before this is read).
 	 */
 	activatedSkillNames?: string[];
+	/**
+	 * Aspect ratio for this generation, for an image or video model that
+	 * advertised one. The opaque `value` the model offered — echoed to the
+	 * upstream, never parsed here.
+	 *
+	 * Rides the retry branch too, unlike text/attachments: the selector is
+	 * visible and set when a user hits retry, so honouring what they can see
+	 * beats silently reusing the original shape.
+	 */
+	aspectRatio?: string;
 }
 
 export interface BuildBodyInput {
@@ -86,6 +96,7 @@ export function buildSendRequestBody(input: BuildBodyInput): Record<string, unkn
 			regenerateFromMessageId: opts.retryFromMessageId,
 			modelId: input.modelId,
 			modelKind: input.modelKind,
+			...(opts.aspectRatio ? { aspectRatio: opts.aspectRatio } : {}),
 		};
 	}
 
@@ -97,6 +108,7 @@ export function buildSendRequestBody(input: BuildBodyInput): Record<string, unkn
 		...(opts.editedMessageId ? { editedMessageId: opts.editedMessageId } : {}),
 		...(opts.parentMessageId ? { parentMessageId: opts.parentMessageId } : {}),
 		...(opts.activatedSkillNames?.length ? { activatedSkillNames: opts.activatedSkillNames } : {}),
+		...(opts.aspectRatio ? { aspectRatio: opts.aspectRatio } : {}),
 	};
 }
 
@@ -129,6 +141,11 @@ export function buildFanoutBranchBody(input: {
 	 *  its SOURCE column's index. Null when there's none to report (re-rolling a
 	 *  column that predates the field). */
 	branchIndex?: number | null;
+	/** Aspect ratio for this branch. Sent to every branch regardless of whether
+	 *  that model advertised it: a model without ratios ignores the field, and a
+	 *  model whose menu lacks this exact ratio snaps to its nearest — which is
+	 *  why one selection can serve a fan-out across mismatched menus. */
+	aspectRatio?: string;
 }): Record<string, unknown> {
 	return {
 		fanoutBranch: true,
@@ -141,6 +158,7 @@ export function buildFanoutBranchBody(input: {
 		...(input.branchIndex !== undefined && input.branchIndex !== null
 			? { branchIndex: input.branchIndex }
 			: {}),
+		...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
 	};
 }
 
