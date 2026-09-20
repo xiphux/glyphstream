@@ -114,7 +114,11 @@
 		 * there would be a button whose second half can never be honoured.
 		 */
 		onToggleFavorite?: (id: string, next: boolean) => void | Promise<void>;
-		/** Media id whose star is in flight, used to disable the button. */
+		/** Media id whose star is in flight. Disables the button for the WHOLE
+		 *  carousel, not just this slide: both callers guard with a single
+		 *  `if (favoritingId) return`, so a star clicked on another slide mid-flight
+		 *  was dropped on the floor with no error and no toast. Disabling everywhere
+		 *  makes the button say what the guard actually does. */
 		favoritingId?: string | null;
 	}
 
@@ -684,7 +688,7 @@
 					<button
 						type="button"
 						onclick={() => onToggleFavorite?.(m.id, !m.favorite)}
-						disabled={favoritingId === m.id}
+						disabled={favoritingId !== null}
 						title={m.favorite ? 'Remove from favorites' : 'Add to favorites'}
 						aria-label={m.favorite ? 'Remove from favorites' : 'Add to favorites'}
 						aria-pressed={m.favorite}

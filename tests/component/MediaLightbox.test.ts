@@ -349,7 +349,7 @@ describe('MediaLightbox — favorite star', () => {
 		expect(onToggleFavorite).toHaveBeenCalledWith('target', false);
 	});
 
-	it('is disabled while that media id is in flight, but not another', () => {
+	it("is disabled while ANY star is in flight, not just this slide's", () => {
 		const { unmount } = render(MediaLightbox, {
 			props: {
 				media: makeImage({ id: 'in-flight' }),
@@ -360,13 +360,25 @@ describe('MediaLightbox — favorite star', () => {
 		});
 		expect(screen.getByRole('button', { name: 'Add to favorites' })).toBeDisabled();
 		unmount();
-		render(MediaLightbox, {
+
+		// Another id in flight disables it too, because the caller's guard is a single
+		// `if (favoritingId) return` — enabling the button here would accept a click
+		// and silently discard it. (Contrast the delete button below, which keys on
+		// this slide's id.)
+		const other = render(MediaLightbox, {
 			props: {
 				media: makeImage({ id: 'this' }),
 				onClose: vi.fn(),
 				onToggleFavorite: vi.fn(),
 				favoritingId: 'other',
 			},
+		});
+		expect(screen.getByRole('button', { name: 'Add to favorites' })).toBeDisabled();
+		other.unmount();
+
+		// Nothing in flight: enabled.
+		render(MediaLightbox, {
+			props: { media: makeImage(), onClose: vi.fn(), onToggleFavorite: vi.fn() },
 		});
 		expect(screen.getByRole('button', { name: 'Add to favorites' })).toBeEnabled();
 	});
