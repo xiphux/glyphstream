@@ -798,6 +798,23 @@ read before anyone re-optimizes from an estimate.
   light+dark) shipped; a high-contrast scheme is the most practical additional
   theme beyond aesthetics. Deferred until the need arises.
 
+- **An edit resend should inherit its own message's aspect ratio.** Every other
+  iterate-affordance reproduces the shape of the thing it re-runs: a fan-out
+  re-roll inherits `FanoutColumn.aspectRatio`, and the gallery's "Regenerate
+  with this prompt" seeds the picker from `media.aspect_ratio`. An inline edit
+  instead sends the composer's last-chosen ratio, because that is all it has.
+  The composer — and with it the selector — is unmounted during an edit session,
+  so the retry path's justification ("the selector is visible and set, so what
+  the user can see should win") does not apply: the user can see nothing, and
+  the two values diverge whenever they re-picked since, or the original snapped.
+  Sending the last choice beats sending nothing (which reframes at the model's
+  default, the bug this replaced), but it isn't the right value. Blocked on
+  `ChatMessage.aspectRatio`, which `getSiblingAssistants` hydrates for fan-out
+  siblings only — an ordinary thread message never carries one, so `edit.begin`
+  has nothing to capture. Wants the same `media` lookup extended to the thread
+  query, then a seed through `EditSession`. Ideally the edit form grows a
+  visible shape control at that point, which would make either choice honest.
+
 - **Stored media dimensions (kill layout shift).** Image/video parts carry only
   `{ mediaId, alt }` — no intrinsic size — so the browser can't reserve space
   and media pops the layout when it loads (CLS on first render and in the

@@ -2243,7 +2243,8 @@
 		// than sending nothing, which silently reframes the regeneration at the
 		// workflow's baked-in default. Reproducing the EDITED message's own shape
 		// would be better still, but `ChatMessage.aspectRatio` is hydrated only for
-		// fan-out siblings today — see ROADMAP.
+		// fan-out siblings today — see ROADMAP "An edit resend should inherit its own
+		// message's aspect ratio".
 		send: (text, mediaIds, editedMessageId) =>
 			turn.send(text, mediaIds, {
 				editedMessageId,
