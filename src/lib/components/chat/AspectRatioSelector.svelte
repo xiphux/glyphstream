@@ -127,7 +127,7 @@
 	 * property of whatever workflow someone wrote rather than of this code — so it
 	 * is throttled unconditionally instead of audited per list.
 	 */
-	const DETECT_DEBOUNCE_MS = 300;
+	const DETECT_DEBOUNCE_MS = 200;
 
 	// Seeded from the prop rather than '' so a mount starts level with the text
 	// already in the box — a restored draft, or the remount after a model switch.

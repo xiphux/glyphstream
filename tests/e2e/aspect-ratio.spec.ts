@@ -299,7 +299,7 @@ test('a clock in the prompt is not a shape request', async ({ page }) => {
 	// Proving a NON-event, so there is no state transition to await: a web-first
 	// assertion retries until it first holds, and "absent" already holds, so it
 	// would return within a few ms and pass even against a detector that was about
-	// to fire. Outwaiting the 300ms debounce is the only thing that makes this
+	// to fire. Outwaiting the detection debounce is the only thing that makes this
 	// assertion — and the Send below, which would otherwise also land inside the
 	// window — mean anything.
 	await page.waitForTimeout(500);
