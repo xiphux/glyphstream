@@ -2236,7 +2236,19 @@
 	// message is being edited. See $lib/edit-session.
 	const edit = new EditSession({
 		generating: () => generating,
-		send: (text, mediaIds, editedMessageId) => turn.send(text, mediaIds, { editedMessageId }),
+		// The ratio rides an edit for the same reason it rides a retry — except the
+		// justification there ("the selector is visible and set") does NOT apply
+		// here: an edit session unmounts the composer, so the user can see no shape
+		// control at all. Sending the value they last chose is still far better
+		// than sending nothing, which silently reframes the regeneration at the
+		// workflow's baked-in default. Reproducing the EDITED message's own shape
+		// would be better still, but `ChatMessage.aspectRatio` is hydrated only for
+		// fan-out siblings today — see ROADMAP.
+		send: (text, mediaIds, editedMessageId) =>
+			turn.send(text, mediaIds, {
+				editedMessageId,
+				...(aspectRatio ? { aspectRatio } : {}),
+			}),
 	});
 	onDestroy(() => edit.destroy());
 

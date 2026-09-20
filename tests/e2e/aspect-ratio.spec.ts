@@ -190,3 +190,30 @@ test('the rendered ratio is persisted and shown in the lightbox', async ({ page 
 	// tests/component/MediaLightbox.test.ts — driving the gallery to an open
 	// lightbox on two viewports proved flaky for no extra coverage.
 });
+
+test('an edited prompt resends at the same shape, not the workflow default', async ({ page }) => {
+	// The composer — and with it the shape control — is unmounted during an edit,
+	// so a dropped ratio is invisible: the regeneration just comes back reframed.
+	// This is the one send path of seven that was missing it.
+	await gotoNewChat(page);
+	await selectModel(page, /Mock Image/);
+	await selector(page).click();
+	await page.getByRole('button', { name: /^16:9/ }).click();
+
+	await page.locator('textarea').first().fill('a lighthouse');
+	await page.getByRole('button', { name: 'Send message' }).click();
+	await page.waitForURL(/\/chat\/[^/]+$/);
+	await expect(page.locator('img[src*="/api/media/"]').first()).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
+	expect(await lastRequestedRatio(page)).toBe('16:9');
+
+	// Reword the prompt and resend.
+	await page.getByRole('button', { name: 'Edit message' }).click();
+	const editor = page.locator('article', { hasText: 'Editing' });
+	await editor.locator('textarea').fill('a tall lighthouse');
+	await page.getByRole('button', { name: 'Save' }).click();
+	await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
+
+	// Still 16:9 — before the fix this went out with no aspect_ratio at all.
+	expect(await lastRequestedRatio(page)).toBe('16:9');
+});

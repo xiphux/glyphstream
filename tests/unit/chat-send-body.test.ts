@@ -148,6 +148,47 @@ describe('buildSendRequestBody', () => {
 	});
 });
 
+describe('buildSendRequestBody — aspectRatio', () => {
+	// The field had NO coverage here, which is how an unthreaded send path shipped:
+	// every caller looked right in isolation, and nothing asserted the body shape.
+	it('is omitted when unset, on both the plain and retry shapes', () => {
+		expect(buildSendRequestBody(BASE)).not.toHaveProperty('aspectRatio');
+		expect(
+			buildSendRequestBody({ ...BASE, options: { retryFromMessageId: 'm1' } }),
+		).not.toHaveProperty('aspectRatio');
+	});
+
+	it('rides a plain send', () => {
+		expect(buildSendRequestBody({ ...BASE, options: { aspectRatio: '16:9' } })).toMatchObject({
+			aspectRatio: '16:9',
+		});
+	});
+
+	it('rides a retry, unlike text and attachments', () => {
+		// The retry branch returns early with its own object, so it has to opt in
+		// separately — the shape a reader is most likely to assume is shared.
+		expect(
+			buildSendRequestBody({
+				...BASE,
+				options: { retryFromMessageId: 'm1', aspectRatio: '16:9' },
+			}),
+		).toMatchObject({ regenerateFromMessageId: 'm1', aspectRatio: '16:9' });
+	});
+
+	it('rides an EDIT resend — REGRESSION GUARD', () => {
+		// An edit unmounts the composer, so a dropped ratio is invisible: the
+		// regeneration just comes back reframed at the workflow's default. This
+		// asserts the body shape; the page must still pass the option (see the
+		// EditSession construction in chat/[id]/+page.svelte).
+		expect(
+			buildSendRequestBody({
+				...BASE,
+				options: { editedMessageId: 'm1', aspectRatio: '16:9' },
+			}),
+		).toMatchObject({ editedMessageId: 'm1', aspectRatio: '16:9' });
+	});
+});
+
 describe('buildFanoutBranchBody', () => {
 	it('flags fanoutBranch, parents to the shared user message, and omits text', () => {
 		const body = buildFanoutBranchBody({
