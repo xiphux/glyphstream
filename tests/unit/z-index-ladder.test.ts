@@ -75,22 +75,27 @@ describe('global stacking ladder', () => {
 		expect(t.get('overlay')!).toBeGreaterThan(t.get('sidebar')!);
 	});
 
-	it('keeps the status-bar sampler above the drawer backdrop', () => {
-		// Shipped broken for a release. iOS colors the standalone status bar from
-		// the TOPMOST fixed element at the page top; the drawer backdrop is
-		// `fixed inset-0`, always mounted and merely faded out when shut, so an
-		// unstacked sampler lost this edge permanently. iOS sampled a transparent
-		// element, gave up, and fell back to the translucent bar — which on
-		// iOS 27 drags a progressive blur ~35pt down into the app.
+	it('keeps the status-bar sampler in its band: over the scrim, under overlays', () => {
+		// Shipped broken for a release, then over-corrected. iOS colors the
+		// standalone status bar from the TOPMOST fixed element at the page top.
 		//
-		// Asserted against the backdrop specifically because that is the surface
-		// that caused it, and against the ladder's own maximum because any FUTURE
-		// full-viewport surface breaks this the same way. The sampler outranking
-		// everything is the invariant; the backdrop is just how we found out.
+		// Floor: the drawer backdrop is `fixed inset-0`, always mounted and
+		// merely faded out when shut, so a sampler below it loses this edge
+		// permanently — iOS reads a transparent element and falls back to the
+		// translucent bar.
+		//
+		// Ceiling: at the top of the ladder the sampler painted a 1px
+		// surface-coloured hairline over every full-viewport dark overlay, since
+		// under the `default` status-bar style this strip is on-screen content.
+		// Under the overlay tier, an open lightbox or dialog is what iOS samples,
+		// which is also the colour the bar should take.
+		//
+		// Both bounds are asserted because each was violated in turn, and a bare
+		// "outranks the backdrop" passes the version that caused the hairline.
 		const t = declaredTiers();
 		const statusBar = t.get('status-bar')!;
 		expect(statusBar).toBeGreaterThan(t.get('drawer-backdrop')!);
-		expect(statusBar).toBe(Math.max(...t.values()));
+		expect(statusBar).toBeLessThan(t.get('overlay')!);
 	});
 
 	it('assigns every tier a distinct value', () => {

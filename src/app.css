@@ -473,6 +473,11 @@
  * surface — picks its layer from here, lowest first:
  *
  *   drawer-backdrop  the mobile sidebar's scrim
+ *   status-bar       the 1px strip iOS colors the standalone status bar from.
+ *                    The one tier that isn't about what a human sees, and the
+ *                    only reason it is this low: it has to clear the scrim
+ *                    above, which stays mounted and merely fades, but must
+ *                    stay UNDER anything genuinely visible. See the rule.
  *   sidebar          the sidebar itself, and CanvasPane's mobile sheet
  *   overlay          modals, popovers, menus, the lightbox: the busy tier
  *   popover-nested   a tooltip opened from inside something already at overlay
@@ -497,16 +502,12 @@
  */
 @theme {
 	--z-index-drawer-backdrop: 30;
+	--z-index-status-bar: 35;
 	--z-index-sidebar: 40;
 	--z-index-overlay: 50;
 	--z-index-popover-nested: 60;
 	--z-index-toast: 70;
 	--z-index-update: 80;
-	/* Top of the ladder, and the only tier that isn't about what a human sees:
-	   iOS picks the status bar's color off the topmost fixed element at the page
-	   top, so .status-bar-sampler has to outrank every surface that can cover
-	   that edge — including the ones nobody is looking at. See the rule below. */
-	--z-index-status-bar: 90;
 }
 
 /* The standard raised panel: a bordered card on the app canvas. This chrome
@@ -656,12 +657,23 @@ body {
    toLegacyRgb in lib/theme-color.ts) to ignore a theme-color it can't parse.
    Keep both: the token is what SSR paints and what every other engine uses.
 
-   The z-index is deliberate. iOS reads the TOPMOST fixed element at the page
-   top, and the mobile drawer's backdrop is `fixed inset-0` that stays mounted
-   and merely fades to opacity-0 when shut — so an unstacked sampler is covered
-   by it permanently, and whatever iOS reads when the drawer is OPEN is
-   bg-black/40 rather than our surface. Painting a 1px pointer-events:none line
-   over a drawer, toast or update banner costs nothing visually.
+   The z-index is deliberate, and it is a BAND, not a maximum. iOS reads the
+   topmost fixed element at the page top, and the mobile drawer's backdrop is
+   `fixed inset-0` that stays mounted and merely fades to opacity-0 when shut —
+   so an unstacked sampler is covered by it permanently, and what iOS reads
+   while the drawer is OPEN is bg-black/40 rather than our surface. Hence above
+   drawer-backdrop.
+
+   But NOT above the overlay tier, which is where it first landed. Under the
+   `default` status-bar style the page starts below the bar, so this strip is
+   on-screen content, not a row hidden behind the bar the way black-translucent
+   left it — and at the top of the ladder it drew a surface-coloured hairline
+   across every full-viewport dark overlay in the installed app, MediaLightbox's
+   bg-black/90 most visibly. Sitting under them costs nothing: when one is open
+   iOS samples IT, so the bar matches the lightbox instead of the page behind
+   it, which is what you'd want anyway. The toast and update tiers are both
+   bottom-anchored (Toaster.svelte, UpdateBanner.svelte), so they never cover
+   this edge and their rank relative to it decides nothing.
 
    STILL OPEN, do not assume this rule closed it: on iOS 27 the bar comes up
    translucent on a COLD launch, with a progressive blur ~35pt down into the
