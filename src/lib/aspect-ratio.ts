@@ -14,8 +14,24 @@
 
 import type { AspectRatioOption, ModelEntry } from '$lib/types/api';
 
-/** `localStorage` key for the last ratio the user explicitly picked. */
-const STICKY_KEY = 'gs:aspect-ratio';
+/**
+ * `localStorage` key for the last ratio the user explicitly picked.
+ *
+ * Under the `glyphstream:` prefix deliberately: `client-session-state.ts` wipes
+ * that whole namespace on sign-out, and this is session-scoped state by the same
+ * argument every other key there is — on a shared browser it must not outlive
+ * the session and greet whoever signs in next with the previous person's
+ * composer settings. A "true device preference" would belong outside the prefix;
+ * a remembered shape is not one.
+ */
+const STICKY_KEY = 'glyphstream:aspectRatio';
+
+/**
+ * The key this used to live under, read once so an existing preference survives
+ * the rename. Outside the `glyphstream:` prefix, so the sign-out wipe never saw
+ * it — which is exactly why it moved.
+ */
+const LEGACY_STICKY_KEY = 'gs:aspect-ratio';
 
 /**
  * `width / height` for a `W:H` value, or null when it isn't one.
@@ -109,7 +125,16 @@ export function nearestOffered(
 export function readStickyRatio(): string | null {
 	try {
 		const raw = localStorage.getItem(STICKY_KEY);
-		return raw !== null && parseRatio(raw) !== null ? raw : null;
+		if (raw !== null) return parseRatio(raw) !== null ? raw : null;
+		// One-time migration off the pre-rename key. Adopting it rather than
+		// dropping it keeps an existing preference, and removing it leaves no
+		// stray key sitting permanently outside the sign-out wipe's reach.
+		const legacy = localStorage.getItem(LEGACY_STICKY_KEY);
+		if (legacy === null) return null;
+		localStorage.removeItem(LEGACY_STICKY_KEY);
+		if (parseRatio(legacy) === null) return null;
+		localStorage.setItem(STICKY_KEY, legacy);
+		return legacy;
 	} catch {
 		return null;
 	}

@@ -39,7 +39,7 @@ describe('AspectRatioSelector — the one-shot seed', () => {
 	});
 
 	it('opens on the seed rather than the remembered preference', () => {
-		localStorage.setItem('gs:aspect-ratio', '1:1');
+		localStorage.setItem('glyphstream:aspectRatio', '1:1');
 		render(AspectRatioSelector, { props: { options: OPTIONS, seed: '16:9', value: null } });
 		expect(trigger()).toHaveTextContent('16:9');
 	});

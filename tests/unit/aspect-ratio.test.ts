@@ -157,6 +157,38 @@ describe('the remembered preference', () => {
 		expect(readStickyRatio()).toBeNull();
 	});
 
+	it('lives under the prefix the sign-out wipe scans', () => {
+		// `client-session-state.ts` clears everything under `glyphstream:` when a
+		// session ends, because on a shared browser this state must not greet the
+		// next person who signs in. A key outside that prefix silently opts out.
+		writeStickyRatio('16:9');
+		expect(localStorage.getItem('glyphstream:aspectRatio')).toBe('16:9');
+		const keys = Object.keys(localStorage);
+		expect(keys.every((k) => k.startsWith('glyphstream:'))).toBe(true);
+	});
+
+	it('adopts a preference stored under the pre-rename key, then removes it', () => {
+		// Keeps an existing pick through the rename, and leaves no orphan sitting
+		// permanently outside the wipe's reach.
+		localStorage.setItem('gs:aspect-ratio', '3:2');
+		expect(readStickyRatio()).toBe('3:2');
+		expect(localStorage.getItem('gs:aspect-ratio')).toBeNull();
+		expect(localStorage.getItem('glyphstream:aspectRatio')).toBe('3:2');
+	});
+
+	it('discards a junk value under the pre-rename key without adopting it', () => {
+		localStorage.setItem('gs:aspect-ratio', 'widescreen');
+		expect(readStickyRatio()).toBeNull();
+		expect(localStorage.getItem('gs:aspect-ratio')).toBeNull();
+		expect(localStorage.getItem('glyphstream:aspectRatio')).toBeNull();
+	});
+
+	it('prefers the current key when both are present', () => {
+		localStorage.setItem('gs:aspect-ratio', '3:2');
+		localStorage.setItem('glyphstream:aspectRatio', '16:9');
+		expect(readStickyRatio()).toBe('16:9');
+	});
+
 	it('rejects a stored value that is no longer a ratio', () => {
 		// Storage is shared with whatever else the origin has written and survives
 		// deploys, so a junk value must read as "no preference".
