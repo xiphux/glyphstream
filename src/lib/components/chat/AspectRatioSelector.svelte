@@ -157,13 +157,22 @@
 	 * next prompt naming it would be ignored, with no indicator, and the turn would
 	 * go out at the remembered preference while the prose said otherwise.
 	 *
-	 * Keying the release to "no detection stands" rather than to the send covers
-	 * the same ground without the composer having to tell us a turn ended, and it
-	 * also catches clearing the box by hand and retyping, which no send-time reset
-	 * would see.
+	 * Keying the release to the PROSE rather than to the send covers the same
+	 * ground without the composer having to tell us a turn ended, and it also
+	 * catches clearing the box by hand and retyping, which no send-time reset would
+	 * see. Asking whether the dismissed ratio is still NAMED — rather than whether
+	 * `detected` went null — is what keeps a change of menu out of it: `detected`
+	 * is also null when the selection simply stopped offering that shape, so
+	 * switching between two ratio-offering models mid-compose would otherwise
+	 * release the dismissal and let the unchanged prompt overrule the user's pick
+	 * on the way back. Reusing the detector for the question keeps one definition
+	 * of what "named" means, boundaries and all.
 	 */
 	$effect(() => {
-		if (detected === null) dismissedRatio = null;
+		if (dismissedRatio === null) return;
+		if (detectRatioInPrompt(debouncedPrompt, [{ value: dismissedRatio }]) === null) {
+			dismissedRatio = null;
+		}
 	});
 
 	const liveDetection = $derived(

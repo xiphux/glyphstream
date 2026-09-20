@@ -212,6 +212,30 @@ describe('AspectRatioSelector — a ratio named in the prompt', () => {
 		expect(trigger()).toHaveTextContent('16:9');
 	});
 
+	it('keeps the dismissal when the MENU changes but the prose does not', async () => {
+		// A dismissal answers what the prompt says, so only the prompt can retract
+		// it. Releasing on "nothing is detected" would also release when the
+		// selection merely stopped OFFERING that shape — so a mid-compose hop
+		// between two ratio-offering models would drop the override and let the
+		// unchanged text overrule the pick on the way back.
+		const WITH_16_9 = [{ value: '1:1' }, { value: '16:9' }];
+		const WITHOUT_16_9 = [{ value: '1:1' }, { value: '9:16' }];
+		const { rerender } = render(Harness, {
+			props: { options: WITH_16_9, promptText: 'a 16:9 still' },
+		});
+		await settle();
+		await pickFromMenu('1:1');
+		expect(trigger()).toHaveTextContent('1:1');
+
+		// Switch to a model that does not offer 16:9, then back. The text never moved.
+		await rerender({ options: WITHOUT_16_9, promptText: 'a 16:9 still' });
+		await settle();
+		await rerender({ options: WITH_16_9, promptText: 'a 16:9 still' });
+		await settle();
+
+		expect(trigger()).toHaveTextContent('1:1');
+	});
+
 	it('marks no menu row when a seed outranks the detection', async () => {
 		// All three affordances key off `fromPrompt`, so they agree. The row marker
 		// keyed to the detection alone would sparkle a row the prompt named but the
