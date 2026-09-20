@@ -234,6 +234,29 @@ describe('the migrated schema matches schema.ts', () => {
 		).map((i) => ({ name: i.name, unique: i.unique === 1 }));
 		for (const idx of t.indexes) {
 			expect(liveIndexes).toContainEqual({ name: idx.config.name, unique: !!idx.config.unique });
+
+			// ...and its COLUMN LIST, in order. Name-and-uniqueness alone let an index's
+			// columns drift from schema.ts undetected, and two things conspire to make
+			// that drift silent: drizzle-kit v1 does not diff an index's column list
+			// (`db:generate` reports "No schema changes" while the declaration and the
+			// snapshot disagree), so such a change can only ever arrive as hand-written
+			// SQL — and the cost of getting it wrong is invisible too, since a missing
+			// trailing column just quietly drops a query from a COVERING INDEX plan to a
+			// table lookup per row. `idx_media_user_gallery` carries `favorited_at` for
+			// exactly that reason. Order matters: a prefix is what serves a seek.
+			const declared = idx.config.columns
+				.map((c) => (typeof c === 'object' && c !== null && 'name' in c ? c.name : null))
+				.filter((n): n is string => typeof n === 'string');
+			// Expression indexes report a null column name from PRAGMA; only compare when
+			// every declared entry is a plain column.
+			if (declared.length === idx.config.columns.length) {
+				const liveCols = (
+					sqlite.prepare(`PRAGMA index_info(${q(idx.config.name)})`).all() as Array<{
+						name: string | null;
+					}>
+				).map((c) => c.name);
+				expect(liveCols, `columns of ${idx.config.name}`).toEqual(declared);
+			}
 		}
 
 		const liveFks = foreignKeys(sqlite, t.name).map((f) => `${f.from}->${f.table}`);

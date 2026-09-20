@@ -843,11 +843,15 @@ export const media = sqliteTable(
 		// matching row. Measured at 30k media: the plan drops from COVERING INDEX to
 		// INDEX and the query goes 0.8ms -> 3.2ms (4.2ms with embeddings populated),
 		// on a query that runs on EVERY gallery request including cache hits — twice
-		// on a miss. Carrying the column restores COVERING and 1.4ms. It cost
-		// nothing: the rebuilt index came out slightly smaller (the value is NULL for
-		// almost every row), and a trailing column cannot affect the (user_id,
-		// origin) seek. The only new cost is one extra index entry rewritten per
-		// star, which is a rare interactive write.
+		// on a miss. Carrying the column restores COVERING and 1.4ms.
+		//
+		// Cheap to carry: the index grows ~3.5% (about a byte per entry — the value is
+		// NULL for almost every row), a trailing column cannot affect the
+		// (user_id, origin) seek, and the extra index-entry rewrite per star measured
+		// 0.14ms on a write a human performs by hand. It also made every
+		// favorites-FILTERED read 4-5x faster, since `favorited_at` became a residual
+		// testable from the index rather than from the table: the month rail and the
+		// model facets each went 7.1ms -> 1.4ms at 30k media.
 		index('idx_media_user_gallery').on(
 			t.userId,
 			t.origin,

@@ -735,7 +735,8 @@ export function setMediaEmbedding(
 
 /**
  * Candidate vectors for the semantic search leg: a user's embedded gallery media
- * for the active embedding model, newest-first, capped. Composes with kind/model.
+ * for the active embedding model, newest-first, capped. Composes with
+ * kind/model/favorite.
  */
 export function listMediaEmbeddingsForUser(
 	userId: string,
@@ -828,8 +829,8 @@ export interface MonthPeriod {
 /**
  * The gallery's quick-jump timeline: every local-time month a user has gallery
  * media in, newest-first, with counts. Scoped to the same set the gallery shows
- * (generated, non-deleted, image/video), optionally narrowed by `kind`/`model`
- * to match active filters.
+ * (generated, non-deleted, image/video), optionally narrowed by
+ * `kind`/`model`/`favorite` to match active filters.
  *
  * Buckets in the viewer's local time by shifting the stored UTC ms by
  * `tzOffsetMinutes` (`-new Date().getTimezoneOffset()` from the client) before
@@ -843,6 +844,7 @@ export function listMediaMonthPeriodsForUser(
 	opts: {
 		kind?: 'image' | 'video';
 		model?: string;
+		/** Restrict to starred media, so the rail's months match a filtered grid. */
 		favorite?: boolean;
 		tzOffsetMinutes?: number;
 	} = {},
@@ -1001,7 +1003,12 @@ export function listConversationsForMedia(mediaId: string, userId: string): Medi
  * A process-local counter is sound because this is a single-Node deployment by
  * design — and the caches it keeps honest are in-process anyway, so anything that
  * broke this assumption would already have broken them. Worst case the stored
- * instant runs a few ms ahead of the wall clock, which nothing reads.
+ * instant runs a few ms ahead of the wall clock; its only reader is
+ * `galleryUserFingerprint`'s `max()`, which cares that the value MOVED rather than
+ * what it says, and no surface shows it to a user. The counter restarts at 0 with
+ * the process, so a star after a restart could in principle repeat a stamp an
+ * earlier process wrote — that needs the clock to have gone backwards, and the 30s
+ * cache TTL is the backstop if it ever did.
  */
 let lastFavoritedAt = 0;
 

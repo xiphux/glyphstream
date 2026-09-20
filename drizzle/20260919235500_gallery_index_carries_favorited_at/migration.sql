@@ -7,8 +7,19 @@
 -- Hand-authored, hence no snapshot.json: drizzle-kit v1 does NOT diff an index's
 -- column list. `pnpm db:generate` reports "No schema changes, nothing to migrate"
 -- with schema.ts declaring five columns and the last snapshot recording four, so
--- this can only be written by hand. (The stale entry in
--- 20260919231727_giant_red_skull/snapshot.json is corrected in place, so a future
--- generate diffs against the truth rather than re-proposing this.)
+-- this can only be written by hand.
+--
+-- To keep a future `db:generate` diffing against the truth rather than silently
+-- disagreeing with schema.ts forever, the index entry in the LATEST snapshot —
+-- 20260919231727_giant_red_skull/snapshot.json, added by this same branch, which is
+-- the file generate uses as its diff base — was patched from four columns to five.
+-- That snapshot therefore records the state after BOTH of these migrations, not
+-- after its own ALTER TABLE alone. Nothing reads an intermediate snapshot today
+-- (the runtime migrator reads only migration.sql, and `drizzle-kit check` passes),
+-- but it is worth knowing before regenerating from an older one.
+--
+-- Nothing in the repo verifies this index's column list: `db:generate` ignores it,
+-- and migrations-populated.test.ts asserts index names and uniqueness only. The
+-- PRAGMA index_info assertion there is what holds the line.
 DROP INDEX `idx_media_user_gallery`;--> statement-breakpoint
 CREATE INDEX `idx_media_user_gallery` ON `media` (`user_id`,`origin`,`hard_deleted_at`,`created_at`,`favorited_at`);

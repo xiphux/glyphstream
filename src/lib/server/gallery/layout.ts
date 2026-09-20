@@ -73,8 +73,8 @@ function localDayKey(ms: number, tzOffsetMin: number): string {
 
 /** Load the whole filtered gallery library as lightweight rows, newest-first —
  *  the input to the server-side stacking pass. Mirrors listMediaForUser's
- *  gallery filter (generated, non-deleted, image/video, kind/model), minus
- *  pagination. */
+ *  gallery filter (generated, non-deleted, image/video, kind/model/favorite),
+ *  minus pagination. */
 function loadGalleryUnitSource(userId: string, opts: GalleryUnitOpts): UnitSourceRow[] {
 	const db = getDb();
 	const conditions = [

@@ -534,9 +534,18 @@
 					// An unstar drops the item from the grid; a re-star has to put it back —
 					// that's the obvious undo, with the lightbox still open on the item, and
 					// it used to leave the row starred on the server but missing from the
-					// grid until a manual reload. Only the unstar names an id: nothing
-					// leaves the library on a re-star, so a drilled-in stack keeps the
-					// member list it already had.
+					// grid until a manual reload. Only the unstar names an id, since nothing
+					// leaves the library on a re-star.
+					//
+					// Known gap while DRILLED IN: `refreshAfterMutation` was written for
+					// hard-delete, so it rebuilds `drillItems` by *filtering* the local
+					// array — it can remove a member but never re-add one. Unstar then
+					// re-star the same item inside an open stack and the grid behind the
+					// lightbox is correct while that stack's member list stays one short
+					// until you leave and re-enter it. Restoring it properly needs a member
+					// refetch, and the unit's key may itself have re-anchored in between
+					// (a prompt run is keyed off its filtered leader), so it is not a
+					// one-liner; left as-is deliberately rather than papered over.
 					await refreshAfterMutation(next ? new Set<string>() : new Set([id]));
 				}
 			}
