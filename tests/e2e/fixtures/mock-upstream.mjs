@@ -134,6 +134,49 @@ const MODELS = {
 			aspect_ratio_default: '1:1',
 		},
 		{
+			// A medium-named image model WITH routes declared, so a spec can isolate
+			// the pill's own contribution: this name fits the picker's room on its
+			// own, and only stops fitting once the pill sits beside it. That is the
+			// case a character count cannot see, and the reason the rule measures.
+			id: 'mock-sketcher',
+			object: 'model',
+			kind: 'image',
+			display_name: 'Sketcher',
+			owned_by: 'mock',
+			capabilities: ['text-to-image', 'image-to-image'],
+			aspect_ratios: [
+				{ value: '1:1', label: 'Square' },
+				{ value: '3:2', label: 'Photo' },
+			],
+			aspect_ratio_default: '1:1',
+		},
+		{
+			// A THIRD image model, named as short as anything realistically is, so a
+			// layout spec has a case with margin on the short side. "Mock Painter" and
+			// "Mock Image" sit within a couple of characters of each other, which made
+			// a threshold test read as passing when it was really balanced on a
+			// fixture name chosen for unrelated reasons. Not "Mock …" anything: the
+			// existing specs address the others with /Mock Image/i and /Mock Painter/,
+			// and a third match would break them on strict mode.
+			id: 'mock-pixi',
+			object: 'model',
+			kind: 'image',
+			display_name: 'Pixi',
+			owned_by: 'mock',
+			// Declares its routes, which no other fixture does — so the picker's
+			// capability pill renders somewhere in e2e. It shares the trigger's box
+			// with the model name and takes 30-40px of it, which is the single largest
+			// term in how much room that name has. BOTH routes deliberately: an
+			// image-input-only model makes `imageAttachment` 'required', which gates
+			// Send on an attachment and would break every text-only spec here.
+			capabilities: ['text-to-image', 'image-to-image'],
+			aspect_ratios: [
+				{ value: '1:1', label: 'Square' },
+				{ value: '16:9', label: 'Widescreen' },
+			],
+			aspect_ratio_default: '1:1',
+		},
+		{
 			// A SECOND image model, so a spec can compare two of them — an avatar
 			// draw across several models is the flow that needs it. Deliberately not
 			// named "Mock Image Two": several specs address the first one with

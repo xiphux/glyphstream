@@ -16,7 +16,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { tick, type ComponentProps } from 'svelte';
+import { tick } from 'svelte';
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
@@ -1057,87 +1057,5 @@ describe('presets under a partial catalogue', () => {
 		});
 		await user.click(screen.getByLabelText('Select model'));
 		expect(screen.queryByRole('option', { name: /Roleplay/ })).not.toBeInTheDocument();
-	});
-});
-
-describe('ModelPicker — reporting the rendered trigger label', () => {
-	/**
-	 * `onTriggerLabel` exists so a caller laying out around this control can know
-	 * how wide its label is without re-deriving it. Re-deriving drifted once: the
-	 * composer's shape picker measured `displayName` and so saw a base model's
-	 * name where a preset's was on screen, and one model's name where a count was.
-	 *
-	 * Each case below is a branch of the trigger's own label logic, asserted
-	 * against what is actually rendered rather than against a copy of the rule —
-	 * so the report cannot agree with a stale expectation while disagreeing with
-	 * the screen.
-	 */
-	type PickerProps = Omit<ComponentProps<typeof ModelPicker>, 'onTriggerLabel'>;
-	async function reported(props: PickerProps): Promise<string> {
-		let seen = '';
-		render(ModelPicker, {
-			props: {
-				...props,
-				onTriggerLabel: (label: string) => {
-					seen = label;
-				},
-			},
-		});
-		await tick();
-		// The report has to match the DOM, not merely be non-empty.
-		expect(screen.getByRole('button', { name: 'Select model' })).toHaveTextContent(seen);
-		return seen;
-	}
-
-	it('reports a plain base-model name', async () => {
-		const m = makeModel({ id: 'bridge::gpt-4o', displayName: 'gpt-4o' });
-		expect(await reported({ models: [m], value: m.id })).toBe('gpt-4o');
-	});
-
-	it('reports the name with its owner prefix stripped', async () => {
-		// The divergence that fired most often: `displayName` falls back to the raw
-		// upstream id, which is owner-shaped for a lot of bridges, while the trigger
-		// shows only the last segment.
-		const m = makeModel({ id: 'bridge::q', displayName: 'Qwen/Qwen-Image' });
-		expect(await reported({ models: [m], value: m.id })).toBe('Qwen-Image');
-	});
-
-	it("reports a conversation preset's name, not its base model's", async () => {
-		const base = makeModel({ id: 'bridge::gpt-4o', displayName: 'gpt-4o' });
-		expect(
-			await reported({
-				models: [base],
-				value: 'bridge::gpt-4o',
-				presetLabel: 'Studio Ghibli Portraits',
-				presetModelId: 'bridge::gpt-4o',
-			}),
-		).toBe('Studio Ghibli Portraits');
-	});
-
-	it("reports a custom preset's own name", async () => {
-		const base = makeModel({ id: 'bridge::gpt-4o', displayName: 'gpt-4o' });
-		const custom = makeCustom({ id: 'cm1', name: 'Watercolour Study' });
-		expect(
-			await reported({
-				models: [base],
-				customModels: [custom],
-				value: 'custom::cm1',
-			}),
-		).toBe('Watercolour Study');
-	});
-
-	it('reports the count for a comparison, including one model sampled N times', async () => {
-		// The ×N cart is the case a caller cannot see from the selection alone: it
-		// dedupes to a single model, so anything deriving from the model list reads
-		// a short name while the trigger says "3 variations".
-		const m = makeModel({ id: 'bridge::img', displayName: 'Krea 2', kind: 'image' });
-		expect(
-			await reported({
-				models: [m],
-				value: m.id,
-				compareMode: true,
-				compareSelections: [{ modelId: m.id, count: 3 }],
-			}),
-		).toBe('3 variations');
 	});
 });

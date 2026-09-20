@@ -378,10 +378,10 @@
 	// spanning several. Undefined then, and Default says "each model's own", which
 	// is exactly what it will do.
 	const ratioDefault = $derived(agreedDefault(selectedModels));
-	// What the model picker's trigger is actually showing, reported by the picker
-	// rather than re-derived here — see its `onTriggerLabel`. Feeds the shape
-	// control's crowding rule.
-	let ratioModelLabel = $state('');
+	// How wide the model picker's content wants to be, measured and reported by the
+	// picker itself — see its `onTriggerContentWidth`. Feeds the shape control's
+	// crowding rule; nothing here can compute it.
+	let pickerContentWidth = $state(0);
 	// Clear the moment no selected model offers ratios, so a stale value can't
 	// ride a send the selector isn't shown for. Mirrors the split flag below.
 	$effect(() => {
@@ -959,7 +959,7 @@
 						bind:this={ratioRef}
 						options={ratioOptions}
 						defaultValue={ratioDefault}
-						modelLabel={ratioModelLabel}
+						{pickerContentWidth}
 						promptText={text}
 						bind:seed={seedAspectRatio}
 						bind:value={aspectRatio}
@@ -976,8 +976,8 @@
 				<ModelPicker
 					models={catalogue.all}
 					onOpen={() => void catalogue.ensureAll()}
-					onTriggerLabel={(label: string) => {
-						ratioModelLabel = label;
+					onTriggerContentWidth={(px: number) => {
+						pickerContentWidth = px;
 					}}
 					loading={catalogue.status === 'loading'}
 					loadError={catalogue.loadFailed}

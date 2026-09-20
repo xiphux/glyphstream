@@ -448,20 +448,25 @@ async function glyphWidth(page: Page): Promise<number> {
 	});
 }
 
-test('the glyph yields to a long model name, and only to a long one', async ({ page }) => {
+test('the glyph yields when the model name is paying for it, and not otherwise', async ({
+	page,
+}) => {
 	// The glyph is the half of this control that can go: the label beside it says
-	// the same thing, and at a 13px box 16:9 / 3:2 / 4:3 differ by about a pixel
-	// and a half. But it only goes when something is actually squeezing the name —
-	// dropping it on a phone showing "Krea 2" would cost legibility and buy nothing.
+	// the same thing, and at a 13px box 16:9 / 3:2 / 4:3 differ by a pixel or two.
+	// But it only goes when the picker's name is actually being clipped to make
+	// room — dropping it beside a name that fits costs legibility and buys nothing.
+	//
+	// Both cases have margin. An earlier version of this test used two fixtures two
+	// characters apart and read as passing while balanced on a name chosen for
+	// unrelated reasons; "Pixi" also carries the capability pill, which is 30-40px
+	// of the same budget and is what makes a character count unusable here.
 	await page.setViewportSize({ width: 393, height: 800 });
 	await gotoNewChat(page);
 
-	// Mock Image is short enough to fit, so the glyph stays even on a phone.
-	await selectModel(page, /Mock Image/);
+	await selectModel(page, /Pixi/);
 	await expect(selector(page)).toBeVisible();
 	expect(await glyphWidth(page)).toBeGreaterThan(0);
 
-	// Mock Painter's name is long enough to start truncating; the glyph yields.
 	await selectModel(page, /Mock Painter/);
 	await expect(selector(page)).toBeVisible();
 	expect(await glyphWidth(page)).toBe(0);
@@ -471,4 +476,61 @@ test('the glyph yields to a long model name, and only to a long one', async ({ p
 	await page.setViewportSize({ width: 900, height: 800 });
 	await expect(selector(page)).toBeVisible();
 	expect(await glyphWidth(page)).toBeGreaterThan(0);
+});
+
+test('a name squeezed on a small screen still yields the glyph', async ({ page }) => {
+	// Measured from a COLD LOAD at 320px, which is what separates "what the label
+	// wants" from "what the label got". Here the rendered label is clipped to
+	// around 13px while its natural width is 74px — a rule reading the rendered
+	// width would see 13, conclude nothing was wrong, and keep the glyph on the
+	// narrowest screen there is. Resizing into 320px would NOT catch this: the
+	// measurement is keyed to the label, not the viewport, precisely because a
+	// natural width does not depend on the viewport.
+	await page.setViewportSize({ width: 320, height: 800 });
+	await gotoNewChat(page);
+	await selectModel(page, /Mock Painter/);
+	await expect(selector(page)).toBeVisible();
+	expect(await glyphWidth(page)).toBe(0);
+});
+
+test('the capability pill counts against the name, not just its characters', async ({ page }) => {
+	// The case a character count cannot see, and the reason this rule measures.
+	// "Pixi" is four characters and keeps the glyph; the pill beside it is real
+	// width in the same box, and is present for essentially every model this
+	// control renders next to on a real bridge while appearing in no other fixture.
+	await page.setViewportSize({ width: 393, height: 800 });
+	await gotoNewChat(page);
+	await selectModel(page, /Pixi/);
+	await expect(selector(page)).toBeVisible();
+
+	const trigger = page.getByRole('button', { name: 'Select model' });
+	await expect(trigger).toContainText('Pixi');
+	// The pill renders from `capabilities`; without it this test would be measuring
+	// the one trigger shape real usage almost never produces.
+	await expect(trigger).toContainText(/2I/);
+
+	// "Sketcher" is the decisive case: its name alone fits the room the rule
+	// allows, and it is the pill beside it that tips the total over. A rule
+	// measuring only the label — or counting characters — keeps the glyph here.
+	await selectModel(page, /Sketcher/);
+	await expect(selector(page)).toBeVisible();
+	const nameAlone = await page.evaluate(() => {
+		const span = document.querySelector(
+			'button[aria-label="Select model"] span.truncate',
+		) as HTMLElement | null;
+		// scrollWidth, not clientWidth: the natural width of the text, whether or not
+		// it is currently clipped.
+		return span ? Math.round(span.scrollWidth) : -1;
+	});
+	// Mirrors COMPACT_ROOM_PX in AspectRatioSelector.svelte — the name on its own is
+	// inside the budget…
+	expect(nameAlone).toBeLessThan(67);
+	// …and the glyph yielded anyway, which only the pill can explain.
+	expect(await glyphWidth(page)).toBe(0);
+
+	// And it stays yielded. Measuring the label's RENDERED width instead of its
+	// natural one would hand it more room the moment the glyph went, which is the
+	// feedback loop this reading exists to avoid.
+	await page.waitForTimeout(400);
+	expect(await glyphWidth(page)).toBe(0);
 });

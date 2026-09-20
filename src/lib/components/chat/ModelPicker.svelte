@@ -106,24 +106,31 @@
 		 */
 		onOpen?: () => void;
 		/**
-		 * Reports the string the collapsed trigger is currently showing.
+		 * Reports how wide the collapsed trigger's content WANTS to be, in px — the
+		 * name at full length plus the capability pill beside it.
 		 *
-		 * For a caller that needs to lay out around this control's width — the
-		 * composer's action row decides what else fits beside it — and cannot
-		 * recompute the label itself: it comes from six branches over `compareMode`,
-		 * `compareTotal`, `compareKind`, the resolved item's `isCustom`/`label`, the
-		 * conversation's preset, and an owner-prefix strip. A second derivation of
-		 * that drifts, and did: a caller measuring `displayName` saw the base model's
-		 * name where the trigger was rendering a preset's, which is the case commit
-		 * 39bca565 added the preset branch for.
+		 * For a caller laying out around this control: the composer's action row
+		 * decides what else fits next to it. Measured rather than described, because a
+		 * caller cannot compute it. The label comes from six branches (compare count,
+		 * cart-of-one, custom preset, conversation preset, owner-stripped base name,
+		 * placeholder) and a second derivation of that drifts — one did, reading a base
+		 * model's name while a preset's was on screen. Even the right STRING would not
+		 * be enough: the pill shares this box, is `shrink-0`, and is ~30-40px of the
+		 * same budget, so a character count is wrong by several characters whenever it
+		 * is present — which, for the image models this is laid out beside, is nearly
+		 * always.
 		 *
-		 * Safe against the loop that makes this pattern suspect: nothing derived from
-		 * the reported string re-enters a prop this component reads, so it settles on
-		 * the first pass. It is a string, never a measurement — an observer of the
-		 * RENDERED WIDTH would oscillate, because a caller narrowing itself in
-		 * response would change the width it just measured.
+		 * Glyph-independent, which is what makes it safe to feed back into layout. The
+		 * label's `scrollWidth` is its FULLY LAID OUT width — `truncate` is
+		 * `overflow:hidden` on a `nowrap` line, so clipping it does not change the
+		 * number — and the pill is `shrink-0`, so neither moves when a caller narrows
+		 * itself in response. An observer of the RENDERED width would oscillate for
+		 * exactly the reason this does not: the response changes what was measured.
+		 *
+		 * Needs no resize observer either: a `nowrap` scrollWidth is viewport
+		 * independent. A caller that cares about the viewport gates on it separately.
 		 */
-		onTriggerLabel?: (label: string) => void;
+		onTriggerContentWidth?: (px: number) => void;
 		/**
 		 * Whether a base model absent from `models` is KNOWN not to exist.
 		 *
@@ -158,7 +165,7 @@
 	let {
 		models,
 		onOpen,
-		onTriggerLabel,
+		onTriggerContentWidth,
 		loading = false,
 		loadError = false,
 		baseIsGone = () => true,
@@ -571,10 +578,28 @@
 		return stripOwner(selected.label);
 	});
 
-	// Published rather than exposed, so a consumer never has to know which of the
-	// six branches above produced it.
+	let labelEl = $state<HTMLElement | null>(null);
+	let pillEl = $state<HTMLElement | null>(null);
+	/** `gap-1.5` between the label and the pill, which the pill's own box excludes. */
+	const LABEL_PILL_GAP_PX = 6;
+
+	// Measured after every change that can alter the content's natural width: the
+	// label itself, and whether a pill is beside it. Reading `scrollWidth` forces a
+	// layout, so this deliberately does NOT depend on anything that churns — it is
+	// a handful of reads per model switch, not per frame.
+	//
+	// `untrack` around the callback for the same reason the open handler below uses
+	// it: a consumer's callback must not graft its own reactive reads onto this
+	// effect's dependencies.
 	$effect(() => {
-		onTriggerLabel?.(triggerLabel);
+		// Named so the dependencies are explicit rather than incidental.
+		void triggerLabel;
+		void triggerPill;
+		const label = labelEl;
+		if (!label) return;
+		const pill = pillEl ? pillEl.offsetWidth + LABEL_PILL_GAP_PX : 0;
+		const width = label.scrollWidth + pill;
+		untrack(() => onTriggerContentWidth?.(width));
 	});
 
 	// On open, jump highlight to the currently-selected row (or the first one
@@ -723,10 +748,12 @@
 			aria-label="Select model"
 		>
 			<span class="flex min-w-0 items-center gap-1.5">
-				<span class="truncate">{triggerLabel}</span>
+				<span class="truncate" bind:this={labelEl}>{triggerLabel}</span>
 				{#if triggerPill}
-					<span class="{PILL_CLASS} {pillTone(triggerPill.attachment)}" title={triggerPill.title}
-						>{triggerPill.label}</span
+					<span
+						bind:this={pillEl}
+						class="{PILL_CLASS} {pillTone(triggerPill.attachment)}"
+						title={triggerPill.title}>{triggerPill.label}</span
 					>
 				{/if}
 			</span>

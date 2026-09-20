@@ -101,21 +101,20 @@
 		 */
 		dismissedRatio?: string | null;
 		/**
-		 * Whatever the model picker's trigger is currently SHOWING — the thing this
-		 * control shares the composer's action row with, and competes with for
-		 * space. Reported by the picker itself (`onTriggerLabel`), never re-derived
-		 * by the caller: the trigger chooses between six branches, and a second
-		 * derivation of that drifts. One did, in both directions — it measured a
-		 * base model's name where a preset's was on screen, and one model's name
-		 * where "3 variations" was.
+		 * How wide the adjacent model picker's content wants to be, in px — reported by
+		 * the picker (`onTriggerContentWidth`), which is the only thing that can
+		 * measure it.
 		 *
-		 * '' before the picker has reported (it publishes from an effect, so not
-		 * during SSR) and whenever no picker is mounted. That reads as "nothing is
-		 * squeezing us", which keeps the glyph — the safe direction to be wrong in.
+		 * This control and that one share one non-wrapping row, and the picker is the
+		 * only elastic thing in it, so the picker's label is what pays for everything
+		 * else. Past a point it is paying with an ellipsis, and that is when the glyph
+		 * here should stand down — see COMPACT_ROOM_PX.
 		 *
-		 * Used only to decide whether to drop the glyph — see COMPACT_NAME_CHARS.
+		 * 0 before the picker has reported (it measures from an effect, so not during
+		 * SSR) and when no picker is mounted. Reads as "nothing is squeezing us", which
+		 * keeps the glyph — the safe direction to be wrong in.
 		 */
-		modelLabel?: string;
+		pickerContentWidth?: number;
 		disabled?: boolean;
 	}
 
@@ -125,35 +124,37 @@
 		seed = $bindable(null),
 		value = $bindable(),
 		promptText = '',
-		modelLabel = '',
+		pickerContentWidth = 0,
 		dismissedRatio = $bindable(null),
 		disabled = false,
 	}: Props = $props();
 
 	/**
-	 * Model-name length past which the glyph is dropped at phone widths.
+	 * Room the picker's label has, in px, while this control still shows its glyph.
 	 *
-	 * A proxy for "the name is about to be truncated", calibrated by measurement
-	 * rather than taste: the picker's label renders at ~7.9px per character, and on
-	 * a 393px phone it gets about 67px of room with the glyph shown and 84px
-	 * without — so truncation starts around eight or nine characters, and dropping
-	 * the glyph buys about two more. A character count is a
-	 * crude stand-in for a text width and is deliberately set to err on the side of
-	 * KEEPING the glyph, because a name that fits is the case where the glyph costs
-	 * nothing and a measurement-based version would keep it too.
+	 * Measured: on a 393px phone the picker's inner box gets about 67px with the
+	 * glyph present, and the glyph plus its gap is 17px of that. So content wanting
+	 * more than this is already showing an ellipsis, and standing the glyph down
+	 * hands it those 17px — about two more characters, or the whole ellipsis when it
+	 * was close.
 	 *
-	 * Measuring the real thing would mean observing both the row's free space and
-	 * the picker's truncation — and observing the truncation directly oscillates,
-	 * since hiding the glyph un-truncates the name that caused it to be hidden. The
-	 * stable formulation is "how much room would there be with the glyph hidden",
-	 * which needs a resize observer plus a truncation report out of ModelPicker.
-	 * That is a live observer and a new cross-component contract for about 17px,
-	 * which is why this is a threshold and not a measurement.
+	 * Compared against a REPORTED CONTENT WIDTH rather than a character count. A
+	 * count was tried and cannot be calibrated: per-character advances in a
+	 * proportional 12px font span roughly 3px to 10px, so any specific name is
+	 * ±2-3 characters from its own length; the picker's capability pill takes 30-40px
+	 * of this same budget and is present for nearly every model this sits beside;
+	 * and this control's own label swings ~20px between "Default" and "16:9". Each
+	 * of those errors is larger than the 17px being handed over.
+	 *
+	 * Still one constant for the whole phone band — a 320px screen runs out sooner
+	 * than a 430px one. That residue is deliberate: it errs toward keeping the glyph
+	 * on the narrowest screens, and the row is held together there by the picker's
+	 * own truncation rather than by this.
 	 */
-	const COMPACT_NAME_CHARS = 10;
-	/** Long enough to be squeezing the name; the glyph goes first — the label beside
+	const COMPACT_ROOM_PX = 67;
+	/** The name is paying for the glyph in ellipsis; the glyph goes. The label beside
 	 *  it says the same thing, and unlike a 13px outline it says it unambiguously. */
-	const crowded = $derived(modelLabel.length > COMPACT_NAME_CHARS);
+	const crowded = $derived(pickerContentWidth > COMPACT_ROOM_PX);
 
 	let open = $state(false);
 
