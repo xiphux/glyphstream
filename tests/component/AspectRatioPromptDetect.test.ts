@@ -13,6 +13,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import userEvent from '@testing-library/user-event';
 import Harness from './_helpers/AspectRatioSeedHarness.svelte';
 import type { AspectRatioOption } from '$lib/types/api';
@@ -29,13 +30,15 @@ const trigger = () => screen.getByRole('button', { name: /^Aspect ratio/ });
 /**
  * Advance past the detection debounce and let Svelte flush.
  *
- * `vi.advanceTimersByTime` fires the timer synchronously but the state write it
- * performs settles in a microtask, so the await is load-bearing.
+ * `vi.advanceTimersByTime` fires the timer synchronously, but the state write it
+ * performs is batched — so the flush is load-bearing, and it is `tick()` rather
+ * than bare microtask turns because that is what tests/component/README.md
+ * prescribes for state mutated outside a user event. Counting microtasks happens
+ * to work today and is hostage to Svelte's scheduling.
  */
 async function settle() {
 	vi.advanceTimersByTime(400);
-	await Promise.resolve();
-	await Promise.resolve();
+	await tick();
 }
 
 /** userEvent drives its own clock; it has to be told about the fake one. */
@@ -306,7 +309,7 @@ describe('AspectRatioSelector — a ratio named in the prompt', () => {
 		const type = async (promptText: string) => {
 			await rerender({ options: COLLIDING, promptText });
 			vi.advanceTimersByTime(100);
-			await Promise.resolve();
+			await tick();
 		};
 		const { rerender } = render(Harness, { props: { options: COLLIDING, promptText: 'a 9' } });
 		await type('a 9:');

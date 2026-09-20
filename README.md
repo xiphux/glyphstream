@@ -151,8 +151,9 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   no shape at all, so each model falls back to its own — which for a compare
   across several means each renders at the shape it was built for. Name a shape
   in the prompt itself — "create a 9:16 poster of…" — and the picker follows
-  along and says it did; pick a shape yourself and it stands down, until you name
-  a different one in the prose.
+  along and says it did; pick a shape yourself and it stands down, until the
+  prose asks for something again — a different shape, or the same one in a later
+  prompt.
 - **Prompt enhancement** (optional) — before generating, an LLM rewrites your
   prompt into the format the target model prefers: for images (natural-language
   narrative, booru tags, keyword soup, hybrid, or structured JSON) and for video

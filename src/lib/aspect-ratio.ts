@@ -98,8 +98,15 @@ export function detectRatioInPrompt(text: string, options: AspectRatioOption[]):
 	// Written with a leading capture group rather than a lookbehind: lookbehind is
 	// Safari 16.4+ and this ships as an iOS PWA.
 	//
-	// The 1-6 digit bound matches parseRatio, so what this recognises as a ratio
-	// and what the rest of the module can measure are the same set.
+	// The 1-6 digit bound matches parseRatio, so the two agree on what is a ratio
+	// at all — nearly. parseRatio additionally rejects a zero component, so "0:5"
+	// is recognised here and unmeasurable there. Unreachable unless an upstream
+	// advertises a zero-sided shape, and harmless if one did: an offered value
+	// nothing can measure already fails to draw a glyph.
+	//
+	// A ratio preceded by a colon ("ratio:16:9") is deliberately NOT matched — it
+	// is the same flank that kills "9:16:30", and there is no way to keep one
+	// without the other while the separator is what distinguishes them.
 	const re = /(^|[^\d.:])(\d{1,6}:\d{1,6})(?![\d:])(?!\.\d)/g;
 	for (const m of text.matchAll(re)) {
 		if (offered.has(m[2])) return m[2];
