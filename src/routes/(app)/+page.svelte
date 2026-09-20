@@ -937,7 +937,7 @@
 					<AspectRatioSelector
 						options={ratioOptions}
 						defaultValue={ratioDefault}
-						seed={seedAspectRatio}
+						bind:seed={seedAspectRatio}
 						bind:value={aspectRatio}
 						disabled={busy}
 					/>

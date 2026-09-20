@@ -33,9 +33,15 @@
 		 * A shape to open on regardless of the remembered preference — set when
 		 * regenerating an existing image, so the re-run reproduces its framing.
 		 *
-		 * Wins only until the user picks something, and never rewrites the stored
-		 * preference: reproducing one image is not a change of what they usually
-		 * want.
+		 * Bindable, and CLEARED here the moment the user picks: it is a one-shot
+		 * intent, not a mode. It has to retire in the parent's state rather than in
+		 * this component's, because this component unmounts whenever no selected
+		 * model offers ratios — a local "already picked" flag resets on the remount
+		 * and the stale seed would win again, silently reverting a choice the user
+		 * had already made.
+		 *
+		 * Never rewrites the stored preference: reproducing one image is not a
+		 * change of what they usually want.
 		 */
 		seed?: string | null;
 		/** The ratio to send for this turn. Owned here and reported upward, so
@@ -47,7 +53,7 @@
 	let {
 		options,
 		defaultValue,
-		seed = null,
+		seed = $bindable(null),
 		value = $bindable(),
 		disabled = false,
 	}: Props = $props();
@@ -64,9 +70,6 @@
 		preference = readStickyRatio();
 	});
 
-	/** Whether the user has chosen in this session, which is what retires `seed`. */
-	let picked = $state(false);
-
 	/**
 	 * Resolve the preference against what's actually on offer, so the control
 	 * shows what the user will GET rather than what it happens to be holding.
@@ -77,7 +80,7 @@
 	 * control is never in a blank state while it's visible at all.
 	 */
 	$effect(() => {
-		const wanted = !picked && seed ? seed : preference;
+		const wanted = seed ?? preference;
 		const resolved =
 			nearestOffered(wanted, options) ??
 			nearestOffered(defaultValue ?? null, options) ??
@@ -87,7 +90,9 @@
 	});
 
 	function pick(next: string) {
-		picked = true;
+		// Retire the one-shot seed in the PARENT's state, so it can't outlive this
+		// component and override the pick after a remount.
+		seed = null;
 		// Written on the PICK, not on send: see writeStickyRatio.
 		preference = next;
 		writeStickyRatio(next);
