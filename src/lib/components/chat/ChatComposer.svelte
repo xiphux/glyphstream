@@ -79,6 +79,11 @@
 		/** Aspect ratio for this turn, set by the selector when the active model(s)
 		 *  advertise ratios and null when none do. Read at send time. */
 		aspectRatio?: string | null;
+		/** A prompt-detected ratio the user has overridden. Owned by the PAGE, not
+		 *  here: this composer is itself destroyed for the duration of an inline
+		 *  edit, so a dismissal parked at this level would not survive one. See the
+		 *  selector's own prop note. */
+		dismissedRatio?: string | null;
 		/** The user's saved multi-model sets, surfaced in the picker's compare
 		 *  controls for one-click re-apply. */
 		modelSets: SavedModelSet[];
@@ -123,6 +128,7 @@
 		compareMode = $bindable(),
 		splitAttachments = $bindable(false),
 		aspectRatio = $bindable(null),
+		dismissedRatio = $bindable(null),
 		modelSets,
 		presetLabel = null,
 		presetModelId = null,
@@ -339,6 +345,7 @@
 					defaultValue={ratioDefault}
 					promptText={composerText}
 					bind:value={aspectRatio}
+					bind:dismissedRatio
 					disabled={generating}
 				/>
 			{/if}

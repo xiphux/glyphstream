@@ -43,6 +43,9 @@
 	// tell a retired seed from a re-applied one.
 	let seed = $state<string | null>(initialSeed);
 	let value = $state<string | null>(null);
+	// Page-level too, and for the same reason: it has to outlive the `mounted`
+	// toggle below, which is what makes the remount cases testable at all.
+	let dismissedRatio = $state<string | null>(null);
 
 	$effect(() => {
 		onSeedChange?.(seed);
@@ -53,5 +56,12 @@
 </script>
 
 {#if mounted && options.length > 0}
-	<AspectRatioSelector {options} {defaultValue} {promptText} bind:seed bind:value />
+	<AspectRatioSelector
+		{options}
+		{defaultValue}
+		{promptText}
+		bind:seed
+		bind:value
+		bind:dismissedRatio
+	/>
 {/if}

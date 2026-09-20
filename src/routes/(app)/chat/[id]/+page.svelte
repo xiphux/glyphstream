@@ -1696,6 +1696,12 @@
 	// advertises ratios. NOT cleared after a send — unlike the split flag, the
 	// shape is meant to persist.
 	let aspectRatio = $state<string | null>(null);
+	// Lives here rather than in the composer because the composer is unmounted
+	// while an inline edit is open, and the selector is unmounted whenever the
+	// active model stops offering ratios. Either teardown would otherwise forget
+	// that the user had overridden the prompt's ratio, and the unchanged prompt
+	// would re-assert it over their pick.
+	let dismissedRatio = $state<string | null>(null);
 	const fanoutModels = $derived(
 		expandCompareSelections(compareSelections, (id) => {
 			const m = catalogue.entry(id);
@@ -2776,6 +2782,7 @@
 						bind:compareMode
 						bind:splitAttachments
 						bind:aspectRatio
+						bind:dismissedRatio
 						modelSets={data.prefs?.modelSets ?? []}
 						presetLabel={activePreset?.name ?? null}
 						presetModelId={activePresetModelId}

@@ -162,6 +162,28 @@ describe('AspectRatioSelector — a ratio named in the prompt', () => {
 		expect(trigger()).toHaveTextContent('1:1');
 	});
 
+	it('does not revert an explicit pick when the selector is destroyed and recreated', async () => {
+		// The regression that matters. The composer tears this control down whenever
+		// the selection stops offering ratios — and the chat page tears the whole
+		// composer down for the duration of an inline edit — while the prompt that
+		// produced the detection lives in the page and survives untouched. A
+		// dismissal held inside the component resets on the remount, the unchanged
+		// prompt is re-detected, and the shape the user overrode comes back.
+		const { rerender } = render(Harness, {
+			props: { options: OPTIONS, promptText: 'a 16:9 still' },
+		});
+		await settle();
+		await pickFromMenu('1:1');
+		expect(trigger()).toHaveTextContent('1:1');
+
+		await rerender({ options: OPTIONS, promptText: 'a 16:9 still', mounted: false });
+		expect(screen.queryByRole('button', { name: /^Aspect ratio/ })).toBeNull();
+		await rerender({ options: OPTIONS, promptText: 'a 16:9 still', mounted: true });
+		await settle();
+
+		expect(trigger()).toHaveTextContent('1:1');
+	});
+
 	it('does not flicker through a ratio that is a prefix of the one being typed', async () => {
 		// The debounce earns its keep only when the advertised list contains a ratio
 		// that is a TEXT PREFIX of another, because exact matching already ignores

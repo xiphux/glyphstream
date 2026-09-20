@@ -81,6 +81,25 @@
 		 * byte-identical copies of the last derivation that escaped this file.
 		 */
 		promptText?: string;
+		/**
+		 * A detection the user has already answered by picking something else, so it
+		 * stops outranking them.
+		 *
+		 * Bindable, and owned by whoever owns `promptText`, for the same reason `seed`
+		 * is: this component is destroyed whenever no selected model offers ratios
+		 * (and, on the chat page, for the duration of an inline edit), while the
+		 * prompt that produced the detection is not. Held locally it would reset on
+		 * the remount, the unchanged prompt would be re-detected, and the shape the
+		 * user overrode would quietly come back — which is the same failure the
+		 * `seed` note below describes, and the reason that one is a prop too.
+		 *
+		 * Held BY VALUE, not as a boolean: a boolean would either let every keystroke
+		 * re-slam the picker over a deliberate choice, or kill detection for the rest
+		 * of the compose so that editing 9:16 → 16:9 in the text did nothing. Keyed to
+		 * the value, an overridden detection stays dead while a DIFFERENT one is a new
+		 * signal and speaks up.
+		 */
+		dismissedRatio?: string | null;
 		disabled?: boolean;
 	}
 
@@ -90,6 +109,7 @@
 		seed = $bindable(null),
 		value = $bindable(),
 		promptText = '',
+		dismissedRatio = $bindable(null),
 		disabled = false,
 	}: Props = $props();
 
@@ -120,19 +140,8 @@
 
 	const detected = $derived(detectRatioInPrompt(debouncedPrompt, options));
 
-	/**
-	 * A detection the user has answered by picking something else.
-	 *
-	 * Held BY VALUE, not as a boolean, and that distinction is the whole
-	 * mechanism: a boolean would either let every keystroke re-slam the picker
-	 * over a deliberate choice (unoverridable) or kill detection for the rest of
-	 * the compose (so editing 9:16 → 16:9 in the text would do nothing). Keyed to
-	 * the value, an overridden detection stays dead while a DIFFERENT one is a new
-	 * signal and fires.
-	 */
-	let dismissedDetection = $state<string | null>(null);
 	const liveDetection = $derived(
-		detected !== null && detected !== dismissedDetection ? detected : null,
+		detected !== null && detected !== dismissedRatio ? detected : null,
 	);
 
 	/**
@@ -173,10 +182,9 @@
 		// component and override the pick after a remount.
 		seed = null;
 		// Answer whatever the prompt is currently claiming, so a deliberate pick
-		// isn't overwritten on the next keystroke. Recording the VALUE (possibly
-		// null) rather than a flag is what lets a later, different detection still
-		// speak up — see dismissedDetection.
-		dismissedDetection = detected;
+		// isn't overwritten on the next keystroke. Recorded in the PARENT's state
+		// for the same reason the seed is retired there — see the prop.
+		dismissedRatio = detected;
 		// Written on the PICK, not on send: see writeStickyRatio.
 		preference = next;
 		if (next === null) clearStickyRatio();

@@ -110,6 +110,10 @@
 	// ratios. Rides `PendingFirstMessage` to the chat page — the first generation
 	// in a new chat never goes through `turn.send` from here.
 	let aspectRatio = $state<string | null>(null);
+	// Parent-owned for the same reason seedAspectRatio is: the selector is torn
+	// down whenever the selection stops offering ratios, and a dismissal held
+	// inside it would reset there.
+	let dismissedRatio = $state<string | null>(null);
 	// A shape to open the selector on, from a gallery "Regenerate with this
 	// prompt" — so the re-run reproduces the original's framing instead of
 	// silently reframing it under the user's remembered preference.
@@ -942,6 +946,7 @@
 						promptText={text}
 						bind:seed={seedAspectRatio}
 						bind:value={aspectRatio}
+						bind:dismissedRatio
 						disabled={busy}
 					/>
 				{/if}
