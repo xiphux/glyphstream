@@ -266,3 +266,65 @@ test('Default is labelled with the shape when the models agree, and not when the
 	await selector(page).click();
 	await expect(page.getByRole('button', { name: /^Default/ })).toContainText("Each model's own");
 });
+
+test('a ratio written into the prompt selects itself and reaches the upstream', async ({
+	page,
+}) => {
+	await gotoNewChat(page);
+	await selectModel(page, /Mock Image/);
+	await expect(selector(page)).toContainText('Default');
+
+	// Never touches the control: the shape is stated in the prose, which is the
+	// whole point. 16:9 is deliberately NOT mock-image's advertised default (1:1),
+	// so what lands upstream can only have come from the text.
+	await page.locator('textarea').first().fill('a 16:9 photo of a lighthouse');
+	await expect(selector(page)).toContainText('16:9');
+	// And it says why, since this is a change the user didn't make by hand.
+	await expect(page.getByRole('button', { name: /found in your prompt/i })).toBeVisible();
+
+	const send = page.getByRole('button', { name: 'Send message' });
+	await expect(send).toBeEnabled();
+	await send.click();
+	await page.waitForURL(/\/chat\/[^/]+$/);
+	await expect(page.locator('img[src*="/api/media/"]').first()).toBeVisible();
+	expect(await lastRequestedRatio(page)).toBe('16:9');
+});
+
+test('a clock in the prompt is not a shape request', async ({ page }) => {
+	// The false positive the exact-match rule exists to kill: 3:45 is a well-formed
+	// W:H that would snap to something if snapping were allowed here.
+	await gotoNewChat(page);
+	await selectModel(page, /Mock Image/);
+	await page.locator('textarea').first().fill('a station clock showing 3:45');
+	// Given a moment to be wrong — the detection is debounced, so asserting
+	// immediately would pass even if it were going to fire.
+	await expect(page.getByRole('button', { name: /found in your prompt/i })).toHaveCount(0);
+	await expect(selector(page)).toContainText('Default');
+
+	await page.getByRole('button', { name: 'Send message' }).click();
+	await page.waitForURL(/\/chat\/[^/]+$/);
+	await expect(page.locator('img[src*="/api/media/"]').first()).toBeVisible();
+	expect(await lastRequestedRatio(page)).toBeNull();
+});
+
+test('picking a shape by hand outranks the one in the prompt', async ({ page }) => {
+	await gotoNewChat(page);
+	await selectModel(page, /Mock Image/);
+	await page.locator('textarea').first().fill('a 16:9 photo of a lighthouse');
+	await expect(selector(page)).toContainText('16:9');
+
+	await selector(page).click();
+	await page.getByRole('button', { name: /^3:2/ }).click();
+	await expect(selector(page)).toContainText('3:2');
+	await expect(page.getByRole('button', { name: /found in your prompt/i })).toHaveCount(0);
+
+	// Keep typing with the same ratio still sitting in the text: an unoverridable
+	// detection would re-assert itself here, which is the bug worth an e2e guard.
+	await page.locator('textarea').first().fill('a 16:9 photo of a lighthouse at dusk');
+	await expect(selector(page)).toContainText('3:2');
+
+	await page.getByRole('button', { name: 'Send message' }).click();
+	await page.waitForURL(/\/chat\/[^/]+$/);
+	await expect(page.locator('img[src*="/api/media/"]').first()).toBeVisible();
+	expect(await lastRequestedRatio(page)).toBe('3:2');
+});
