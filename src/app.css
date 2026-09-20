@@ -607,26 +607,34 @@ body {
 	@apply bg-surface text-fg antialiased;
 }
 
-/* App shell height. In a browser tab the dynamic viewport unit is right — it
-   tracks Safari's collapsing/expanding toolbar. In an installed (standalone)
-   PWA on iOS, the black-translucent status bar offsets the view up by the
-   status-bar height WITHOUT growing the viewport, so 100dvh (which resolves
-   like 100%, against the offset-but-not-grown box) comes up short and leaves
-   the "chin gap" at the bottom — and because dvh is dynamic it healed only
-   sometimes, which is why the gap was intermittent. 100vh is the full physical
-   viewport height, so it spans edge-to-edge with no gap. Scoped to standalone
-   because in a browser tab 100vh would run under Safari's collapsing toolbar
-   (exactly what dvh avoids there). We ship `default` now (see app.html), where
-   standalone has no dynamic toolbar and 100vh === 100dvh — the rule stays for
-   installs that predate the switch and keep black-translucent until re-added.
-   Credit: https://www.reddit.com/r/PWA/comments/1sdhsbu/ (Edit 2). */
+/* App shell height. 100dvh, unconditionally — including in an installed
+   (standalone) PWA, which used to be overridden to 100vh.
+
+   That override was a workaround for one specific iOS bug: under the
+   black-translucent status bar the view was offset up by the status-bar height
+   WITHOUT the viewport growing, so 100dvh — which resolves like 100%, against
+   the offset-but-not-grown box — came up SHORT by that height and left a "chin
+   gap" at the bottom. Because dvh is dynamic it healed only sometimes, which is
+   why the gap was intermittent. 100vh, the full physical viewport, covered it.
+   Credit: https://www.reddit.com/r/PWA/comments/1sdhsbu/ (Edit 2).
+
+   That bug is gone, and its absence is measurable rather than assumed: on iOS
+   27 the shell sized with 100vh came out TALLER than the viewport by about a
+   status bar, which is the opposite sign. An over-tall shell is not a cosmetic
+   version of the gap — it pushes the composer's bottom edge off the screen and
+   makes the whole app scrollable, so the top bar tucks under the status bar the
+   moment anything is dragged. Whatever iOS now reports as the viewport, 100dvh
+   is that number and 100vh is larger than it.
+
+   So: do NOT reintroduce a standalone override on a report of a gap at the
+   bottom without first reading the Viewport row in the debug panel (sidebar
+   version number). It prints the viewport, 100vh, 100dvh and the safe-area
+   insets as the device resolves them, which is the only way to tell these two
+   failures apart — they look similar and need opposite corrections, and the
+   status-bar style is frozen at install time so one device can't be switched
+   between them to compare. See readViewportMetrics in lib/debug-info.ts. */
 .app-shell {
 	height: 100dvh;
-}
-@media all and (display-mode: standalone) {
-	.app-shell {
-		height: 100vh;
-	}
 }
 
 /* Status bar color for the installed app. With the `default` status bar style

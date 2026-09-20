@@ -106,8 +106,10 @@
 			 app.css (theme-color is ignored for the standalone bar).
 			 The meta is frozen at install time: an already-installed app keeps
 			 black-translucent until it's removed and re-added to the Home
-			 Screen, which is why the safe-area paddings and the 100vh app-shell
-			 rule (app.css) stay — they're what keeps that install correct.
+			 Screen, which is why the safe-area paddings stay — they're what
+			 keeps that install correct. (The app-shell's 100vh override, kept
+			 for the same reason, did not survive contact with a real iOS 27
+			 install; see .app-shell in app.css.)
 			 Source: reddit.com/r/PWA/comments/1w5mqj1 (beta 8, real device). -->
 		<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 		<meta name="apple-mobile-web-app-title" content="GlyphStream" />
