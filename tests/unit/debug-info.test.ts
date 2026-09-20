@@ -42,6 +42,7 @@ function sources(over: Partial<DebugSources> = {}): DebugSources {
 		online: true,
 		dev: false,
 		launchImage: null,
+		viewport: null,
 		workerBuild: null,
 		...over,
 	};
@@ -508,6 +509,68 @@ describe('buildDebugSections — launch image', () => {
 		// irrelevant question, which is the kind of row that sends someone
 		// chasing a non-bug. (Zero candidates is NOT this case; see above.)
 		expect(rowsOf(sources(), 'Environment')['Launch image']).toBeUndefined();
+	});
+});
+
+/**
+ * The app shell's height rule (.app-shell in app.css) has now been wrong in
+ * both directions on iOS — short by a status bar, then tall by one — and the
+ * two look alike from across the room while needing opposite corrections.
+ * These rows are how they get told apart on a home-screen launch, where there
+ * is no inspector. So they print all four numbers rather than a verdict
+ * computed from them: a verdict would bake today's model of iOS into the one
+ * instrument that exists to test it.
+ */
+describe('buildDebugSections — viewport', () => {
+	const vp = (over: Partial<NonNullable<DebugSources['viewport']>> = {}) => ({
+		innerHeight: 800,
+		vh: 800,
+		dvh: 800,
+		insetTop: 0,
+		insetBottom: 34,
+		...over,
+	});
+
+	it('prints every measurement, not a derived verdict', () => {
+		// The `default` bar, healthy: the view starts below the status bar, so
+		// the top inset is 0 and all three heights agree.
+		const rows = rowsOf(sources({ viewport: vp() }), 'Environment');
+		expect(rows['Viewport'].value).toBe('800 px tall');
+		expect(rows['Viewport'].note).toBe(
+			'100vh 800 px · 100dvh 800 px · safe-area 0 px top, 34 px bottom',
+		);
+	});
+
+	it('shows 100vh overshooting the viewport — the too-tall shell', () => {
+		// The iOS 27 reading that retired the standalone 100vh override: 100vh
+		// resolves larger than the viewport, so a shell sized with it overflows
+		// by the difference and the composer falls off the bottom edge.
+		const rows = rowsOf(
+			sources({ viewport: vp({ innerHeight: 800, vh: 859, dvh: 800 }) }),
+			'Environment',
+		);
+		expect(rows['Viewport'].note).toContain('100vh 859 px');
+		expect(rows['Viewport'].value).toBe('800 px tall');
+	});
+
+	it('shows a non-zero top inset — an install still on black-translucent', () => {
+		// The status-bar meta is frozen at install time, so an install predating
+		// the app.html switch still reports this long after. It's the signal that
+		// a gap-at-the-bottom report is the OLD bug rather than the new one.
+		const rows = rowsOf(
+			sources({ viewport: vp({ innerHeight: 800, vh: 859, dvh: 800, insetTop: 59 }) }),
+			'Environment',
+		);
+		expect(rows['Viewport'].note).toContain('safe-area 59 px top');
+	});
+
+	it('rounds away subpixel noise from the device pixel ratio', () => {
+		const rows = rowsOf(sources({ viewport: vp({ innerHeight: 799.6667 }) }), 'Environment');
+		expect(rows['Viewport'].value).toBe('800 px tall');
+	});
+
+	it('omits the row in a browser tab, where the toolbar makes it move', () => {
+		expect(rowsOf(sources(), 'Environment')['Viewport']).toBeUndefined();
 	});
 });
 

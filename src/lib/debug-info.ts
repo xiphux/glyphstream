@@ -73,9 +73,39 @@ export interface DebugSources {
 	 *  `{candidates: 0}` rather than null; that's the regression the row exists
 	 *  to catch, so it must not look like "not applicable". */
 	launchImage: LaunchImageMatch | null;
+	/** What the viewport units and safe-area insets actually resolve to, for a
+	 *  home-screen launch. Null when the question doesn't apply — a browser tab,
+	 *  where the answer is the uninteresting one and the toolbar makes it move. */
+	viewport: ViewportMetrics | null;
 	/** Which build the CONTROLLING worker is, or null if it didn't answer.
 	 *  See the note on the Service worker row for why "controlled" isn't enough. */
 	workerBuild: string | null;
+}
+
+/**
+ * The numbers behind the app shell's height, MEASURED rather than assumed.
+ *
+ * Every iOS status-bar decision in this app has been made from third-hand
+ * reports of what a viewport unit resolves to under which bar style, and the
+ * reports disagree — they're written against different iOS versions and the
+ * behaviour changes between them. These four values settle it on the device in
+ * hand, and they're only readable there: it's a home-screen launch, so there's
+ * no inspector, and the two bar styles are frozen at install time so a single
+ * device can't be switched between them to compare.
+ */
+export interface ViewportMetrics {
+	/** The layout viewport, in CSS px. */
+	innerHeight: number;
+	/** What `100vh` resolves to. */
+	vh: number;
+	/** What `100dvh` resolves to. */
+	dvh: number;
+	/** `env(safe-area-inset-top)`. The status-bar height when the view extends
+	 *  under the bar (black-translucent), 0 when it starts below it (`default`),
+	 *  which is the one thing that tells the two installs apart from inside the
+	 *  page — see .app-shell in app.css. */
+	insetTop: number;
+	insetBottom: number;
 }
 
 export interface LaunchImageMatch {
@@ -102,6 +132,10 @@ export interface DebugSection {
 }
 
 const ms = (v: number): string => `${Math.round(v)} ms`;
+
+/** CSS pixels. Rounded: the fractional part is subpixel noise from a
+ *  device pixel ratio, never the thing being diagnosed. */
+const px = (v: number): string => `${Math.round(v)} px`;
 
 /** Whole mebibytes — the scale a process footprint is read at. */
 const mib = (bytes: number): string => `${Math.round(bytes / 1_048_576)} MB`;
@@ -501,6 +535,31 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 								note: `${s.launchImage.device} · ${s.launchImage.candidates} declared`,
 							},
 						]),
+				// The shell's height rule is decided by these four numbers, and
+				// reading them is the only way to know which iOS status-bar era an
+				// install is actually in. What each comparison decides:
+				//   safe-area top 0  → `default` bar: the page starts below it.
+				//     Non-zero → this install is still black-translucent (the meta
+				//     is frozen at install time) and draws under the bar.
+				//   100vh vs viewport → equal is healthy. Larger is the app-shell
+				//     overflow that pushes the composer off the bottom edge and
+				//     lets the whole app scroll up; the excess IS the status bar.
+				//   100dvh vs viewport → these part company only where a toolbar
+				//     collapses, so in standalone a gap here means the viewport is
+				//     offset without having grown, the old translucent quirk.
+				// Together they say whether calc(100dvh + inset) landed on the
+				// viewport, which is the whole contract of that rule.
+				...(s.viewport === null
+					? []
+					: [
+							{
+								label: 'Viewport',
+								value: `${px(s.viewport.innerHeight)} tall`,
+								note:
+									`100vh ${px(s.viewport.vh)} · 100dvh ${px(s.viewport.dvh)} · ` +
+									`safe-area ${px(s.viewport.insetTop)} top, ${px(s.viewport.insetBottom)} bottom`,
+							},
+						]),
 			],
 		},
 	];
@@ -552,6 +611,7 @@ export async function readDebugSources(version: string): Promise<DebugSources> {
 		online,
 		dev: import.meta.env.DEV,
 		launchImage: readLaunchImageMatch(standalone),
+		viewport: readViewportMetrics(standalone),
 		// Short deadline, unlike the layout's 1500ms — and the difference is what a
 		// null COSTS at each site, not how likely one is. There, a null flips
 		// shouldPromptForUpdate to "prompt", so waiting buys the difference between
@@ -612,4 +672,48 @@ function readLaunchImageMatch(standalone: boolean): LaunchImageMatch | null {
 		// without converting from the physical pixels the filenames use.
 		device: `${window.screen.width}x${window.screen.height} @${dpr}x`,
 	};
+}
+
+/**
+ * Resolve the viewport units and safe-area insets by laying out a probe.
+ *
+ * Measured, not computed: `100dvh` and `env(safe-area-inset-top)` have no
+ * resolved form in the CSSOM until something is laid out with them, and a
+ * resolved value is exactly the question. `window.innerHeight` answers only
+ * one of the four, and it's the one that was never in doubt.
+ *
+ * The probe is zero-width and absolutely positioned so it can't reflow or
+ * repaint anything around it, and `visibility: hidden` still lays out (unlike
+ * `display: none`, which would resolve every height to zero and quietly report
+ * a device where all four agree).
+ */
+function readViewportMetrics(standalone: boolean): ViewportMetrics | null {
+	if (!standalone) return null;
+	const probe = document.createElement('div');
+	// content-box explicitly: the app's global border-box would fold the padding
+	// into the declared height and report every inset as 0.
+	probe.style.cssText =
+		'position:absolute;top:0;left:0;width:0;box-sizing:content-box;' +
+		'visibility:hidden;pointer-events:none;';
+	document.body.appendChild(probe);
+	// One property at a time, from a cleared probe, so a value the engine can't
+	// parse reads as 0 instead of carrying the previous measurement forward.
+	const measure = (prop: 'height' | 'paddingTop' | 'paddingBottom', value: string): number => {
+		probe.style.height = '0px';
+		probe.style.paddingTop = '0px';
+		probe.style.paddingBottom = '0px';
+		probe.style[prop] = value;
+		return probe.getBoundingClientRect().height;
+	};
+	try {
+		return {
+			innerHeight: window.innerHeight,
+			vh: measure('height', '100vh'),
+			dvh: measure('height', '100dvh'),
+			insetTop: measure('paddingTop', 'env(safe-area-inset-top, 0px)'),
+			insetBottom: measure('paddingBottom', 'env(safe-area-inset-bottom, 0px)'),
+		};
+	} finally {
+		probe.remove();
+	}
 }
