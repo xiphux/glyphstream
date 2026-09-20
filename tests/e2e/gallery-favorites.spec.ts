@@ -137,6 +137,67 @@ test.describe('gallery: favorites', () => {
 		await expect(page.locator(STAR_BADGE)).toHaveCount(2);
 	});
 
+	test('re-starring inside the filter puts the item back on the grid', async ({
+		page,
+		isMobile,
+	}) => {
+		// The undo path. Unstarring while filtered drops the tile, which leaves the
+		// lightbox open on an item that is no longer in the grid behind it — so the
+		// star is right there to click again, and that has to restore the tile rather
+		// than leave the row starred on the server but missing until a reload.
+		await page.goto('/gallery');
+		await page.locator(TILE).first().click();
+		await page.getByRole('button', { name: 'Add to favorites' }).click();
+		await expect(page.getByRole('button', { name: 'Remove from favorites' })).toBeVisible();
+		await page.getByRole('button', { name: 'Close', exact: true }).click();
+
+		await toggleFavoritesFilter(page, isMobile);
+		await expect(page.locator(TILE)).toHaveCount(1);
+
+		await page.locator(TILE).first().click();
+		await page.getByRole('button', { name: 'Remove from favorites' }).click();
+		await expect(page.getByRole('button', { name: 'Add to favorites' })).toBeVisible();
+		// Gone from the filtered grid...
+		await expect(page.locator(TILE)).toHaveCount(0);
+
+		// ...and back again, without closing the lightbox or reloading the page.
+		await page.getByRole('button', { name: 'Add to favorites' }).click();
+		await expect(page.getByRole('button', { name: 'Remove from favorites' })).toBeVisible();
+		await page.getByRole('button', { name: 'Close', exact: true }).click();
+		await expect(page.locator(TILE)).toHaveCount(1);
+		await expect(page.locator(STAR_BADGE)).toHaveCount(1);
+	});
+
+	test('unstarring inside a filtered search drops the row and its count', async ({
+		page,
+		isMobile,
+	}) => {
+		// Search renders its own ranked list, not the browse feed, so the filtered
+		// browse reseed can't fix it: the row used to sit there with an empty star and
+		// a stale "N results" while the same action in browse removed the tile.
+		await page.goto('/gallery');
+		for (const nth of [0, 2]) {
+			await page.locator(TILE).nth(nth).click();
+			await page.getByRole('button', { name: 'Add to favorites' }).click();
+			await expect(page.getByRole('button', { name: 'Remove from favorites' })).toBeVisible();
+			await page.getByRole('button', { name: 'Close', exact: true }).click();
+		}
+
+		await toggleFavoritesFilter(page, isMobile);
+		await page.getByRole('button', { name: 'Search prompts' }).click();
+		await page.getByRole('searchbox', { name: 'Search prompts' }).fill('sunset');
+		await expect(page.getByText('2 results for "sunset"')).toBeVisible();
+
+		await page.locator(TILE).first().click();
+		await page.getByRole('button', { name: 'Remove from favorites' }).click();
+		await expect(page.getByRole('button', { name: 'Add to favorites' })).toBeVisible();
+		await page.getByRole('button', { name: 'Close', exact: true }).click();
+
+		// The row left the filtered result set, and the count says so.
+		await expect(page.getByText('1 result for "sunset"')).toBeVisible();
+		await expect(page.locator(TILE)).toHaveCount(1);
+	});
+
 	test('composes with prompt search instead of replacing it', async ({ page, isMobile }) => {
 		await page.goto('/gallery');
 		await expect(page.locator(TILE)).toHaveCount(3);

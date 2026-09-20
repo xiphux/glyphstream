@@ -493,8 +493,9 @@
 	 * members, search results), so each is patched; the grid tile's badge is
 	 * patched through the feed.
 	 *
-	 * Exception: with the Favorites filter on, an unstar has to *leave* the grid,
-	 * which no local patch can express — so that one case reseeds.
+	 * Exception: with the Favorites filter on, the toggle changes what the filtered
+	 * library *contains*, which no local badge patch can express — so browse reseeds
+	 * and search drops the row.
 	 */
 	async function toggleFavorite(id: string, next: boolean) {
 		if (favoritingId) return;
@@ -516,9 +517,29 @@
 				body: JSON.stringify({ favorite: next }),
 			});
 			if (!res.ok) throw new Error(`Server returned ${res.status}`);
-			// Unstarring inside the Favorites view removes the item from the filtered
-			// library, so the layout counts change and the grid must be rebuilt.
-			if (data.favorite && !next) await refreshAfterMutation(new Set([id]));
+			// With the filter on, the item's membership in the *filtered* library just
+			// changed — in whichever direction — so the view showing it has to be
+			// rebuilt. Browse and search render different things and rebuild differently.
+			if (data.favorite) {
+				if (searching) {
+					// Ranked search renders `searchItems`; the browse feed behind it isn't on
+					// screen, so reseeding it would refresh a view nobody is looking at. An
+					// unstar leaves the filtered result set, so drop the row — which also
+					// corrects the "N results" count, since that reads this array's length.
+					// A re-star is not re-inserted: its rank is the server's to decide, and
+					// guessing a position would be a worse lie than leaving it out until the
+					// next query. The open lightbox's star stays truthful either way.
+					if (!next) searchItems = searchItems.filter((m) => m.id !== id);
+				} else {
+					// An unstar drops the item from the grid; a re-star has to put it back —
+					// that's the obvious undo, with the lightbox still open on the item, and
+					// it used to leave the row starred on the server but missing from the
+					// grid until a manual reload. Only the unstar names an id: nothing
+					// leaves the library on a re-star, so a drilled-in stack keeps the
+					// member list it already had.
+					await refreshAfterMutation(next ? new Set<string>() : new Set([id]));
+				}
+			}
 		} catch (e) {
 			applyLocal(!next);
 			if (unitKey) feed.patchUnitFavorite(unitKey, next ? -1 : 1);
