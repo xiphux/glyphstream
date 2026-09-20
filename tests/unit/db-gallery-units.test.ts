@@ -358,28 +358,63 @@ describe('gallery units: cache invalidation on mutation', () => {
 		expect(allUnits(u.id, { favorite: true }).map((x) => x.leaderId)).toEqual([b]);
 	});
 
-	it('a star updates the badge count on a stack it did not otherwise change', () => {
+	it('a star does NOT invalidate the unfiltered library, only the favorites view', () => {
+		// The fingerprint is two parts on purpose. A star changes what a FILTERED
+		// entry contains, so that half must invalidate; it changes nothing about the
+		// unfiltered library but one tile's badge count, and invalidating that meant
+		// every star paid a ~100ms cold O(library) restack on the next units request —
+		// during exactly the burst-starring the feature invites. Asserted
+		// behaviourally, since the caches are module-private: a star must be visible
+		// in the favorites view immediately, while the unfiltered entry keeps serving
+		// (its badge count is allowed to lag by the TTL, and the client patches its
+		// own badge locally).
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const a = makeGen(u.id, at(2024, 6, 15, 12, 1), { promptFull: 'a', originalPrompt: null });
+		linkToConv(conv, a);
+		const b = makeGen(u.id, at(2024, 6, 15, 12, 0), { promptFull: 'b', originalPrompt: null });
+		linkToConv(conv, b);
+
+		// Warm both entries.
+		const unfilteredBefore = allUnits(u.id);
+		expect(unfilteredBefore[0].favoriteCount).toBe(0);
+		expect(allUnits(u.id, { favorite: true })).toEqual([]);
+
+		setMediaFavorite(a, u.id, true);
+
+		// The filtered view sees it at once — that half of the fingerprint moved.
+		expect(allUnits(u.id, { favorite: true }).map((x) => x.leaderId)).toEqual([a]);
+		// ...and the unfiltered entry is still the cached one, badge count and all.
+		expect(allUnits(u.id)[0].favoriteCount).toBe(0);
+
+		// An insert moves the base half, so the unfiltered library does rebuild — and
+		// picks up the star it had been serving stale.
+		makeGen(u.id, at(2024, 6, 15, 12, 2), { promptFull: 'c', originalPrompt: null });
+		const conversationUnit = allUnits(u.id).find((x) => x.groupKind === 'conversation')!;
+		expect(conversationUnit.favoriteCount).toBe(1);
+	});
+
+	it("a stack's badge count spans its members, not just the tile's own image", () => {
+		// Star the NON-leader: `favoriteCount` has to see a starred member that no
+		// preview on the collapsed card shows, or the badge would only ever describe
+		// the leader. Starred BEFORE the first read on purpose — an unfiltered units
+		// entry is served from a memo a star deliberately doesn't invalidate (see the
+		// test above), so the server's computation is only observable on a cold read.
 		const u = seedUser();
 		const conv = makeConv(u.id);
 		const newest = makeGen(u.id, at(2024, 6, 15, 13), { promptFull: 'a', originalPrompt: null });
 		linkToConv(conv, newest);
 		const older = makeGen(u.id, at(2024, 6, 15), { promptFull: 'b', originalPrompt: null });
 		linkToConv(conv, older);
-
-		const before = allUnits(u.id)[0];
-		expect(before.memberCount).toBe(2);
-		expect(before.favoriteCount).toBe(0);
-
-		// Star the NON-leader, so this also pins that the count spans the whole
-		// stack rather than just the tile's own image.
 		setMediaFavorite(older, u.id, true);
-		const after = allUnits(u.id)[0];
-		expect(after.favoriteCount).toBe(1);
-		// Everything else about the unit is untouched, which is what lets the client
-		// patch the badge locally instead of reseeding the grid.
-		expect(after.key).toBe(before.key);
-		expect(after.leaderId).toBe(before.leaderId);
-		expect(after.memberCount).toBe(2);
+
+		const unit = allUnits(u.id)[0];
+		expect(unit.groupKind).toBe('conversation');
+		expect(unit.leaderId).toBe(newest);
+		expect(unit.memberCount).toBe(2);
+		expect(unit.favoriteCount).toBe(1);
+		// The leader isn't the starred one, so a leader-only badge would read 0 here.
+		expect(unit.previews.map((p) => p.id)).toContain(older);
 	});
 });
 

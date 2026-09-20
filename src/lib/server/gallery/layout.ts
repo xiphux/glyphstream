@@ -262,7 +262,7 @@ function gallerySourceCacheKey(userId: string, opts: GalleryUnitOpts): string {
 /** `loadGalleryUnitSource` behind the same fingerprint + TTL validation the unit
  *  cache uses. The returned array is shared read-only. */
 function loadGalleryUnitSourceCached(userId: string, opts: GalleryUnitOpts): UnitSourceRow[] {
-	const fingerprint = galleryUserFingerprint(userId);
+	const fingerprint = fingerprintFor(galleryUserFingerprint(userId), opts);
 	const key = gallerySourceCacheKey(userId, opts);
 	const now = Date.now();
 	const hit = gallerySourceCache.get(key);
@@ -341,27 +341,36 @@ function evictUnitsEntry(key: string): void {
  *  user's media — far cheaper than recomputing the unit list, though it scans the
  *  user's rows rather than being fully index-served.
  *
- *  `favs` / `favAt` extend it to favoriting, which changes neither count above —
- *  so without them a star was invisible to these caches and the feature's own
- *  main flow (star something, filter to Favorites) could serve a 30-second-stale
- *  set that omits the star you just added, or still contains one you removed.
- *  Both halves are needed: `favs` alone misses an unstar-one-star-another pair
- *  (count returns to where it was while membership changed), which is exactly
- *  what curating a favorites list looks like, and `favAt` covers that because
- *  every star writes a stamp strictly greater than the last one this process
- *  wrote. That guarantee lives in `setMediaFavorite`, deliberately — a plain
- *  `Date.now()` lets a same-millisecond swap slip past both halves, and closing
- *  it at the write costs nothing here, where the alternative was folding row
- *  identity into an aggregate that runs on every gallery request.
+ *  Returned in two parts, because a star and an insert are not equally
+ *  consequential. `base` (total:live) decides membership, order, stacking and day
+ *  buckets — every entry must be validated against it. `fav` (count:max) says only
+ *  whether the starred SET changed, which is load-bearing for a `fav`-filtered
+ *  entry (there it IS membership) and cosmetic for an unfiltered one, where the
+ *  single thing a star changes is one tile's `favoriteCount` badge.
  *
- *  Cheap, but not free, and only because the index was widened to keep it so:
- *  `favorited_at` trails `idx_media_user_gallery` for this query's sake. Reading
- *  a column that index doesn't carry costs a table-row lookup per matching row,
- *  which measured 0.8ms -> 3.2ms at 30k media and turned this — the one piece of
- *  DB work a cache HIT still does — into the dominant cost of a request that
- *  otherwise slices an in-memory array. If you add an aggregate here, check it
- *  against that index first. */
-function galleryUserFingerprint(userId: string): string {
+ *  Splitting them is what keeps starring cheap. `favAt` is deliberately
+ *  strictly-increasing so no toggle can hide from it (see `setMediaFavorite`), and
+ *  folding it into one string meant every star invalidated ALL of that user's
+ *  entries — including the unfiltered library. Measured at 30k media, the cold
+ *  recompute that forces is ~100ms and can reach ~230ms of synchronous SQLite + JS
+ *  on the single Node thread, blocking every other request in the process. That is
+ *  a sub-second UI gesture the user repeats in bursts while scrolling, so it paid
+ *  the O(library) pass over and over. Insert and delete, the only invalidators
+ *  before favorites existed, are each already expensive or rare.
+ *
+ *  What that trades away: an unfiltered entry can now serve a ≤30s-stale badge
+ *  COUNT to a second tab or device (and to the starring client itself if it
+ *  navigates away and back inside the TTL). That is the same staleness class the
+ *  TTL already accepts a few lines up, and the starring client patches its own
+ *  badge locally anyway (`GalleryFeed.patchUnitFavorite`).
+ *
+ *  `base` is cheap because the index was widened to keep the whole query
+ *  index-only: `favorited_at` trails `idx_media_user_gallery` for this query's
+ *  sake. Reading a column that index doesn't carry costs a table-row lookup per
+ *  matching row — 0.8ms -> 3.2ms at 30k media — and this is the one piece of DB
+ *  work a cache HIT still does. If you add an aggregate here, check it against
+ *  that index first. */
+function galleryUserFingerprint(userId: string): { base: string; fav: string } {
 	const row = getDb()
 		.select({
 			total: sql<number>`count(*)`,
@@ -372,7 +381,18 @@ function galleryUserFingerprint(userId: string): string {
 		.from(media)
 		.where(and(eq(media.userId, userId), eq(media.origin, 'generated')))
 		.get();
-	return `${row?.total ?? 0}:${row?.live ?? 0}:${row?.favs ?? 0}:${row?.favAt ?? 0}`;
+	return {
+		base: `${row?.total ?? 0}:${row?.live ?? 0}`,
+		fav: `${row?.favs ?? 0}:${row?.favAt ?? 0}`,
+	};
+}
+
+/** The fingerprint a cache entry is stored under. A favorites-filtered entry
+ *  pins both halves; an unfiltered one pins only `base`, so a star doesn't evict
+ *  a library it cannot have changed the membership of. Keep this the single place
+ *  the two halves are combined, so a store and a validate can't disagree. */
+function fingerprintFor(fp: { base: string; fav: string }, opts: GalleryUnitOpts): string {
+	return opts.favorite ? `${fp.base}|${fp.fav}` : fp.base;
 }
 
 /**
@@ -420,7 +440,7 @@ function computeGalleryUnitsCached(userId: string, rawOpts: GalleryUnitOpts): Ga
 		...rawOpts,
 		tzOffsetMinutes: normalizeTzOffset(rawOpts.tzOffsetMinutes),
 	};
-	const fingerprint = galleryUserFingerprint(userId);
+	const fingerprint = fingerprintFor(galleryUserFingerprint(userId), opts);
 	const key = galleryUnitsCacheKey(userId, opts);
 	const hit = galleryUnitsCache.get(key);
 	if (hit && hit.fingerprint === fingerprint && Date.now() < hit.expiresAt) {
