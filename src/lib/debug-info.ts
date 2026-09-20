@@ -547,8 +547,11 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 				//   100dvh vs viewport → these part company only where a toolbar
 				//     collapses, so in standalone a gap here means the viewport is
 				//     offset without having grown, the old translucent quirk.
-				// Together they say whether calc(100dvh + inset) landed on the
-				// viewport, which is the whole contract of that rule.
+				// Together they say whether the shell's 100dvh landed on the real
+				// viewport, which is the whole contract of that rule. The insets
+				// are not part of it — they are consumed separately, as padding
+				// inside the shell, and appear here only because the top one is
+				// what identifies the era.
 				...(s.viewport === null
 					? []
 					: [
