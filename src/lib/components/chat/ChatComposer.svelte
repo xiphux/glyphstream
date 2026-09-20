@@ -337,6 +337,7 @@
 				<AspectRatioSelector
 					options={ratioOptions}
 					defaultValue={ratioDefault}
+					promptText={composerText}
 					bind:value={aspectRatio}
 					disabled={generating}
 				/>

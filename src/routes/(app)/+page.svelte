@@ -939,6 +939,7 @@
 					<AspectRatioSelector
 						options={ratioOptions}
 						defaultValue={ratioDefault}
+						promptText={text}
 						bind:seed={seedAspectRatio}
 						bind:value={aspectRatio}
 						disabled={busy}

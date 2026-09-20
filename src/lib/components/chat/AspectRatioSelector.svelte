@@ -19,10 +19,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Popover } from 'bits-ui';
-	import { ChevronDown } from '@lucide/svelte';
+	import { ChevronDown, Sparkles } from '@lucide/svelte';
 	import type { AspectRatioOption } from '$lib/types/api';
 	import {
 		clearStickyRatio,
+		detectRatioInPrompt,
 		nearestOffered,
 		parseRatio,
 		readStickyRatio,
@@ -70,6 +71,16 @@
 		 * remembered-preference behaviour for free.
 		 */
 		value: string | null;
+		/**
+		 * The prompt being composed, scanned for a ratio the user named in prose
+		 * ("create a 9:16 poster of…"). Live text, not the sent message: the point is
+		 * for the picker to reflect what they asked for while they are still typing.
+		 *
+		 * Debounced and matched HERE rather than in the composer so the rule lives
+		 * once — there are two composers, and they had already drifted into
+		 * byte-identical copies of the last derivation that escaped this file.
+		 */
+		promptText?: string;
 		disabled?: boolean;
 	}
 
@@ -78,10 +89,51 @@
 		defaultValue,
 		seed = $bindable(null),
 		value = $bindable(),
+		promptText = '',
 		disabled = false,
 	}: Props = $props();
 
 	let open = $state(false);
+
+	/**
+	 * Quiet period before the prompt is re-scanned.
+	 *
+	 * Not a CPU concern — a regex over a prompt is nothing beside the markdown pump
+	 * this route already runs per frame. It buys visual stability, but only in a
+	 * narrower case than it first appears: because detection matches OFFERED ratios
+	 * exactly, every partial nobody advertises is already ignored, and typing
+	 * "9:16" past "9:1" is silent unless "9:1" is itself on the menu. The flicker
+	 * is real when one advertised ratio is a text prefix of another, which is a
+	 * property of whatever workflow someone wrote rather than of this code — so it
+	 * is throttled unconditionally instead of audited per list.
+	 */
+	const DETECT_DEBOUNCE_MS = 300;
+
+	let debouncedPrompt = $state('');
+	$effect(() => {
+		const next = promptText;
+		const timer = setTimeout(() => {
+			debouncedPrompt = next;
+		}, DETECT_DEBOUNCE_MS);
+		return () => clearTimeout(timer);
+	});
+
+	const detected = $derived(detectRatioInPrompt(debouncedPrompt, options));
+
+	/**
+	 * A detection the user has answered by picking something else.
+	 *
+	 * Held BY VALUE, not as a boolean, and that distinction is the whole
+	 * mechanism: a boolean would either let every keystroke re-slam the picker
+	 * over a deliberate choice (unoverridable) or kill detection for the rest of
+	 * the compose (so editing 9:16 → 16:9 in the text would do nothing). Keyed to
+	 * the value, an overridden detection stays dead while a DIFFERENT one is a new
+	 * signal and fires.
+	 */
+	let dismissedDetection = $state<string | null>(null);
+	const liveDetection = $derived(
+		detected !== null && detected !== dismissedDetection ? detected : null,
+	);
 
 	/**
 	 * The user's last deliberate pick. Loaded in `onMount` rather than at init
@@ -102,9 +154,16 @@
 	 * No preference — or one that resolves to nothing — lands on Default (null)
 	 * rather than being forced onto the first option. Null is a real selection
 	 * here, so there is no blank state to defend against.
+	 *
+	 * Precedence, strongest first: the one-shot seed (reproducing a specific
+	 * image's framing is the most specific intent there is), then a ratio named in
+	 * the prompt, then the remembered preference. A prompt beats the preference
+	 * because it is about THIS image and the preference is only about the ones
+	 * before it; it does not beat an explicit pick, because `pick` dismisses the
+	 * detection standing at that moment.
 	 */
 	$effect(() => {
-		const wanted = seed ?? preference;
+		const wanted = seed ?? liveDetection ?? preference;
 		value = nearestOffered(wanted, options)?.value ?? null;
 	});
 
@@ -113,6 +172,11 @@
 		// Retire the one-shot seed in the PARENT's state, so it can't outlive this
 		// component and override the pick after a remount.
 		seed = null;
+		// Answer whatever the prompt is currently claiming, so a deliberate pick
+		// isn't overwritten on the next keystroke. Recording the VALUE (possibly
+		// null) rather than a flag is what lets a later, different detection still
+		// speak up — see dismissedDetection.
+		dismissedDetection = detected;
 		// Written on the PICK, not on send: see writeStickyRatio.
 		preference = next;
 		if (next === null) clearStickyRatio();
@@ -123,6 +187,13 @@
 	const selected = $derived(options.find((o) => o.value === value) ?? null);
 	/** Null value = the Default entry is what's chosen. */
 	const isDefault = $derived(value === null);
+	/**
+	 * Whether what's selected is selected BECAUSE the prompt named it — the
+	 * condition for showing the indicator. Compared against `value` rather than
+	 * read off `liveDetection` alone so a seed that outranked the detection
+	 * doesn't get credited to the prompt.
+	 */
+	const fromPrompt = $derived(liveDetection !== null && value === liveDetection);
 
 	/**
 	 * Box dimensions for a ratio's glyph, inside a fixed square. The wider side
@@ -164,7 +235,9 @@
 		{disabled}
 		aria-label={isDefault
 			? "Aspect ratio: each model's default"
-			: `Aspect ratio: ${selected?.label ?? selected?.value}`}
+			: `Aspect ratio: ${selected?.label ?? selected?.value}${
+					fromPrompt ? ' (found in your prompt)' : ''
+				}`}
 		title="Aspect ratio"
 		class="group inline-flex shrink-0 items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-fg-muted transition hover:bg-surface-raised hover:text-fg-secondary disabled:opacity-30"
 	>
@@ -174,6 +247,12 @@
 		     `options`, so the trigger could read Default while the row did not. -->
 		{@render shape(selected?.value ?? defaultValue ?? '1:1', 13, isDefault)}
 		<span class="tabular-nums">{selected?.value ?? 'Default'}</span>
+		{#if fromPrompt}
+			<!-- Says WHY this is selected, for a change the user didn't make by hand.
+			     Reusing Sparkles because AvatarMenu already pulls it into this chunk;
+			     a second icon would be new bytes on a budgeted route for no gain. -->
+			<Sparkles size={10} class="text-accent" />
+		{/if}
 		<ChevronDown size={12} class="opacity-60" />
 	</Popover.Trigger>
 	<Popover.Portal>
@@ -188,6 +267,14 @@
 			<div class="px-3 pb-1.5 pt-3 text-xs font-medium uppercase tracking-wide text-fg-muted">
 				Aspect ratio
 			</div>
+			{#if fromPrompt}
+				<!-- Named here as well as on the trigger, because the trigger only has room
+				     for a glyph and the user's question is "why is this one set?". -->
+				<div class="flex items-center gap-1.5 px-3 pb-2 text-[10px] text-accent">
+					<Sparkles size={11} class="shrink-0" />
+					<span>Found <span class="tabular-nums">{liveDetection}</span> in your prompt</span>
+				</div>
+			{/if}
 			<!--
 				Default gets its own full-width row above a divider, because it is not a
 				shape — it is the absence of one. Picking it sends no ratio at all, so
@@ -232,7 +319,12 @@
 					>
 						{@render shape(option.value, 16)}
 						<span class="min-w-0">
-							<span class="block tabular-nums">{option.value}</span>
+							<span class="flex items-center gap-1">
+								<span class="tabular-nums">{option.value}</span>
+								{#if option.value === liveDetection}
+									<Sparkles size={9} class="shrink-0 opacity-70" />
+								{/if}
+							</span>
 							{#if option.label}
 								<!-- Decoration only: absent for a ratio whose upstream gave it
 								     no name, and never a placeholder in that case. -->

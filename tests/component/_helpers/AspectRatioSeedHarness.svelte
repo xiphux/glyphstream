@@ -18,6 +18,8 @@
 		options: AspectRatioOption[];
 		defaultValue?: string;
 		initialSeed?: string | null;
+		/** The live prompt, as the composer passes it — re-passed to retype. */
+		promptText?: string;
 		/** Toggle to destroy and recreate the selector, as the composer does. */
 		mounted?: boolean;
 		onSeedChange?: (seed: string | null) => void;
@@ -28,6 +30,7 @@
 		options,
 		defaultValue,
 		initialSeed = null,
+		promptText = '',
 		mounted = true,
 		onSeedChange,
 		onValueChange,
@@ -50,5 +53,5 @@
 </script>
 
 {#if mounted && options.length > 0}
-	<AspectRatioSelector {options} {defaultValue} bind:seed bind:value />
+	<AspectRatioSelector {options} {defaultValue} {promptText} bind:seed bind:value />
 {/if}

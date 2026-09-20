@@ -67,6 +67,47 @@ export function offeredRatios(models: ModelEntry[]): AspectRatioOption[] {
 }
 
 /**
+ * A `W:H` written in the prompt itself — "create a 9:16 poster of…".
+ *
+ * Returns only a ratio the selection actually OFFERS, and only an exact one: no
+ * snapping. That restriction is what makes this safe rather than clever, because
+ * the dangerous false positive here is a clock. "a clock showing 3:45", "meet at
+ * 10:30" are well-formed `W:H` and would each snap to some real shape; against
+ * an offered list they simply don't match, and nothing happens. Snapping a
+ * preference the user CLICKED is honouring it; snapping one scraped out of prose
+ * stacks a second guess on the first.
+ *
+ * First match wins. People lead with the shape ("create a 9:16 image with…") and
+ * a later ratio is usually describing something inside the picture ("with a 1:1
+ * inset"), so the opener is the better guess when a prompt names two.
+ *
+ * Residual false positives are the offered ratios that are also idioms — "a 1:1
+ * scale model of a ship" is the one that will really happen. It is visible in
+ * the picker and one click overrides it, which is the whole reason the detection
+ * is shown rather than applied silently at send time.
+ */
+export function detectRatioInPrompt(text: string, options: AspectRatioOption[]): string | null {
+	if (options.length === 0 || text === '') return null;
+	const offered = new Set(options.map((o) => o.value));
+	// `\b` is NOT sufficient here, which is the trap: it treats `.` and `:` as
+	// non-word characters, so `\b\d+:\d+\b` matches happily INSIDE "16:9.5" and
+	// "9:16:30". The flanks have to reject digits and both separators — but a
+	// trailing `.` is only disqualifying when a digit follows it, or "make it
+	// 9:16." at the end of a sentence would stop being a ratio.
+	//
+	// Written with a leading capture group rather than a lookbehind: lookbehind is
+	// Safari 16.4+ and this ships as an iOS PWA.
+	//
+	// The 1-6 digit bound matches parseRatio, so what this recognises as a ratio
+	// and what the rest of the module can measure are the same set.
+	const re = /(^|[^\d.:])(\d{1,6}:\d{1,6})(?![\d:])(?!\.\d)/g;
+	for (const m of text.matchAll(re)) {
+		if (offered.has(m[2])) return m[2];
+	}
+	return null;
+}
+
+/**
  * The one shape the selection's own defaults agree on, for LABELLING the
  * picker's "Default" entry — never for preselecting a value.
  *

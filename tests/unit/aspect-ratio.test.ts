@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
 	agreedDefault,
+	detectRatioInPrompt,
 	nearestOffered,
 	offeredRatios,
 	parseRatio,
@@ -109,6 +110,76 @@ describe('offeredRatios', () => {
 			model('b', [{ value: '16:9', label: 'Cinema' }]),
 		]);
 		expect(offered).toEqual([{ value: '16:9', label: 'Widescreen' }]);
+	});
+});
+
+describe('detectRatioInPrompt', () => {
+	const OFFERED = r('1:1', '2:3', '3:2', '3:4', '4:3', '9:16', '16:9', '21:9');
+	const detect = (text: string) => detectRatioInPrompt(text, OFFERED);
+
+	it('picks a ratio out of ordinary prose', () => {
+		expect(detect('create a 9:16 poster of a lighthouse')).toBe('9:16');
+		expect(detect('16:9 cinematic still, golden hour')).toBe('16:9');
+		expect(detect('a wide shot, 21:9')).toBe('21:9');
+	});
+
+	it('ignores a ratio the selection does not offer', () => {
+		// The restriction that makes this safe rather than clever — see the fn.
+		expect(detect('create a 2:1 image')).toBeNull();
+		expect(detect('a 5:7 balanced portrait')).toBeNull();
+	});
+
+	it('ignores clock times, which is the whole point of matching exactly', () => {
+		// Each of these is a well-formed W:H that would snap to SOMETHING.
+		expect(detect('a clock showing 3:45')).toBeNull();
+		expect(detect('a train departing at 10:30')).toBeNull();
+		expect(detect('a neon sign reading 2:15 am')).toBeNull();
+	});
+
+	it('does not match inside a decimal or a longer chain', () => {
+		// `\b` would match both of these, which is why it is not used.
+		expect(detect('scaled 16:9.5 somehow')).toBeNull();
+		expect(detect('timestamp 9:16:30')).toBeNull();
+		expect(detect('version 1.9:16')).toBeNull();
+	});
+
+	it('still matches a ratio that ends a sentence', () => {
+		// The trailing `.` is punctuation, not a decimal point.
+		expect(detect('make it 9:16.')).toBe('9:16');
+		expect(detect('shape: 4:3, please')).toBe('4:3');
+		expect(detect('framing (16:9) for this one')).toBe('16:9');
+	});
+
+	it('does not match a ratio glued to more digits', () => {
+		expect(detect('sku 116:9 widget')).toBeNull();
+		expect(detect('lot 9:161')).toBeNull();
+	});
+
+	it('takes the FIRST offered ratio when a prompt names two', () => {
+		// People lead with the shape; a later ratio usually describes something
+		// inside the picture.
+		expect(detect('a 9:16 poster with a 1:1 inset')).toBe('9:16');
+	});
+
+	it('skips an unoffered ratio to reach an offered one', () => {
+		// First OFFERED match, not first ratio-shaped token: "2:1" is noise here.
+		expect(detect('roughly 2:1, so use 21:9')).toBe('21:9');
+	});
+
+	it('matches at the very start and the very end of the text', () => {
+		expect(detect('9:16')).toBe('9:16');
+		expect(detect('make it 16:9')).toBe('16:9');
+	});
+
+	it('reports nothing for empty text or an empty menu', () => {
+		expect(detect('')).toBeNull();
+		expect(detectRatioInPrompt('a 9:16 image', [])).toBeNull();
+	});
+
+	it('scans a long prompt without trouble', () => {
+		// Runs on every debounced keystroke, so it must not care about length.
+		const long = 'a highly detailed painting, '.repeat(400) + 'in 21:9';
+		expect(detect(long)).toBe('21:9');
 	});
 });
 

@@ -815,6 +815,23 @@ read before anyone re-optimizes from an estimate.
   query, then a seed through `EditSession`. Ideally the edit form grows a
   visible shape control at that point, which would make either choice honest.
 
+- **Freetext shape words in the prompt ("a portrait photo", "make it
+  widescreen").** The picker already follows a `W:H` written into the prompt
+  (`detectRatioInPrompt`). Extending that to words is where the other platforms
+  are, and it is deliberately not attempted, because the obvious vocabulary is
+  poisoned by the domain: in image generation "portrait" overwhelmingly means the
+  GENRE — "a portrait of a woman", "a portrait photo" meaning a headshot — not
+  the orientation, so the dominant usage of the most useful word is a false
+  positive rather than an edge case. "square" collides with scene content ("a red
+  square"), and "landscape" with subject matter ("a landscape at dusk"), which is
+  the same trap twice more. The tractable version requires an explicit cue —
+  "in portrait orientation", "9:16 aspect ratio" — which is safe and also the
+  phrasing nobody reaches for unprompted, so it buys little. Doing this properly
+  means asking a model what shape the prompt implies (which is what Gemini does),
+  and that is a per-keystroke LLM call on the composer path: it wants the
+  existing prompt-enhancement plumbing and a decision about latency, not a bigger
+  regex.
+
 - **Stored media dimensions (kill layout shift).** Image/video parts carry only
   `{ mediaId, alt }` — no intrinsic size — so the browser can't reserve space
   and media pops the layout when it loads (CLS on first render and in the
