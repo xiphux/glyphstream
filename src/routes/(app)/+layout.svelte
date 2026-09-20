@@ -317,6 +317,20 @@
 		const root = document.documentElement;
 		if (privateView.active) root.dataset.private = '';
 		else delete root.dataset.private;
+		// This is the THIRD thing that changes --color-surface, after theme and
+		// scheme, and it needs the same re-sync they get. The status-bar sampler
+		// used to follow the token through the cascade for free; it now carries
+		// an inline background (see theme-color.ts) that outranks the stylesheet,
+		// so without this the installed iOS status bar keeps the non-private
+		// surface while the whole app goes violet. Nothing else can cover it: no
+		// other call site depends on privateView, and effect order rules out a
+		// navigation doing it incidentally — the theme and scheme effects above
+		// run BEFORE this one, while `privateView.active` is published from the
+		// page, whose effects run after every layout effect. Safe here because
+		// the sync only touches the DOM, so it adds no reactive dependency and
+		// can't re-trigger this effect, and it reads a computed style, which
+		// flushes the attribute written just above.
+		syncThemeColorMeta();
 	});
 
 	// Sidebar link highlight combines "currently here" with "navigating
