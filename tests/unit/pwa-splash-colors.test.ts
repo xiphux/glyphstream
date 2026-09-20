@@ -128,4 +128,33 @@ describe('iOS launch-image colours', () => {
 			.join('')}`;
 		expect(declared, `set app.html's theme-color to '${expected}'`).toBe(expected);
 	});
+
+	// The manifest's two colours are the SAME token again, hand-copied into
+	// vite.config.ts. background_color was corrected to the real dark surface
+	// when the splash drift was found; theme_color sat one line above it and was
+	// missed, so the manifest went on declaring the brand navy while app.html
+	// declared the light surface and the launch screen painted a third value.
+	// Nothing compared them, which is the entire reason it survived.
+	//
+	// Both are asserted against DARK, not because dark is more correct but
+	// because the manifest has no scheme variants: one value serves both, and
+	// dark is the one that can match the surface exactly. See the comments at
+	// each field for that reasoning.
+	it.each([['theme_color'], ['background_color']] as const)(
+		"the manifest's %s matches the dark surface",
+		(field) => {
+			const viteConfig = readFileSync(
+				fileURLToPath(new URL('../../vite.config.ts', import.meta.url)),
+				'utf-8',
+			);
+			const declared = new RegExp(`${field}: '(#[0-9a-f]{6})'`, 'i').exec(viteConfig)?.[1];
+			const [l, c, h] = surfaceOklch('dark');
+			const expected = `#${oklchToRgb(l, c, h)
+				.map((v) => v.toString(16).padStart(2, '0'))
+				.join('')}`;
+			expect(declared, `set the manifest's ${field} to '${expected}' in vite.config.ts`).toBe(
+				expected,
+			);
+		},
+	);
 });
