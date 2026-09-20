@@ -75,6 +75,24 @@ describe('global stacking ladder', () => {
 		expect(t.get('overlay')!).toBeGreaterThan(t.get('sidebar')!);
 	});
 
+	it('keeps the status-bar sampler above the drawer backdrop', () => {
+		// Shipped broken for a release. iOS colors the standalone status bar from
+		// the TOPMOST fixed element at the page top; the drawer backdrop is
+		// `fixed inset-0`, always mounted and merely faded out when shut, so an
+		// unstacked sampler lost this edge permanently. iOS sampled a transparent
+		// element, gave up, and fell back to the translucent bar — which on
+		// iOS 27 drags a progressive blur ~35pt down into the app.
+		//
+		// Asserted against the backdrop specifically because that is the surface
+		// that caused it, and against the ladder's own maximum because any FUTURE
+		// full-viewport surface breaks this the same way. The sampler outranking
+		// everything is the invariant; the backdrop is just how we found out.
+		const t = declaredTiers();
+		const statusBar = t.get('status-bar')!;
+		expect(statusBar).toBeGreaterThan(t.get('drawer-backdrop')!);
+		expect(statusBar).toBe(Math.max(...t.values()));
+	});
+
 	it('assigns every tier a distinct value', () => {
 		// Two tiers sharing a number is the original bug with nicer names: the
 		// order then silently falls to paint order again.

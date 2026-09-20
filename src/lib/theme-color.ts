@@ -1,8 +1,16 @@
 /**
- * Sync `<meta name="theme-color">` to the active theme + scheme's surface
- * color, so browser chrome (Safari tabs, Android) and non-iOS installed-app
- * bars match whatever theme/light-dark the user picked. The installed iOS
- * status bar ignores theme-color; see .status-bar-sampler in app.css.
+ * Sync the active theme + scheme's surface color to the two places that can't
+ * read it from CSS: `<meta name="theme-color">`, which tints browser chrome
+ * (Safari tabs, Android) and non-iOS installed-app bars, and the
+ * .status-bar-sampler element, which is what iOS colors its standalone status
+ * bar from (it ignores theme-color there — see app.css).
+ *
+ * Both need the SAME normalisation and for the same reason, which is why one
+ * function serves them: see toLegacyRgb. The sampler's stylesheet default is
+ * `var(--color-surface)`, authored in oklch — so on any engine whose status-bar
+ * sampler shares the theme-color parser's limits, the CSS alone hands iOS a
+ * color it drops on the floor. Overwriting it with resolved rgb() is the same
+ * fix, applied to the same problem, one layer down.
  *
  * We read the *resolved* body background (the `--color-surface` token) rather
  * than the raw custom property, then normalise it to legacy `rgb()` — see
@@ -86,4 +94,11 @@ export function syncThemeColorMeta(): void {
 		document.head.appendChild(meta);
 	}
 	meta.setAttribute('content', bg);
+	// The sampler is server-rendered and already carries this color from the
+	// stylesheet; this restates it in a form iOS is known to parse. Guarded
+	// rather than assumed present: the element lives in the root layout, but
+	// this runs from five call sites and must not throw on a page that somehow
+	// predates it.
+	const sampler = document.querySelector<HTMLElement>('.status-bar-sampler');
+	if (sampler) sampler.style.backgroundColor = bg;
 }

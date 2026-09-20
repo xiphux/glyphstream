@@ -502,6 +502,11 @@
 	--z-index-popover-nested: 60;
 	--z-index-toast: 70;
 	--z-index-update: 80;
+	/* Top of the ladder, and the only tier that isn't about what a human sees:
+	   iOS picks the status bar's color off the topmost fixed element at the page
+	   top, so .status-bar-sampler has to outrank every surface that can cover
+	   that edge — including the ones nobody is looking at. See the rule below. */
+	--z-index-status-bar: 90;
 }
 
 /* The standard raised panel: a bordered card on the app canvas. This chrome
@@ -637,14 +642,37 @@ body {
 	height: 100dvh;
 }
 
-/* Status bar color for the installed app. With the `default` status bar style
-   (app.html) iOS paints the bar itself, taking the background-color of a
-   position:fixed/sticky element within 4px of the page top, at least 1px tall
-   and ~80% wide. It must be a real element — the sampler doesn't see
-   pseudo-elements, so a body::before plate does nothing. Uses the surface
-   token so it follows theme + scheme like the page does. One element, one
-   color: at sm+ the edge under the bar is sidebar + page, and the bar takes
-   the page's. Standalone-only: a browser tab has its own chrome. */
+/* Status bar color for the installed app. iOS paints the bar itself, taking
+   the background-color of a position:fixed/sticky element within 4px of the
+   page top, at least 1px tall and ~80% wide. It must be a real element — the
+   sampler doesn't see pseudo-elements, so a body::before plate does nothing.
+   Standalone-only: a browser tab has its own chrome. One element, one color: at
+   sm+ the edge under the bar is sidebar + page, and the bar takes the page's.
+
+   The background-color here is the PRE-JS default, and on iOS it is probably
+   not the value that ends up being read: --color-surface is authored in oklch,
+   and syncThemeColorMeta() overwrites this inline with resolved rgb() on mount
+   and on every theme/scheme flip, because iOS is documented (in this repo — see
+   toLegacyRgb in lib/theme-color.ts) to ignore a theme-color it can't parse.
+   Keep both: the token is what SSR paints and what every other engine uses.
+
+   The z-index is deliberate. iOS reads the TOPMOST fixed element at the page
+   top, and the mobile drawer's backdrop is `fixed inset-0` that stays mounted
+   and merely fades to opacity-0 when shut — so an unstacked sampler is covered
+   by it permanently, and whatever iOS reads when the drawer is OPEN is
+   bg-black/40 rather than our surface. Painting a 1px pointer-events:none line
+   over a drawer, toast or update banner costs nothing visually.
+
+   STILL OPEN, do not assume this rule closed it: on iOS 27 the bar comes up
+   translucent on a COLD launch, with a progressive blur ~35pt down into the
+   page, and snaps opaque the first time the drawer opens — then stays opaque
+   for the life of the process, through any number of open/close cycles. Only a
+   force-quit brings it back. So iOS decides this once, early, and something
+   about that first evaluation isn't seeing a usable color. The oklch normalisation
+   above is the current best explanation (and doubles as a post-paint mutation on
+   the element, which is the other thing opening the drawer provides). If a cold
+   launch still blurs, that theory is dead too, and the next suspect is launch-time
+   configuration rather than anything in the page. */
 .status-bar-sampler {
 	display: none;
 }
@@ -653,6 +681,7 @@ body {
 		display: block;
 		position: fixed;
 		inset: 0 0 auto 0;
+		z-index: var(--z-index-status-bar);
 		height: 1px;
 		pointer-events: none;
 		background-color: var(--color-surface);
