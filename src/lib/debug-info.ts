@@ -720,6 +720,14 @@ function readViewportMetrics(standalone: boolean): ViewportMetrics | null {
 			insetTop: measure('paddingTop', 'env(safe-area-inset-top, 0px)'),
 			insetBottom: measure('paddingBottom', 'env(safe-area-inset-bottom, 0px)'),
 		};
+	} catch {
+		// Same contract as readLaunchImageMatch below: fail toward a missing row,
+		// never toward a broken panel. A throw here — a hardened WebView, a CSP
+		// that blocks inline style mutation — would otherwise propagate out of
+		// readDebugSources and replace every row with a read failure, taking the
+		// load timings down with it. Those are the numbers this panel exists for,
+		// and they have nothing to do with viewport geometry.
+		return null;
 	} finally {
 		probe.remove();
 	}
