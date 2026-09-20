@@ -48,6 +48,16 @@ describe('parseRatio', () => {
 		},
 	);
 
+	it('rejects a component too long to be a ratio', () => {
+		// Unbounded, a 309-digit component overflows to Infinity and
+		// `Infinity / Infinity` is NaN — which passes a falsy check and would reach
+		// the glyph as a NaN-sized rect. Also keeps this in step with the bridge's
+		// own `\d{1,6}` parser, so the two agree on what a ratio even is.
+		const huge = '9'.repeat(320);
+		expect(parseRatio(`${huge}:${huge}`)).toBeNull();
+		expect(parseRatio('1234567:1')).toBeNull();
+	});
+
 	it('does not treat an unreduced conventional ratio as special', () => {
 		// 21:9 must stay comparable without being renamed — the value is a token
 		// echoed back to the upstream that offered it.

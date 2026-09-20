@@ -24,7 +24,11 @@ const STICKY_KEY = 'gs:aspect-ratio';
  * whether two values are "the same", which is string identity on the token.
  */
 export function parseRatio(value: string): number | null {
-	const m = /^(\d+):(\d+)$/.exec(value);
+	// Digits bounded to match the bridge's own parser, so the two agree on what
+	// is a ratio at all. Without the bound a 309-digit component overflows to
+	// Infinity and `Infinity / Infinity` is NaN, which slips past a falsy check
+	// and reaches the glyph as a NaN-sized rect.
+	const m = /^(\d{1,6}):(\d{1,6})$/.exec(value);
 	if (!m) return null;
 	const w = Number(m[1]);
 	const h = Number(m[2]);

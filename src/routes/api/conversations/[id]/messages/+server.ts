@@ -854,14 +854,18 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
  * A model advertising nothing gets nothing: it would ignore the field anyway,
  * and an upstream that isn't the bridge has no business receiving it.
  */
-function resolveAspectRatio(
-	requested: string | undefined,
-	model: ModelEntry | undefined,
-): string | undefined {
-	if (!requested || !model?.aspectRatios?.length) return undefined;
+function resolveAspectRatio(requested: unknown, model: ModelEntry | undefined): string | undefined {
+	// `requested` is typed `unknown`, not `string | undefined`: the request body
+	// is an unchecked cast, so this has to do its own type check rather than
+	// trust the caller's. A regex alone doesn't — `/^\d+:\d+$/.test(['16:9'])`
+	// stringifies its argument and passes, which put an ARRAY on the wire as a
+	// string and earned a 422 from the bridge.
+	if (typeof requested !== 'string' || !model?.aspectRatios?.length) return undefined;
 	// Shape-check rather than membership-check: the value reaches the upstream
-	// verbatim, so this only keeps a malformed client from putting junk on the wire.
-	return /^\d+:\d+$/.test(requested) ? requested : undefined;
+	// verbatim, so this only keeps a malformed client from putting junk on the
+	// wire. Bounded to 6 digits and a non-zero denominator to match the bridge's
+	// own parser, so a value that passes here can't be one it will silently drop.
+	return /^(?!0+:)\d{1,6}:(?!0+$)\d{1,6}$/.test(requested) ? requested : undefined;
 }
 
 function mapUpstreamStatus(status: number | null): 502 | 504 | 400 {

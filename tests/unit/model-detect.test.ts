@@ -503,6 +503,23 @@ describe('normalizeUpstreamModel — aspect ratios', () => {
 		expect(e.aspectRatios).toEqual([{ value: '16:9', label: 'Widescreen' }]);
 	});
 
+	it('drops a degenerate or oversized ratio the rest of the pipeline rejects', () => {
+		// These would render as a permanently unselectable chip: `parseRatio`
+		// returns null for them, so `nearestOffered` can never pick one.
+		const e = normalizeUpstreamModel(ep(), {
+			id: 'wf',
+			kind: 'image',
+			aspect_ratios: [
+				{ value: '0:0' },
+				{ value: '16:0' },
+				{ value: '0:9' },
+				{ value: '1234567:1' },
+				{ value: '16:9' },
+			],
+		});
+		expect(e.aspectRatios).toEqual([{ value: '16:9' }]);
+	});
+
 	it('is undefined when every entry was unusable', () => {
 		const e = normalizeUpstreamModel(ep(), {
 			id: 'wf',

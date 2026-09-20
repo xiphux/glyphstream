@@ -258,7 +258,11 @@ function usableAspectRatios(raw: UpstreamModel['aspect_ratios']): AspectRatioOpt
 	const seen = new Set<string>();
 	const out: AspectRatioOption[] = [];
 	for (const entry of raw) {
-		if (typeof entry?.value !== 'string' || !/^\d+:\d+$/.test(entry.value)) continue;
+		// Bounded and non-degenerate, matching the bridge's own parser: a `0:0` or
+		// a 400-digit ratio would otherwise render as an unselectable chip —
+		// `parseRatio` rejects it, so `nearestOffered` can never pick it.
+		if (typeof entry?.value !== 'string') continue;
+		if (!/^(?!0+:)\d{1,6}:(?!0+$)\d{1,6}$/.test(entry.value)) continue;
 		if (seen.has(entry.value)) continue;
 		seen.add(entry.value);
 		out.push(
