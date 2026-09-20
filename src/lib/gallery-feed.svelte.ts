@@ -125,6 +125,14 @@ export class GalleryFeed {
 		for (let i = 0; i < units.length; i++) this.#units.set(offset + i, units[i]);
 	}
 
+	/** Key of the loaded unit a given leader id anchors, or undefined if that unit
+	 *  isn't loaded. Lets the page turn "the lightbox showed this media" into the
+	 *  unit to patch, without exposing the index map. */
+	unitKeyForLeader(leaderId: string): string | undefined {
+		for (const u of this.#units.values()) if (u.leaderId === leaderId) return u.key;
+		return undefined;
+	}
+
 	/**
 	 * Adjust one loaded unit's `favoriteCount` in place, so a star toggled in the
 	 * lightbox shows on its grid tile immediately.
@@ -146,14 +154,6 @@ export class GalleryFeed {
 	 * Favorites filter active the page must still reseed — an unstar there changes
 	 * what the library *contains*, not just how a tile is badged.
 	 */
-	/** Key of the loaded unit a given leader id anchors, or undefined if that unit
-	 *  isn't loaded. Lets the page turn "the lightbox showed this media" into the
-	 *  unit to patch, without exposing the index map. */
-	unitKeyForLeader(leaderId: string): string | undefined {
-		for (const u of this.#units.values()) if (u.leaderId === leaderId) return u.key;
-		return undefined;
-	}
-
 	patchUnitFavorite(unitKey: string, delta: number): void {
 		for (const [index, u] of this.#units) {
 			if (u.key !== unitKey) continue;

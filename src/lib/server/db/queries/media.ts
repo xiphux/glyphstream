@@ -598,7 +598,9 @@ export function getMediaListItemsByIds(userId: string, ids: string[]): MediaList
  * endpoint down) — same as memory recall. Returns up to {@link MEDIA_SEARCH_CAP}
  * `MediaListItem`s best-match-first, no cursor (a ranked mode, not the browse).
  *
- * Visibility (hard_deleted / origin) + kind/model compose on both legs. A dense
+ * Visibility (hard_deleted / origin) + kind/model/favorite compose on both legs —
+ * the dense leg included, or a semantic-only neighbour outside the filter would
+ * fuse in past it. A dense
  * neighbour must clear the configurable cosine floor
  * (`gallery_search_min_similarity`, default 0.5) to surface, so noise doesn't pad
  * the results — which means an embeddings-on query with no keyword hit and no

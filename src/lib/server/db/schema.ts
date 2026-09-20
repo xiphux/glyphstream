@@ -798,13 +798,16 @@ export const media = sqliteTable(
 		// The wire type exposes it as a plain `favorite: boolean`; no client needs
 		// the timestamp yet.
 		//
-		// Two roles, both intentional:
-		//   - Findability. A filter in the gallery for the handful of generations
-		//     worth coming back to, without deleting everything else.
-		//   - Purge protection. The purger reaps uploads whose ref count hit 0
-		//     (see media/purger.ts), and `stampOrphanedZeroRefRows` re-stamps an
-		//     upload when the message carrying it is deleted — so a starred upload
-		//     was reapable 30 minutes later. The sweep skips favorites.
+		// What it is for, today and later:
+		//   - Findability, which is the whole of it today. A filter in the gallery
+		//     for the handful of generations worth coming back to, without deleting
+		//     everything else.
+		//   - Purge protection, which currently protects nothing and cannot:
+		//     `findPurgeCandidates` skips favorites, but the purger only reaps
+		//     `origin='uploaded'` while `setMediaFavorite` only stars
+		//     `origin='generated'`, so the two sets can't overlap. The clause is
+		//     there because it is what a future sweep over generated media would
+		//     inherit (ROADMAP's protected tier). Don't read it as a live guard.
 		favoritedAt: integer('favorited_at'),
 		// Set when ref_count drops to 0; used to compute grace-period expiry.
 		unreferencedSince: integer('unreferenced_since'),
