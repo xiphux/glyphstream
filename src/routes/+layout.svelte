@@ -356,10 +356,12 @@
 </svelte:head>
 
 <!-- iOS standalone samples this for the status bar color; see app.css, where
-	 its z-index is load-bearing: it has to outrank every full-viewport surface
-	 (the drawer backdrop above all), or iOS samples that instead and falls back
-	 to a translucent, blurred bar. Keep it in the root layout so it exists on
-	 every route, not just inside (app). -->
+	 its z-index is load-bearing in BOTH directions: over the drawer backdrop,
+	 which is `fixed inset-0` and stays mounted when shut, so iOS would sample a
+	 transparent element instead — but under the overlay tier, so a dialog or
+	 the lightbox is what it samples while one is open, and no hairline crosses
+	 them. Keep it in the root layout so it exists on every route, not just
+	 inside (app). -->
 <div class="status-bar-sampler" aria-hidden="true"></div>
 
 {@render children()}

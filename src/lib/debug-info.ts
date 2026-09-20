@@ -693,8 +693,12 @@ function readLaunchImageMatch(standalone: boolean): LaunchImageMatch | null {
 function readViewportMetrics(standalone: boolean): ViewportMetrics | null {
 	if (!standalone) return null;
 	const probe = document.createElement('div');
-	// content-box explicitly: the app's global border-box would fold the padding
-	// into the declared height and report every inset as 0.
+	// content-box explicitly. NOT because border-box would break the reading —
+	// used content height floors at zero, so a border-box element with height:0
+	// and padding still reports the padding, and these measurements would come
+	// out the same. It is here so the probe means what it says: every value
+	// below is read as a plain border-box height, and none of them has to be
+	// reasoned about through a global box model that could change.
 	probe.style.cssText =
 		'position:absolute;top:0;left:0;width:0;box-sizing:content-box;' +
 		'visibility:hidden;pointer-events:none;';

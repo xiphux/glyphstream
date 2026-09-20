@@ -73,7 +73,7 @@ export default defineConfig({
 				short_name: 'GlyphStream',
 				description: 'Lightweight chat over multiple OpenAI-compatible backends.',
 				// theme_color tints Android's browser/toolbar chrome before the
-				// page loads; syncThemeColorMeta() takes over from there. Same
+				// page loads; syncSurfaceChrome() takes over from there. Same
 				// value and same reasoning as background_color below: it was
 				// `#0f172a`, the brand navy off icon.svg's tile, which is Tailwind
 				// slate-900 and nowhere on the Signature ramp — ΔE2000 9.5 from the

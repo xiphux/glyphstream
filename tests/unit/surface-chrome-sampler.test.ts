@@ -48,7 +48,7 @@ describe('syncSurfaceChrome — status bar sampler', () => {
 	});
 
 	it('tolerates the sampler being absent', () => {
-		// It ships in the root layout, but this runs from five call sites and an
+		// It ships in the root layout, but this runs from six call sites and an
 		// error thrown here would take the theme switch down with it.
 		expect(() => syncSurfaceChrome()).not.toThrow();
 		expect(document.querySelector('.status-bar-sampler')).toBeNull();

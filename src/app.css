@@ -662,10 +662,16 @@ body {
 
    The background-color here is the PRE-JS default, and on iOS it is probably
    not the value that ends up being read: --color-surface is authored in oklch,
-   and syncSurfaceChrome() overwrites this inline with resolved rgb() on mount
-   and on every theme/scheme flip, because iOS is documented (in this repo — see
-   toLegacyRgb in lib/theme-color.ts) to ignore a theme-color it can't parse.
-   Keep both: the token is what SSR paints and what every other engine uses.
+   and syncSurfaceChrome() overwrites this inline with resolved rgb() because
+   iOS is documented (in this repo — see toLegacyRgb in lib/theme-color.ts) to
+   ignore a theme-color it can't parse. Keep both: the token is what SSR paints
+   and what every other engine uses.
+
+   That inline write outranks this declaration for the life of the element, so
+   it has to be re-run by everything that can change --color-surface: mount,
+   theme, scheme, AND the `data-private` re-tint. All four are wired; a fifth
+   would have to be, and surface-color-resync.test.ts is what fails if one is
+   added without it.
 
    The z-index is deliberate, and it is a BAND, not a maximum. iOS reads the
    topmost fixed element at the page top, and the mobile drawer's backdrop is
@@ -684,6 +690,13 @@ body {
    it, which is what you'd want anyway. The toast and update tiers are both
    bottom-anchored (Toaster.svelte, UpdateBanner.svelte), so they never cover
    this edge and their rank relative to it decides nothing.
+
+   The floor has its own price, accepted rather than overlooked: over the OPEN
+   drawer the strip is a 1px surface-coloured line across the scrim, the same
+   artifact the ceiling exists to remove from the lightbox. There is no tier
+   that avoids both — clearing the scrim when shut is exactly what puts us over
+   it when open — and this is the cheaper side, one hairline against a dimmed
+   page rather than a permanently mis-coloured bar.
 
    STILL OPEN, do not assume this rule closed it: on iOS 27 the bar comes up
    translucent on a COLD launch, with a progressive blur ~35pt down into the

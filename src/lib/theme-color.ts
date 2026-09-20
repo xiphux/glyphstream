@@ -104,7 +104,7 @@ export function syncSurfaceChrome(): void {
 	// The sampler is server-rendered and already carries this color from the
 	// stylesheet; this restates it in a form iOS is known to parse. Guarded
 	// rather than assumed present: the element lives in the root layout, but
-	// this runs from five call sites and must not throw on a page that somehow
+	// this runs from six call sites and must not throw on a page that somehow
 	// predates it.
 	const sampler = document.querySelector<HTMLElement>('.status-bar-sampler');
 	if (sampler) sampler.style.backgroundColor = bg;
