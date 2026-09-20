@@ -448,6 +448,77 @@ describe('gallery drill-in shares the cached unit source', () => {
 	});
 });
 
+describe('gallery drill-in under the favorites filter', () => {
+	/**
+	 * A drill-in MUST be asked with the same row filters the grid was grouped
+	 * under. The card's `memberCount` comes from the filtered source, so a member
+	 * fetch that drops the filter answers a different question — and for a prompt
+	 * run it answers the WRONG one, because the run's key is derived from whichever
+	 * member led the stream that was grouped. Each case below is a distinct way the
+	 * mismatch surfaced; the `{}` half of each assertion is what the client used to
+	 * send.
+	 */
+	it('returns only starred members of a conversation stack', () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const starred = makeGen(u.id, at(2024, 6, 15, 12, 2), {
+			promptFull: 'a',
+			originalPrompt: null,
+		});
+		linkToConv(conv, starred);
+		const alsoStarred = makeGen(u.id, at(2024, 6, 15, 12, 1), {
+			promptFull: 'b',
+			originalPrompt: null,
+		});
+		linkToConv(conv, alsoStarred);
+		const plain = makeGen(u.id, at(2024, 6, 15, 12, 0), { promptFull: 'c', originalPrompt: null });
+		linkToConv(conv, plain);
+		setMediaFavorite(starred, u.id, true);
+		setMediaFavorite(alsoStarred, u.id, true);
+
+		const card = allUnits(u.id, { favorite: true })[0];
+		expect(card.memberCount).toBe(2);
+		expect(listGalleryUnitMembers(u.id, card.key, { favorite: true }).map((m) => m.id)).toEqual([
+			starred,
+			alsoStarred,
+		]);
+		// Without the filter the whole conversation comes back — three members for a
+		// card that counted two, unstarred media inside a favorites-only view.
+		expect(listGalleryUnitMembers(u.id, card.key, {})).toHaveLength(3);
+	});
+
+	it('resolves a prompt run whose filtered leader is not the run leader', () => {
+		// The sharpest case: the newest member is UNSTARRED, so the filtered run is
+		// keyed `p:<middle>` while the unfiltered grouping keys it `p:<newest>`. Ask
+		// unfiltered and `.find()` misses entirely — the card offers "2 items" and
+		// the drill opens empty.
+		const u = seedUser();
+		const oldest = makeGen(u.id, at(2024, 6, 15, 12, 0), {
+			originalPrompt: 'sunset',
+			promptFull: 'sunset [sdxl]',
+		});
+		const middle = makeGen(u.id, at(2024, 6, 15, 12, 1), {
+			originalPrompt: 'sunset',
+			promptFull: 'sunset [flux]',
+		});
+		makeGen(u.id, at(2024, 6, 15, 12, 2), {
+			originalPrompt: 'sunset',
+			promptFull: 'sunset [sd3]',
+		});
+		setMediaFavorite(middle, u.id, true);
+		setMediaFavorite(oldest, u.id, true);
+
+		const card = allUnits(u.id, { favorite: true })[0];
+		expect(card.groupKind).toBe('prompt');
+		expect(card.memberCount).toBe(2);
+		expect(listGalleryUnitMembers(u.id, card.key, { favorite: true }).map((m) => m.id)).toEqual([
+			middle,
+			oldest,
+		]);
+		expect(listGalleryUnitMembers(u.id, card.key, {})).toEqual([]);
+	});
+});
+
 describe('gallery source cache bounds', () => {
 	/**
 	 * The source cache holds one row per library item, each carrying an

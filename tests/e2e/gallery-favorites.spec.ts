@@ -6,12 +6,14 @@ import { resetData, seedMediaPrompts } from './helpers';
  * filter the browse view down to what's starred.
  *
  * Worth an e2e rather than leaving this to the unit + component layers, because
- * the interesting part is exactly the seam they each miss. The browse grid is
- * assembled from FIVE separate reads (layout, units, unit-members, periods, and
- * the page load's facets) which must agree on the filter, and it's served through
+ * the interesting part is exactly the seam they each miss: the gallery is assembled
+ * from several independent reads (layout, units, unit-members, periods, and the
+ * page load's search + facets) which must all agree on the filter, served through
  * two server-side memos whose keys and fingerprint had to learn about a star. A
- * real browser against a real server is the only place a disagreement between
- * them shows up.
+ * real browser against a real server is the only place a disagreement between them
+ * shows up — and one did: the drill-in read was the one client call that never sent
+ * the filter, which the third test now covers. Any new filtered read belongs here
+ * too; a server-side test cannot catch a caller that simply doesn't ask.
  *
  * Clean slate + fresh seed per test (one shared DB across projects — see
  * helpers.resetData).
@@ -87,6 +89,52 @@ test.describe('gallery: favorites', () => {
 		await expect(page.getByRole('button', { name: 'Add to favorites' })).toBeVisible();
 		await page.getByRole('button', { name: 'Close', exact: true }).click();
 		await expect(page.locator(TILE)).toHaveCount(0);
+	});
+
+	test('a drilled-in stack shows the same members its card counted', async ({ page, isMobile }) => {
+		// The drill-in is a SIXTH read (/api/media/unit-members) with its own params,
+		// and it is the one the other tests never touch: they star solos, so no stack
+		// is ever built. Worse, the case that breaks hardest needs the stack's NEWEST
+		// member left unstarred — a prompt run is keyed off whichever member leads the
+		// stream it was grouped from, so under the filter the key is the newest
+		// *starred* member, and a member fetch that drops the filter looks for a key
+		// that doesn't exist in the unfiltered grouping and finds nothing at all.
+		resetData();
+		// Three rows sharing one prompt (and no originalPrompt) land within the orphan
+		// gap, so they stack as a single prompt run, newest first. The fourth row is
+		// not decoration: the server's gallery memo is validated by a fingerprint of
+		// the user's row COUNTS, so re-seeding the same number of rows this file's
+		// other tests seed reproduces their exact fingerprint and the stale cached
+		// units get served — this test saw three unstacked solos until the count
+		// differed. Keep any re-seed in a gallery spec at a row count no sibling test
+		// uses.
+		seedMediaPrompts(['a heron at dawn', 'a heron at dawn', 'a heron at dawn', 'a lone pine']);
+		await page.goto('/gallery');
+
+		const stack = page.getByRole('button', { name: /^Open stack: .*\(3 items\)$/ });
+		await expect(stack).toBeVisible();
+		await stack.click();
+		await expect(page.locator(TILE)).toHaveCount(3);
+
+		// Star the two OLDEST members, leaving the run's leader unstarred.
+		for (const nth of [1, 2]) {
+			await page.locator(TILE).nth(nth).click();
+			await page.getByRole('button', { name: 'Add to favorites' }).click();
+			await expect(page.getByRole('button', { name: 'Remove from favorites' })).toBeVisible();
+			await page.getByRole('button', { name: 'Close', exact: true }).click();
+		}
+		await page.getByRole('button', { name: 'Back to gallery' }).click();
+
+		await toggleFavoritesFilter(page, isMobile);
+		// The card re-forms from the starred subset only.
+		const favStack = page.getByRole('button', { name: /^Open stack: .*\(2 items\)$/ });
+		await expect(favStack).toBeVisible();
+		await favStack.click();
+
+		// The members must be exactly what the card promised — not an empty view, and
+		// not the unfiltered bucket of three.
+		await expect(page.locator(TILE)).toHaveCount(2);
+		await expect(page.locator(STAR_BADGE)).toHaveCount(2);
 	});
 
 	test('composes with prompt search instead of replacing it', async ({ page, isMobile }) => {

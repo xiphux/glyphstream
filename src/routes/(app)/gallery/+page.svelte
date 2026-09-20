@@ -79,14 +79,28 @@
 	let stacking = $state(true);
 	let granularity = $state<Granularity>('month');
 
-	// The kind/model/stack/tz filter params shared by the layout + units fetches.
-	// Built in one place so the two (which MUST agree for the unit offsets to line
-	// up with the layout's reserved section heights) can't drift.
-	function galleryFilterParams(): URLSearchParams {
+	// The row-level filter trio, shared by EVERY filtered media read — the
+	// layout/units pair and the stack drill-in alike. Its own function because the
+	// drill-in wants these three and not `stack`/`tzOffset`, and hand-copying the
+	// subset is what let the favorites filter go missing from `loadDrillMembers`
+	// while the grid was already applying it: the card counted starred members and
+	// the drill returned the unfiltered bucket, or — for a prompt run, whose key is
+	// derived from the filtered leader — nothing at all. Add a new filter here and
+	// both paths get it.
+	function mediaFilterParams(): URLSearchParams {
 		const p = new URLSearchParams();
 		if (data.kind) p.set('kind', data.kind);
 		if (data.model) p.set('model', data.model);
 		if (data.favorite) p.set('fav', '1');
+		return p;
+	}
+
+	// The layout + units fetches: the filter trio plus the two params that shape
+	// how rows are grouped and bucketed. Built in one place so the two (which MUST
+	// agree for the unit offsets to line up with the layout's reserved section
+	// heights) can't drift.
+	function galleryFilterParams(): URLSearchParams {
+		const p = mediaFilterParams();
 		if (!stacking) p.set('stack', 'false');
 		p.set('tzOffset', String(tzOffset()));
 		return p;
@@ -284,9 +298,10 @@
 		drillItems = null;
 		drillError = null;
 		drillLoading = true;
-		const p = new URLSearchParams({ key: u.key });
-		if (data.kind) p.set('kind', data.kind);
-		if (data.model) p.set('model', data.model);
+		// Must carry the same row filters the grid was grouped under, or the members
+		// won't be the ones the card counted — see `mediaFilterParams`.
+		const p = mediaFilterParams();
+		p.set('key', u.key);
 		try {
 			const res = await fetchWithTimeout(`/api/media/unit-members?${p}`);
 			if (!res.ok) throw new Error(`Server returned ${res.status}`);
