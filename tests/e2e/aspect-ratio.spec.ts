@@ -496,8 +496,9 @@ test('a name squeezed on a small screen still yields the glyph', async ({ page }
 test('the capability pill counts against the name, not just its characters', async ({ page }) => {
 	// The case a character count cannot see, and the reason this rule measures.
 	// "Pixi" is four characters and keeps the glyph; the pill beside it is real
-	// width in the same box, and is present for essentially every model this
-	// control renders next to on a real bridge while appearing in no other fixture.
+	// width in the same box, and on a real bridge it is present for essentially
+	// every model this control renders next to — so a suite where it never appeared
+	// would be measuring the one trigger shape real usage almost never produces.
 	await page.setViewportSize({ width: 393, height: 800 });
 	await gotoNewChat(page);
 	await selectModel(page, /Pixi/);

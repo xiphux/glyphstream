@@ -112,7 +112,16 @@
 		 *
 		 * 0 before the picker has reported (it measures from an effect, so not during
 		 * SSR) and when no picker is mounted. Reads as "nothing is squeezing us", which
-		 * keeps the glyph — the safe direction to be wrong in.
+		 * keeps the glyph — the safe direction to be wrong in, since a picker that
+		 * never reports leaves a glyph showing rather than permanently suppressed.
+		 *
+		 * The cost is a first-paint shuffle: on a cold load at phone width the server
+		 * paints the glyph and hydration takes it away. Inverting the default would
+		 * trade that for the opposite flash on short names — and make the
+		 * never-reported case hide the glyph forever, which is the worse of the two
+		 * ways to be wrong. Nothing here can settle it, because the answer is a
+		 * measurement the server does not have. The row's total width is unchanged
+		 * either way: the 17px moves from this control to the name beside it.
 		 */
 		pickerContentWidth?: number;
 		disabled?: boolean;

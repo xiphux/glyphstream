@@ -128,7 +128,14 @@
 		 * exactly the reason this does not: the response changes what was measured.
 		 *
 		 * Needs no resize observer either: a `nowrap` scrollWidth is viewport
-		 * independent. A caller that cares about the viewport gates on it separately.
+		 * independent HERE, which is a property of this markup rather than of
+		 * scrollWidth — it returns `max(clientWidth, content)`, so it tracks the box
+		 * for anything that can grow. The label is a shrink-only flex item whose
+		 * `truncate` (`overflow:hidden`) puts its automatic minimum at 0, so the box
+		 * never exceeds the content and the content always wins. Give that span
+		 * `grow`, `w-full` or a `flex-1` and this silently starts reporting the
+		 * container's width instead, with nothing in lint or check to catch it. A
+		 * caller that cares about the viewport gates on it separately.
 		 */
 		onTriggerContentWidth?: (px: number) => void;
 		/**
@@ -585,8 +592,12 @@
 
 	// Measured after every change that can alter the content's natural width: the
 	// label itself, and whether a pill is beside it. Reading `scrollWidth` forces a
-	// layout, so this deliberately does NOT depend on anything that churns — it is
-	// a handful of reads per model switch, not per frame.
+	// layout, so this deliberately does NOT depend on anything that churns — not
+	// the prompt, not the stream. It does run more often than "on a model switch":
+	// `triggerPill` rebuilds an object each time it recomputes, so it never
+	// compares equal and the catalogue arriving re-measures too. A handful of reads
+	// on events the user caused, rather than per frame, which is the property that
+	// matters.
 	//
 	// `untrack` around the callback for the same reason the open handler below uses
 	// it: a consumer's callback must not graft its own reactive reads onto this

@@ -135,8 +135,8 @@ const MODELS = {
 		},
 		{
 			// A medium-named image model WITH routes declared, so a spec can isolate
-			// the pill's own contribution: this name fits the picker's room on its
-			// own, and only stops fitting once the pill sits beside it. That is the
+			// the pill's own contribution: this name fits the picker's room on its own,
+			// and only stops fitting once the pill sits beside it. That is the
 			// case a character count cannot see, and the reason the rule measures.
 			id: 'mock-sketcher',
 			object: 'model',
@@ -163,8 +163,9 @@ const MODELS = {
 			kind: 'image',
 			display_name: 'Pixi',
 			owned_by: 'mock',
-			// Declares its routes, which no other fixture does — so the picker's
-			// capability pill renders somewhere in e2e. It shares the trigger's box
+			// Declares its routes, as `mock-sketcher` above does — between them the
+			// picker's capability pill is exercised in e2e at all, which before these
+			// two it never was. It shares the trigger's box
 			// with the model name and takes 30-40px of it, which is the single largest
 			// term in how much room that name has. BOTH routes deliberately: an
 			// image-input-only model makes `imageAttachment` 'required', which gates
@@ -177,15 +178,28 @@ const MODELS = {
 			aspect_ratio_default: '1:1',
 		},
 		{
-			// A SECOND image model, so a spec can compare two of them — an avatar
-			// draw across several models is the flow that needs it. Deliberately not
-			// named "Mock Image Two": several specs address the first one with
-			// /Mock Image/i, and a second match would break them on strict mode
-			// rather than on anything real.
+			// The image model paired with `mock-image` wherever a spec needs two of
+			// them — an avatar draw across several models is the flow that needs it.
+			// Deliberately not named "Mock Image Two": several specs address the first
+			// one with /Mock Image/i, and a second match would break them on strict
+			// mode rather than on anything real.
+			//
+			// Also the only image fixture with NO `capabilities`, which makes it the
+			// one crowded case whose width comes entirely from its name. Tests that
+			// separate name-driven crowding from pill-driven crowding need exactly
+			// that, so don't give it routes.
+			//
+			// The name is longer than it needs to be on purpose. Layout specs compare
+			// its rendered width against a px threshold, and CI runs on Linux where
+			// system-ui resolves to different metrics than the macOS font those
+			// numbers were measured on. At "Mock Painter" the margin was ~7px, thin
+			// enough for a font swap to cross; the extra word buys ~30px. Every spec
+			// addresses it by regex (/Mock Painter/, /^Mock Painter/), so the suffix
+			// costs nothing.
 			id: 'mock-painter',
 			object: 'model',
 			kind: 'image',
-			display_name: 'Mock Painter',
+			display_name: 'Mock Painter Pro',
 			owned_by: 'mock',
 			// A DELIBERATELY different menu from mock-image: the two overlap on 1:1
 			// only. That's what makes the union-not-intersection rule observable —
