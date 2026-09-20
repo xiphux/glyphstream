@@ -163,11 +163,18 @@ function paramsFor(route: string, crossConversation: boolean): Record<string, st
 	return params;
 }
 
-/** A body shaped enough to get past validation to the ownership check. */
+/** A body shaped enough to get past validation to the ownership check.
+ *
+ *  Every field a swept route validates must appear here, or that route's entry in
+ *  the sweep passes on a 400 from its own input check and never reaches the
+ *  ownership predicate this file exists to verify — a guard that looks green while
+ *  guarding nothing. `favorite` was added for exactly that reason after
+ *  `PATCH /api/media/[id]` landed. */
 function bodyFor(route: string, method: string): unknown {
 	if (method === 'GET' || method === 'DELETE') return undefined;
 	return {
 		title: 'pwned',
+		favorite: true,
 		name: 'pwned',
 		body: 'pwned',
 		content: 'pwned',
