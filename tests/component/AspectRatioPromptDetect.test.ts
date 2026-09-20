@@ -60,9 +60,16 @@ describe('AspectRatioSelector — a ratio named in the prompt', () => {
 
 	it('selects a ratio the prompt names', async () => {
 		render(Harness, { props: { options: OPTIONS, promptText: 'create a 9:16 poster' } });
-		// Still on Default until the debounce elapses.
-		expect(trigger()).toHaveTextContent('Default');
 		await settle();
+		expect(trigger()).toHaveTextContent('9:16');
+	});
+
+	it('detects immediately when it mounts onto text that is already there', async () => {
+		// A restored draft, or the remount after a model switch. The debounce governs
+		// TYPING — waiting it out here would only show the user a shape their prompt
+		// contradicts, and it would also open a window in which no detection stands,
+		// which is the signal the dismissal release reads.
+		render(Harness, { props: { options: OPTIONS, promptText: 'create a 9:16 poster' } });
 		expect(trigger()).toHaveTextContent('9:16');
 	});
 
@@ -182,6 +189,27 @@ describe('AspectRatioSelector — a ratio named in the prompt', () => {
 		await settle();
 
 		expect(trigger()).toHaveTextContent('1:1');
+	});
+
+	it('lets the same ratio speak again in a LATER prompt', async () => {
+		// An override answers the detection standing at that moment, not that ratio
+		// forever. On the chat page the composer survives a send, so without a
+		// release the user could override 16:9 once and have every later prompt
+		// naming 16:9 silently ignored for the rest of the conversation.
+		const { rerender } = render(Harness, {
+			props: { options: OPTIONS, promptText: 'a 16:9 still' },
+		});
+		await settle();
+		await pickFromMenu('1:1');
+		expect(trigger()).toHaveTextContent('1:1');
+
+		// The send clears the box; the component instance is untouched.
+		await rerender({ options: OPTIONS, promptText: '' });
+		await settle();
+		await rerender({ options: OPTIONS, promptText: 'a 16:9 landscape at dusk' });
+		await settle();
+
+		expect(trigger()).toHaveTextContent('16:9');
 	});
 
 	it('does not flicker through a ratio that is a prefix of the one being typed', async () => {

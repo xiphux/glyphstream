@@ -129,7 +129,15 @@
 	 */
 	const DETECT_DEBOUNCE_MS = 300;
 
-	let debouncedPrompt = $state('');
+	// Seeded from the prop rather than '' so a mount starts level with the text
+	// already in the box — a restored draft, or the remount after a model switch.
+	// Starting empty would open a DETECT_DEBOUNCE_MS window in which `detected` is
+	// null for a prompt that plainly names a ratio, and the release below reads
+	// exactly that signal: it would fire inside the window and drop a dismissal the
+	// parent is holding, handing the reverted-pick bug back. Both are props, equal
+	// on server and client, so this costs no hydration mismatch.
+	// svelte-ignore state_referenced_locally
+	let debouncedPrompt = $state(promptText);
 	$effect(() => {
 		const next = promptText;
 		const timer = setTimeout(() => {
@@ -139,6 +147,24 @@
 	});
 
 	const detected = $derived(detectRatioInPrompt(debouncedPrompt, options));
+
+	/**
+	 * Release the dismissal once the detection it answered stops standing.
+	 *
+	 * An override answers the ratio being claimed AT THAT MOMENT, not that ratio
+	 * for good. Without this the chat page — where the composer survives a send —
+	 * would let one override silence 16:9 for the rest of the conversation: the
+	 * next prompt naming it would be ignored, with no indicator, and the turn would
+	 * go out at the remembered preference while the prose said otherwise.
+	 *
+	 * Keying the release to "no detection stands" rather than to the send covers
+	 * the same ground without the composer having to tell us a turn ended, and it
+	 * also catches clearing the box by hand and retyping, which no send-time reset
+	 * would see.
+	 */
+	$effect(() => {
+		if (detected === null) dismissedRatio = null;
+	});
 
 	const liveDetection = $derived(
 		detected !== null && detected !== dismissedRatio ? detected : null,
