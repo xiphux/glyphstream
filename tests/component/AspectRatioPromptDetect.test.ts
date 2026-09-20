@@ -253,6 +253,45 @@ describe('AspectRatioSelector — a ratio named in the prompt', () => {
 		expect(row.querySelectorAll('svg')).toHaveLength(1);
 	});
 
+	it('commits a ratio typed in the last breath before send, in the same tick', async () => {
+		// The send builders read the ratio synchronously, so anything still sitting
+		// in the debounce is simply not in it — and trailing is where people put a
+		// ratio ("…at dusk, 16:9"). The point is that the value moves WITHOUT the
+		// timer firing, so nothing here advances it.
+		const { component, rerender } = render(Harness, {
+			props: { options: OPTIONS, promptText: 'a lighthouse at dusk' },
+		});
+		await settle();
+		const harness = component as unknown as {
+			flushDetection: () => void;
+			currentValue: () => string | null;
+		};
+		expect(harness.currentValue()).toBeNull();
+
+		// Type the ratio, then "press Enter" with no timer advance whatsoever.
+		await rerender({ options: OPTIONS, promptText: 'a lighthouse at dusk, 16:9' });
+		harness.flushDetection();
+
+		expect(harness.currentValue()).toBe('16:9');
+	});
+
+	it('leaves a deliberate pick alone when the flush has nothing pending', async () => {
+		// Sending an unedited box must not disturb what the user chose by hand.
+		const { component } = render(Harness, {
+			props: { options: OPTIONS, promptText: 'a plain lighthouse' },
+		});
+		await settle();
+		await pickFromMenu('1:1');
+		const harness = component as unknown as {
+			flushDetection: () => void;
+			currentValue: () => string | null;
+		};
+		expect(harness.currentValue()).toBe('1:1');
+
+		harness.flushDetection();
+		expect(harness.currentValue()).toBe('1:1');
+	});
+
 	it('does not flicker through a ratio that is a prefix of the one being typed', async () => {
 		// The debounce earns its keep only when the advertised list contains a ratio
 		// that is a TEXT PREFIX of another, because exact matching already ignores

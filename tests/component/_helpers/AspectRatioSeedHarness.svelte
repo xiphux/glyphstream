@@ -46,6 +46,21 @@
 	// Page-level too, and for the same reason: it has to outlive the `mounted`
 	// toggle below, which is what makes the remount cases testable at all.
 	let dismissedRatio = $state<string | null>(null);
+	// The composers hold the selector this way to commit a pending detection on
+	// send; the tests need the same handle to prove it lands in one tick.
+	let ratioRef = $state<{ flushDetection: () => void } | null>(null);
+	export function flushDetection() {
+		ratioRef?.flushDetection();
+	}
+	/**
+	 * The bound value, read synchronously — the way a send builder reads it.
+	 * `onValueChange` cannot serve here: it fires from an `$effect`, and effects are
+	 * batched to a microtask, so it would report one tick late and a test using it
+	 * would fail against a flush that is working correctly.
+	 */
+	export function currentValue(): string | null {
+		return value;
+	}
 
 	$effect(() => {
 		onSeedChange?.(seed);
@@ -57,6 +72,7 @@
 
 {#if mounted && options.length > 0}
 	<AspectRatioSelector
+		bind:this={ratioRef}
 		{options}
 		{defaultValue}
 		{promptText}

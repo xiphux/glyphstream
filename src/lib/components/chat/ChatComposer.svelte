@@ -271,6 +271,19 @@
 	// The union across them: a model advertising nothing constrains nothing (it
 	// ignores whatever is sent), so intersecting would make partial support more
 	// restrictive than no support. See offeredRatios.
+	let ratioRef = $state<{ flushDetection: () => void } | null>(null);
+	/**
+	 * The send reads `aspectRatio` synchronously, and the selector only publishes a
+	 * ratio once its debounce has caught up — so a shape typed in the last breath
+	 * before Enter ("…at dusk, 16:9") would not be in it. Commit it first. Null
+	 * whenever the selection offers no ratios, which is exactly when there is
+	 * nothing to commit.
+	 */
+	function submit() {
+		ratioRef?.flushDetection();
+		onSend();
+	}
+
 	const ratioOptions = $derived(offeredRatios(selectedModels));
 	// Labels the picker's "Default" entry, so only report one when the selection
 	// AGREES on it — the first model's default is meaningless for a comparison
@@ -315,7 +328,7 @@
 		{enterBehavior}
 		{skillCommands}
 		activeKind={snippetKind}
-		onSubmit={onSend}
+		onSubmit={submit}
 	>
 		{#snippet attachmentBar()}
 			{#if canSplit}
@@ -341,6 +354,7 @@
 			     selector", never "one fixed ratio". -->
 			{#if ratioOptions.length > 0}
 				<AspectRatioSelector
+					bind:this={ratioRef}
 					options={ratioOptions}
 					defaultValue={ratioDefault}
 					promptText={composerText}

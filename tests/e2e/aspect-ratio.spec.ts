@@ -337,3 +337,22 @@ test('picking a shape by hand outranks the one in the prompt', async ({ page }) 
 	await expect(page.locator('img[src*="/api/media/"]').first()).toBeVisible();
 	expect(await lastRequestedRatio(page)).toBe('3:2');
 });
+
+test('a ratio typed just before Enter still reaches the upstream', async ({ page }) => {
+	// Deliberately shaped so it CANNOT wait the debounce out: real keystrokes, then
+	// Enter with no assertion in between. Every other test here awaits the picker
+	// settling before it sends, which is precisely why none of them can see this —
+	// the ratio is trailing, so it exists only in the snapshot the debounce is
+	// still holding when the send reads the value.
+	await gotoNewChat(page);
+	await selectModel(page, /Mock Image/);
+
+	const box = page.locator('textarea').first();
+	await box.click();
+	await box.pressSequentially('a lighthouse at dusk, 16:9', { delay: 15 });
+	await page.keyboard.press('Enter');
+
+	await page.waitForURL(/\/chat\/[^/]+$/);
+	await expect(page.locator('img[src*="/api/media/"]').first()).toBeVisible();
+	expect(await lastRequestedRatio(page)).toBe('16:9');
+});

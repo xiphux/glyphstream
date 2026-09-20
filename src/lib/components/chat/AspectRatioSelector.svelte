@@ -119,13 +119,19 @@
 	 * Quiet period before the prompt is re-scanned.
 	 *
 	 * Not a CPU concern — a regex over a prompt is nothing beside the markdown pump
-	 * this route already runs per frame. It buys visual stability, but only in a
-	 * narrower case than it first appears: because detection matches OFFERED ratios
-	 * exactly, every partial nobody advertises is already ignored, and typing
-	 * "9:16" past "9:1" is silent unless "9:1" is itself on the menu. The flicker
-	 * is real when one advertised ratio is a text prefix of another, which is a
-	 * property of whatever workflow someone wrote rather than of this code — so it
-	 * is throttled unconditionally instead of audited per list.
+	 * this route already runs per frame. It buys visual stability, and it is doing
+	 * more work than "exact matching already ignores the partials" suggests: the
+	 * prefix that flickers does not have to be another RATIO, only another number.
+	 * "a station clock showing 3:45" passes through "3:4", and "at 4:30" through
+	 * "4:3" — both of which nearly every real menu offers. So an unthrottled picker
+	 * would light up mid-word on precisely the clock times this feature exists not
+	 * to mishandle, which is why the wait applies to every edit rather than being
+	 * audited against a particular list.
+	 *
+	 * 200ms by measurement, not taste: 300 read as laggy while typing, 150 was
+	 * indistinguishable from 200 in use. Average typing leaves a ~250ms gap between
+	 * keystrokes, so at 200 the timer is already firing in the gaps for most people
+	 * and lowering it further buys responsiveness that is not there to buy.
 	 */
 	const DETECT_DEBOUNCE_MS = 200;
 
@@ -184,9 +190,11 @@
 		}
 	});
 
-	const liveDetection = $derived(
-		detected !== null && detected !== dismissedRatio ? detected : null,
-	);
+	/** A detection counts only until the user has answered that exact one. */
+	function stillSpeaking(live: string | null): string | null {
+		return live !== null && live !== dismissedRatio ? live : null;
+	}
+	const liveDetection = $derived(stillSpeaking(detected));
 
 	/**
 	 * The user's last deliberate pick. Loaded in `onMount` rather than at init
@@ -214,21 +222,56 @@
 	 * because it is about THIS image and the preference is only about the ones
 	 * before it; it does not beat an explicit pick, because `pick` dismisses the
 	 * detection standing at that moment.
+	 *
+	 * Factored out of the effect so `flushDetection` can apply the identical rule
+	 * to text the debounce has not caught up with yet, rather than restating a
+	 * precedence that would then have two places to drift.
 	 */
+	function resolveFor(prompt: string): string | null {
+		const wanted = seed ?? stillSpeaking(detectRatioInPrompt(prompt, options)) ?? preference;
+		return nearestOffered(wanted, options)?.value ?? null;
+	}
+
 	$effect(() => {
-		const wanted = seed ?? liveDetection ?? preference;
-		value = nearestOffered(wanted, options)?.value ?? null;
+		value = resolveFor(debouncedPrompt);
 	});
+
+	/**
+	 * Commit what the prompt says RIGHT NOW, for a caller about to read `value`.
+	 *
+	 * The send builders read the ratio synchronously, so a shape typed in the last
+	 * DETECT_DEBOUNCE_MS would otherwise not be in it — and that is the ordinary
+	 * case, not a corner one: "a lighthouse at dusk, 16:9" then Enter puts the
+	 * whole ratio inside the window, and a pasted prompt puts every position there.
+	 * It fails silently, too. The send clears the box first, which cancels the
+	 * pending timer, so the detection never lands at all: no marker appears, the
+	 * picker just stays where it was and a wrongly-framed image comes back.
+	 *
+	 * Assigns `value` directly rather than only moving `debouncedPrompt`, because
+	 * effects are batched to a microtask and the caller reads `value` in this same
+	 * tick — the effect above would not have run yet. The two writers agree by
+	 * construction: both go through `resolveFor`, so when the timer does fire it
+	 * recomputes the same answer.
+	 */
+	export function flushDetection(): void {
+		if (debouncedPrompt === promptText) return;
+		debouncedPrompt = promptText;
+		value = resolveFor(promptText);
+	}
 
 	/** `null` picks Default — "send nothing, let each model decide". */
 	function pick(next: string | null) {
 		// Retire the one-shot seed in the PARENT's state, so it can't outlive this
 		// component and override the pick after a remount.
 		seed = null;
-		// Answer whatever the prompt is currently claiming, so a deliberate pick
-		// isn't overwritten on the next keystroke. Recorded in the PARENT's state
-		// for the same reason the seed is retired there — see the prop.
-		dismissedRatio = detected;
+		// Answer what the prompt says NOW, not what the debounce is still holding.
+		// A pick landing within DETECT_DEBOUNCE_MS of an edit would otherwise record
+		// the PREVIOUS detection: the release then finds that stale ratio gone from
+		// the text and lets go, leaving the current detection unanswered and free to
+		// revert the pick a moment after the click. Syncing first keeps this and the
+		// release effect reading the same text.
+		debouncedPrompt = promptText;
+		dismissedRatio = detectRatioInPrompt(promptText, options);
 		// Written on the PICK, not on send: see writeStickyRatio.
 		preference = next;
 		if (next === null) clearStickyRatio();

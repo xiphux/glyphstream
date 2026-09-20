@@ -372,6 +372,15 @@
 			.filter((m): m is ModelEntry => m !== undefined);
 	});
 	// Union, not intersection — see offeredRatios.
+	let ratioRef = $state<{ flushDetection: () => void } | null>(null);
+	// See ChatComposer's copy: a ratio typed immediately before Enter is still
+	// inside the detection debounce, so it has to be committed before the send
+	// reads it.
+	function submit() {
+		ratioRef?.flushDetection();
+		void startChat();
+	}
+
 	const ratioOptions = $derived(offeredRatios(selectedModels));
 	// Labels the picker's "Default" entry, so only report one when the selection
 	// AGREES on it — the first model's default is meaningless for a comparison
@@ -917,7 +926,7 @@
 			enterBehavior={data.prefs?.enterBehavior ?? 'send'}
 			{skillCommands}
 			activeKind={snippetKind}
-			onSubmit={startChat}
+			onSubmit={submit}
 		>
 			{#snippet attachmentBar()}
 				{#if canSplit}
@@ -943,6 +952,7 @@
 				     selector", never "one fixed ratio". -->
 				{#if ratioOptions.length > 0}
 					<AspectRatioSelector
+						bind:this={ratioRef}
 						options={ratioOptions}
 						defaultValue={ratioDefault}
 						promptText={text}
