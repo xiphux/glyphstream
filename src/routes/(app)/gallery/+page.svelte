@@ -433,6 +433,11 @@
 	async function refreshAfterMutation(deleted: Set<string>) {
 		await reloadFeed();
 		if (!drillUnit) return;
+		// Nothing left the library, so there is no survivor set to re-derive — and
+		// re-deriving one anyway would read `drillItems` before its fetch has landed
+		// and close the drill on an empty array. (Reachable only via the favorites
+		// re-star path, which passes an empty set.)
+		if (deleted.size === 0) return;
 		const survivors = (drillItems ?? []).filter((m) => !deleted.has(m.id));
 		if (survivors.length === 0) {
 			// The whole stack is gone — return to the gallery (restores saved scroll).
@@ -547,6 +552,14 @@
 					// (a prompt run is keyed off its filtered leader), so it is not a
 					// one-liner; left as-is deliberately rather than papered over.
 					await refreshAfterMutation(next ? new Set<string>() : new Set([id]));
+					// Not invalidating the page load here is deliberate, and measured. The
+					// Model dropdown's counts come from that load and are narrowed by
+					// `favorite`, so a toggle leaves them stale — it can even offer a model
+					// whose favorites-filtered result is now empty (a dead-end click, and any
+					// navigation or filter change re-reads them). But replacing `data` also
+					// re-triggers the reload effect below, so an `invalidate` here measured
+					// TWO `/api/media/layout` fetches per toggle instead of one — paying real
+					// work on every star to keep a cosmetic count exact.
 				}
 			}
 		} catch (e) {
@@ -1161,7 +1174,7 @@
 								? isSelected
 									? `Deselect ${m.kind}`
 									: `Select ${m.kind}`
-								: `Open ${m.kind} ${m.promptExcerpt ?? ''}`}
+								: `Open ${m.kind}${m.favorite ? ', favorite' : ''} ${m.promptExcerpt ?? ''}`}
 							aria-pressed={selectMode ? isSelected : undefined}
 						>
 							<div class="relative aspect-square w-full overflow-hidden">
@@ -1220,6 +1233,10 @@
 				     without the two overlapping. Display-only: starring happens in the
 				     lightbox, so a tile never has to compete with the select/delete hit
 				     areas in its other corner. -->
+				<!-- Purely decorative, hence aria-hidden: a screen reader would otherwise
+			     read "Favorite" and "video" as separate stray labels next to each tile.
+			     The state they convey is spoken as part of each tile's own aria-label
+			     instead (", favorite" / ", N favorites"), so it isn't visual-only. -->
 				{#snippet cornerBadges(starred: boolean, isVideo: boolean)}
 					{#if starred || isVideo}
 						<div
@@ -1265,7 +1282,9 @@
 								? isSelected
 									? `Deselect ${u.leaderKind}`
 									: `Select ${u.leaderKind}`
-								: `Open ${u.leaderKind} ${u.excerpt ?? ''}`}
+								: `Open ${u.leaderKind}${u.favoriteCount > 0 ? ', favorite' : ''} ${
+										u.excerpt ?? ''
+									}`}
 							aria-pressed={selectMode ? isSelected : undefined}
 						>
 							<div class="relative aspect-square w-full overflow-hidden">
@@ -1333,7 +1352,11 @@
 							type="button"
 							onclick={() => openStack(u)}
 							class="block w-full"
-							aria-label={`Open stack: ${u.label} (${u.memberCount} items)`}
+							aria-label={`Open stack: ${u.label} (${u.memberCount} items${
+								u.favoriteCount > 0
+									? `, ${u.favoriteCount} favorite${u.favoriteCount === 1 ? '' : 's'}`
+									: ''
+							})`}
 						>
 							<div class="relative aspect-square w-full overflow-hidden bg-surface-panel">
 								<div class="grid h-full w-full grid-cols-2 grid-rows-2 gap-px">

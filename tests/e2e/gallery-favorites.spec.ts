@@ -27,13 +27,17 @@ const STAR_BADGE = 'li[data-tile] [title="Favorite"]';
 
 /** Toggle the Favorites filter, reaching it through the View options popover on
  *  mobile — and dismissing that popover afterwards, since it survives the
- *  filter's navigation and would swallow the next click. */
+ *  filter's navigation and would swallow the next click.
+ *
+ *  `exact` matters: role-name matching is substring-based, and a favorited stack
+ *  card's accessible name ends in "N favorites", so a loose "Favorites" would
+ *  match the grid as well as this toggle. */
 async function toggleFavoritesFilter(
 	page: import('@playwright/test').Page,
 	isMobile: boolean,
 ): Promise<void> {
 	if (isMobile) await page.getByRole('button', { name: 'View options' }).click();
-	await page.getByRole('button', { name: 'Favorites' }).click();
+	await page.getByRole('button', { name: 'Favorites', exact: true }).click();
 	if (isMobile) await page.keyboard.press('Escape');
 }
 
@@ -67,7 +71,7 @@ test.describe('gallery: favorites', () => {
 		// Filtering narrows the whole browse view to the starred item. The toggle
 		// keeps one accessible name and reports its state through aria-pressed.
 		if (isMobile) await page.getByRole('button', { name: 'View options' }).click();
-		await expect(page.getByRole('button', { name: 'Favorites' })).toHaveAttribute(
+		await expect(page.getByRole('button', { name: 'Favorites', exact: true })).toHaveAttribute(
 			'aria-pressed',
 			'false',
 		);
@@ -127,7 +131,10 @@ test.describe('gallery: favorites', () => {
 
 		await toggleFavoritesFilter(page, isMobile);
 		// The card re-forms from the starred subset only.
-		const favStack = page.getByRole('button', { name: /^Open stack: .*\(2 items\)$/ });
+		// The count of starred members is spoken in the card's own accessible name —
+		// the star badge is aria-hidden decoration, so this is the only way a screen
+		// reader learns the tile is favorited.
+		const favStack = page.getByRole('button', { name: /^Open stack: .*\(2 items, 2 favorites\)$/ });
 		await expect(favStack).toBeVisible();
 		await favStack.click();
 
