@@ -138,12 +138,14 @@ export class GalleryFeed {
 	 * lightbox shows on its grid tile immediately.
 	 *
 	 * A local patch rather than a `seed()` from a fresh fetch because starring is
-	 * the one action here a user repeats in bursts, and a reload is not cheap: the
-	 * star moves `galleryUserFingerprint`, which is exactly what invalidates the
-	 * server's memoized library source, so every reseed would pay the full
-	 * O(library) stacking pass to move one badge. The counts this patches are the
-	 * only thing a star changes about a unit — membership, order, day buckets and
-	 * previews are all untouched — so there's nothing else a refetch would fix.
+	 * the one action here a user repeats in bursts, and a reseed is two round trips
+	 * (layout + units) to move one badge. The counts this patches are the only thing
+	 * a star changes about a unit — membership, order, day buckets and previews are
+	 * all untouched — so there is nothing else a refetch would fix. That property is
+	 * also what lets the server keep serving its memoized unfiltered library across a
+	 * star (`galleryUserFingerprint` validates the favorites half of its signature
+	 * only for favorites-filtered entries), which means a reseed here would often
+	 * return the very same units anyway.
 	 *
 	 * The caller knows which unit to name: a top-level tile's lightbox opens that
 	 * unit's leader, and a drill-in already holds its unit. No-op for a key that

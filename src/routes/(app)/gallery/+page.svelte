@@ -490,9 +490,12 @@
 	 * Optimistic, unlike the model-favorites star (which re-reads `data.prefs`):
 	 * there's no cheap load to re-run here. This page ships the whole visible
 	 * library, so an `invalidate` to move one star would re-serialize it, and a
-	 * feed reseed would additionally pay the server's full stacking pass — the
-	 * star itself moves the fingerprint that invalidates that memo. So the local
-	 * copies flip immediately and revert on failure.
+	 * feed reseed is two more round trips for a badge. So the local copies flip
+	 * immediately and revert on failure. (A star no longer invalidates the server's
+	 * memo for an UNFILTERED view — see `galleryUserFingerprint`'s split — so the
+	 * reseed this avoids is a round trip, not an O(library) restack. It still is
+	 * one when the Favorites filter is on, which is the branch below that reseeds
+	 * on purpose.)
 	 *
 	 * The three item lists are separate copies of the same rows (lightbox, drill
 	 * members, search results), so each is patched; the grid tile's badge is
@@ -1234,9 +1237,10 @@
 				     lightbox, so a tile never has to compete with the select/delete hit
 				     areas in its other corner. -->
 				<!-- Purely decorative, hence aria-hidden: a screen reader would otherwise
-			     read "Favorite" and "video" as separate stray labels next to each tile.
-			     The state they convey is spoken as part of each tile's own aria-label
-			     instead (", favorite" / ", N favorites"), so it isn't visual-only. -->
+				     read "Favorite" and "video" as separate stray labels next to each
+				     tile. The state they convey is spoken as part of each tile's own
+				     aria-label instead (", favorite" / ", N favorites"), so it is not
+				     visual-only. -->
 				{#snippet cornerBadges(starred: boolean, isVideo: boolean)}
 					{#if starred || isVideo}
 						<div

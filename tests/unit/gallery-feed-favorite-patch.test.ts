@@ -3,10 +3,11 @@ import { GalleryFeed } from '$lib/gallery-feed.svelte';
 import type { GalleryLayout, GalleryUnit } from '$lib/types/api';
 
 /**
- * The gallery patches a tile's star badge in place instead of reseeding the grid:
- * a star moves `galleryUserFingerprint`, which drops the server's memoized
- * library, so a reseed per star would pay the full O(library) stacking pass to
- * move one badge — and starring is the action a user repeats in bursts.
+ * The gallery patches a tile's star badge in place instead of reseeding the grid,
+ * because starring is the action a user repeats in bursts and a reseed is two round
+ * trips to move one badge. It is sound because a star changes nothing else about a
+ * unit — the same property that lets the server keep serving its memoized
+ * unfiltered library across a star (see `galleryUserFingerprint`).
  *
  * Plain value assertions, so the node environment is fine (no effects involved).
  */
