@@ -296,8 +296,13 @@ test('a clock in the prompt is not a shape request', async ({ page }) => {
 	await gotoNewChat(page);
 	await selectModel(page, /Mock Image/);
 	await page.locator('textarea').first().fill('a station clock showing 3:45');
-	// Given a moment to be wrong — the detection is debounced, so asserting
-	// immediately would pass even if it were going to fire.
+	// Proving a NON-event, so there is no state transition to await: a web-first
+	// assertion retries until it first holds, and "absent" already holds, so it
+	// would return within a few ms and pass even against a detector that was about
+	// to fire. Outwaiting the 300ms debounce is the only thing that makes this
+	// assertion — and the Send below, which would otherwise also land inside the
+	// window — mean anything.
+	await page.waitForTimeout(500);
 	await expect(page.getByRole('button', { name: /found in your prompt/i })).toHaveCount(0);
 	await expect(selector(page)).toContainText('Default');
 
@@ -321,6 +326,10 @@ test('picking a shape by hand outranks the one in the prompt', async ({ page }) 
 	// Keep typing with the same ratio still sitting in the text: an unoverridable
 	// detection would re-assert itself here, which is the bug worth an e2e guard.
 	await page.locator('textarea').first().fill('a 16:9 photo of a lighthouse at dusk');
+	// Same non-event problem as the clock test — the trigger ALREADY reads 3:2, so
+	// asserting it without outwaiting the debounce this edit just re-armed would
+	// pass against the very regression the test is named for.
+	await page.waitForTimeout(500);
 	await expect(selector(page)).toContainText('3:2');
 
 	await page.getByRole('button', { name: 'Send message' }).click();
