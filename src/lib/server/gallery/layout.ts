@@ -352,8 +352,15 @@ function evictUnitsEntry(key: string): void {
  *  wrote. That guarantee lives in `setMediaFavorite`, deliberately — a plain
  *  `Date.now()` lets a same-millisecond swap slip past both halves, and closing
  *  it at the write costs nothing here, where the alternative was folding row
- *  identity into an aggregate that runs on every gallery request. Free — same
- *  rows, same scan, two more aggregate expressions. */
+ *  identity into an aggregate that runs on every gallery request.
+ *
+ *  Cheap, but not free, and only because the index was widened to keep it so:
+ *  `favorited_at` trails `idx_media_user_gallery` for this query's sake. Reading
+ *  a column that index doesn't carry costs a table-row lookup per matching row,
+ *  which measured 0.8ms -> 3.2ms at 30k media and turned this — the one piece of
+ *  DB work a cache HIT still does — into the dominant cost of a request that
+ *  otherwise slices an in-memory array. If you add an aggregate here, check it
+ *  against that index first. */
 function galleryUserFingerprint(userId: string): string {
 	const row = getDb()
 		.select({

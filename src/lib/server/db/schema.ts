@@ -832,15 +832,35 @@ export const media = sqliteTable(
 		// fingerprint, the model + month facet lists, the unit source load) each
 		// walked EVERY user's media. Leading with user_id and carrying created_at
 		// makes them index-served, and covering for the fingerprint.
-		index('idx_media_user_gallery').on(t.userId, t.origin, t.hardDeletedAt, t.createdAt),
-		// No companion index for `favorited_at is not null`, deliberately: the
-		// favorites filter narrows the *same* predicate this index already serves,
-		// so it seeks identically and tests favorited_at as a residual on rows it
-		// was already walking. Favoriting can only make the gallery's O(library)
-		// source load cheaper than the unfiltered one it does today, never dearer,
-		// so a partial index would be an unmeasured guess — and per the
-		// idx_media_unembedded note below, one SQLite might not even pick. Add it
-		// if a large library ever measures otherwise.
+		//
+		// `favorited_at` trails purely to KEEP that covering property. It is not
+		// filtered on here — the fingerprint *projects* it (`galleryUserFingerprint`
+		// aggregates max(favorited_at) so a star is visible to the gallery's memos),
+		// and a projected column outside the index costs a table-row lookup per
+		// matching row. Measured at 30k media: the plan drops from COVERING INDEX to
+		// INDEX and the query goes 0.8ms -> 3.2ms (4.2ms with embeddings populated),
+		// on a query that runs on EVERY gallery request including cache hits — twice
+		// on a miss. Carrying the column restores COVERING and 1.4ms. It cost
+		// nothing: the rebuilt index came out slightly smaller (the value is NULL for
+		// almost every row), and a trailing column cannot affect the (user_id,
+		// origin) seek. The only new cost is one extra index entry rewritten per
+		// star, which is a rare interactive write.
+		index('idx_media_user_gallery').on(
+			t.userId,
+			t.origin,
+			t.hardDeletedAt,
+			t.createdAt,
+			t.favoritedAt,
+		),
+		// No *partial* index for `favorited_at is not null`, deliberately — separate
+		// question from the projection above. The favorites filter narrows the same
+		// predicate this index already serves, so it seeks identically and tests
+		// favorited_at as a residual on rows it was already walking. Measured at 30k
+		// media, the favorites-filtered source load is 1.4ms against 35.8ms
+		// unfiltered: filtering can only make the gallery's O(library) load cheaper
+		// than the one it already does, never dearer. So a partial index would be an
+		// unmeasured guess — and per the idx_media_unembedded note below, one SQLite
+		// might not even pick. Add it if a large library ever measures otherwise.
 		// Covers the purger's WHERE — unreferenced_since <= cutoff AND
 		// hard_deleted_at IS NULL AND origin = 'uploaded'. Putting the
 		// range column last lets SQLite use index-only equality probes on

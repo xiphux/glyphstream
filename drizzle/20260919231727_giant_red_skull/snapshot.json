@@ -2585,6 +2585,10 @@
         {
           "value": "created_at",
           "isExpression": false
+        },
+        {
+          "value": "favorited_at",
+          "isExpression": false
         }
       ],
       "isUnique": false,
