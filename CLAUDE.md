@@ -295,6 +295,18 @@ exact-match `apple-touch-startup-image` media query.
   generate stays clean. Migration folders are now per-migration dirs
   (`<ts>_<name>/migration.sql`), converted from the old flat layout by
   `drizzle-kit up`.
+- **drizzle-kit v1 does NOT diff an index's column list.** Change which columns
+  an `index()` covers and `pnpm db:generate` reports "No schema changes, nothing
+  to migrate" — with `schema.ts` and the latest snapshot openly disagreeing, and
+  `drizzle-kit check` still passing. So an index change can only arrive as a
+  hand-authored `DROP INDEX` + `CREATE INDEX` (see
+  `drizzle/*_gallery_index_carries_favorited_at`), and the latest snapshot's
+  index entry has to be patched by hand too, or generate diffs against a lie
+  forever. Nothing catches getting this wrong at runtime either: a missing
+  trailing column just silently drops a query from a `COVERING INDEX` plan to a
+  table lookup per row. `migrations-populated.test.ts` compares
+  `PRAGMA index_info` against every declared plain-column index for that reason —
+  it is the only thing holding the line, and it fails naming the index.
 - **Hand-authored migrations (FTS5 virtual tables, triggers, data backfills)
   are SQL-only — a `<ts>_<name>/migration.sql` with NO `snapshot.json`.** The
   runtime migrator (`drizzle-orm/node-sqlite/migrator`) reads only `migration.sql`,
