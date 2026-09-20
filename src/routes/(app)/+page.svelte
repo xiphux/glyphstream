@@ -372,15 +372,6 @@
 			.filter((m): m is ModelEntry => m !== undefined);
 	});
 	// Union, not intersection — see offeredRatios.
-	let ratioRef = $state<{ flushDetection: () => void } | null>(null);
-	// See ChatComposer's copy: a ratio typed immediately before Enter is still
-	// inside the detection debounce, so it has to be committed before the send
-	// reads it.
-	function submit() {
-		ratioRef?.flushDetection();
-		void startChat();
-	}
-
 	const ratioOptions = $derived(offeredRatios(selectedModels));
 	// Labels the picker's "Default" entry, so only report one when the selection
 	// AGREES on it — the first model's default is meaningless for a comparison
@@ -392,6 +383,15 @@
 	$effect(() => {
 		if (ratioOptions.length === 0 && aspectRatio !== null) aspectRatio = null;
 	});
+
+	let ratioRef = $state<{ flushDetection: () => void } | null>(null);
+	// See ChatComposer's copy. Note this page never clears the box, so the pending
+	// debounce here RACES the create round-trip rather than being cancelled by it —
+	// the flush is what makes the outcome independent of how long that POST takes.
+	function submit() {
+		ratioRef?.flushDetection();
+		void startChat();
+	}
 	// Split-attachments availability + cross-product count (mirrors ChatComposer).
 	const canSplit = $derived(
 		(activeKind === 'image' || activeKind === 'video') && attachments.readyImageCount >= 2,

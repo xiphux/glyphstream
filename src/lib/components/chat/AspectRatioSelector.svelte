@@ -148,9 +148,10 @@
 	// client ((app)/+page.svelte). There is no mismatch because nothing
 	// prompt-derived reaches the SSR markup — the menu is portaled and shut, and
 	// the trigger's marker needs `fromPrompt`, which needs `value`, which is only
-	// ever written from an effect and so is still null on both sides at hydration.
-	// That last clause is load-bearing: give `value` an init-depth default derived
-	// from the prompt and this becomes a real mismatch.
+	// never written at init depth and so is still null on both sides at hydration.
+	// (`flushDetection` writes it too, but only from a send, long after.) That last
+	// clause is load-bearing: give `value` an init-depth default derived from the
+	// prompt and this becomes a real mismatch.
 	// svelte-ignore state_referenced_locally
 	let debouncedPrompt = $state(promptText);
 	$effect(() => {

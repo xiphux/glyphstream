@@ -271,6 +271,18 @@
 	// The union across them: a model advertising nothing constrains nothing (it
 	// ignores whatever is sent), so intersecting would make partial support more
 	// restrictive than no support. See offeredRatios.
+	const ratioOptions = $derived(offeredRatios(selectedModels));
+	// Labels the picker's "Default" entry, so only report one when the selection
+	// AGREES on it — the first model's default is meaningless for a comparison
+	// spanning several. Undefined then, and Default says "each model's own", which
+	// is exactly what it will do.
+	const ratioDefault = $derived(agreedDefault(selectedModels));
+	// Same reasoning as the split flag: clear the moment no selected model offers
+	// ratios, so a stale value can't ride a send the selector isn't shown for.
+	$effect(() => {
+		if (ratioOptions.length === 0 && aspectRatio !== null) aspectRatio = null;
+	});
+
 	let ratioRef = $state<{ flushDetection: () => void } | null>(null);
 	/**
 	 * The send reads `aspectRatio` synchronously, and the selector only publishes a
@@ -283,18 +295,6 @@
 		ratioRef?.flushDetection();
 		onSend();
 	}
-
-	const ratioOptions = $derived(offeredRatios(selectedModels));
-	// Labels the picker's "Default" entry, so only report one when the selection
-	// AGREES on it — the first model's default is meaningless for a comparison
-	// spanning several. Undefined then, and Default says "each model's own", which
-	// is exactly what it will do.
-	const ratioDefault = $derived(agreedDefault(selectedModels));
-	// Same reasoning as the split flag: clear the moment no selected model offers
-	// ratios, so a stale value can't ride a send the selector isn't shown for.
-	$effect(() => {
-		if (ratioOptions.length === 0 && aspectRatio !== null) aspectRatio = null;
-	});
 </script>
 
 <div class="relative mx-auto max-w-3xl">
