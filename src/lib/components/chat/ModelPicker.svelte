@@ -106,6 +106,25 @@
 		 */
 		onOpen?: () => void;
 		/**
+		 * Reports the string the collapsed trigger is currently showing.
+		 *
+		 * For a caller that needs to lay out around this control's width — the
+		 * composer's action row decides what else fits beside it — and cannot
+		 * recompute the label itself: it comes from six branches over `compareMode`,
+		 * `compareTotal`, `compareKind`, the resolved item's `isCustom`/`label`, the
+		 * conversation's preset, and an owner-prefix strip. A second derivation of
+		 * that drifts, and did: a caller measuring `displayName` saw the base model's
+		 * name where the trigger was rendering a preset's, which is the case commit
+		 * 39bca565 added the preset branch for.
+		 *
+		 * Safe against the loop that makes this pattern suspect: nothing derived from
+		 * the reported string re-enters a prop this component reads, so it settles on
+		 * the first pass. It is a string, never a measurement — an observer of the
+		 * RENDERED WIDTH would oscillate, because a caller narrowing itself in
+		 * response would change the width it just measured.
+		 */
+		onTriggerLabel?: (label: string) => void;
+		/**
 		 * Whether a base model absent from `models` is KNOWN not to exist.
 		 *
 		 * A predicate rather than a flag, because "we finished loading" and "this
@@ -139,6 +158,7 @@
 	let {
 		models,
 		onOpen,
+		onTriggerLabel,
 		loading = false,
 		loadError = false,
 		baseIsGone = () => true,
@@ -549,6 +569,12 @@
 		// doesn't appear to have switched off it on the first follow-up.
 		if (presetLabel && presetModelId && value === presetModelId) return presetLabel;
 		return stripOwner(selected.label);
+	});
+
+	// Published rather than exposed, so a consumer never has to know which of the
+	// six branches above produced it.
+	$effect(() => {
+		onTriggerLabel?.(triggerLabel);
 	});
 
 	// On open, jump highlight to the currently-selected row (or the first one

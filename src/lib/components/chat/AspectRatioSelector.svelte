@@ -101,9 +101,17 @@
 		 */
 		dismissedRatio?: string | null;
 		/**
-		 * The model name sharing the composer's action row, which is what this
-		 * control is competing with for space. '' when a comparison is selected,
-		 * since the picker then shows a short count instead of a name.
+		 * Whatever the model picker's trigger is currently SHOWING — the thing this
+		 * control shares the composer's action row with, and competes with for
+		 * space. Reported by the picker itself (`onTriggerLabel`), never re-derived
+		 * by the caller: the trigger chooses between six branches, and a second
+		 * derivation of that drifts. One did, in both directions — it measured a
+		 * base model's name where a preset's was on screen, and one model's name
+		 * where "3 variations" was.
+		 *
+		 * '' before the picker has reported (it publishes from an effect, so not
+		 * during SSR) and whenever no picker is mounted. That reads as "nothing is
+		 * squeezing us", which keeps the glyph — the safe direction to be wrong in.
 		 *
 		 * Used only to decide whether to drop the glyph — see COMPACT_NAME_CHARS.
 		 */
@@ -128,8 +136,8 @@
 	 * A proxy for "the name is about to be truncated", calibrated by measurement
 	 * rather than taste: the picker's label renders at ~7.9px per character, and on
 	 * a 393px phone it gets about 67px of room with the glyph shown and 84px
-	 * without — so truncation starts somewhere around nine or ten characters, and
-	 * dropping the glyph buys roughly two or three more. A character count is a
+	 * without — so truncation starts around eight or nine characters, and dropping
+	 * the glyph buys about two more. A character count is a
 	 * crude stand-in for a text width and is deliberately set to err on the side of
 	 * KEEPING the glyph, because a name that fits is the case where the glyph costs
 	 * nothing and a measurement-based version would keep it too.
@@ -386,11 +394,12 @@
 			only by a dashed outline, which is precisely the distinction that
 			matters for a fan-out.
 
-			A viewport width rather than a container query because this composer is
-			`max-w-3xl` and centred, so on a phone its width IS the viewport less
-			padding; the proxy is exact in the one regime it fires in. If the
-			composer ever has to sit in something narrow on a wide screen, a
-			container query on the row is the honest mechanism.
+			A viewport width rather than a container query because both composers are
+			centred and capped (`max-w-3xl` in a thread, `max-w-2xl` on the new-chat
+			page), so on a phone the width of either IS the viewport less padding; the
+			proxy is exact in the one regime it fires in. If a composer ever has to sit
+			in something narrow on a wide screen, a container query on the row is the
+			honest mechanism.
 		-->
 		<span class={crowded ? 'contents max-[480px]:hidden' : 'contents'}>
 			{@render shape(selected?.value ?? defaultValue ?? '1:1', 13, isDefault)}

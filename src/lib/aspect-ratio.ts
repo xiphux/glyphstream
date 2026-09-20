@@ -115,19 +115,6 @@ export function detectRatioInPrompt(text: string, options: AspectRatioOption[]):
 }
 
 /**
- * The model name that will sit next to the shape picker in the composer row, or
- * '' when there isn't a single one.
- *
- * Lives here, beside the other things the picker's parents feed it, because both
- * composers need it and the last two derivations that escaped this file drifted
- * into byte-identical copies. A comparison selection shows a short count ("3
- * models") instead of a name, so it puts no pressure on the row and reports ''.
- */
-export function soleModelLabel(models: ModelEntry[]): string {
-	return models.length === 1 ? models[0].displayName : '';
-}
-
-/**
  * The one shape the selection's own defaults agree on, for LABELLING the
  * picker's "Default" entry — never for preselecting a value.
  *
