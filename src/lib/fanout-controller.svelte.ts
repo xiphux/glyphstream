@@ -257,8 +257,13 @@ export class FanoutController {
 				// media row; for a FAILED branch, off its error part (there is no
 				// output) — either way the column keeps its input thumbnail.
 				inputMediaId: m.sourceMediaId ?? null,
-				// Rebuilt from server truth, which doesn't record the shape yet.
-				aspectRatio: null,
+				// Read off the output media row by `getSiblingAssistants`, the same
+				// lookup that recovers `sourceMediaId` — so a re-roll from a grid rebuilt
+				// after a reload keeps this column's shape instead of reframing it at the
+				// model's default. Null for a failed branch (no media row), for media
+				// generated before the column existed, and for any upstream that reports
+				// no ratio.
+				aspectRatio: m.aspectRatio ?? null,
 				// Read back off the row so a re-roll fired from a RECOVERED grid
 				// inherits its source's grid position, exactly as a live one does.
 				dispatchIndex: m.fanoutIndex ?? null,
@@ -287,6 +292,9 @@ export class FanoutController {
 			// recovered mid-generation keeps the "this input → this model" pairing
 			// instead of blanking the thumbnails until the branches land.
 			inputMediaId: pb.sourceMediaId,
+			// Still generating, so there is no media row to read a rendered shape off
+			// yet, and the in-flight registry doesn't carry the requested one. The
+			// column gets its ratio when it settles and the grid rebuilds.
 			aspectRatio: null,
 			// The in-flight registry doesn't carry the branch's grid position (it's
 			// only a sort key for persisted rows), so a placeholder has none. They

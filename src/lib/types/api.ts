@@ -631,6 +631,18 @@ export interface ChatMessage {
 	 */
 	sourceMediaId?: string | null;
 	/**
+	 * The aspect ratio this message's generated media was rendered at, read off
+	 * the OUTPUT media row. Populated by `getSiblingAssistants` only, alongside
+	 * {@link sourceMediaId} and for the same reason: so a re-roll fired from a
+	 * RECOVERED fan-out grid reproduces its source column's shape the way a live
+	 * one does, instead of falling back to the model's own default.
+	 *
+	 * Undefined on an ordinary thread message, and null for a branch with no
+	 * media row to read (a failure), for media generated before the column
+	 * existed, and for every upstream that reports no ratio.
+	 */
+	aspectRatio?: string | null;
+	/**
 	 * This branch's position in the fan-out grid it belongs to — the index the
 	 * client dispatched it at, read back off the row. Populated by
 	 * `getSiblingAssistants` only (an ordinary thread message has no grid

@@ -665,14 +665,20 @@ export function getSiblingAssistants(
 	const outputIds = msgs.map(outputMediaId).filter((id): id is string => id !== null);
 	if (outputIds.length > 0) {
 		const srcRows = db
-			.select({ id: media.id, src: media.sourceMediaId })
+			.select({ id: media.id, src: media.sourceMediaId, ratio: media.aspectRatio })
 			.from(media)
 			.where(inArray(media.id, outputIds))
 			.all();
-		const srcById = new Map(srcRows.map((r) => [r.id, r.src]));
+		const byId = new Map(srcRows.map((r) => [r.id, r]));
 		for (const m of msgs) {
 			const out = outputMediaId(m);
-			if (out) m.sourceMediaId = srcById.get(out) ?? null;
+			if (!out) continue;
+			const row = byId.get(out);
+			m.sourceMediaId = row?.src ?? null;
+			// Same lookup, same purpose as `sourceMediaId`: a re-roll from a grid
+			// rebuilt after a reload has to reproduce its column's shape rather than
+			// reframe it at the model's default.
+			m.aspectRatio = row?.ratio ?? null;
 		}
 	}
 	return msgs;

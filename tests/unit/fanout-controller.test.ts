@@ -1697,3 +1697,49 @@ describe('FanoutController — avatar comparisons', () => {
 		expect(fc.canRegenerate).toBe(true);
 	});
 });
+
+describe('FanoutController — recovered columns keep their aspect ratio', () => {
+	it('reads the shape off the persisted sibling so a re-roll reproduces it', () => {
+		// `getSiblingAssistants` hydrates `aspectRatio` from the output media row,
+		// the same batched lookup that recovers `sourceMediaId`. Without it a
+		// widescreen column re-rolled after a reload would come back at the
+		// workflow's own default — the reframing the per-column field exists to
+		// prevent.
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		const wide = { ...imageSibling('a', 'bridge::sdxl', null), aspectRatio: '16:9' };
+		const tall = { ...imageSibling('b', 'bridge::sdxl', null), aspectRatio: '9:16' };
+		fc.syncFromServer({
+			parentMessageId: 'u1',
+			avatar: false,
+			kind: 'image',
+			siblings: [wide, tall],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		});
+		expect(fc.columns.map((c) => c.aspectRatio)).toEqual(['16:9', '9:16']);
+	});
+
+	it('is null when the row records no shape', () => {
+		// Media generated before the column existed, a failed branch with no media
+		// row at all, or any upstream that reports no ratio. The re-roll then sends
+		// nothing and the model uses its own default, as it always did.
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		fc.syncFromServer({
+			parentMessageId: 'u1',
+			avatar: false,
+			kind: 'image',
+			siblings: [imageSibling('a', 'bridge::sdxl', null)],
+			pending: 1,
+			pendingModelIds: ['bridge::sdxl'],
+			pendingStartedAt: [2000],
+			pendingSourceMediaIds: [null],
+		});
+		// Settled row with no recorded ratio, and a still-generating placeholder
+		// that has no media row to read one off yet.
+		expect(fc.columns.map((c) => c.aspectRatio)).toEqual([null, null]);
+	});
+});
