@@ -438,4 +438,22 @@ test('the send button stays inside the composer when the row is crowded', async 
 	// the composer's border — not merely inside the viewport.
 	expect(overflow!.row).toBe(0);
 	expect(overflow!.pastEdge).toBeLessThanOrEqual(0);
+
+	// The trigger's glyph is dropped at phone widths and its pixels go to the model
+	// name. The text beside it carries the same meaning without the ambiguity — at
+	// a 13px box, 16:9 / 3:2 / 4:3 differ by about a pixel and a half.
+	const glyphWidth = (): Promise<number> =>
+		page.evaluate(() => {
+			const svg = document
+				.querySelector('button[aria-label^="Aspect ratio"]')
+				?.querySelector('svg');
+			return svg ? Math.round(svg.getBoundingClientRect().width) : -1;
+		});
+	expect(await glyphWidth()).toBe(0);
+
+	// …and comes back once there is room for it, so the drop is a response to
+	// pressure rather than a permanent amputation.
+	await page.setViewportSize({ width: 900, height: 720 });
+	await expect(selector(page)).toBeVisible();
+	expect(await glyphWidth()).toBeGreaterThan(0);
 });

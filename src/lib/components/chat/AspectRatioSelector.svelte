@@ -341,7 +341,26 @@
 		     row does. Asking `selected === null` instead would be a SECOND question
 		     with its own answer: `selected` is also null for a value absent from
 		     `options`, so the trigger could read Default while the row did not. -->
-		{@render shape(selected?.value ?? defaultValue ?? '1:1', 13, isDefault)}
+		<!--
+			Dropped on phone-portrait widths, where the composer's action row is
+			provably at capacity (the flex spacer measures zero at 393px with a
+			long model name) and every pixel it gives up is a pixel of model name
+			that stops being an ellipsis. The GLYPH is the half that can go: the
+			text beside it says the same thing unambiguously, while at a 13px box
+			the shapes for 16:9, 3:2 and 4:3 stand 7.3, 8.7 and 9.8px tall — a
+			1.4px difference nobody reads on a phone — and Default is distinguished
+			only by a dashed outline, which is precisely the distinction that
+			matters for a fan-out.
+
+			A viewport width rather than a container query because this composer is
+			`max-w-3xl` and centred, so on a phone its width IS the viewport less
+			padding; the proxy is exact in the one regime it fires in. If the
+			composer ever has to sit in something narrow on a wide screen, a
+			container query on the row is the honest mechanism.
+		-->
+		<span class="contents max-[480px]:hidden">
+			{@render shape(selected?.value ?? defaultValue ?? '1:1', 13, isDefault)}
+		</span>
 		<span class="tabular-nums">{selected?.value ?? 'Default'}</span>
 		{#if fromPrompt}
 			<!-- Says WHY this is selected, for a change the user didn't make by hand.
