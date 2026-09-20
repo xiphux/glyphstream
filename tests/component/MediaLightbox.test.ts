@@ -149,6 +149,39 @@ describe('MediaLightbox — header metadata', () => {
 		expect(screen.getByText(/^bridge-dev · .+ · 100\.0 KB · image\/png$/)).toBeInTheDocument();
 	});
 
+	it('reports the aspect ratio between the date and the size', () => {
+		render(MediaLightbox, {
+			props: {
+				media: makeImage({
+					sourceEndpointId: 'bridge-dev',
+					sourceModel: 'bridge-dev::anima',
+					aspectRatio: '16:9',
+				}),
+				onClose: vi.fn(),
+			},
+		});
+		expect(
+			screen.getByText(/^bridge-dev · .+ · 16:9 · 100\.0 KB · image\/png$/),
+		).toBeInTheDocument();
+	});
+
+	it('omits the aspect ratio when none was recorded', () => {
+		// The common case by a wide margin: uploads, pre-feature rows, and every
+		// upstream that doesn't report a ratio. A placeholder segment here would
+		// put a stray separator on almost every row in the gallery.
+		render(MediaLightbox, {
+			props: {
+				media: makeImage({
+					sourceEndpointId: 'bridge-dev',
+					sourceModel: 'bridge-dev::anima',
+					aspectRatio: null,
+				}),
+				onClose: vi.fn(),
+			},
+		});
+		expect(screen.getByText(/^bridge-dev · .+ · 100\.0 KB · image\/png$/)).toBeInTheDocument();
+	});
+
 	it('omits the endpoint from the metadata line when none is recorded', () => {
 		render(MediaLightbox, {
 			props: {

@@ -1,0 +1,1 @@
+ALTER TABLE `media` ADD `aspect_ratio` text;

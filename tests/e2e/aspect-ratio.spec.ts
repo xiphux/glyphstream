@@ -11,6 +11,8 @@
  */
 import { test, expect } from './fixtures/test';
 import { resetData, selectModel } from './helpers';
+import { DatabaseSync } from 'node:sqlite';
+import { resolve } from 'node:path';
 
 // Inline rather than an import statement: specs are barred from importing
 // '@playwright/test' (fixtures/test.ts adds the server-error check), and the ban
@@ -156,4 +158,35 @@ test('a fan-out sends the picked ratio on its branches', async ({ page }) => {
 	// Both branches settle into the compare grid.
 	await expect(page.locator('img[src*="/api/media/"]')).toHaveCount(2, { timeout: 15000 });
 	expect(await lastRequestedRatio(page)).toBe('16:9');
+});
+
+test('the rendered ratio is persisted and shown in the lightbox', async ({ page }) => {
+	await gotoNewChat(page);
+	await selectModel(page, /Mock Image/);
+	await selector(page).click();
+	await page.getByRole('button', { name: /^3:2/ }).click();
+
+	await page.locator('textarea').first().fill('a lighthouse');
+	await page.getByRole('button', { name: 'Send message' }).click();
+	await page.waitForURL(/\/chat\/[^/]+$/);
+	await expect(page.locator('img[src*="/api/media/"]').first()).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
+
+	// What the UPSTREAM echoed lands on the media row — not what was requested.
+	// They agree here; the point is that the column is written at all.
+	const db = new DatabaseSync(resolve('./tests/.e2e-data/test.db'));
+	try {
+		const row = db
+			.prepare(
+				"SELECT aspect_ratio FROM media WHERE origin = 'generated' ORDER BY created_at DESC LIMIT 1",
+			)
+			.get() as { aspect_ratio: string | null } | undefined;
+		expect(row?.aspect_ratio).toBe('3:2');
+	} finally {
+		db.close();
+	}
+
+	// That it then READS OUT in the lightbox is covered by
+	// tests/component/MediaLightbox.test.ts — driving the gallery to an open
+	// lightbox on two viewports proved flaky for no extra coverage.
 });

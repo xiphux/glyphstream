@@ -141,6 +141,10 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 				originalPrompt,
 				urlOrB64: { url: result.url, b64_json: result.b64_json },
 				sourceMediaId: params.sourceMediaId,
+				// The upstream's echo, not `params.aspectRatio`: a model whose menu
+				// lacked the requested ratio renders its nearest instead, and the
+				// stored value has to be what the pixels actually are.
+				aspectRatio: result.aspect_ratio ?? null,
 			});
 			return {
 				part: params.displayOnly

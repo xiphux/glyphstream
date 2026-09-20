@@ -786,6 +786,18 @@ export const media = sqliteTable(
 		// user typed so the UI can surface "Enhanced — show original". NULL when
 		// no enhancement happened (verbatim prompt) or for uploads.
 		originalPrompt: text('original_prompt'),
+		// The aspect ratio this asset was actually rendered at, as the upstream
+		// reported it back (`aspect_ratio` on the image response / video job) —
+		// NOT what was requested. The two differ whenever a model's menu lacked
+		// the requested ratio and it snapped to its nearest, which is routine for
+		// a fan-out across models with different menus, so recording the request
+		// would be wrong precisely when it mattered.
+		//
+		// Drives the lightbox's metadata line and lets "Regenerate with this
+		// prompt" reproduce the shape rather than silently reframing it. NULL for
+		// uploads, for rows generated before this shipped, and for any upstream
+		// that doesn't deal in ratios — the great majority of them.
+		aspectRatio: text('aspect_ratio'),
 		createdAt: integer('created_at').notNull(),
 		refCount: integer('ref_count').notNull().default(0),
 		// When the user starred this asset in the gallery / lightbox; NULL = not a

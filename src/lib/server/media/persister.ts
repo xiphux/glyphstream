@@ -48,6 +48,10 @@ interface PersistImageInput {
 	/** Input image this edit was produced from (i2i), for provenance + the
 	 *  split-attachments grid. Null for text-to-image. */
 	sourceMediaId?: string | null;
+	/** The aspect ratio the upstream reported it actually rendered at — not what
+	 *  was requested, which differs whenever the model snapped to its nearest
+	 *  offered shape. Null for an upstream that doesn't deal in ratios. */
+	aspectRatio?: string | null;
 }
 
 export async function persistGeneratedImage(input: PersistImageInput): Promise<string> {
@@ -64,6 +68,7 @@ export async function persistGeneratedImage(input: PersistImageInput): Promise<s
 		sourceModel: input.sourceModel,
 		sourceMediaId: input.sourceMediaId ?? null,
 		originalPrompt: input.originalPrompt ?? null,
+		aspectRatio: input.aspectRatio ?? null,
 		...promptFields(input.prompt),
 	});
 	return id;
@@ -83,6 +88,10 @@ interface PersistVideoInput {
 	contentType: string;
 	/** Input image this video was animated from (i2v). Null for text-to-video. */
 	sourceMediaId?: string | null;
+	/** The aspect ratio the upstream reported it actually rendered at — not what
+	 *  was requested, which differs whenever the model snapped to its nearest
+	 *  offered shape. Null for an upstream that doesn't deal in ratios. */
+	aspectRatio?: string | null;
 }
 
 /** Persist a video stream directly to the media store without buffering in memory. */
@@ -132,6 +141,7 @@ export async function persistGeneratedVideo(input: PersistVideoInput): Promise<s
 		sourceModel: input.sourceModel,
 		sourceMediaId: input.sourceMediaId ?? null,
 		originalPrompt: input.originalPrompt ?? null,
+		aspectRatio: input.aspectRatio ?? null,
 		...promptFields(input.prompt),
 	});
 	return id;

@@ -36,6 +36,10 @@ export interface MediaInsertInput {
 	 *  generation (`promptFull`/`promptExcerpt` then hold the ENHANCED prompt).
 	 *  Null when no enhancement happened or for uploads. */
 	originalPrompt?: string | null;
+	/** The aspect ratio the upstream reported it rendered at (its echo, not the
+	 *  request — a model may snap to its nearest offered shape). Null for uploads
+	 *  and for upstreams that don't deal in ratios. */
+	aspectRatio?: string | null;
 	/**
 	 * Defaults to 'generated' (produced by an upstream model). Use 'uploaded'
 	 * for user-supplied chat attachments — those get `unreferenced_since` set
@@ -73,6 +77,7 @@ export function insertMedia(input: MediaInsertInput): { id: string } {
 			promptExcerpt: input.promptExcerpt,
 			promptFull: input.promptFull ?? null,
 			originalPrompt: input.originalPrompt ?? null,
+			aspectRatio: input.aspectRatio ?? null,
 			originalFilename: input.originalFilename ?? null,
 			createdAt: now,
 			refCount: 0,
@@ -207,6 +212,7 @@ export function getMediaListItemForUser(mediaId: string, userId: string): MediaL
 			promptExcerpt: media.promptExcerpt,
 			promptFull: media.promptFull,
 			originalPrompt: media.originalPrompt,
+			aspectRatio: media.aspectRatio,
 			createdAt: media.createdAt,
 			origin: media.origin,
 			favoritedAt: media.favoritedAt,
@@ -431,6 +437,7 @@ export function listMediaForUser(
 			promptExcerpt: media.promptExcerpt,
 			promptFull: media.promptFull,
 			originalPrompt: media.originalPrompt,
+			aspectRatio: media.aspectRatio,
 			createdAt: media.createdAt,
 			origin: media.origin,
 			favoritedAt: media.favoritedAt,
@@ -500,6 +507,7 @@ function ftsRankMedia(
 		prompt_excerpt: string | null;
 		prompt_full: string | null;
 		original_prompt: string | null;
+		aspect_ratio: string | null;
 		created_at: number;
 		origin: 'generated' | 'uploaded';
 		favorited_at: number | null;
@@ -515,6 +523,7 @@ function ftsRankMedia(
 			media.prompt_excerpt AS prompt_excerpt,
 			media.prompt_full AS prompt_full,
 			media.original_prompt AS original_prompt,
+			media.aspect_ratio AS aspect_ratio,
 			media.created_at AS created_at,
 			media.origin AS origin,
 			media.favorited_at AS favorited_at,
@@ -544,6 +553,7 @@ function ftsRankMedia(
 			promptExcerpt: r.prompt_excerpt,
 			promptFull: r.prompt_full,
 			originalPrompt: r.original_prompt,
+			aspectRatio: r.aspect_ratio,
 			createdAt: r.created_at,
 			origin: r.origin,
 			favorite: r.favorited_at != null,
@@ -568,6 +578,7 @@ export function getMediaListItemsByIds(userId: string, ids: string[]): MediaList
 			promptExcerpt: media.promptExcerpt,
 			promptFull: media.promptFull,
 			originalPrompt: media.originalPrompt,
+			aspectRatio: media.aspectRatio,
 			createdAt: media.createdAt,
 			origin: media.origin,
 			favoritedAt: media.favoritedAt,
@@ -925,6 +936,7 @@ export function listMediaForConversation(
 			promptExcerpt: media.promptExcerpt,
 			promptFull: media.promptFull,
 			originalPrompt: media.originalPrompt,
+			aspectRatio: media.aspectRatio,
 			createdAt: media.createdAt,
 			origin: media.origin,
 			favoritedAt: media.favoritedAt,

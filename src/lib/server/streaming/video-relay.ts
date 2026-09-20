@@ -234,6 +234,10 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				stream,
 				contentType,
 				sourceMediaId: params.sourceMediaId ?? null,
+				// Read off the COMPLETED job, where the bridge has refined it from the
+				// requested value to what was actually rendered (a model may snap to
+				// the nearest shape its own menu offers).
+				aspectRatio: job.aspect_ratio ?? null,
 			});
 		} catch (e) {
 			// Same cancellation guard as the fetch step above — a Stop shouldn't

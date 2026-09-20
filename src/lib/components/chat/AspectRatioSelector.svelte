@@ -29,13 +29,28 @@
 		/** What the target model does when a request names no ratio, used as the
 		 *  opening selection before the user has ever picked one. */
 		defaultValue?: string;
+		/**
+		 * A shape to open on regardless of the remembered preference — set when
+		 * regenerating an existing image, so the re-run reproduces its framing.
+		 *
+		 * Wins only until the user picks something, and never rewrites the stored
+		 * preference: reproducing one image is not a change of what they usually
+		 * want.
+		 */
+		seed?: string | null;
 		/** The ratio to send for this turn. Owned here and reported upward, so
 		 *  both composers get the remembered-preference behaviour for free. */
 		value: string | null;
 		disabled?: boolean;
 	}
 
-	let { options, defaultValue, value = $bindable(), disabled = false }: Props = $props();
+	let {
+		options,
+		defaultValue,
+		seed = null,
+		value = $bindable(),
+		disabled = false,
+	}: Props = $props();
 
 	let open = $state(false);
 
@@ -49,6 +64,9 @@
 		preference = readStickyRatio();
 	});
 
+	/** Whether the user has chosen in this session, which is what retires `seed`. */
+	let picked = $state(false);
+
 	/**
 	 * Resolve the preference against what's actually on offer, so the control
 	 * shows what the user will GET rather than what it happens to be holding.
@@ -59,8 +77,9 @@
 	 * control is never in a blank state while it's visible at all.
 	 */
 	$effect(() => {
+		const wanted = !picked && seed ? seed : preference;
 		const resolved =
-			nearestOffered(preference, options) ??
+			nearestOffered(wanted, options) ??
 			nearestOffered(defaultValue ?? null, options) ??
 			options[0] ??
 			null;
@@ -68,6 +87,7 @@
 	});
 
 	function pick(next: string) {
+		picked = true;
 		// Written on the PICK, not on send: see writeStickyRatio.
 		preference = next;
 		writeStickyRatio(next);

@@ -446,7 +446,7 @@
 
 	/**
 	 * The secondary line under the model name: endpoint (when there is one),
-	 * date, size, content type.
+	 * date, aspect ratio (when recorded), size, content type.
 	 *
 	 * Assembled here rather than interpolated with an `{#if}` in the markup.
 	 * Svelte trims trailing whitespace at the END of an if-fragment, so the
@@ -458,7 +458,12 @@
 	function metaLine(m: MediaListItem): string {
 		const endpoint = sourceEndpointLabel(m);
 		const parts = endpoint ? [endpoint] : [];
-		parts.push(fmtDate(m.createdAt), fmtBytes(m.byteSize), m.contentType);
+		parts.push(fmtDate(m.createdAt));
+		// Absent for uploads, for pre-feature rows, and for every upstream that
+		// doesn't report a ratio — which is most of them, so this segment is the
+		// exception rather than the rule.
+		if (m.aspectRatio) parts.push(m.aspectRatio);
+		parts.push(fmtBytes(m.byteSize), m.contentType);
 		return parts.join(' · ');
 	}
 
@@ -488,6 +493,7 @@
 			kind: 'regenerate',
 			prompt,
 			sourceModelId: sourceModelIdFor(m),
+			aspectRatio: m.aspectRatio,
 		});
 		onClose();
 		await goto(resolve('/'));

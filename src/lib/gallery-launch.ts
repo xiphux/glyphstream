@@ -34,6 +34,13 @@ export type GalleryLaunchIntent =
 			 *  originating model is no longer in config — receiver picks
 			 *  its own default in that case. */
 			sourceModelId: string | null;
+			/** The shape the original was rendered at, so a regenerate reproduces
+			 *  it rather than silently reframing the shot. Null when the media row
+			 *  didn't record one (an upload, a pre-feature row, or an upstream that
+			 *  doesn't deal in ratios) — the receiver then keeps its own selection.
+			 *  Deliberately absent from `starting-image`: that's the i2i path, where
+			 *  the output shape follows the input image rather than a request. */
+			aspectRatio?: string | null;
 	  }
 	| {
 			kind: 'starting-image';

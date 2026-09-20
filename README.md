@@ -141,6 +141,13 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   listings of the same family are easy to tell apart. Models that only edit an
   image (upscalers, background removal, image-to-video) require an attachment
   before you can send, instead of failing after you've written a prompt.
+- **Aspect ratio picker** — models that advertise the shapes they accept get a
+  selector beside the prompt box, so you ask for "widescreen" or "portrait"
+  rather than computing pixels. The size budget stays with the model, which
+  means every offered shape fits the hardware it was configured for and no
+  prompt can ask for an image large enough to exhaust it. Your last choice is
+  remembered, one pick covers a whole multi-model compare, and a model whose
+  own list doesn't have it renders the nearest shape it does.
 - **Prompt enhancement** (optional) — before generating, an LLM rewrites your
   prompt into the format the target model prefers: for images (natural-language
   narrative, booru tags, keyword soup, hybrid, or structured JSON) and for video

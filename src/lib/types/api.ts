@@ -1672,6 +1672,15 @@ export interface MediaListItem {
 	 *  rewrote it. Null when no enhancement happened. Lets the UI surface
 	 *  "Enhanced — show original". */
 	originalPrompt: string | null;
+	/**
+	 * The aspect ratio this asset was rendered at, as the upstream reported it.
+	 * Shown in the lightbox's metadata line, and reused by "Regenerate with this
+	 * prompt" so a re-run doesn't silently reframe the shot.
+	 *
+	 * Null for uploads, for anything generated before this shipped, and for every
+	 * upstream that doesn't deal in ratios — so treat it as ordinarily absent.
+	 */
+	aspectRatio: string | null;
 	createdAt: number;
 	/** 'generated' = produced by an upstream model, 'uploaded' = a user
 	 *  attachment. The gallery only ever lists 'generated', so this is what lets

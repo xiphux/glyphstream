@@ -110,6 +110,10 @@
 	// ratios. Rides `PendingFirstMessage` to the chat page — the first generation
 	// in a new chat never goes through `turn.send` from here.
 	let aspectRatio = $state<string | null>(null);
+	// A shape to open the selector on, from a gallery "Regenerate with this
+	// prompt" — so the re-run reproduces the original's framing instead of
+	// silently reframing it under the user's remembered preference.
+	let seedAspectRatio = $state<string | null>(null);
 	const fanoutFirstModels = $derived(
 		expandCompareSelections(compareSelections, (id) => {
 			const m = catalogue.entry(id);
@@ -421,6 +425,9 @@
 				// `text` change and runs post-DOM-flush, so it sizes to the
 				// prompt without a manual tick()+resize dance here.
 				text = intent.prompt;
+				// Null for an upload, a pre-feature row, or an upstream that reports
+				// no ratio — the selector then keeps the user's own preference.
+				seedAspectRatio = intent.aspectRatio ?? null;
 			} else if (intent.kind === 'starting-image') {
 				attachments.attachExisting(intent.mediaId);
 			}
@@ -930,6 +937,7 @@
 					<AspectRatioSelector
 						options={ratioOptions}
 						defaultValue={ratioDefault}
+						seed={seedAspectRatio}
 						bind:value={aspectRatio}
 						disabled={busy}
 					/>
