@@ -67,6 +67,25 @@ export function offeredRatios(models: ModelEntry[]): AspectRatioOption[] {
 }
 
 /**
+ * The one shape the selection's own defaults agree on, for LABELLING the
+ * picker's "Default" entry — never for preselecting a value.
+ *
+ * Undefined unless every selected model reports a default AND they all report
+ * the same one. Both halves matter, and the second is the subtle one: a model
+ * that advertises ratios need not advertise a default, so filtering the missing
+ * ones out first would read "one model has a default" as agreement and let the
+ * row name a shape that applies to one branch of a fan-out and is simply
+ * unknown for the others. Saying nothing is the honest answer there — Default
+ * still works, it just can't promise what it resolves to.
+ */
+export function agreedDefault(models: ModelEntry[]): string | undefined {
+	if (models.length === 0) return undefined;
+	const first = models[0].aspectRatioDefault;
+	if (first === undefined) return undefined;
+	return models.every((m) => m.aspectRatioDefault === first) ? first : undefined;
+}
+
+/**
  * The option to show as selected, given a preference that may not be on offer.
  *
  * Snaps in log space, so 2:1 sits as far from 1:1 as 1:2 does, and ties fall to

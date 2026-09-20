@@ -144,6 +144,24 @@ describe('AspectRatioSelector — the Default entry', () => {
 		expect(localStorage.getItem('glyphstream:aspectRatio')).toBeNull();
 	});
 
+	it('survives the selector being destroyed and recreated', async () => {
+		// Default is remembered by the ABSENCE of the stored key, where every other
+		// pick is remembered by its presence — so the remount reads nothing and has
+		// to arrive at Default anyway. The composer destroys this selector on every
+		// switch to a model without ratios, so the round trip is routine, not rare.
+		const { rerender } = render(Harness, { props: { options: OPTIONS } });
+		await pick('16:9');
+
+		const user = userEvent.setup();
+		await user.click(trigger());
+		await user.click(defaultRow());
+		expect(trigger()).toHaveTextContent('Default');
+
+		await rerender({ options: OPTIONS, mounted: false });
+		await rerender({ options: OPTIONS, mounted: true });
+		expect(trigger()).toHaveTextContent('Default');
+	});
+
 	it('names the resolved shape when the selection agrees on one', async () => {
 		render(AspectRatioSelector, {
 			props: { options: OPTIONS, defaultValue: '9:16', value: null },

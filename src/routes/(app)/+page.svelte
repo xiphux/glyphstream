@@ -11,7 +11,7 @@
 	import OfflineNotice from '$lib/components/chat/OfflineNotice.svelte';
 	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
 	import AspectRatioSelector from '$lib/components/chat/AspectRatioSelector.svelte';
-	import { offeredRatios } from '$lib/aspect-ratio';
+	import { agreedDefault, offeredRatios } from '$lib/aspect-ratio';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { getModelCatalogue } from '$lib/model-catalogue.svelte';
 	import { baseIdOf } from '$lib/model-default';
@@ -373,12 +373,7 @@
 	// AGREES on it — the first model's default is meaningless for a comparison
 	// spanning several. Undefined then, and Default says "each model's own", which
 	// is exactly what it will do.
-	const ratioDefault = $derived.by(() => {
-		const defaults = new Set(
-			selectedModels.map((m) => m.aspectRatioDefault).filter((d) => d !== undefined),
-		);
-		return defaults.size === 1 ? [...defaults][0] : undefined;
-	});
+	const ratioDefault = $derived(agreedDefault(selectedModels));
 	// Clear the moment no selected model offers ratios, so a stale value can't
 	// ride a send the selector isn't shown for. Mirrors the split flag below.
 	$effect(() => {

@@ -162,13 +162,17 @@
 <Popover.Root bind:open>
 	<Popover.Trigger
 		{disabled}
-		aria-label={selected
-			? `Aspect ratio: ${selected.label ?? selected.value}`
-			: "Aspect ratio: each model's default"}
+		aria-label={isDefault
+			? "Aspect ratio: each model's default"
+			: `Aspect ratio: ${selected?.label ?? selected?.value}`}
 		title="Aspect ratio"
 		class="group inline-flex shrink-0 items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-fg-muted transition hover:bg-surface-raised hover:text-fg-secondary disabled:opacity-30"
 	>
-		{@render shape(selected?.value ?? defaultValue ?? '1:1', 13, selected === null)}
+		<!-- Dashed outline = Default, and it keys off the same `isDefault` the menu
+		     row does. Asking `selected === null` instead would be a SECOND question
+		     with its own answer: `selected` is also null for a value absent from
+		     `options`, so the trigger could read Default while the row did not. -->
+		{@render shape(selected?.value ?? defaultValue ?? '1:1', 13, isDefault)}
 		<span class="tabular-nums">{selected?.value ?? 'Default'}</span>
 		<ChevronDown size={12} class="opacity-60" />
 	</Popover.Trigger>

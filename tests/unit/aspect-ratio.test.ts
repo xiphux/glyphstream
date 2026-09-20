@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
+	agreedDefault,
 	nearestOffered,
 	offeredRatios,
 	parseRatio,
@@ -13,7 +14,11 @@ import {
 } from '$lib/aspect-ratio';
 import type { AspectRatioOption, ModelEntry } from '$lib/types/api';
 
-function model(id: string, aspectRatios?: AspectRatioOption[]): ModelEntry {
+function model(
+	id: string,
+	aspectRatios?: AspectRatioOption[],
+	aspectRatioDefault?: string,
+): ModelEntry {
 	return {
 		id,
 		endpointId: 'e',
@@ -29,6 +34,7 @@ function model(id: string, aspectRatios?: AspectRatioOption[]): ModelEntry {
 		promptStyle: null,
 		promptHint: null,
 		...(aspectRatios ? { aspectRatios } : {}),
+		...(aspectRatioDefault ? { aspectRatioDefault } : {}),
 	};
 }
 
@@ -103,6 +109,38 @@ describe('offeredRatios', () => {
 			model('b', [{ value: '16:9', label: 'Cinema' }]),
 		]);
 		expect(offered).toEqual([{ value: '16:9', label: 'Widescreen' }]);
+	});
+});
+
+describe('agreedDefault', () => {
+	it('reports the shared default when every model names the same one', () => {
+		expect(agreedDefault([model('a', r('1:1'), '3:4'), model('b', r('16:9'), '3:4')])).toBe('3:4');
+	});
+
+	it('reports nothing when the defaults differ', () => {
+		expect(agreedDefault([model('a', r('1:1'), '3:4'), model('b', r('16:9'), '16:9')])).toBe(
+			undefined,
+		);
+	});
+
+	it('reports nothing when only SOME models name a default', () => {
+		// The case a "filter out the undefined ones" reading gets wrong: one
+		// default survives the filter, the set has size 1, and the picker labels
+		// Default with a shape that is only true for model a. Model b's is unknown,
+		// which is exactly what the label must not claim to know.
+		expect(agreedDefault([model('a', r('1:1'), '3:4'), model('b', r('16:9'))])).toBe(undefined);
+	});
+
+	it('reports nothing when no model names a default', () => {
+		expect(agreedDefault([model('a', r('1:1')), model('b', r('16:9'))])).toBe(undefined);
+	});
+
+	it('reports nothing for an empty selection', () => {
+		expect(agreedDefault([])).toBe(undefined);
+	});
+
+	it("reports a lone model's default", () => {
+		expect(agreedDefault([model('a', r('1:1'), '9:16')])).toBe('9:16');
 	});
 });
 
