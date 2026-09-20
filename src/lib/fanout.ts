@@ -178,13 +178,24 @@ export interface FanoutColumn {
 	 *  as a thumbnail in the column header. Null for a non-split branch. */
 	inputMediaId: string | null;
 	/**
-	 * The aspect ratio this branch was dispatched with, or null when the model
-	 * offered none (or when the column was rebuilt from server truth, which
-	 * doesn't record it yet).
+	 * The shape this column belongs to, or null when there is none to report.
 	 *
 	 * Held per column rather than per grid so a RE-ROLL reproduces its source
 	 * column's shape — re-rolling a widescreen variation and getting a portrait
 	 * back would be the kind of surprise the grid exists to avoid.
+	 *
+	 * Note it means two subtly different things over a column's life, because
+	 * they come from different places and neither is available on both paths:
+	 * what the branch was DISPATCHED with while it is live, and what the upstream
+	 * reported it RENDERED once the grid is rebuilt from persisted rows (read off
+	 * `media.aspect_ratio` via `getSiblingAssistants`). They agree except where a
+	 * model snapped the request to its own nearest shape — and a re-roll re-snaps
+	 * identically either way, which is why the distinction stays harmless.
+	 *
+	 * Null for: a model that offered no ratios, an avatar column (pinned square
+	 * server-side), a still-generating recovered placeholder (no media row yet,
+	 * and the in-flight registry doesn't carry the request), and media that
+	 * predates the column.
 	 */
 	aspectRatio: string | null;
 	/**

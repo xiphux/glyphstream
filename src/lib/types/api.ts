@@ -637,9 +637,13 @@ export interface ChatMessage {
 	 * RECOVERED fan-out grid reproduces its source column's shape the way a live
 	 * one does, instead of falling back to the model's own default.
 	 *
-	 * Undefined on an ordinary thread message, and null for a branch with no
-	 * media row to read (a failure), for media generated before the column
-	 * existed, and for every upstream that reports no ratio.
+	 * Undefined on an ordinary thread message AND on a branch that produced no
+	 * media at all (a failure) — `getSiblingAssistants` skips those before it
+	 * assigns, and unlike {@link sourceMediaId} there is no error-part fallback to
+	 * read one from. Null when a media row exists but records no ratio: media
+	 * generated before the column existed, and every upstream that reports none.
+	 *
+	 * So absent and null both mean "no shape known"; don't lean on the difference.
 	 */
 	aspectRatio?: string | null;
 	/**
