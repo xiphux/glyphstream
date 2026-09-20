@@ -355,7 +355,11 @@
 						<span class="min-w-0">
 							<span class="flex items-center gap-1">
 								<span class="tabular-nums">{option.value}</span>
-								{#if option.value === liveDetection}
+								<!-- Gated on `fromPrompt`, like the trigger badge and the line
+							     above, so all three agree. Keyed to `liveDetection` alone it
+							     would mark a row the prompt named but a seed outranked —
+							     sparkling an unselected row with no line to explain it. -->
+								{#if fromPrompt && option.value === liveDetection}
 									<Sparkles size={9} class="shrink-0 opacity-70" />
 								{/if}
 							</span>

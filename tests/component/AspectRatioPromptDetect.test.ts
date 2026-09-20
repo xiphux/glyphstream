@@ -212,6 +212,23 @@ describe('AspectRatioSelector — a ratio named in the prompt', () => {
 		expect(trigger()).toHaveTextContent('16:9');
 	});
 
+	it('marks no menu row when a seed outranks the detection', async () => {
+		// All three affordances key off `fromPrompt`, so they agree. The row marker
+		// keyed to the detection alone would sparkle a row the prompt named but the
+		// seed overruled — unselected, and with no line above to explain it, since
+		// that line is gated.
+		render(Harness, {
+			props: { options: OPTIONS, initialSeed: '1:1', promptText: 'a 16:9 still' },
+		});
+		await settle();
+		await user().click(trigger());
+
+		expect(screen.queryByText(/Found .* in your prompt/i)).toBeNull();
+		// One svg is the row's own shape glyph; a second would be the marker.
+		const row = screen.getByRole('button', { name: /^16:9/ });
+		expect(row.querySelectorAll('svg')).toHaveLength(1);
+	});
+
 	it('does not flicker through a ratio that is a prefix of the one being typed', async () => {
 		// The debounce earns its keep only when the advertised list contains a ratio
 		// that is a TEXT PREFIX of another, because exact matching already ignores
