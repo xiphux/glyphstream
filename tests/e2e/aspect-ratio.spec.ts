@@ -339,11 +339,17 @@ test('picking a shape by hand outranks the one in the prompt', async ({ page }) 
 });
 
 test('a ratio typed just before Enter still reaches the upstream', async ({ page }) => {
-	// Deliberately shaped so it CANNOT wait the debounce out: real keystrokes, then
-	// Enter with no assertion in between. Every other test here awaits the picker
-	// settling before it sends, which is precisely why none of them can see this —
-	// the ratio is trailing, so it exists only in the snapshot the debounce is
-	// still holding when the send reads the value.
+	// Real keystrokes then Enter, with no assertion in between — every other test
+	// here awaits the picker settling before it sends, which is precisely why none
+	// of them can see this: the ratio is trailing, so it exists only in the snapshot
+	// the debounce is still holding when the send reads the value.
+	//
+	// What this test guarantees is narrower than "it cannot wait the debounce out",
+	// because this page never clears the box: the pending timer is not cancelled,
+	// it merely RACES `POST /api/conversations`, and a create slow enough to outlast
+	// the debounce would let the detection land on its own. The margin is wide for a
+	// local SQLite insert, but it is a margin — and it degrades to a silent PASS
+	// rather than a failure. The follow-up-turn test below is the unconditional one.
 	await gotoNewChat(page);
 	await selectModel(page, /Mock Image/);
 
@@ -355,4 +361,51 @@ test('a ratio typed just before Enter still reaches the upstream', async ({ page
 	await page.waitForURL(/\/chat\/[^/]+$/);
 	await expect(page.locator('img[src*="/api/media/"]').first()).toBeVisible();
 	expect(await lastRequestedRatio(page)).toBe('16:9');
+});
+
+test('a trailing ratio survives Enter on a follow-up turn too', async ({ page }) => {
+	// The unconditional twin of the test above. On an existing conversation the send
+	// clears the composer BEFORE reading the ratio, and clearing it tears down the
+	// pending debounce timer outright — so the detection can never land on its own
+	// and this can only pass if the flush ran. No latency to race, on any machine.
+	//
+	// Asserted on the REQUEST the client sends, not on `lastRequestedRatio`: a
+	// follow-up turn in an image conversation auto-attaches the previous
+	// generation, so it goes upstream as image-to-image and the mock's
+	// text-to-image recorder never sees it. The claim under test is that the
+	// composer commits the ratio before the body is built, and the body is exactly
+	// where that is observable. The upstream leg is covered by the tests above.
+	const sent: Array<{ aspectRatio?: string }> = [];
+	page.on('request', (r) => {
+		if (r.method() === 'POST' && /\/api\/conversations\/[^/]+\/messages/.test(r.url())) {
+			sent.push(JSON.parse(r.postData() ?? '{}') as { aspectRatio?: string });
+		}
+	});
+
+	await gotoNewChat(page);
+	await selectModel(page, /Mock Image/);
+
+	// Turn one establishes the conversation on an image model. Deliberately names no
+	// ratio and picks none: a pick would write the remembered preference, which
+	// would then supply 16:9 on turn two for the wrong reason and pass against a
+	// deleted flush.
+	await page.locator('textarea').first().fill('a lighthouse');
+	await page.getByRole('button', { name: 'Send message' }).click();
+	await page.waitForURL(/\/chat\/[^/]+$/);
+	const rendered = page.locator('article img[src*="/api/media/"]');
+	await expect(rendered).toHaveCount(1, { timeout: 15000 });
+	expect(sent.at(-1)?.aspectRatio).toBeUndefined();
+	await expect(selector(page)).toBeVisible();
+
+	// Turn two: trailing ratio, Enter, nothing in between.
+	const box = page.locator('textarea').first();
+	await box.click();
+	await box.pressSequentially('a tall lighthouse, 16:9', { delay: 15 });
+	await page.keyboard.press('Enter');
+
+	await expect(rendered).toHaveCount(2, { timeout: 15000 });
+	// Two requests, and it is the SECOND one being measured — turn one is already
+	// pinned above as carrying no ratio at all.
+	expect(sent).toHaveLength(2);
+	expect(sent[1].aspectRatio).toBe('16:9');
 });
