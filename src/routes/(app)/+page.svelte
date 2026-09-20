@@ -432,7 +432,9 @@
 				// prompt without a manual tick()+resize dance here.
 				text = intent.prompt;
 				// Null for an upload, a pre-feature row, or an upstream that reports
-				// no ratio — the selector then keeps the user's own preference.
+				// no ratio. The selector then falls to its next-strongest source,
+				// which is a ratio named in the prompt just restored above, and only
+				// then the user's own preference.
 				seedAspectRatio = intent.aspectRatio ?? null;
 			} else if (intent.kind === 'starting-image') {
 				attachments.attachExisting(intent.mediaId);
