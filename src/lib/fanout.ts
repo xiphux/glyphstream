@@ -178,6 +178,16 @@ export interface FanoutColumn {
 	 *  as a thumbnail in the column header. Null for a non-split branch. */
 	inputMediaId: string | null;
 	/**
+	 * The aspect ratio this branch was dispatched with, or null when the model
+	 * offered none (or when the column was rebuilt from server truth, which
+	 * doesn't record it yet).
+	 *
+	 * Held per column rather than per grid so a RE-ROLL reproduces its source
+	 * column's shape — re-rolling a widescreen variation and getting a portrait
+	 * back would be the kind of surprise the grid exists to avoid.
+	 */
+	aspectRatio: string | null;
+	/**
 	 * This column's position in the grid, as dispatched — sent on the wire and
 	 * persisted as the assistant row's `fanout_index`, so a grid rebuilt from
 	 * server truth (reload, iOS suspend) comes back in the order the user

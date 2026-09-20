@@ -62,6 +62,7 @@ import { parseModelId } from '$lib/server/endpoints/model-id';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import type { ModelEntry } from '$lib/types/api';
 import { startImageRelay } from '$lib/server/streaming/image-relay';
+import { nearestOffered } from '$lib/aspect-ratio';
 import {
 	AVATAR_BRANCH,
 	clearInFlight,
@@ -350,6 +351,13 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		promptStyle: modelEntry?.promptStyle ?? null,
 		promptHint: modelEntry?.promptHint ?? null,
 		enhancementEnabled,
+		// Pinned square, and deliberately not taken from the composer's selector
+		// (which isn't even rendered for this flow). An avatar renders inside a
+		// circle — `size-8 rounded-full object-cover` — so a widescreen portrait
+		// would be centre-cropped down to the middle sliver of the image. Nearest,
+		// not exact, for a model whose menu has no 1:1: that's the least cropping
+		// available. A model advertising no ratios gets nothing, as everywhere.
+		aspectRatio: nearestOffered('1:1', modelEntry?.aspectRatios ?? [])?.value,
 		displayOnly: true,
 		abortSignal: inFlight.controller.signal,
 		// A comparison leaves the leaf where it parked it: every branch is a

@@ -132,3 +132,28 @@ test('comparing two models offers the union of their menus', async ({ page }) =>
 		await expect(page.getByRole('button', { name: new RegExp(`^${ratio}`) })).toBeVisible();
 	}
 });
+
+test('a fan-out sends the picked ratio on its branches', async ({ page }) => {
+	await gotoNewChat(page);
+	await selectModel(page, /Mock Image/);
+	await selector(page).click();
+	await page.getByRole('button', { name: /^16:9/ }).click();
+
+	// Two image models, one shape. Mock Painter's menu has no 16:9 — the point is
+	// that the branch still carries it and the upstream resolves it, rather than
+	// the client filtering it out and leaving that model on its own default.
+	await page.getByRole('button', { name: 'Select model' }).click();
+	await page.getByRole('button', { name: 'Multiple' }).click();
+	await page.getByRole('option', { name: /Mock Painter/ }).click();
+	await page.keyboard.press('Escape');
+
+	await page.locator('textarea').first().fill('a lighthouse');
+	const send = page.getByRole('button', { name: /Send to 2 models/ });
+	await expect(send).toBeEnabled();
+	await send.click();
+
+	await page.waitForURL(/\/chat\/[^/]+$/);
+	// Both branches settle into the compare grid.
+	await expect(page.locator('img[src*="/api/media/"]')).toHaveCount(2, { timeout: 15000 });
+	expect(await lastRequestedRatio(page)).toBe('16:9');
+});

@@ -40,6 +40,7 @@ function col(overrides: Partial<FanoutColumn>): FanoutColumn {
 		inputMediaId: overrides.inputMediaId ?? null,
 		persisted: overrides.persisted ?? null,
 		error: overrides.error ?? null,
+		aspectRatio: null,
 		errorMessageId: overrides.errorMessageId ?? null,
 	};
 }
@@ -299,6 +300,7 @@ describe('FanoutColumns — media (keep-many) mode', () => {
 					col({
 						branchId: 'b0',
 						...failure,
+						aspectRatio: null,
 						errorMessageId: 'bad',
 						persisted: {
 							...persisted('bad', ''),

@@ -257,6 +257,8 @@ export class FanoutController {
 				// media row; for a FAILED branch, off its error part (there is no
 				// output) — either way the column keeps its input thumbnail.
 				inputMediaId: m.sourceMediaId ?? null,
+				// Rebuilt from server truth, which doesn't record the shape yet.
+				aspectRatio: null,
 				// Read back off the row so a re-roll fired from a RECOVERED grid
 				// inherits its source's grid position, exactly as a live one does.
 				dispatchIndex: m.fanoutIndex ?? null,
@@ -285,6 +287,7 @@ export class FanoutController {
 			// recovered mid-generation keeps the "this input → this model" pairing
 			// instead of blanking the thumbnails until the branches land.
 			inputMediaId: pb.sourceMediaId,
+			aspectRatio: null,
 			// The in-flight registry doesn't carry the branch's grid position (it's
 			// only a sort key for persisted rows), so a placeholder has none. They
 			// already render after the settled columns; see #buildRecoveredColumns'
@@ -316,6 +319,9 @@ export class FanoutController {
 		attachedMediaIds: string[],
 		branches: FanoutBranchSpec[],
 		models: readonly FanoutModel[],
+		/** Aspect ratio for every branch of this fan-out. One value serves menus
+		 *  that don't line up: each model snaps it against its own list upstream. */
+		aspectRatio: string | null = null,
 	): Promise<void> {
 		// Mirror the server's per-conversation cap so a legitimate user who builds
 		// an oversized cross-product (models × split images) gets a friendly message
@@ -389,6 +395,7 @@ export class FanoutController {
 			statusLabel: null,
 			startedAt: null,
 			inputMediaId: b.inputMediaId,
+			aspectRatio,
 			persisted: null,
 			error: null,
 			errorMessageId: null,
@@ -585,6 +592,8 @@ export class FanoutController {
 			statusLabel: null,
 			startedAt: null,
 			inputMediaId: null,
+			// Avatar portraits are pinned square server-side, not picked here.
+			aspectRatio: null,
 			persisted: null,
 			error: null,
 			errorMessageId: null,
@@ -690,6 +699,7 @@ export class FanoutController {
 							modelId: col.modelId,
 							modelKind: col.modelKind,
 							inputMediaId: col.inputMediaId,
+							aspectRatio: col.aspectRatio ?? undefined,
 							reroll: opts?.reroll,
 							fanoutSize: opts?.fanoutSize,
 							branchIndex: col.dispatchIndex,
@@ -1006,6 +1016,8 @@ export class FanoutController {
 			statusLabel: null,
 			startedAt: null,
 			inputMediaId: col.inputMediaId,
+			// Inherited from the source column, so a re-roll reproduces its shape.
+			aspectRatio: col.aspectRatio,
 			persisted: null,
 			error: null,
 			errorMessageId: null,

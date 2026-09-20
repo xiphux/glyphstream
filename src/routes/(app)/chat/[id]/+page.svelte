@@ -2081,7 +2081,7 @@
 		if (willFanOut) {
 			resetCompare();
 			splitAttachments = false;
-			await fanout.send(text, attachedMediaIds, branches, baseModels);
+			await fanout.send(text, attachedMediaIds, branches, baseModels, aspectRatio);
 			return;
 		}
 		// Single effective branch — collapse to a normal send with that model.
@@ -2188,7 +2188,13 @@
 			];
 			const pendingBranches = expandFanoutBranches(pendingBase, pendingSplitImageIds);
 			if (pendingBranches.length >= 2) {
-				void fanout.send(pendingText, pendingMediaIds, pendingBranches, pendingBase);
+				void fanout.send(
+					pendingText,
+					pendingMediaIds,
+					pendingBranches,
+					pendingBase,
+					pendingAspectRatio,
+				);
 			} else
 				void turn.send(pendingText, pendingMediaIds, {
 					...(pendingActivatedSkillNames.length

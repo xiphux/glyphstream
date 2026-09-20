@@ -1538,6 +1538,7 @@ describe('FanoutController — avatar comparisons', () => {
 				inputMediaId: null,
 				persisted: imageSibling('landed', 'bridge::sdxl', null),
 				error: null,
+				aspectRatio: null,
 				errorMessageId: null,
 			},
 		];

@@ -140,6 +140,7 @@ describe('allColumnsSettled', () => {
 		inputMediaId: null,
 		persisted: null,
 		error: null,
+		aspectRatio: null,
 		errorMessageId: null,
 	});
 
@@ -215,6 +216,7 @@ describe('gridMediaIds + applyDisplayOrder', () => {
 			createdAt: 0,
 		} as FanoutColumn['persisted'],
 		error: null,
+		aspectRatio: null,
 		errorMessageId: null,
 	});
 	const pending = (branchId: string): FanoutColumn => ({
@@ -293,6 +295,7 @@ describe('lightbox discard helpers', () => {
 			createdAt: 0,
 		} as FanoutColumn['persisted'],
 		error: null,
+		aspectRatio: null,
 		errorMessageId: null,
 	});
 	const ref = (id: string) => ({ id, kind: 'image' as const });
@@ -357,6 +360,7 @@ describe('dispatch-index placement', () => {
 		inputMediaId: null,
 		persisted: null,
 		error: null,
+		aspectRatio: null,
 		errorMessageId: null,
 	});
 
