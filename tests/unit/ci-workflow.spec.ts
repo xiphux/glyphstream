@@ -192,7 +192,7 @@ describe('docker.yml cannot act on an unearned pass', () => {
 describe('the release body and the build matrix agree on platforms', () => {
 	it('names every platform the matrix builds, and no others', () => {
 		const docker = parse(readFileSync(join(WORKFLOWS, 'docker.yml'), 'utf8')) as {
-			jobs: Record<string, { strategy?: { matrix?: { include?: { platform: string }[] } } }>;
+			jobs: Record<string, { strategy?: { matrix?: { include?: Array<{ platform: string }> } } }>;
 		};
 		const built = (docker.jobs.build.strategy?.matrix?.include ?? [])
 			.map((entry) => entry.platform)
