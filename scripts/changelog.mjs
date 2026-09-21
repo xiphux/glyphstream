@@ -461,7 +461,9 @@ function main(argv) {
 // gets whatever Node its runner image ships, while every other job here pins
 // 26. Stated as a property rather than a count on purpose: this said "the two
 // jobs" until a third call site was added and nobody updated it, and one leg
-// of that third job runs on ubuntu-22.04-arm, a different image again. On an older runtime `import.meta.main` is `undefined`, so this block
+// of that third job runs on ubuntu-22.04-arm, a different image again.
+//
+// On an older runtime `import.meta.main` is `undefined`, so this block
 // would be skipped, the process would exit 0 having printed nothing, and
 // `validate` would pass on any changelog while `release` wrote an empty
 // notes.md for the release action to publish. Silently, which is the failure
