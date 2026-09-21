@@ -110,14 +110,63 @@ function compareVersions(a, b) {
 }
 
 /**
+ * Problems that make parseChangelog SILENTLY LOSE sections, which the
+ * section-based checks below cannot see -- they only ever examine the sections
+ * that survived.
+ *
+ * Both shapes here read as a single enormous section: a code fence that is
+ * opened and never closed swallows every heading beneath it, and a heading
+ * typed `##v0.39.0` never matches at all and joins the section above. In both
+ * cases validate would report a well-formed file, sectionFor would return the
+ * whole back-catalogue as the release body, `test -s` would pass because that
+ * body is large rather than empty, and the compare link would quietly degrade
+ * to the full commit list. Nothing would fail.
+ *
+ * @param {string} text
+ * @returns {string[]}
+ */
+function lostHeadingProblems(text) {
+	/** @type {string[]} */
+	const problems = [];
+	/** @type {string | null} */
+	let fence = null;
+	let openedAt = 0;
+
+	text.split('\n').forEach((line, index) => {
+		const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+		if (marker) {
+			if (fence === null) {
+				fence = marker;
+				openedAt = index + 1;
+			} else if (marker[0] === fence[0] && marker.length >= fence.length) {
+				fence = null;
+			}
+			return;
+		}
+		if (fence === null && /^##[^\s#]/.test(line)) {
+			problems.push(
+				`line ${index + 1}: "${line.trim()}" needs a space after "##" to be read as a heading`,
+			);
+		}
+	});
+
+	if (fence !== null) {
+		problems.push(
+			`the code fence opened on line ${openedAt} is never closed, so every heading below it was read as body text`,
+		);
+	}
+	return problems;
+}
+
+/**
  * Structural problems with the changelog. An empty list means valid.
  *
  * @param {string} text
  * @returns {string[]}
  */
 export function validate(text) {
-	/** @type {string[]} */
-	const problems = [];
+	// First, because these make the section list itself untrustworthy.
+	const problems = lostHeadingProblems(text);
 	if (!/^#\s+Changelog\s*$/.test(text.split('\n')[0] ?? '')) {
 		problems.push('the first line must be "# Changelog"');
 	}

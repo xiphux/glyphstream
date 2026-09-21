@@ -158,6 +158,45 @@ describe('validate', () => {
 		expect(validate(text)).toContain('the first line must be "# Changelog"');
 	});
 
+	it('reports an unclosed code fence, which silently swallows every heading below it', () => {
+		// The worst shape in the file: without this the parse yields ONE section
+		// holding the whole back-catalogue, validate calls it well-formed, and
+		// the release publishes the entire history as its body.
+		const text = [
+			'# Changelog',
+			'',
+			'## v1.1.0',
+			'',
+			'- shows a sample:',
+			'',
+			'```toml',
+			'key = 1',
+			'',
+			'## v1.0.0',
+			'',
+			'- old',
+			'',
+		].join('\n');
+
+		expect(parseChangelog(text).map((s) => s.heading)).toEqual(['v1.1.0']);
+		expect(validate(text)).toContain(
+			'the code fence opened on line 7 is never closed, so every heading below it was read as body text',
+		);
+	});
+
+	it('reports a heading with no space after "##"', () => {
+		// Same failure, different typo: `##v1.0.0` never matches, so it joins
+		// the section above instead of starting its own.
+		const text = '# Changelog\n\n## v1.1.0\n\n- new\n\n##v1.0.0\n\n- old\n';
+		expect(validate(text)).toContain(
+			'line 7: "##v1.0.0" needs a space after "##" to be read as a heading',
+		);
+	});
+
+	it('does not report a balanced fence', () => {
+		expect(validate('# Changelog\n\n## v1.0.0\n\n```\nx\n```\n\n- a\n')).toEqual([]);
+	});
+
 	it('rejects a file with no sections at all', () => {
 		expect(validate('# Changelog\n\nnothing here\n')).toContain('no "## " release sections found');
 	});
