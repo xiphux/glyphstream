@@ -18,7 +18,10 @@ name: Docker
 on:
   push:
     branches: [main]
-    tags: ['v*.*.*']
+    # Not `v*.*.*`, which also matches `v1.0.0-rc.1`. Prereleases are not
+    # supported (see scripts/changelog.mjs), so such a tag could only start a
+    # run it can never finish.
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
 
 concurrency:
   group: docker-${{ github.ref }}
@@ -68,6 +71,27 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # The one check that reads the TAG, and the reason it cannot live in
+      # ci.yml: `gate` there inherits a pass by CONTENT, and the same tree can
+      # be tagged anything, so a tag check behind it is meaningless -- on a tag
+      # whose commit already went green, every ci.yml job is skipped.
+      #
+      # The unit tests cover the realistic slip (bumping package.json without
+      # renaming `## Unreleased`) because they run on the main push and assert
+      # against package.json's version. What nothing covers is the tag and the
+      # manifest DISAGREEING -- tagging v0.39.1 while package.json says 0.39.0.
+      # That passes every check and inherits a green run.
+      #
+      # In `build` rather than `merge`, where it started: `merge` applies the
+      # tags, but `build` has already pushed both architectures' digest-only
+      # blobs by then. Failing here means nothing reaches the registry at all.
+      # It costs a second, twice, on tag pushes only.
+      - name: The tag has a changelog section
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: node scripts/changelog.mjs release "$TAG" > /dev/null
 
       # Slugify the platform string for filenames ("linux/amd64" → "linux-amd64").
       - name: Prepare platform pair
@@ -136,32 +160,6 @@ jobs:
       contents: read
       packages: write
     steps:
-      # The one check that reads the TAG, and the reason it cannot live in
-      # ci.yml: `gate` there inherits a pass by CONTENT, and the same tree can
-      # be tagged anything, so a tag check behind it is meaningless -- on a tag
-      # whose commit already went green, every ci.yml job is skipped.
-      #
-      # The unit tests cover the realistic slip (bumping package.json without
-      # renaming `## Unreleased`) because they run on the main push and assert
-      # against package.json's version. What nothing covered is the tag and the
-      # manifest DISAGREEING -- tagging v0.39.1 while package.json says 0.39.0.
-      # That passes every check, inherits a green run, and `Create manifest list`
-      # below then moves `latest` onto an image with no release to explain it.
-      #
-      # Here rather than in `build`: build pushes by digest only, so failing at
-      # this point leaves an untagged blob and no tag ever appears.
-      - name: Checkout
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: The tag has a changelog section
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          TAG: ${{ github.ref_name }}
-        run: node scripts/changelog.mjs release "$TAG" > /dev/null
-
       - name: Download digests
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
