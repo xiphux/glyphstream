@@ -44,9 +44,31 @@ const UNRELEASED = 'Unreleased';
 export function parseChangelog(text) {
 	/** @type {{ heading: string, lines: string[] }[]} */
 	const sections = [];
+	// The open fence's marker, or null outside one. Headings are not recognised
+	// inside a code block: an entry showing a markdown or YAML sample can
+	// legitimately contain a line starting `## `, and treating it as a section
+	// boundary either invents a bogus version or -- worse, when the fenced line
+	// happens to look like one -- silently truncates the real section's body at
+	// that point and publishes half the notes.
+	/** @type {string | null} */
+	let fence = null;
+
 	for (const line of text.split('\n')) {
+		// CommonMark allows up to three spaces of indent, and a closing fence
+		// must use the same character and be at least as long as the opener.
+		const fenceMarker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+		if (fenceMarker) {
+			if (fence === null) {
+				fence = fenceMarker;
+			} else if (fenceMarker[0] === fence[0] && fenceMarker.length >= fence.length) {
+				fence = null;
+			}
+			if (sections.length > 0) sections[sections.length - 1].lines.push(line);
+			continue;
+		}
+
 		// `^##\s` cannot match `### `: the third `#` is not whitespace.
-		const heading = /^##\s+(\S.*?)\s*$/.exec(line);
+		const heading = fence === null ? /^##\s+(\S.*?)\s*$/.exec(line) : null;
 		if (heading) {
 			sections.push({ heading: heading[1], lines: [] });
 		} else if (sections.length > 0) {

@@ -61,6 +61,57 @@ describe('parseChangelog', () => {
 	it('drops the preamble above the first heading', () => {
 		expect(parseChangelog(VALID).some((s) => s.body.includes('Prose above'))).toBe(false);
 	});
+
+	it('does not read a "## " line inside a fenced code block as a heading', () => {
+		// The dangerous shape: a fenced line that looks like a version. Before
+		// fence tracking this passed validation AND truncated v1.0.0's body at
+		// the fence, so the published notes silently lost everything below it.
+		const text = [
+			'# Changelog',
+			'',
+			'## v1.0.0',
+			'',
+			'- shows a sample:',
+			'',
+			'```markdown',
+			'## v0.95.0',
+			'```',
+			'',
+			'- and a trailing entry',
+			'',
+			'## v0.9.0',
+			'',
+			'- old',
+			'',
+		].join('\n');
+
+		expect(parseChangelog(text).map((s) => s.heading)).toEqual(['v1.0.0', 'v0.9.0']);
+		expect(validate(text)).toEqual([]);
+		expect(sectionFor(text, 'v1.0.0')).toContain('and a trailing entry');
+	});
+
+	it('closes a fence only on a marker at least as long, of the same character', () => {
+		const text = [
+			'# Changelog',
+			'',
+			'## v1.0.0',
+			'',
+			'````',
+			'```',
+			'## v0.5.0',
+			'````',
+			'',
+			'- after',
+			'',
+		].join('\n');
+		expect(parseChangelog(text).map((s) => s.heading)).toEqual(['v1.0.0']);
+		expect(sectionFor(text, 'v1.0.0')).toContain('- after');
+	});
+
+	it('tracks a tilde fence as well as a backtick one', () => {
+		const text = '# Changelog\n\n## v1.0.0\n\n~~~\n## v0.5.0\n~~~\n\n- after\n';
+		expect(parseChangelog(text).map((s) => s.heading)).toEqual(['v1.0.0']);
+	});
 });
 
 describe('validate', () => {
