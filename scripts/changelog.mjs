@@ -22,7 +22,7 @@
  * imports it is inside the program.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
@@ -399,6 +399,19 @@ function main(argv) {
 // `validate` would pass on any changelog while `release` wrote an empty
 // notes.md for the release action to publish. Silently, which is the failure
 // this whole file exists to prevent. This form has no version floor.
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-	process.exit(main(process.argv.slice(2)));
+// realpathSync because Node resolves a module's OWN url through symlinks while
+// process.argv[1] is only made absolute, so the two disagree whenever any
+// component of the invocation path is a link -- macOS /tmp and /var both are.
+// The guard would then be false, main() would never run, and the process would
+// exit 0 having printed nothing: `validate` green on any changelog, `release`
+// writing an empty notes.md. That is the silent no-op this guard replaced
+// `import.meta.main` to avoid, so getting it wrong here costs the whole point.
+//
+// process.exitCode rather than process.exit(): stdout is asynchronous when it
+// is a pipe, and process.exit() does not flush it, so `... | less` could
+// truncate the body. Setting the code and returning lets Node flush and exit
+// on its own. The workflow redirects to a file, where writes are synchronous,
+// but the failure mode is again silent truncation.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
+	process.exitCode = main(process.argv.slice(2));
 }
