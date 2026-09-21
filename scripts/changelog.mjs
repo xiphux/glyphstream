@@ -12,7 +12,9 @@
  * GitHub's generator lists PULL REQUESTS only. Work here lands as direct commits
  * to main and the only PRs are Renovate bumps, which .github/release.yml
  * excluded by label -- so every candidate was filtered out and 105 of the first
- * 106 releases published a body with an empty "What's Changed". A hand-written
+ * 106 releases published a body with no "What's Changed" section at all --
+ * GitHub omits the heading when nothing matches rather than printing an empty
+ * one. A hand-written
  * changelog is also the only source that can tell a shipped change from one
  * that was fixed again before any release carried it.
  *

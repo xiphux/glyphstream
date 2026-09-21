@@ -229,7 +229,8 @@ jobs:
       # which lists pull requests only. Work here lands as direct commits to
       # main and the only PRs are Renovate bumps, which the now-deleted
       # .github/release.yml excluded by label -- so every candidate was filtered
-      # out and 105 of the first 106 releases published an empty "What's Changed".
+      # out and 105 of the first 106 releases published no "What's Changed"
+      # section at all (GitHub omits the heading rather than printing it empty).
       #
       # The script exits non-zero when the tag has no CHANGELOG.md section, so a
       # release that would have said nothing fails here instead of publishing.
