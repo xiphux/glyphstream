@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.40.0
+
 ### Added
 
 - The composer follows an aspect ratio named in the prompt itself, so asking for
