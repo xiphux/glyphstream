@@ -1,0 +1,205 @@
+/**
+ * CHANGELOG.md is the only source of release notes, so the parser that reads it
+ * gates every release. A malformed file that still parses would publish the
+ * empty notes the changelog was introduced to stop, which is why `validate`
+ * carries as many cases here as the extractor does.
+ *
+ * The committed CHANGELOG.md is checked too: a broken one fails the same way in
+ * CI, but failing here as well names the problem while you are still editing.
+ */
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import {
+	parseChangelog,
+	previousVersion,
+	releasedVersions,
+	renderRelease,
+	sectionFor,
+	validate,
+} from '../../scripts/changelog.mjs';
+
+const VALID = [
+	'# Changelog',
+	'',
+	'Prose above the first heading is not part of any section.',
+	'',
+	'## Unreleased',
+	'',
+	'### Added',
+	'',
+	'- something pending',
+	'',
+	'## v0.2.0',
+	'',
+	'### Fixed',
+	'',
+	'- a released fix',
+	'',
+	'## v0.1.0',
+	'',
+	'- the first release',
+	'',
+].join('\n');
+
+describe('parseChangelog', () => {
+	it('splits on "## " and keeps file order', () => {
+		expect(parseChangelog(VALID).map((s) => s.heading)).toEqual(['Unreleased', 'v0.2.0', 'v0.1.0']);
+	});
+
+	it('does not treat "### " subheadings as sections', () => {
+		const headings = parseChangelog(VALID).map((s) => s.heading);
+		expect(headings).not.toContain('Added');
+		expect(headings).not.toContain('Fixed');
+	});
+
+	it('keeps subheadings inside the section body', () => {
+		const unreleased = parseChangelog(VALID)[0];
+		expect(unreleased.body).toContain('### Added');
+		expect(unreleased.body).toContain('- something pending');
+	});
+
+	it('drops the preamble above the first heading', () => {
+		expect(parseChangelog(VALID).some((s) => s.body.includes('Prose above'))).toBe(false);
+	});
+});
+
+describe('validate', () => {
+	it('accepts a well-formed file', () => {
+		expect(validate(VALID)).toEqual([]);
+	});
+
+	it('rejects a released version with no entries', () => {
+		const text = '# Changelog\n\n## v0.2.0\n\n## v0.1.0\n\n- entry\n';
+		expect(validate(text)).toContain('"## v0.2.0" has no entries');
+	});
+
+	it('allows an empty Unreleased section, which just means nothing is pending', () => {
+		const text = '# Changelog\n\n## Unreleased\n\n## v0.1.0\n\n- entry\n';
+		expect(validate(text)).toEqual([]);
+	});
+
+	it('rejects versions that are not newest-first', () => {
+		const text = '# Changelog\n\n## v0.1.0\n\n- a\n\n## v0.2.0\n\n- b\n';
+		expect(validate(text)).toContain(
+			'"## v0.2.0" is not below the version above it (newest first)',
+		);
+	});
+
+	it('rejects a duplicated version', () => {
+		const text = '# Changelog\n\n## v0.2.0\n\n- a\n\n## v0.2.0\n\n- b\n';
+		expect(validate(text)).toContain('"## v0.2.0" appears more than once');
+	});
+
+	it('rejects a heading that is neither Unreleased nor a version', () => {
+		const text = '# Changelog\n\n## Release three\n\n- a\n';
+		expect(validate(text)).toContain(
+			'"## Release three" is neither "Unreleased" nor a vX.Y.Z version',
+		);
+	});
+
+	it('rejects Unreleased below a released version', () => {
+		const text = '# Changelog\n\n## v0.1.0\n\n- a\n\n## Unreleased\n\n- b\n';
+		expect(validate(text)).toContain('"Unreleased" must be the first section');
+	});
+
+	it('rejects a file that does not start with "# Changelog"', () => {
+		const text = '# Release notes\n\n## v0.1.0\n\n- a\n';
+		expect(validate(text)).toContain('the first line must be "# Changelog"');
+	});
+
+	it('rejects a file with no sections at all', () => {
+		expect(validate('# Changelog\n\nnothing here\n')).toContain('no "## " release sections found');
+	});
+
+	it('accepts a prerelease version', () => {
+		expect(validate('# Changelog\n\n## v1.0.0-rc.1\n\n- a\n')).toEqual([]);
+	});
+});
+
+describe('sectionFor', () => {
+	it('returns just that version, without its heading', () => {
+		const body = sectionFor(VALID, 'v0.2.0');
+		expect(body).toContain('- a released fix');
+		expect(body).not.toContain('v0.1.0');
+		expect(body).not.toContain('## v0.2.0');
+	});
+
+	it('throws for a version with no section, naming the fix', () => {
+		expect(() => sectionFor(VALID, 'v0.3.0')).toThrow(/no "## v0\.3\.0" section/);
+		expect(() => sectionFor(VALID, 'v0.3.0')).toThrow(/Rename "## Unreleased"/);
+	});
+
+	it('throws for an empty section rather than returning nothing', () => {
+		const text = '# Changelog\n\n## v0.2.0\n\n## v0.1.0\n\n- entry\n';
+		expect(() => sectionFor(text, 'v0.2.0')).toThrow(/is empty/);
+	});
+});
+
+describe('previousVersion', () => {
+	it('is the next version down', () => {
+		expect(previousVersion(VALID, 'v0.2.0')).toBe('v0.1.0');
+	});
+
+	it('is null for the oldest release', () => {
+		expect(previousVersion(VALID, 'v0.1.0')).toBeNull();
+	});
+
+	it('skips Unreleased', () => {
+		expect(releasedVersions(VALID)).toEqual(['v0.2.0', 'v0.1.0']);
+	});
+
+	it('finds the newest version below a tag not yet in the file', () => {
+		expect(previousVersion(VALID, 'v0.3.0')).toBe('v0.2.0');
+	});
+});
+
+describe('renderRelease', () => {
+	const body = renderRelease({
+		text: VALID,
+		tag: 'v0.2.0',
+		repo: 'xiphux/glyphstream',
+		previous: 'v0.1.0',
+	});
+
+	it('carries the pull commands for that exact version', () => {
+		expect(body).toContain('docker pull ghcr.io/xiphux/glyphstream:0.2.0');
+		expect(body).toContain('docker pull ghcr.io/xiphux/glyphstream:latest');
+	});
+
+	it('carries the changelog entries', () => {
+		expect(body).toContain('- a released fix');
+	});
+
+	it('links a compare view when there is a previous release', () => {
+		expect(body).toContain('/compare/v0.1.0...v0.2.0');
+	});
+
+	it('links the commit list for a first release', () => {
+		const first = renderRelease({
+			text: VALID,
+			tag: 'v0.1.0',
+			repo: 'xiphux/glyphstream',
+			previous: null,
+		});
+		expect(first).toContain('/commits/v0.1.0');
+		expect(first).not.toContain('/compare/');
+	});
+});
+
+describe('the committed CHANGELOG.md', () => {
+	const text = readFileSync(new URL('../../CHANGELOG.md', import.meta.url), 'utf8');
+
+	it('is well-formed', () => {
+		expect(validate(text)).toEqual([]);
+	});
+
+	it('has an entry for the current package version', () => {
+		const pkg = JSON.parse(
+			readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+		) as { version: string };
+		// The version in package.json is the one the next tag will carry, so it
+		// is either already written up or still sitting under Unreleased.
+		const headings = parseChangelog(text).map((s) => s.heading);
+		expect(headings.includes(`v${pkg.version}`) || headings[0] === 'Unreleased').toBe(true);
+	});
+});

@@ -2,8 +2,8 @@
 #
 # Tag schemes:
 #   - Push to main:        `main` (rolling) + `sha-<7chars>` (immutable per commit)
-#   - Push tag vX.Y.Z:     `X.Y.Z`, `X.Y`, `X`, `latest`  + GitHub Release with
-#                          auto-generated notes (categorized via .github/release.yml)
+#   - Push tag vX.Y.Z:     `X.Y.Z`, `X.Y`, `X`, `latest`  + GitHub Release whose
+#                          notes are the tag's CHANGELOG.md section
 #
 # Multi-arch (linux/amd64 + linux/arm64) so the same image works on x86
 # hosts and Synology / Raspberry Pi-class ARM boxes. Uses GitHub's native
@@ -192,39 +192,31 @@ jobs:
     permissions:
       contents: write
     env:
-      REPO: ${{ github.repository }}
       TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0 # full history so the auto-changelog has prior tags to diff against
+          # Full history and tags: the notes link to the previous release, and
+          # the script checks that tag exists before linking a compare view.
+          fetch-depth: 0
 
+      # Notes come from CHANGELOG.md, NOT GitHub's `generate_release_notes`,
+      # which lists pull requests only. Work here lands as direct commits to
+      # main and the only PRs are Renovate bumps, which the now-deleted
+      # .github/release.yml excluded by label -- so every candidate was filtered
+      # out and 105 of the first 106 releases published an empty "What's Changed".
+      #
+      # The script exits non-zero when the tag has no CHANGELOG.md section, so a
+      # release that would have said nothing fails here instead of publishing.
+      # Needs no pnpm install: it imports nothing outside node: builtins.
       - name: Build release body
-        id: body
-        run: |
-          # Backticks below are literal Markdown, not command substitution.
-          # shellcheck disable=SC2016
-          {
-            echo 'body<<EOF'
-            echo "## Container images"
-            echo
-            echo '```'
-            echo "docker pull ghcr.io/${REPO}:${TAG#v}"
-            echo "docker pull ghcr.io/${REPO}:latest"
-            echo '```'
-            echo
-            echo 'Multi-arch: `linux/amd64`, `linux/arm64`.'
-            echo
-            echo '---'
-            echo EOF
-          } >> "$GITHUB_OUTPUT"
+        run: node scripts/changelog.mjs release "$TAG" > "$RUNNER_TEMP/notes.md"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          generate_release_notes: true
-          body: ${{ steps.body.outputs.body }}
+          body_path: ${{ runner.temp }}/notes.md
 
   # Report-only vulnerability scan of the image this push just published, so
   # the Security tab reflects `main` as of each merge rather than as of the

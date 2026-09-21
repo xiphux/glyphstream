@@ -207,6 +207,28 @@ tests/e2e/            # playwright (production-build webServer)
   and bugfixes get no doc change. (Same rule applies to operator-facing
   behavior changes — e.g. a new auth/onboarding flow updates the relevant
   `docs/` page, not just `CLAUDE.md`.)
+- **`CHANGELOG.md` is part of the change, not part of the release.** A commit
+  that adds, changes or fixes something a user can notice edits `## Unreleased`
+  in the _same commit_. GitHub release notes are generated from that file and
+  nothing else (`scripts/changelog.mjs`, run by docker.yml), so an entry written
+  later is an entry that was forgotten — and a version with no section fails the
+  release outright.
+
+  What earns a line: features, behaviour changes, bug fixes, and anything that
+  changes what an operator configures. What does not: refactors, tests, deps,
+  CI, docs, and internal work nobody can perceive. Nor **fixes to problems
+  introduced earlier in the same unreleased version** — no release carried the
+  bug, so to a user the fix is not a change. A feature built over ten commits
+  gets _one_ entry, written from the user's side, not ten. If a commit's whole
+  effect is invisible from outside, it gets no entry; that is the common case.
+
+  Keep entries to a line or two: the changelog says what arrived, `docs/` says
+  how it works. Subheadings are `### Added`, `### Changed`, `### Fixed`,
+  `### Security`.
+
+  `## Unreleased` is renamed to `## vX.Y.Z` in the `Version X.Y.Z` commit.
+  Don't name the version any earlier — whether a release ends up a patch or a
+  minor depends on what lands before it.
 
 ## Common commands
 

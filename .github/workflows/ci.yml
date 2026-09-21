@@ -350,6 +350,16 @@ jobs:
           ghcr.io/hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d
           hadolint Dockerfile
 
+      # CHANGELOG.md is the sole source of release notes, so a malformed one is
+      # a release that publishes nothing -- which is what docker.yml did for 105
+      # releases before this. Checks the structure only (headings are Unreleased
+      # or vX.Y.Z, newest first, no released version left empty); whether an
+      # entry is WORTH writing is a review question, not a CI one. Lives here
+      # rather than in `static` because it needs no pnpm install.
+      - name: Changelog
+        if: ${{ !cancelled() }}
+        run: node scripts/changelog.mjs validate
+
   # Backstop for the pre-commit hook, which only runs where gitleaks is
   # installed and is skipped by `--no-verify`. Scans the full history of the
   # commit under test, not just the new commits: at this repo's size the scan

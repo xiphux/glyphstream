@@ -83,10 +83,11 @@
 	// configured to write, so the commit history stays consistent.
 	commitMessagePrefix: 'deps:',
 
-	// `dependencies` is what .github/release.yml filters on to keep dependency
-	// bumps out of the user-facing release notes. Dependabot applied it by
-	// default; Renovate applies no labels unless told, so its PRs were about to
-	// start appearing in the notes.
+	// The label Dependabot applied by default, kept so a saved PR filter still
+	// finds these. It no longer has a second job: it used to be what
+	// .github/release.yml filtered on to keep dependency bumps out of the
+	// release notes, but the notes now come from CHANGELOG.md, which nothing
+	// automated writes to -- so a bump cannot reach them in the first place.
 	labels: ['dependencies'],
 
 	packageRules: [
