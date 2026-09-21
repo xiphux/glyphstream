@@ -181,3 +181,32 @@ describe('docker.yml cannot act on an unearned pass', () => {
 		);
 	});
 });
+
+/**
+ * The release body names the architectures the image is built for, and so does
+ * docker.yml's build matrix — in two files, with nothing tying them together.
+ * Adding or dropping a platform is exactly the kind of change that updates the
+ * matrix and forgets the prose, and the result would be a published release
+ * telling people to pull an architecture that no longer exists.
+ */
+describe('the release body and the build matrix agree on platforms', () => {
+	it('names every platform the matrix builds, and no others', () => {
+		const docker = parse(readFileSync(join(WORKFLOWS, 'docker.yml'), 'utf8')) as {
+			jobs: Record<string, { strategy?: { matrix?: { include?: { platform: string }[] } } }>;
+		};
+		const built = (docker.jobs.build.strategy?.matrix?.include ?? [])
+			.map((entry) => entry.platform)
+			.sort();
+		expect(built.length).toBeGreaterThan(0);
+
+		const script = readFileSync(
+			join(import.meta.dirname, '..', '..', 'scripts', 'changelog.mjs'),
+			'utf8',
+		);
+		const line = /Multi-arch: (.+?)\.'/.exec(script);
+		expect(line, 'the Multi-arch line in renderRelease').not.toBeNull();
+		const named = [...(line?.[1] ?? '').matchAll(/`([^`]+)`/g)].map((m) => m[1]).sort();
+
+		expect(named).toEqual(built);
+	});
+});
