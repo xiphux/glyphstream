@@ -307,6 +307,13 @@ export function renderRelease({ text, tag, repo, previous }) {
 function gitTagExists(tag) {
 	try {
 		execFileSync('git', ['rev-parse', '-q', '--verify', `refs/tags/${tag}`], {
+			// The repository this script belongs to, not the caller's cwd. The
+			// changelog is already resolved against the script so the command
+			// works from anywhere; without this, git would answer for whatever
+			// repository the caller happened to be standing in -- quietly
+			// dropping the compare link, or worse, confirming a tag that exists
+			// somewhere else.
+			cwd: new URL('..', import.meta.url),
 			stdio: ['ignore', 'ignore', 'ignore'],
 		});
 		return true;
