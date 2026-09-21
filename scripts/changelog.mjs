@@ -25,6 +25,7 @@
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 
 /** `vX.Y.Z`, with an optional prerelease suffix. */
 const VERSION = /^v(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/;
@@ -293,6 +294,14 @@ function main(argv) {
 	return 1;
 }
 
-if (import.meta.main) {
+// Not `import.meta.main`, which needs Node 24.2. The two jobs that run this
+// script deliberately skip `actions/setup-node` -- they need no pnpm install --
+// so they get whatever Node the runner image ships, while every other job here
+// pins 26. On an older runtime `import.meta.main` is `undefined`, so this block
+// would be skipped, the process would exit 0 having printed nothing, and
+// `validate` would pass on any changelog while `release` wrote an empty
+// notes.md for the release action to publish. Silently, which is the failure
+// this whole file exists to prevent. This form has no version floor.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
 	process.exit(main(process.argv.slice(2)));
 }

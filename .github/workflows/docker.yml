@@ -211,7 +211,12 @@ jobs:
       # release that would have said nothing fails here instead of publishing.
       # Needs no pnpm install: it imports nothing outside node: builtins.
       - name: Build release body
-        run: node scripts/changelog.mjs release "$TAG" > "$RUNNER_TEMP/notes.md"
+        run: |
+          node scripts/changelog.mjs release "$TAG" > "$RUNNER_TEMP/notes.md"
+          # Belt and braces: the script already exits non-zero on a missing
+          # section, but nothing else checks the file it wrote, and an empty
+          # body_path publishes an empty release rather than failing.
+          test -s "$RUNNER_TEMP/notes.md"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
