@@ -197,9 +197,17 @@ describe('the committed CHANGELOG.md', () => {
 		const pkg = JSON.parse(
 			readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
 		) as { version: string };
-		// The version in package.json is the one the next tag will carry, so it
-		// is either already written up or still sitting under Unreleased.
-		const headings = parseChangelog(text).map((s) => s.heading);
-		expect(headings.includes(`v${pkg.version}`) || headings[0] === 'Unreleased').toBe(true);
+		// Exactly the check docker.yml's release job runs, rather than a weaker
+		// restatement of it: sectionFor also rejects a section that exists but
+		// is empty, and its message is the instruction to follow.
+		//
+		// This holds continuously because the version here moves only at
+		// release -- the `Version X.Y.Z` commit IS the tagged commit -- so
+		// between releases package.json names the last RELEASED version, whose
+		// section exists. A fat `## Unreleased` above it is irrelevant, since
+		// this asks whether the section exists at all, not where it sits. The
+		// window where it fails is the one commit that bumps the version
+		// without renaming Unreleased, which is the mistake worth catching.
+		expect(() => sectionFor(text, `v${pkg.version}`)).not.toThrow();
 	});
 });
