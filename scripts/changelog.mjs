@@ -39,6 +39,26 @@ const VERSION = /^v(\d+)\.(\d+)\.(\d+)$/;
 const UNRELEASED = 'Unreleased';
 
 /**
+ * The code-fence marker a line opens or closes with, if any.
+ *
+ * CommonMark allows up to three spaces of indent, and -- the part worth a
+ * function -- a BACKTICK fence's info string may not itself contain a
+ * backtick. Without that rule a changelog line like ``` ```text with `code` ```
+ * is read as opening a fence here while GitHub renders it as ordinary prose,
+ * so validate reports an unclosed fence on a file that is fine, and a second
+ * such line swallows every heading between the two.
+ *
+ * @param {string} line
+ * @returns {string | undefined}
+ */
+function fenceOf(line) {
+	const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+	if (!match) return undefined;
+	if (match[1][0] === '`' && match[2].includes('`')) return undefined;
+	return match[1];
+}
+
+/**
  * @typedef {{ heading: string, body: string }} Section
  */
 
@@ -63,7 +83,7 @@ export function parseChangelog(text) {
 	for (const line of text.split('\n')) {
 		// CommonMark allows up to three spaces of indent, and a closing fence
 		// must use the same character and be at least as long as the opener.
-		const fenceMarker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+		const fenceMarker = fenceOf(line);
 		if (fenceMarker) {
 			if (fence === null) {
 				fence = fenceMarker;
@@ -74,8 +94,13 @@ export function parseChangelog(text) {
 			continue;
 		}
 
-		// `^##\s` cannot match `### `: the third `#` is not whitespace.
-		const heading = fence === null ? /^##\s+(\S.*?)\s*$/.exec(line) : null;
+		// `##\s` cannot match `### `: the third `#` is not whitespace. The
+		// `{0,3}` matches the fence rule above, and CommonMark: an ATX heading
+		// may carry up to three spaces of indent and still be a heading, which is
+		// how GitHub renders it. Anchoring at column 0 meant `  ## v1.0.0`
+		// rendered as a section everywhere a reader looked while the parser read
+		// it as body text -- the third way to lose a heading silently.
+		const heading = fence === null ? /^ {0,3}##\s+(\S.*?)\s*$/.exec(line) : null;
 		if (heading) {
 			sections.push({ heading: heading[1], lines: [] });
 		} else if (sections.length > 0) {
@@ -133,7 +158,7 @@ function lostHeadingProblems(text) {
 	let openedAt = 0;
 
 	text.split('\n').forEach((line, index) => {
-		const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+		const marker = fenceOf(line);
 		if (marker) {
 			if (fence === null) {
 				fence = marker;
@@ -143,7 +168,7 @@ function lostHeadingProblems(text) {
 			}
 			return;
 		}
-		if (fence === null && /^##[^\s#]/.test(line)) {
+		if (fence === null && /^ {0,3}##[^\s#]/.test(line)) {
 			problems.push(
 				`line ${index + 1}: "${line.trim()}" needs a space after "##" to be read as a heading`,
 			);

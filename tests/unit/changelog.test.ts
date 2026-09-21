@@ -108,6 +108,29 @@ describe('parseChangelog', () => {
 		expect(sectionFor(text, 'v1.0.0')).toContain('- after');
 	});
 
+	it('reads a heading indented up to three spaces, as CommonMark and GitHub do', () => {
+		// Anchoring at column 0 meant this rendered as a section everywhere a
+		// reader looked while the parser read it as body text — the third way
+		// to lose a heading with nothing reporting it.
+		const text = '# Changelog\n\n## v1.1.0\n\n- new\n\n  ## v1.0.0\n\n- old\n';
+		expect(parseChangelog(text).map((s) => s.heading)).toEqual(['v1.1.0', 'v1.0.0']);
+		expect(validate(text)).toEqual([]);
+	});
+
+	it('does not read a four-space-indented line as a heading', () => {
+		// Four spaces is an indented code block, which is why the limit is three.
+		const text = '# Changelog\n\n## v1.0.0\n\n    ## v0.9.0\n\n- a\n';
+		expect(parseChangelog(text).map((s) => s.heading)).toEqual(['v1.0.0']);
+	});
+
+	it('does not open a fence on a backtick line whose info string holds a backtick', () => {
+		// CommonMark forbids a backtick in a backtick fence's info string, so
+		// GitHub renders this as prose. Treating it as a fence made validate
+		// reject a file that is fine.
+		const text = '# Changelog\n\n## v1.1.0\n\n```text with `code` inside\n\n- an entry\n';
+		expect(validate(text)).toEqual([]);
+	});
+
 	it('tracks a tilde fence as well as a backtick one', () => {
 		const text = '# Changelog\n\n## v1.0.0\n\n~~~\n## v0.5.0\n~~~\n\n- after\n';
 		expect(parseChangelog(text).map((s) => s.heading)).toEqual(['v1.0.0']);
