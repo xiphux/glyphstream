@@ -262,6 +262,11 @@ export function validate(text) {
 		if (body === '') problems.push(`"## ${heading}" has no entries`);
 	});
 
+	// The Rust port asserts this and these two did not, which is a divergence
+	// in a rule all three claim to share. A file holding only `## Unreleased`
+	// is structurally fine and still cannot produce a release.
+	if (seen.size === 0) problems.push('no released versions found');
+
 	return problems;
 }
 
@@ -451,10 +456,12 @@ function main(argv) {
 	return 1;
 }
 
-// Not `import.meta.main`, which needs Node 24.2. The two jobs that run this
-// script deliberately skip `actions/setup-node` -- they need no pnpm install --
-// so they get whatever Node the runner image ships, while every other job here
-// pins 26. On an older runtime `import.meta.main` is `undefined`, so this block
+// Not `import.meta.main`, which needs Node 24.2. NONE of the jobs that run
+// this script use `actions/setup-node` -- they need no pnpm install -- so each
+// gets whatever Node its runner image ships, while every other job here pins
+// 26. Stated as a property rather than a count on purpose: this said "the two
+// jobs" until a third call site was added and nobody updated it, and one leg
+// of that third job runs on ubuntu-22.04-arm, a different image again. On an older runtime `import.meta.main` is `undefined`, so this block
 // would be skipped, the process would exit 0 having printed nothing, and
 // `validate` would pass on any changelog while `release` wrote an empty
 // notes.md for the release action to publish. Silently, which is the failure

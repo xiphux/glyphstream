@@ -279,6 +279,14 @@ describe('validate', () => {
 		expect(validate('# Changelog\n\nnothing here\n')).toContain('no "## " release sections found');
 	});
 
+	it('rejects a file with no released versions', () => {
+		// The Rust port asserted this and these did not — a divergence in a rule
+		// all three claim to share. Structurally fine, but it cannot release.
+		expect(validate('# Changelog\n\n## Unreleased\n\n- a\n')).toContain(
+			'no released versions found',
+		);
+	});
+
 	it('rejects a prerelease version, which this project does not ship', () => {
 		// Deliberately unsupported rather than half-supported: accepting the
 		// suffix means ordering it, and nothing here has ever produced one.

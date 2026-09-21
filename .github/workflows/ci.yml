@@ -10,7 +10,7 @@
 #     only the `pull_request` run is the one that gates a merge.
 #   - Direct on every PR. Drives the PR checks UI.
 #   - Indirect via `workflow_call` from docker.yml on `main` pushes
-#     and `v*.*.*` tags, so the docker build/publish + GitHub release
+#     and `v[0-9]+.[0-9]+.[0-9]+` tags, so the docker build/publish + GitHub release
 #     are explicitly gated on tests passing.
 #
 # This split avoids running tests twice on `main` pushes (which would
