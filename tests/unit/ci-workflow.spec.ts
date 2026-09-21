@@ -210,3 +210,36 @@ describe('the release body and the build matrix agree on platforms', () => {
 		expect(named).toEqual(built);
 	});
 });
+
+/**
+ * The tag check in docker.yml's `build` job is the only thing standing between
+ * a bad tag and GHCR, and it is the one guard here that `gate` can never cover:
+ * gate inherits a pass by CONTENT, and the same tree can be tagged anything.
+ *
+ * foundry pins its equivalent hand edit with a test. These two assertions are
+ * the same idea — that the step still exists, and still runs before anything is
+ * pushed to the registry.
+ */
+describe('the tag is checked before anything reaches the registry', () => {
+	const docker = parse(readFileSync(join(WORKFLOWS, 'docker.yml'), 'utf8')) as {
+		jobs: Record<string, { steps: Array<{ name?: string; uses?: string; run?: string }> }>;
+	};
+
+	it('runs the changelog renderer against the tag in the job that pushes', () => {
+		const steps = docker.jobs.build.steps;
+		const check = steps.findIndex((step) => step.run?.includes('changelog.mjs release'));
+		expect(check, 'a step running `changelog.mjs release` in the build job').toBeGreaterThan(-1);
+		expect(steps[check].run).toContain('package.json');
+	});
+
+	it('runs that check before the push and before the registry login', () => {
+		const steps = docker.jobs.build.steps;
+		const check = steps.findIndex((step) => step.run?.includes('changelog.mjs release'));
+		const push = steps.findIndex((step) => step.uses?.startsWith('docker/build-push-action'));
+		const login = steps.findIndex((step) => step.uses?.startsWith('docker/login-action'));
+
+		expect(push).toBeGreaterThan(-1);
+		expect(check).toBeLessThan(push);
+		if (login > -1) expect(check).toBeLessThan(login);
+	});
+});

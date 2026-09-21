@@ -87,11 +87,20 @@ jobs:
       # tags, but `build` has already pushed both architectures' digest-only
       # blobs by then. Failing here means nothing reaches the registry at all.
       # It costs a second, twice, on tag pushes only.
-      - name: The tag has a changelog section
+      - name: The tag matches this commit and has a changelog section
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           TAG: ${{ github.ref_name }}
-        run: node scripts/changelog.mjs release "$TAG" > /dev/null
+        run: |
+          # Forward: the tag names a version the changelog documents.
+          node scripts/changelog.mjs release "$TAG" > /dev/null
+          # Backward, which the forward check alone does not cover: the tag is
+          # the version this commit actually IS. Without it, force-moving an
+          # already-released tag onto a new commit finds that version's old
+          # section, passes, and metadata-action's latest=auto then drags
+          # `:latest` backwards onto it while the release body is rewritten.
+          version=$(jq -r .version package.json)
+          test "v$version" = "$TAG"
 
       # Slugify the platform string for filenames ("linux/amd64" → "linux-amd64").
       - name: Prepare platform pair
