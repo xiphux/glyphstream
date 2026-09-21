@@ -27,8 +27,15 @@ import { execFileSync } from 'node:child_process';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 
-/** `vX.Y.Z`, with an optional prerelease suffix. */
-const VERSION = /^v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
+// `vX.Y.Z` exactly. Prereleases are NOT supported, deliberately: this project
+// has never shipped one and does not intend to -- anything unreleased is run
+// from git or from a `sha-` image tag. Accepting the suffix here meant ordering
+// it, and semver prerelease precedence is a surprising amount of machinery
+// (numeric identifiers rank below alphanumeric, numerics compare numerically,
+// a longer identifier list wins a tie) for a shape nothing produces. A
+// `v1.0.0-rc.1` heading is now reported as not a version, which is the honest
+// answer rather than a half-implemented one.
+const VERSION = /^v(\d+)\.(\d+)\.(\d+)$/;
 const UNRELEASED = 'Unreleased';
 
 /**
@@ -79,65 +86,27 @@ export function parseChangelog(text) {
 }
 
 /**
- * @typedef {{ core: [number, number, number], pre: string[] | null }} VersionKey
- */
-
-/**
  * Sortable key for a `vX.Y.Z` heading, or null if the heading is not a version.
  *
- * The prerelease suffix is KEPT, not discarded. Dropping it made `## v1.0.0`
- * above `## v1.0.0-rc.1` compare equal, so a correctly ordered file was
- * reported as out of order -- while the regex above and the unit tests both
- * advertised that prereleases are supported.
- *
  * @param {string} heading
- * @returns {VersionKey | null}
+ * @returns {[number, number, number] | null}
  */
 function versionKey(heading) {
 	const match = VERSION.exec(heading);
 	if (!match) return null;
-	return {
-		core: [Number(match[1]), Number(match[2]), Number(match[3])],
-		pre: match[4] ? match[4].split('.') : null,
-	};
+	return [Number(match[1]), Number(match[2]), Number(match[3])];
 }
 
 /**
- * Semver precedence for the dot-separated prerelease identifiers: numeric ones
- * compare numerically, a numeric identifier ranks below an alphanumeric one,
- * the rest compare as ASCII, and when everything else ties the longer list
- * wins.
- *
- * @param {string[]} a
- * @param {string[]} b
- * @returns {number}
- */
-function comparePrerelease(a, b) {
-	for (let i = 0; i < Math.min(a.length, b.length); i += 1) {
-		if (a[i] === b[i]) continue;
-		const aNumeric = /^\d+$/.test(a[i]);
-		const bNumeric = /^\d+$/.test(b[i]);
-		if (aNumeric && bNumeric) return Number(a[i]) - Number(b[i]);
-		if (aNumeric !== bNumeric) return aNumeric ? -1 : 1;
-		return a[i] < b[i] ? -1 : 1;
-	}
-	return a.length - b.length;
-}
-
-/**
- * @param {VersionKey} a
- * @param {VersionKey} b
+ * @param {[number, number, number]} a
+ * @param {[number, number, number]} b
  * @returns {number} negative when `a` is the older version
  */
 function compareVersions(a, b) {
 	for (let i = 0; i < 3; i += 1) {
-		if (a.core[i] !== b.core[i]) return a.core[i] - b.core[i];
+		if (a[i] !== b[i]) return a[i] - b[i];
 	}
-	// A release outranks its own prereleases: 1.0.0 is newer than 1.0.0-rc.1.
-	if (a.pre === null && b.pre === null) return 0;
-	if (a.pre === null) return 1;
-	if (b.pre === null) return -1;
-	return comparePrerelease(a.pre, b.pre);
+	return 0;
 }
 
 /**
@@ -161,7 +130,7 @@ export function validate(text) {
 
 	/** @type {Set<string>} */
 	const seen = new Set();
-	/** @type {VersionKey | null} */
+	/** @type {[number, number, number] | null} */
 	let previousKey = null;
 
 	sections.forEach(({ heading, body }, index) => {
