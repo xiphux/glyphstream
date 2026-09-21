@@ -114,6 +114,27 @@ describe('validate', () => {
 	it('accepts a prerelease version', () => {
 		expect(validate('# Changelog\n\n## v1.0.0-rc.1\n\n- a\n')).toEqual([]);
 	});
+
+	it('accepts a release above its own prereleases', () => {
+		// The suffix used to be parsed and then thrown away, so these compared
+		// equal and a correctly ordered file was reported as out of order.
+		const text =
+			'# Changelog\n\n## v1.0.0\n\n- final\n\n## v1.0.0-rc.2\n\n- rc2\n\n## v1.0.0-rc.1\n\n- rc1\n';
+		expect(validate(text)).toEqual([]);
+	});
+
+	it('rejects a prerelease listed above its own release', () => {
+		const text = '# Changelog\n\n## v1.0.0-rc.1\n\n- rc\n\n## v1.0.0\n\n- final\n';
+		expect(validate(text)).toContain(
+			'"## v1.0.0" is not below the version above it (newest first)',
+		);
+	});
+
+	it('orders prerelease identifiers by semver precedence, not as strings', () => {
+		// rc.10 outranks rc.9 numerically; a string sort would disagree.
+		const text = '# Changelog\n\n## v1.0.0-rc.10\n\n- ten\n\n## v1.0.0-rc.9\n\n- nine\n';
+		expect(validate(text)).toEqual([]);
+	});
 });
 
 describe('sectionFor', () => {
@@ -150,6 +171,13 @@ describe('previousVersion', () => {
 
 	it('finds the newest version below a tag not yet in the file', () => {
 		expect(previousVersion(VALID, 'v0.3.0')).toBe('v0.2.0');
+	});
+
+	it('treats a release as newer than its own prerelease', () => {
+		const text =
+			'# Changelog\n\n## v1.0.0\n\n- final\n\n## v1.0.0-rc.1\n\n- rc\n\n## v0.9.0\n\n- old\n';
+		expect(previousVersion(text, 'v1.0.0')).toBe('v1.0.0-rc.1');
+		expect(previousVersion(text, 'v1.0.0-rc.1')).toBe('v0.9.0');
 	});
 });
 
