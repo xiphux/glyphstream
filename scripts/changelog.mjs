@@ -281,7 +281,7 @@ export function sectionFor(text, tag) {
 	const section = parseChangelog(text).find((s) => s.heading === tag);
 	if (!section) {
 		throw new Error(
-			`CHANGELOG.md has no "## ${tag}" section. Rename "## ${UNRELEASED}" to "## ${tag}" before tagging.`,
+			`CHANGELOG.md has no "## ${tag}" section. Add one below "## ${UNRELEASED}", holding the entries that were under it, before tagging.`,
 		);
 	}
 	if (section.body === '') {

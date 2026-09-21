@@ -226,9 +226,26 @@ tests/e2e/            # playwright (production-build webServer)
   how it works. Subheadings are `### Added`, `### Changed`, `### Fixed`,
   `### Security`.
 
-  `## Unreleased` is renamed to `## vX.Y.Z` in the `Version X.Y.Z` commit.
+  At release, a `## vX.Y.Z` heading is inserted directly BELOW `## Unreleased`,
+  taking the entries that were under it, in the same `Version X.Y.Z` commit
+  that bumps `package.json`. `## Unreleased` stays, now empty, so there is
+  always somewhere to add the next entry:
+
+  ```
+  ## Unreleased
+
+  ## v0.40.0
+
+  ### Added
+  - the thing this release shipped
+
+  ## v0.39.0
+  ```
+
   Don't name the version any earlier — whether a release ends up a patch or a
-  minor depends on what lands before it.
+  minor depends on what lands before it. And note the corollary of the
+  no-empty-released-section rule: a release with nothing under `## Unreleased`
+  cannot be cut, because the new section would be empty. That is deliberate.
 
 ## Common commands
 

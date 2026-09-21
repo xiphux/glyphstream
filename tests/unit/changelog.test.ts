@@ -297,7 +297,7 @@ describe('validate', () => {
 
 	it('throws for a version with no section, naming the fix', () => {
 		expect(() => sectionFor(VALID, 'v0.3.0')).toThrow(/no "## v0\.3\.0" section/);
-		expect(() => sectionFor(VALID, 'v0.3.0')).toThrow(/Rename "## Unreleased"/);
+		expect(() => sectionFor(VALID, 'v0.3.0')).toThrow(/Add one below "## Unreleased"/);
 	});
 
 	it('throws for an empty section rather than returning nothing', () => {
