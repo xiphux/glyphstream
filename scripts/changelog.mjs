@@ -326,22 +326,41 @@ function main(argv) {
 	}
 
 	if (command === 'release') {
+		const usage = 'usage: changelog.mjs release <tag> [--repo owner/name] [--previous tag]';
 		const tag = rest[0];
-		if (!tag) {
-			console.error('usage: changelog.mjs release <tag> [--repo owner/name] [--previous tag]');
+		// A tag is positional and comes first. Without this check
+		// `release --repo x/y v1.0.0` took `--repo` as the tag and failed with
+		// `no "## --repo" section`, which describes the wrong problem.
+		if (!tag || tag.startsWith('--')) {
+			console.error(usage);
 			return 1;
 		}
-		/** @param {string} name */
+
+		/**
+		 * A flag's value, or undefined when the flag is absent. Throws when it
+		 * is present without one: silently ignoring `--previous` with no value,
+		 * or reading the next flag as its value, degrades the compare link
+		 * without saying so.
+		 *
+		 * @param {string} name
+		 * @returns {string | undefined}
+		 */
 		const flag = (name) => {
 			const index = rest.indexOf(`--${name}`);
-			return index >= 0 ? rest[index + 1] : undefined;
+			if (index < 0) return undefined;
+			const value = rest[index + 1];
+			if (value === undefined || value.startsWith('--')) {
+				throw new Error(`--${name} needs a value.\n${usage}`);
+			}
+			return value;
 		};
-		const repo = flag('repo') ?? process.env.GITHUB_REPOSITORY ?? 'xiphux/glyphstream';
-		let previous = flag('previous') ?? previousVersion(text, tag);
-		// A version in the changelog that was never tagged has no compare
-		// endpoint; fall back to the commit list rather than link a 404.
-		if (previous && !gitTagExists(previous)) previous = null;
+
 		try {
+			const repo = flag('repo') ?? process.env.GITHUB_REPOSITORY ?? 'xiphux/glyphstream';
+			let previous = flag('previous') ?? previousVersion(text, tag);
+			// A version in the changelog that was never tagged has no compare
+			// endpoint; fall back to the commit list rather than link a 404.
+			if (previous && !gitTagExists(previous)) previous = null;
 			process.stdout.write(renderRelease({ text, tag, repo, previous }));
 		} catch (error) {
 			console.error(error instanceof Error ? error.message : String(error));
