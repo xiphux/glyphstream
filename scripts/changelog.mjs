@@ -51,13 +51,45 @@ const UNRELEASED = 'Unreleased';
  * such line swallows every heading between the two.
  *
  * @param {string} line
- * @returns {string | undefined}
+ * @returns {{ marker: string, info: string } | undefined}
  */
 function fenceOf(line) {
-	const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+	const match = /^ {0,3}(`{3,}|~{3,})/.exec(line);
 	if (!match) return undefined;
-	if (match[1][0] === '`' && match[2].includes('`')) return undefined;
-	return match[1];
+	// `line.slice`, NOT a `(.*)$` capture. `.` does not match `\r` and `$` is
+	// end-of-input without the `m` flag, so a capture failed on every line of a
+	// CRLF file -- switching fence tracking off for the whole document, and
+	// silently, since nothing downstream can tell "no fences" from "no fence
+	// tracking". Splitting on `\n` leaves the `\r` on every line, so this path
+	// has to tolerate it.
+	const info = line.slice(match[0].length).replace(/\r$/, '');
+	// CommonMark: a backtick fence's info string may not contain a backtick, so
+	// ```text with `code` is prose rather than a fence opener.
+	if (match[1][0] === '`' && info.includes('`')) return undefined;
+	return { marker: match[1], info };
+}
+
+/**
+ * The fence state after `line`.
+ *
+ * Both scans over the file go through this, so they cannot disagree about what
+ * is inside a fence -- which would make the lost-heading report describe a
+ * different document from the one parseChangelog returned.
+ *
+ * @param {string | null} fence the open fence's marker, or null
+ * @param {string} line
+ * @returns {{ fence: string | null, isFenceLine: boolean }}
+ */
+function nextFence(fence, line) {
+	const found = fenceOf(line);
+	if (!found) return { fence, isFenceLine: false };
+	if (fence === null) return { fence: found.marker, isFenceLine: true };
+	// A closer must use the same character, be at least as long, and carry
+	// nothing but whitespace after it -- CommonMark allows an info string only
+	// on the opener, so ```bash inside an open block is content, not a closer.
+	const closes =
+		found.marker[0] === fence[0] && found.marker.length >= fence.length && found.info.trim() === '';
+	return { fence: closes ? null : fence, isFenceLine: true };
 }
 
 /**
@@ -85,13 +117,9 @@ export function parseChangelog(text) {
 	for (const line of text.split('\n')) {
 		// CommonMark allows up to three spaces of indent, and a closing fence
 		// must use the same character and be at least as long as the opener.
-		const fenceMarker = fenceOf(line);
-		if (fenceMarker) {
-			if (fence === null) {
-				fence = fenceMarker;
-			} else if (fenceMarker[0] === fence[0] && fenceMarker.length >= fence.length) {
-				fence = null;
-			}
+		const step = nextFence(fence, line);
+		fence = step.fence;
+		if (step.isFenceLine) {
 			if (sections.length > 0) sections[sections.length - 1].lines.push(line);
 			continue;
 		}
@@ -160,16 +188,14 @@ function lostHeadingProblems(text) {
 	let openedAt = 0;
 
 	text.split('\n').forEach((line, index) => {
-		const marker = fenceOf(line);
-		if (marker) {
-			if (fence === null) {
-				fence = marker;
-				openedAt = index + 1;
-			} else if (marker[0] === fence[0] && marker.length >= fence.length) {
-				fence = null;
-			}
+		const wasOpen = fence !== null;
+		const step = nextFence(fence, line);
+		if (step.isFenceLine) {
+			if (!wasOpen && step.fence !== null) openedAt = index + 1;
+			fence = step.fence;
 			return;
 		}
+		fence = step.fence;
 		if (fence === null && /^ {0,3}##[^\s#]/.test(line)) {
 			problems.push(
 				`line ${index + 1}: "${line.trim()}" needs a space after "##" to be read as a heading`,

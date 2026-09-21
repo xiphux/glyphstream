@@ -131,6 +131,61 @@ describe('parseChangelog', () => {
 		expect(validate(text)).toEqual([]);
 	});
 
+	it('tracks fences identically in a CRLF file', () => {
+		// `text.split('\n')` leaves the `\r` on every line. An earlier fence
+		// regex ended in `(.*)$`, and since `.` does not match `\r` and `$` is
+		// end-of-input, it failed on EVERY fence line of a CRLF file — turning
+		// fence tracking off for the whole document with nothing to show for it.
+		const lf = [
+			'# Changelog',
+			'',
+			'## v1.0.0',
+			'',
+			'- shows a sample:',
+			'',
+			'```markdown',
+			'## v0.9.0',
+			'```',
+			'',
+			'- and a trailing entry',
+			'',
+			'## v0.9.0',
+			'',
+			'- old',
+			'',
+		].join('\n');
+		const crlf = lf.replace(/\n/g, '\r\n');
+
+		expect(parseChangelog(crlf).map((s) => s.heading)).toEqual(['v1.0.0', 'v0.9.0']);
+		expect(parseChangelog(crlf).map((s) => s.heading)).toEqual(
+			parseChangelog(lf).map((s) => s.heading),
+		);
+		expect(validate(crlf)).toEqual([]);
+		expect(sectionFor(crlf, 'v1.0.0')).toContain('and a trailing entry');
+	});
+
+	it('does not let a closing fence carry an info string', () => {
+		// CommonMark allows an info string only on the opener, so ```bash inside
+		// an open block is content. Treating it as a closer made the `## ` line
+		// after it a section heading, splitting the body at a line GitHub
+		// renders as code.
+		const text = [
+			'# Changelog',
+			'',
+			'## v1.0.0',
+			'',
+			'```',
+			'code',
+			'```bash',
+			'## v0.5.0',
+			'```',
+			'',
+			'- a',
+			'',
+		].join('\n');
+		expect(parseChangelog(text).map((s) => s.heading)).toEqual(['v1.0.0']);
+	});
+
 	it('tracks a tilde fence as well as a backtick one', () => {
 		const text = '# Changelog\n\n## v1.0.0\n\n~~~\n## v0.5.0\n~~~\n\n- after\n';
 		expect(parseChangelog(text).map((s) => s.heading)).toEqual(['v1.0.0']);
