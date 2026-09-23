@@ -35,6 +35,8 @@
  * certainly couldn't either.
  */
 
+import { toLegacyRgb } from '$lib/theme-color';
+
 /** Where WebKit probes: the top edge midpoint after `contract({ sampleRectMargin })`. */
 const SAMPLE_RECT_MARGIN = 4;
 /** `thinBorderWidth` — a box this size or smaller in EITHER dimension is rejected. */
@@ -62,10 +64,27 @@ function describe(el: Element): string {
 	return `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${classes}`;
 }
 
-/** Alpha 0 means "nothing painted here", not "painted transparent". */
+/**
+ * Alpha 0 means "nothing painted here", not "painted transparent".
+ *
+ * Every notation, not just `rgb()`. This used to match `/^rgba?\(…\)$/` and
+ * return false for anything else — which read every `oklch()` background in
+ * this app as "no background at all", i.e. every surface it exists to measure.
+ * Callers normalise through toLegacyRgb first, but that deliberately passes a
+ * translucent colour through unconverted, so a non-rgb string still arrives
+ * here and must be understood rather than discarded.
+ *
+ * An unrecognised serialisation counts as PAINTED. The direction matters: this
+ * module's contract is that a failure is the trustworthy answer, so the one
+ * thing it must never do is invent "nothing to sample" out of a colour it
+ * merely failed to parse.
+ */
 function isVisibleColor(value: string): boolean {
-	const inner = /^rgba?\(([^)]*)\)$/i.exec(value.trim())?.[1];
-	if (inner === undefined) return false;
+	const v = value.trim();
+	if (!v || v === 'transparent' || v === 'none') return false;
+	const inner = /^[a-z]+\(([^)]*)\)$/i.exec(v)?.[1];
+	if (inner === undefined) return true;
+	// Both serialisations: legacy `r, g, b, a` and modern `r g b / a`.
 	const alpha = inner.includes('/') ? inner.split('/')[1] : inner.split(',')[3];
 	return alpha === undefined || Number(alpha.trim()) !== 0;
 }
@@ -138,7 +157,14 @@ export function probeStatusBarContainer(): StatusBarProbe {
 		if (filter && filter !== 'none') {
 			return { container: label, color: null, reason: `backdrop-filter on ${describe(el)}` };
 		}
-		const bg = style.backgroundColor;
+		// Normalise BEFORE testing or comparing. The same colour reaches this
+		// loop in two notations — `rgb()` on .status-bar-sampler, which
+		// syncSurfaceChrome overwrites inline, and `oklch()` from the stylesheet
+		// on body and html — so comparing the raw strings reports a conflict
+		// between a colour and itself, and the (auth) chain is exactly that
+		// shape. Converting both ends first is what makes the equality below
+		// mean what it says.
+		const bg = toLegacyRgb(style.backgroundColor);
 		if (!isVisibleColor(bg)) continue;
 		if (color === null) color = bg;
 		else if (color !== bg) {

@@ -13,7 +13,24 @@
  * what's under test — the gates are arithmetic over a rect and a computed
  * style, not layout itself.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+
+/**
+ * happy-dom can represent neither half of the oklch case on its own: it DROPS
+ * an `oklch()` declaration (computed background comes back ''), and it has no
+ * 2D canvas context, so the real toLegacyRgb — which converts by painting a
+ * pixel — is a pass-through here. Both are stubbed rather than worked around:
+ * `paint()` below supplies the computed value, and this supplies the
+ * conversion. What is under test is the probe's own handling of the two
+ * notations, not the converter, which is theme-color's concern and is
+ * exercised against real engines elsewhere.
+ */
+const OKLCH_SURFACE = 'oklch(0.15 0.012 258)';
+const RGB_SURFACE = 'rgb(8, 11, 16)';
+vi.mock('$lib/theme-color', () => ({
+	toLegacyRgb: (value: string) => (value === OKLCH_SURFACE ? RGB_SURFACE : value),
+}));
+
 import { probeStatusBarContainer } from '../../src/lib/status-bar-probe';
 
 /** Wide enough to clear minimumRatio against happy-dom's 1024px window. */
@@ -49,6 +66,36 @@ function mount(
 	document.body.appendChild(el);
 	return el;
 }
+
+/**
+ * Computed backgrounds the stylesheet can't express here. happy-dom silently
+ * discards an `oklch()` declaration, so setting one inline would test the
+ * absence of a background rather than an oklch one. This overrides what
+ * getComputedStyle reports for a specific element, leaving every other element
+ * on the real implementation.
+ */
+const painted = new WeakMap<Element, string>();
+function paint(el: Element, backgroundColor: string): void {
+	painted.set(el, backgroundColor);
+}
+
+beforeAll(() => {
+	const real = window.getComputedStyle.bind(window);
+	vi.spyOn(window, 'getComputedStyle').mockImplementation(((
+		el: Element,
+		pseudo?: string | null,
+	) => {
+		const style = real(el as Element, pseudo ?? undefined);
+		const override = painted.get(el);
+		if (override === undefined) return style;
+		return new Proxy(style, {
+			// `unknown`: Reflect.get is typed `any`, and no-unsafe-return is on
+			// for tests/ as well as src/.
+			get: (target, prop, receiver): unknown =>
+				prop === 'backgroundColor' ? override : Reflect.get(target, prop, receiver),
+		});
+	}) as typeof window.getComputedStyle);
+});
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -145,6 +192,46 @@ describe('probeStatusBarContainer', () => {
 		const result = probeStatusBarContainer();
 		expect(result.color).toBeNull();
 		expect(result.reason).toMatch(/backdrop-filter/);
+	});
+
+	/**
+	 * The colours this app actually paints. Every surface token is authored in
+	 * oklch and `getComputedStyle` hands it back verbatim — measured on both
+	 * engines, see toLegacyRgb — so a probe that only understood `rgb()` read
+	 * every real background as "nothing painted here" and reported NOT sampled
+	 * on precisely the routes the sampling fix was written for. The rest of this
+	 * file uses rgb() literals and is structurally blind to that, which is how
+	 * it shipped; these two cases are the guard.
+	 */
+	it('samples a container whose background is oklch, like every real surface', () => {
+		place(document.body, { width: FULL, height: 800 });
+		paint(document.body, OKLCH_SURFACE);
+		const bar = mount('position:sticky;', { width: FULL, height: 48 });
+		bar.className = 'sticky top-0';
+		paint(bar, OKLCH_SURFACE);
+		const result = probeStatusBarContainer();
+		expect(result.reason).toBeNull();
+		expect(result.color).toBe(RGB_SURFACE);
+	});
+
+	/**
+	 * The other half, and the reason widening the parser alone would have made
+	 * things worse: on (auth) the sampler carries an INLINE rgb() written by
+	 * syncSurfaceChrome while body keeps the stylesheet's oklch. Same colour,
+	 * two notations. Compared raw, that reads as a conflict and discards a
+	 * perfectly good sample.
+	 */
+	it('does not call one colour a conflict with itself across notations', () => {
+		place(document.body, { width: FULL, height: 800 });
+		paint(document.body, OKLCH_SURFACE);
+		// The sampler's inline rgb(), as syncSurfaceChrome writes it, over a
+		// body still carrying the stylesheet's oklch. The same colour.
+		const bar = mount('position:fixed;', { width: FULL, height: 48 });
+		bar.className = 'status-bar-sampler';
+		paint(bar, RGB_SURFACE);
+		const result = probeStatusBarContainer();
+		expect(result.reason).toBeNull();
+		expect(result.color).toBe(RGB_SURFACE);
 	});
 
 	it('ignores a fixed element that does not span the probe point', () => {

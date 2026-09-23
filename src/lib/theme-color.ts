@@ -49,8 +49,15 @@
  * rgb(8, 11, 16) for the dark surface on both engines. Runs on mount and on
  * theme/scheme flips only, and short-circuits entirely on engines that already
  * hand back rgb().
+ *
+ * Exported for lib/status-bar-probe, which reads the same tokens back off the
+ * same API and so hits the same oklch serialisation. It needs the conversion
+ * for a second reason this one doesn't: it COMPARES two computed backgrounds
+ * for equality, and the same colour reaches it in two notations — `rgb()` where
+ * syncSurfaceChrome has written one inline, `oklch()` straight from the
+ * stylesheet everywhere else. Unnormalised, those compare unequal.
  */
-function toLegacyRgb(value: string): string {
+export function toLegacyRgb(value: string): string {
 	if (!value || /^(rgb|#)/i.test(value)) return value;
 	try {
 		const canvas = document.createElement('canvas');
