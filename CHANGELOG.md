@@ -9,6 +9,11 @@ arrived.
 
 ## Unreleased
 
+### Added
+
+- The debug panel reports whether iOS found a colour to paint the status bar
+  with when the app launched, and which element it read it from.
+
 ### Fixed
 
 - The installed app's status bar on iOS 26 and 27 is opaque from the moment it

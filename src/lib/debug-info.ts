@@ -8,6 +8,7 @@
 // so only the literal is shared.
 import { IMMUTABLE_PREFIX } from '$lib/sw/asset-route';
 import { askWorkerBuild } from '$lib/sw/ask-build';
+import { readColdLaunchProbe, type StatusBarProbe } from '$lib/status-bar-probe';
 
 /**
  * "Stats for nerds" — the numbers behind a page load, formatted for the panel
@@ -77,6 +78,12 @@ export interface DebugSources {
 	 *  home-screen launch. Null when the question doesn't apply — a browser tab,
 	 *  where the answer is the uninteresting one and the toolbar makes it move. */
 	viewport: ViewportMetrics | null;
+	/** Whether WebKit had a container to sample for the status bar AT MOUNT, and
+	 *  what colour it would have read. Captured then rather than read now,
+	 *  because opening this panel changes the answer — see lib/status-bar-probe.
+	 *  Null when the question doesn't apply (not a home-screen launch) or when
+	 *  the app mounted before the capture existed. */
+	statusBar: StatusBarProbe | null;
 	/** Which build the CONTROLLING worker is, or null if it didn't answer.
 	 *  See the note on the Service worker row for why "controlled" isn't enough. */
 	workerBuild: string | null;
@@ -563,6 +570,25 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 									`safe-area ${px(s.viewport.insetTop)} top, ${px(s.viewport.insetBottom)} bottom`,
 							},
 						]),
+				// Whether iOS had a colour to paint the status bar with at the
+				// moment this launched — the difference between an opaque bar and
+				// the Liquid Glass blur over the top of the app. Reported as
+				// captured at MOUNT, not as measured now: reaching this panel goes
+				// through the drawer, and the drawer's scrim is itself a qualifying
+				// container sitting over the sampled point, so a live reading would
+				// describe the drawer every time.
+				...(s.statusBar === null
+					? []
+					: [
+							{
+								label: 'Status bar',
+								value: s.statusBar.reason === null ? 'sampled' : 'NOT sampled',
+								note:
+									s.statusBar.reason === null
+										? `${s.statusBar.container} → ${s.statusBar.color}`
+										: `${s.statusBar.container ?? 'nothing at the probe point'} · ${s.statusBar.reason}`,
+							},
+						]),
 			],
 		},
 	];
@@ -615,6 +641,8 @@ export async function readDebugSources(version: string): Promise<DebugSources> {
 		dev: import.meta.env.DEV,
 		launchImage: readLaunchImageMatch(standalone),
 		viewport: readViewportMetrics(standalone),
+		// Already taken, at mount. Nothing is measured here — see the field.
+		statusBar: readColdLaunchProbe(),
 		// Short deadline, unlike the layout's 1500ms — and the difference is what a
 		// null COSTS at each site, not how likely one is. There, a null flips
 		// shouldPromptForUpdate to "prompt", so waiting buys the difference between

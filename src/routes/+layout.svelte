@@ -14,6 +14,7 @@
 	import { askPendingNavigation } from '$lib/sw/pending-navigation';
 	import { notificationBody, notificationTitle } from '$lib/sw/notification-copy';
 	import { syncSurfaceChrome } from '$lib/theme-color';
+	import { captureColdLaunchProbe } from '$lib/status-bar-probe';
 	import type { ActiveConversationReport, SwClientMessage } from '$lib/types/push';
 	import { resolve } from '$app/paths';
 
@@ -148,6 +149,14 @@
 	// simply re-affirmed there. syncSurfaceChrome is idempotent.
 	$effect(() => {
 		syncSurfaceChrome();
+	});
+
+	// Take the status-bar reading now, while the page is still as it launched.
+	// It cannot be taken later: the debug panel that reports it is reached
+	// through the sidebar drawer, whose scrim then covers the point being
+	// sampled. Standalone-only and once per process — see the module.
+	$effect(() => {
+		captureColdLaunchProbe();
 	});
 
 	// When a new SW is waiting, vite-plugin-pwa fires onNeedRefresh and

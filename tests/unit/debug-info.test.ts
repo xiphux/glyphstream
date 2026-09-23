@@ -43,6 +43,7 @@ function sources(over: Partial<DebugSources> = {}): DebugSources {
 		dev: false,
 		launchImage: null,
 		viewport: null,
+		statusBar: null,
 		workerBuild: null,
 		...over,
 	};
