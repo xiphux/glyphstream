@@ -74,7 +74,11 @@ function mount(
  * getComputedStyle reports for a specific element, leaving every other element
  * on the real implementation.
  */
-const painted = new WeakMap<Element, string>();
+// A Map, not a WeakMap, so afterEach can clear it. `document.body` is the same
+// object for the whole file, so a stub left on it leaks into every later test —
+// which made the file order-dependent: once one case painted the body, the next
+// one silently inherited an oklch background and an 1024x800 rect.
+const painted = new Map<Element, string>();
 function paint(el: Element, backgroundColor: string): void {
 	painted.set(el, backgroundColor);
 }
@@ -100,6 +104,10 @@ beforeAll(() => {
 afterEach(() => {
 	document.body.innerHTML = '';
 	document.body.style.cssText = '';
+	painted.clear();
+	// The rect stub is an own property on body; deleting it restores the
+	// prototype's. Detached children go with innerHTML, but body persists.
+	delete (document.body as Partial<HTMLElement>).getBoundingClientRect;
 });
 
 describe('probeStatusBarContainer', () => {

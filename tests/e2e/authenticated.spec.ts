@@ -155,11 +155,13 @@ test.describe('unauthenticated', () => {
 	});
 
 	test('a dark-scheme /login tints the browser chrome to match the page', async ({ browser }) => {
-		// The `(auth)` group has no layout of its own, so nothing here used to
-		// call syncSurfaceChrome() — /login kept app.html's static light
-		// default for its whole lifetime and a dark-scheme user got a near-white
-		// status bar over a dark page. Unauthenticated + dark is a combination
-		// no other spec covers, which is why it went unnoticed.
+		// Nothing on these routes used to call syncSurfaceChrome() — /login kept
+		// app.html's static light default for its whole lifetime and a
+		// dark-scheme user got a near-white status bar over a dark page.
+		// Unauthenticated + dark is a combination no other spec covers, which is
+		// why it went unnoticed. (The `(auth)` group has a layout of its own now,
+		// for the status-bar sampler, but no effects; the call that fixes this
+		// still comes from the root layout.)
 		const ctx = await browser.newContext({
 			storageState: { cookies: [], origins: [] },
 			colorScheme: 'dark',

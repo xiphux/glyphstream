@@ -183,29 +183,43 @@ describe('status-bar sampler class literal', () => {
  * iPhone.
  */
 describe('(app) mobile top bar as the status-bar sampled element', () => {
-	const topBar = () => {
+	/**
+	 * The row's class list, as a list of whole class names.
+	 *
+	 * Anchored forward from `<main`, on the first class attribute containing
+	 * `sm:hidden` — the one property that identifies this row and nothing else
+	 * in the pane. It used to scan BACKWARDS from the hamburger's aria-label
+	 * for the nearest `class="`, which landed on the wrapper only because that
+	 * button happens to write `class` after `aria-label`; reordering two
+	 * attributes would have silently retargeted the assertions at the button.
+	 */
+	const topBarClasses = (): string[] => {
 		const layout = readFileSync(`${srcDir}routes/(app)/+layout.svelte`, 'utf-8');
-		// The one row carrying the hamburger, identified by its aria-label so
-		// this doesn't pin unrelated markup.
-		const idx = layout.indexOf('aria-label="Open menu"');
-		expect(idx, 'the mobile top bar row is gone').toBeGreaterThan(-1);
-		// The class attribute on the wrapper immediately above it.
-		const before = layout.slice(0, idx);
-		const start = before.lastIndexOf('class="');
-		return before.slice(start, before.indexOf('"', start + 7) + 1);
+		const main = layout.indexOf('<main');
+		expect(main, 'the (app) main pane is gone').toBeGreaterThan(-1);
+		const rest = layout.slice(main);
+		const attr = /class="([^"]*sm:hidden[^"]*)"/.exec(rest);
+		expect(attr, 'no sm:hidden row inside <main> — the mobile top bar is gone').not.toBeNull();
+		return attr![1].split(/\s+/).filter(Boolean);
 	};
 
 	it('is positioned so WebKit will consider it at all', () => {
+		const classes = topBarClasses();
 		expect(
-			topBar(),
+			classes,
 			'the mobile top bar is no longer sticky — a static row is rejected ' +
 				'outright (NotFixedOrSticky) and the iOS status bar goes back to the blur',
-		).toContain('sticky top-0');
+		).toContain('sticky');
+		expect(classes, 'the mobile top bar no longer sits at the top edge').toContain('top-0');
 	});
 
 	it('carries the same surface token as body, not merely some background', () => {
+		// Whole class names, not a substring: `toContain('bg-surface')` over the
+		// raw attribute passes against `bg-surface-raised` and
+		// `bg-surface-sidebar`, which are real tokens in this tree and are
+		// exactly the drift this test exists to catch.
 		expect(
-			topBar(),
+			topBarClasses(),
 			'the mobile top bar no longer carries bg-surface — either it has no ' +
 				'background (nothing to sample) or one that disagrees with body, ' +
 				'which WebKit discards as hasMultipleBackgroundColors',

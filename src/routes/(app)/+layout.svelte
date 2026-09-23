@@ -1092,7 +1092,26 @@
 			 So `bg-surface` here is load-bearing precisely because it is a no-op
 			 visually. Sticky costs nothing else — `main` is overflow-hidden and
 			 its children scroll themselves, so there is nothing for this to
-			 stick against. -->
+			 stick against.
+
+			 NO z-index, and that is checked rather than overlooked — two reviews
+			 have now called it out, because the drawer scrim above is
+			 `fixed inset-0` at --z-index-drawer-backdrop (30) while this row is
+			 `auto`, so while the drawer is open the scrim does paint over the
+			 sampled point and does win the hit test. It still cannot take the
+			 bar: `fixed inset-0` makes it viewport-sized on both axes, which
+			 classifies it IsDimmingLayer (or IsViewportSizedCandidate — the
+			 branch doesn't matter), and both set `preferExistingColor`, whose
+			 path re-emits the colour already committed for that edge instead of
+			 the candidate's own. So the bar keeps THIS row's surface while the
+			 drawer is open. Shut, the scrim is opacity-0 + pointer-events-none,
+			 which is exactly the case WebKit's retryHonoringPointerEvents pass
+			 skips.
+			 The retired sampler carried z-index 35 to out-stack that scrim, and
+			 a comment asserting it was needed outlived the element; it was
+			 reasoning from a folk model, and a 1px strip at y=0 was never hit at
+			 y=4 anyway. Don't restore the z-index on that authority — it would
+			 also paint this row over the dimmed page. -->
 		<div
 			class="sticky top-0 flex shrink-0 items-center gap-2 bg-surface px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:hidden"
 		>

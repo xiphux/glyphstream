@@ -180,8 +180,11 @@ export function probeStatusBarContainer(): StatusBarProbe {
 	let color: string | null = null;
 	for (let el: HTMLElement | null = container; el; el = el.parentElement) {
 		const style = getComputedStyle(el);
-		// The prefixed form through getPropertyValue: it isn't on the typed
-		// CSSStyleDeclaration, and it is the one WebKit actually reports.
+		// The prefixed lookup is a fallback for engines that don't expose the
+		// unprefixed property at all, NOT "the one WebKit reports", as this said
+		// before someone traced it: wherever `backdropFilter` exists it computes
+		// to the string 'none', which is truthy, so `||` short-circuits and the
+		// second lookup never runs. Safari 18+ aliases the two anyway.
 		const filter = style.backdropFilter || style.getPropertyValue('-webkit-backdrop-filter');
 		if (filter && filter !== 'none') {
 			return { container: label, color: null, reason: `backdrop-filter on ${describe(el)}` };

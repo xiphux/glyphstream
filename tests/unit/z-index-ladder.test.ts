@@ -92,8 +92,13 @@ describe('global stacking ladder', () => {
 		// Ceiling: at the top of the ladder the sampler painted a 1px
 		// surface-coloured hairline over every full-viewport dark overlay, since
 		// under the `default` status-bar style this strip is on-screen content.
-		// Under the overlay tier, an open lightbox or dialog is what iOS samples,
-		// which is also the colour the bar should take.
+		// Sitting under the overlay tier removed the hairline, which is the part
+		// that was real. The reason given alongside it — "an open lightbox is
+		// what iOS samples, which is the colour the bar should take" — is not:
+		// a `fixed inset-0` overlay is viewport-sized on both axes, so WebKit
+		// classifies it IsViewportSizedCandidate and `preferExistingColor` keeps
+		// the colour already committed for the edge. The bar stays the page's
+		// either way.
 		//
 		// Both bounds are still asserted because each was violated in turn, and a
 		// bare "outranks the backdrop" passes the version that caused the
