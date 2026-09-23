@@ -163,3 +163,55 @@ describe('status-bar sampler class literal', () => {
 		).toContain(`querySelector<HTMLElement>('.${SAMPLER}')`);
 	});
 });
+
+/**
+ * The OTHER half of the same invariant, which had no guard at all.
+ *
+ * Colouring the iOS standalone status bar is now split across two mechanisms:
+ * the sampler above on (auth), and — everywhere else, i.e. nearly the whole
+ * app — the mobile top bar in (app)/+layout.svelte doing the job as itself.
+ * Only the first half was pinned, so a restyle of the top bar could drop the
+ * status bar back to the Liquid Glass blur with every test still green.
+ *
+ * Both classes are load-bearing for a reason the markup doesn't show:
+ * WebKit's sampler (see the .status-bar-sampler rule in app.css) only
+ * considers `position: fixed` or `sticky` boxes, and reads the colour from the
+ * first visible background walking up — discarding the result if two ancestors
+ * disagree. So `sticky` is what makes the row eligible at all, and `bg-surface`
+ * has to be the SAME token `body` carries. Either one dropped, or `bg-surface`
+ * swapped for a different token, is silent on every device but an installed
+ * iPhone.
+ */
+describe('(app) mobile top bar as the status-bar sampled element', () => {
+	const topBar = () => {
+		const layout = readFileSync(`${srcDir}routes/(app)/+layout.svelte`, 'utf-8');
+		// The one row carrying the hamburger, identified by its aria-label so
+		// this doesn't pin unrelated markup.
+		const idx = layout.indexOf('aria-label="Open menu"');
+		expect(idx, 'the mobile top bar row is gone').toBeGreaterThan(-1);
+		// The class attribute on the wrapper immediately above it.
+		const before = layout.slice(0, idx);
+		const start = before.lastIndexOf('class="');
+		return before.slice(start, before.indexOf('"', start + 7) + 1);
+	};
+
+	it('is positioned so WebKit will consider it at all', () => {
+		expect(
+			topBar(),
+			'the mobile top bar is no longer sticky — a static row is rejected ' +
+				'outright (NotFixedOrSticky) and the iOS status bar goes back to the blur',
+		).toContain('sticky top-0');
+	});
+
+	it('carries the same surface token as body, not merely some background', () => {
+		expect(
+			topBar(),
+			'the mobile top bar no longer carries bg-surface — either it has no ' +
+				'background (nothing to sample) or one that disagrees with body, ' +
+				'which WebKit discards as hasMultipleBackgroundColors',
+		).toContain('bg-surface');
+		expect(appCss, 'body no longer paints bg-surface, so the top bar now disagrees').toMatch(
+			/body\s*\{[^}]*bg-surface/,
+		);
+	});
+});
