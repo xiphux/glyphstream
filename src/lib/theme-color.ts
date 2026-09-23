@@ -9,15 +9,17 @@
  *
  * The two places: `<meta name="theme-color">`, which tints browser chrome
  * (Safari tabs, Android) and non-iOS installed-app bars, and the
- * .status-bar-sampler element, which is what iOS colors its standalone status
- * bar from (it ignores theme-color there — see app.css).
+ * .status-bar-sampler element on the (auth) routes — inside (app) the mobile
+ * top bar is what iOS samples, and it needs nothing from here because it takes
+ * its colour from the cascade like any other row.
  *
- * Both need the SAME normalisation and for the same reason, which is why one
- * function serves them: see toLegacyRgb. The sampler's stylesheet default is
- * `var(--color-surface)`, authored in oklch — so on any engine whose status-bar
- * sampler shares the theme-color parser's limits, the CSS alone hands iOS a
- * color it drops on the floor. Overwriting it with resolved rgb() is the same
- * fix, applied to the same problem, one layer down.
+ * Only the META needs toLegacyRgb. This used to claim the sampler needed it
+ * too, on the theory that iOS would drop the oklch the stylesheet sets — the
+ * theory that had the status bar coming up blurred on a cold launch. It is
+ * wrong: WebKit's gate is `styleColor.isResolvedColor()`, which excludes
+ * unresolved values like currentColor, not modern colour spaces (see the
+ * sampler rule in app.css for what the real gates are). The sampler write is
+ * kept because it is free and harmless, not because it is load-bearing.
  *
  * We read the *resolved* body background (the `--color-surface` token) rather
  * than the raw custom property, then normalise it to legacy `rgb()` — see

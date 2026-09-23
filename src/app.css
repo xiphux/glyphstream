@@ -473,11 +473,13 @@
  * surface — picks its layer from here, lowest first:
  *
  *   drawer-backdrop  the mobile sidebar's scrim
- *   status-bar       the 1px strip iOS colors the standalone status bar from.
- *                    The one tier that isn't about what a human sees, and the
- *                    only reason it is this low: it has to clear the scrim
- *                    above, which stays mounted and merely fades, but must
- *                    stay UNDER anything genuinely visible. See the rule.
+ *   status-bar       the strip iOS colors the standalone status bar from, on
+ *                    the (auth) routes only — inside (app) the mobile top bar
+ *                    is the sampled element instead. The one tier that isn't
+ *                    about what a human sees. Its rank no longer settles
+ *                    anything (the drawer and the lightbox it was placed
+ *                    between don't exist on those routes); it is pinned here
+ *                    because nothing argues for moving it. See the rule.
  *   sidebar          the sidebar itself, and CanvasPane's mobile sheet
  *   overlay          modals, popovers, menus, the lightbox: the busy tier
  *   popover-nested   a tooltip opened from inside something already at overlay
@@ -653,61 +655,55 @@ body {
 	height: 100dvh;
 }
 
-/* Status bar color for the installed app. iOS paints the bar itself, taking
-   the background-color of a position:fixed/sticky element within 4px of the
-   page top, at least 1px tall and ~80% wide. It must be a real element — the
-   sampler doesn't see pseudo-elements, so a body::before plate does nothing.
-   Standalone-only: a browser tab has its own chrome. One element, one color: at
-   sm+ the edge under the bar is sidebar + page, and the bar takes the page's.
+/* Status bar color for the installed app, on the (auth) routes only — login,
+   /join/<token>, setup. Everywhere else the mobile top bar does this job as
+   itself; see its comment in (app)/+layout.svelte. This strip is its stand-in
+   for the three pages that have no such row, and it is styled to clear a set
+   of gates rather than to be looked at.
 
-   The background-color here is the PRE-JS default, and on iOS it is probably
-   not the value that ends up being read: --color-surface is authored in oklch,
-   and syncSurfaceChrome() overwrites this inline with resolved rgb() because
-   iOS is documented (in this repo — see toLegacyRgb in lib/theme-color.ts) to
-   ignore a theme-color it can't parse. Keep both: the token is what SSR paints
-   and what every other engine uses.
+   The gates are not folklore. They are WebKit's, in
+   Source/WebCore/page/LocalFrameView.cpp — fixedContainerEdges(), which is what
+   decides between an opaque status bar and the iOS 26/27 Liquid Glass blur:
 
-   That inline write outranks this declaration for the life of the element, so
-   it has to be re-run by everything that can change --color-surface: mount,
-   theme, scheme, AND the `data-private` re-tint. All four are wired; a fifth
-   would have to be, and surface-color-resync.test.ts is what fails if one is
-   added without it.
+     - ONE hit test, at midpointOnSide(Top) of the fixed-position rect after
+       `contract({ sampleRectMargin })`, sampleRectMargin = 4. So the probe is
+       at y = 4, NOT y = 0: a strip shorter than that is never even hit.
+     - primaryBackgroundColorForRenderer rejects any box whose border box is
+       `<= thinBorderWidth` (10) in EITHER dimension. Combined with the above,
+       a 1px sampler fails twice over.
+     - The element must be `position: fixed` or `sticky` with a layer; a static
+       box is NotFixedOrSticky whatever it paints. It must be a real element —
+       pseudo-elements aren't hit-tested, so a body::before plate does nothing.
+     - It must span >= 0.9x the viewport width (minimumRatio), be opaque, and
+       not carry a negative z-index or a backdrop-filter anywhere in its
+       ancestor chain.
 
-   The z-index is deliberate, and it is a BAND, not a maximum. iOS reads the
-   topmost fixed element at the page top, and the mobile drawer's backdrop is
-   `fixed inset-0` that stays mounted and merely fades to opacity-0 when shut —
-   so an unstacked sampler is covered by it permanently, and what iOS reads
-   while the drawer is OPEN is bg-black/40 rather than our surface. Hence above
-   drawer-backdrop.
+   Hence 12px, comfortably past the 10px floor and containing the y=4 probe.
+   That is real on-screen content under the `default` status-bar style (the
+   page starts BELOW the bar), which is affordable here only because it is the
+   same colour as the surface behind it and these pages are a centred card on a
+   flat ground. Don't reuse this trick over content that scrolls.
 
-   But NOT above the overlay tier, which is where it first landed. Under the
-   `default` status-bar style the page starts below the bar, so this strip is
-   on-screen content, not a row hidden behind the bar the way black-translucent
-   left it — and at the top of the ladder it drew a surface-coloured hairline
-   across every full-viewport dark overlay in the installed app, MediaLightbox's
-   bg-black/90 most visibly. Sitting under them costs nothing: when one is open
-   iOS samples IT, so the bar matches the lightbox instead of the page behind
-   it, which is what you'd want anyway. The toast and update tiers are both
-   bottom-anchored (Toaster.svelte, UpdateBanner.svelte), so they never cover
-   this edge and their rank relative to it decides nothing.
+   `pointer-events: none` is safe despite the hit test: the first pass runs with
+   IgnoreCSSPointerEventsProperty set, and only retries honouring it when it
+   lands on an INVISIBLE pointer-events:none box. This one is opaque.
 
-   The floor has its own price, accepted rather than overlooked: over the OPEN
-   drawer the strip is a 1px surface-coloured line across the scrim, the same
-   artifact the ceiling exists to remove from the lightbox. There is no tier
-   that avoids both — clearing the scrim when shut is exactly what puts us over
-   it when open — and this is the cheaper side, one hairline against a dimmed
-   page rather than a permanently mis-coloured bar.
+   oklch is fine here, contrary to what this comment used to claim. The gate is
+   `styleColor.isResolvedColor()`, which excludes unresolved values like
+   currentColor, not modern colour spaces. syncSurfaceChrome() still overwrites
+   this inline with resolved rgb(), and that write still has to be re-run by
+   everything that can change --color-surface — mount, theme, scheme, and the
+   `data-private` re-tint, with surface-color-resync.test.ts failing if a fifth
+   is added without it — but it is belt-and-braces for the sampler and the real
+   work for `<meta name="theme-color">`, which iOS does NOT consult for this.
 
-   STILL OPEN, do not assume this rule closed it: on iOS 27 the bar comes up
-   translucent on a COLD launch, with a progressive blur ~35pt down into the
-   page, and snaps opaque the first time the drawer opens — then stays opaque
-   for the life of the process, through any number of open/close cycles. Only a
-   force-quit brings it back. So iOS decides this once, early, and something
-   about that first evaluation isn't seeing a usable color. The oklch normalisation
-   above is the current best explanation (and doubles as a post-paint mutation on
-   the element, which is the other thing opening the drawer provides). If a cold
-   launch still blurs, that theory is dead too, and the next suspect is launch-time
-   configuration rather than anything in the page. */
+   The z-index tier is now inertia rather than reasoning, and the reasoning it
+   replaced is worth not resurrecting: the tier used to sit above
+   drawer-backdrop so the mobile drawer's scrim couldn't mask the sampler, and
+   below the overlay tier so it didn't draw a hairline across the lightbox.
+   Neither pressure exists on these three routes — there is no drawer and no
+   lightbox — so the tier is kept only because nothing here argues for moving
+   it. z-index-ladder.test.ts still pins the ordering. */
 .status-bar-sampler {
 	display: none;
 }
@@ -717,7 +713,7 @@ body {
 		position: fixed;
 		inset: 0 0 auto 0;
 		z-index: var(--z-index-status-bar);
-		height: 1px;
+		height: 12px;
 		pointer-events: none;
 		background-color: var(--color-surface);
 	}

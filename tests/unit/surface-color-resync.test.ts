@@ -132,7 +132,7 @@ describe('surface-color re-sync', () => {
 
 /**
  * The sampler's other silent coupling. `.status-bar-sampler` is written out
- * independently three times — the class in the root layout's markup, the
+ * independently three times — the class in the (auth) layout's markup, the
  * selector in app.css, and a querySelector literal in theme-color.ts — and the
  * lookup is null-guarded, so a rename in one place never throws. It just stops
  * writing the resolved colour, leaving iOS the oklch the stylesheet sets, which
@@ -147,10 +147,12 @@ describe('status-bar sampler class literal', () => {
 	const SAMPLER = 'status-bar-sampler';
 
 	it('is the same literal in the markup, the stylesheet and the query', () => {
-		const layout = readFileSync(`${srcDir}routes/+layout.svelte`, 'utf-8');
+		// (auth), not the root layout: inside (app) the mobile top bar is the
+		// sampled element and this strip would be redundant on-screen content.
+		const layout = readFileSync(`${srcDir}routes/(auth)/+layout.svelte`, 'utf-8');
 		const themeColor = readFileSync(`${srcDir}lib/theme-color.ts`, 'utf-8');
 
-		expect(layout, 'the root layout no longer renders the sampler element').toContain(
+		expect(layout, 'the (auth) layout no longer renders the sampler element').toContain(
 			`class="${SAMPLER}"`,
 		);
 		expect(appCss, 'app.css no longer styles the sampler').toContain(`.${SAMPLER}`);

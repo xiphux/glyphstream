@@ -355,15 +355,6 @@
 	<title>GlyphStream</title>
 </svelte:head>
 
-<!-- iOS standalone samples this for the status bar color; see app.css, where
-	 its z-index is load-bearing in BOTH directions: over the drawer backdrop,
-	 which is `fixed inset-0` and stays mounted when shut, so iOS would sample a
-	 transparent element instead — but under the overlay tier, so a dialog or
-	 the lightbox is what it samples while one is open, and no hairline crosses
-	 them. Keep it in the root layout so it exists on every route, not just
-	 inside (app). -->
-<div class="status-bar-sampler" aria-hidden="true"></div>
-
 {@render children()}
 
 {#if updateAvailable && triggerUpdate}

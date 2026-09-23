@@ -1072,9 +1072,29 @@
 			 have the old black-translucent status bar (see app.html); the
 			 inset is 0 everywhere else. sm:hidden so this
 			 entire row only renders on mobile — desktop has the static
-			 sidebar always visible. -->
+			 sidebar always visible.
+
+			 `sticky top-0` + `bg-surface` are NOT decoration, and neither is
+			 removable without the iOS 26/27 status bar going translucent again.
+			 This row is the element WebKit samples to colour the standalone
+			 status bar and suppress the Liquid Glass blur over it. Its
+			 LocalFrameView::fixedContainerEdges() hit-tests one point — the top
+			 edge midpoint, inset by 4px — then walks ANCESTORS for the first
+			 renderer that is `position: fixed` or `sticky`; a statically
+			 positioned row is rejected outright (NotFixedOrSticky), whatever it
+			 paints. The colour is then read from the first visible background in
+			 that same chain, so the row needs one of its own rather than letting
+			 body's show through.
+
+			 It must stay the SAME colour as body: the walk keeps collecting
+			 backgrounds past this row, and if two ancestors disagree the result
+			 is discarded (hasMultipleBackgroundColors) and the blur comes back.
+			 So `bg-surface` here is load-bearing precisely because it is a no-op
+			 visually. Sticky costs nothing else — `main` is overflow-hidden and
+			 its children scroll themselves, so there is nothing for this to
+			 stick against. -->
 		<div
-			class="flex shrink-0 items-center gap-2 px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:hidden"
+			class="sticky top-0 flex shrink-0 items-center gap-2 bg-surface px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:hidden"
 		>
 			<button
 				type="button"
