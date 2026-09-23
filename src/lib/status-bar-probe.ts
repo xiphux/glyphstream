@@ -17,8 +17,8 @@
  * at mount and kept; see captureColdLaunchProbe.
  *
  * The gates below are WebKit's, transcribed from
- * Source/WebCore/page/LocalFrameView.cpp. Two places where this deliberately
- * diverges, both toward being readable rather than exact:
+ * Source/WebCore/page/LocalFrameView.cpp. Three places where this deliberately
+ * diverges, all toward being readable rather than exact:
  *
  *   - WebKit hit-tests one point and walks ANCESTORS of whatever it hits. This
  *     scans for fixed/sticky elements whose box contains that point instead,
@@ -29,6 +29,15 @@
  *   - WebKit starts collecting background colours at the hit node, which may be
  *     a descendant of the container. This starts at the container. A child with
  *     its own conflicting background would be missed here and caught there.
+ *   - A real hit test resolves stacking contexts. This ranks candidates by
+ *     computed z-index alone (see the scan), which agrees with paint order
+ *     only while they share one — true of every fixed top-edge element here.
+ *
+ * It also reports the colour it finds rather than the colour iOS would paint:
+ * WebKit blends a container below `minimumOpacityThresholdToClampToSolidColor`
+ * (0.75) over the page background instead of taking it neat, and clamps the
+ * rest to opaque. So a translucent container reads here as the value it
+ * declares, not the composite that reaches the bar.
  *
  * So treat a clean result as "the shape is right", not as proof. A FAILING
  * result is the trustworthy direction: if this can't find a container, WebKit
@@ -105,10 +114,25 @@ export function probeStatusBarContainer(): StatusBarProbe {
 		return { container: null, color: null, reason: `not scanned (${all.length} elements)` };
 	}
 
-	// Last match wins: later in document order is later in paint order among
-	// equally-stacked elements, which is the closest cheap stand-in for "the one
-	// the hit test would have landed on".
+	// Highest stacking order wins, document order breaking ties — an
+	// approximation of "the one the hit test would have landed on".
+	//
+	// This used to take the last match in document order outright, justified as
+	// paint order "among equally-stacked elements". The candidates here are not
+	// equally stacked: the drawer's scrim is `fixed inset-0` at
+	// --z-index-drawer-backdrop (30) while the mobile top bar is `sticky` at
+	// `auto`, and the bar is ~460 lines further down the layout, so document
+	// order alone picks the bar while the scrim is what actually paints over
+	// the probe point. Comparing z first makes the code mean what that comment
+	// already claimed.
+	//
+	// Still an approximation, and knowingly: `auto` is scored 0, which is right
+	// only while every candidate shares a stacking context. Nothing in this app
+	// nests a fixed top-edge element inside a transformed or filtered ancestor,
+	// and the cost of getting it wrong is a mislabelled diagnostic rather than a
+	// mislabelled page.
 	let container: HTMLElement | null = null;
+	let containerZ = 0;
 	for (const el of all) {
 		if (!(el instanceof HTMLElement)) continue;
 		const style = getComputedStyle(el);
@@ -121,9 +145,14 @@ export function probeStatusBarContainer(): StatusBarProbe {
 		// engine that reports an empty opacity — failing toward "nothing to
 		// sample", which is the one answer this must never invent.
 		if (style.opacity !== '' && Number(style.opacity) === 0) continue;
-		const z = Number(style.zIndex);
-		if (Number.isFinite(z) && z < 0) continue;
+		const parsed = Number(style.zIndex);
+		// `auto` (and an engine reporting '') parses to NaN; treat it as 0, the
+		// level it paints at, rather than letting NaN poison the comparison.
+		const z = Number.isFinite(parsed) ? parsed : 0;
+		if (z < 0) continue;
+		if (container !== null && z < containerZ) continue;
 		container = el;
+		containerZ = z;
 	}
 
 	if (!container) return { container: null, color: null, reason: 'no fixed or sticky container' };

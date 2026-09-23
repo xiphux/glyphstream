@@ -234,6 +234,27 @@ describe('probeStatusBarContainer', () => {
 		expect(result.color).toBe(RGB_SURFACE);
 	});
 
+	/**
+	 * Two candidates over the same point, the later one stacked lower — the
+	 * drawer scrim (z 30, `fixed inset-0`) against the mobile top bar (`sticky`,
+	 * z auto), which is far further down the layout. Document order alone picks
+	 * the bar; paint order puts the scrim on top.
+	 */
+	it('prefers the higher-stacked candidate over the later one', () => {
+		place(document.body, { width: FULL, height: 800 });
+		const scrim = mount('position:fixed;z-index:30;background-color:rgb(0, 0, 0);', {
+			width: FULL,
+			height: 800,
+		});
+		scrim.className = 'scrim';
+		const bar = mount('position:sticky;background-color:rgb(8, 11, 16);', {
+			width: FULL,
+			height: 48,
+		});
+		bar.className = 'top-bar';
+		expect(probeStatusBarContainer().container).toBe('div.scrim');
+	});
+
 	it('ignores a fixed element that does not span the probe point', () => {
 		// A bottom-anchored toast: fixed and full width, but nowhere near y=4.
 		mount('position:fixed;background-color:rgb(8, 11, 16);', {
