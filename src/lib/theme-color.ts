@@ -21,6 +21,13 @@
  * sampler rule in app.css for what the real gates are). The sampler write is
  * kept because it is free and harmless, not because it is load-bearing.
  *
+ * That last sentence is a claim worth keeping true rather than assuming. It
+ * briefly wasn't: status-bar-probe read computed backgrounds with an rgb()-only
+ * parser, so this inline write was the only reason the probe reported correctly
+ * on (auth), and deleting it would have broken the one route group that worked.
+ * The probe normalises for itself now (it imports toLegacyRgb below), so
+ * nothing downstream depends on this write landing first.
+ *
  * We read the *resolved* body background (the `--color-surface` token) rather
  * than the raw custom property, then normalise it to legacy `rgb()` — see
  * toLegacyRgb. Reading getComputedStyle forces a style flush, so calling this
@@ -136,10 +143,13 @@ export function syncSurfaceChrome(): void {
 	}
 	meta.setAttribute('content', bg);
 	// The sampler is server-rendered and already carries this color from the
-	// stylesheet; this restates it in a form iOS is known to parse. Guarded
-	// rather than assumed present: the element lives in the root layout, but
-	// this runs from six call sites and must not throw on a page that somehow
-	// predates it.
+	// stylesheet; this restates it as resolved rgb().
+	//
+	// The guard is load-bearing, not defensive. The element exists ONLY on the
+	// (auth) routes now — inside (app) the mobile top bar is what iOS samples,
+	// and it needs nothing from here because it takes its colour from the
+	// cascade — so on most of the app this query correctly finds nothing and
+	// this call does only the meta above.
 	const sampler = document.querySelector<HTMLElement>('.status-bar-sampler');
 	if (sampler) sampler.style.backgroundColor = bg;
 }

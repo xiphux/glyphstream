@@ -674,9 +674,13 @@ body {
      - The element must be `position: fixed` or `sticky` with a layer; a static
        box is NotFixedOrSticky whatever it paints. It must be a real element —
        pseudo-elements aren't hit-tested, so a body::before plate does nothing.
-     - It must span >= 0.9x the viewport width (minimumRatio), be opaque, and
-       not carry a negative z-index or a backdrop-filter anywhere in its
-       ancestor chain.
+     - It must span >= 0.9x the viewport width (minimumRatio), and must not
+       carry a negative z-index or a backdrop-filter anywhere in its ancestor
+       chain. NOT "must be opaque", as this said before someone checked:
+       a hidden or near-transparent box is rejected, but a merely translucent
+       one is blended over the page background (below
+       minimumOpacityThresholdToClampToSolidColor, 0.75) and otherwise clamped
+       to opaque. Translucency costs you the colour you chose, not the bar.
 
    Hence 12px, comfortably past the 10px floor and containing the y=4 probe.
    That is real on-screen content under the `default` status-bar style (the

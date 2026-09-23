@@ -16,10 +16,10 @@ arrived.
 
 ### Fixed
 
-- The installed app's status bar on iOS 26 and 27 is opaque from the moment it
-  cold-launches. It used to come up translucent, with the blur reaching down far
-  enough to smear the app's own title row, and only snap opaque once the sidebar
-  had been opened.
+- On iPhone, the installed app's status bar on iOS 26 and 27 is opaque from the
+  moment it cold-launches. It used to come up translucent, with the blur
+  reaching down far enough to smear the app's own title row, and only snap
+  opaque once the sidebar had been opened. iPad is unchanged for now.
 
 ## v0.40.0
 

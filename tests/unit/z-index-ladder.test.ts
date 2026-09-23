@@ -76,12 +76,17 @@ describe('global stacking ladder', () => {
 	});
 
 	it('keeps the status-bar sampler in its band: over the scrim, under overlays', () => {
-		// Shipped broken for a release, then over-corrected. iOS colors the
-		// standalone status bar from the TOPMOST fixed element at the page top.
+		// HISTORICAL, and the assertions are kept for inertia rather than for
+		// the reasons below — read app.css's sampler rule before acting on this.
+		// The sampler now exists only on the (auth) routes, where neither
+		// pressure applies: those three pages have no drawer and no lightbox.
+		// It is also 12px, not the 1px the ceiling argument was about.
+		//
+		// What the two bounds were for, when the sampler was on every route:
 		//
 		// Floor: the drawer backdrop is `fixed inset-0`, always mounted and
-		// merely faded out when shut, so a sampler below it loses this edge
-		// permanently — iOS reads a transparent element and falls back to the
+		// merely faded out when shut, so a sampler below it lost this edge
+		// permanently — iOS read a transparent element and fell back to the
 		// translucent bar.
 		//
 		// Ceiling: at the top of the ladder the sampler painted a 1px
@@ -90,8 +95,10 @@ describe('global stacking ladder', () => {
 		// Under the overlay tier, an open lightbox or dialog is what iOS samples,
 		// which is also the colour the bar should take.
 		//
-		// Both bounds are asserted because each was violated in turn, and a bare
-		// "outranks the backdrop" passes the version that caused the hairline.
+		// Both bounds are still asserted because each was violated in turn, and a
+		// bare "outranks the backdrop" passes the version that caused the
+		// hairline — so if the sampler ever returns to a route that has either,
+		// the tier it needs is already pinned.
 		const t = declaredTiers();
 		const statusBar = t.get('status-bar')!;
 		expect(statusBar).toBeGreaterThan(t.get('drawer-backdrop')!);
