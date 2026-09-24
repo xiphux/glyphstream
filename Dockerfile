@@ -3,7 +3,7 @@
 # ----------------------------------------------------------------------
 # GlyphStream — multi-stage Alpine build.
 #
-# Four stages:
+# Five stages:
 #   1. builder   — full deps; produces /app/build.
 #   2. proddeps  — fresh install of *only* production deps. Parallel
 #                  to builder; doesn't see source. Avoids the trap
@@ -11,7 +11,10 @@
 #                  .pnpm/ that the runtime would still ship.
 #   3. ffmpeg    — compiles a decode-only ffmpeg. Discarded; the runtime
 #                  copies one 5 MB binary out of it.
-#   4. runtime   — node + tini + ffmpeg + just the artifacts. No compilers.
+#   4. runtime-base — node:26-alpine + our OS packages, with what a server
+#                  never reads trimmed out (debug info, headers, docs).
+#   5. runtime   — runtime-base copied into `scratch` (so the trim actually
+#                  shrinks the image) + ffmpeg + just the artifacts. No compilers.
 #
 # No JavaScript dependency needs a C/C++ toolchain: SQLite is the built-in
 # `node:sqlite` and sharp ships prebuilt musl binaries. The only build-script
@@ -121,14 +124,14 @@ RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
 # a hwaccel-only wrapper: it builds and it lists in `-decoders`, and then every
 # software decode fails with "Your platform doesn't support hardware accelerated
 # AV1 decoding". Enabling it here bought exactly nothing and read as coverage —
-# which is why the runtime stage installs libdav1d rather than the decoder list
+# which is why the runtime-base stage installs libdav1d rather than the decoder list
 # simply naming `av1`. libdav1d ships shared-only on Alpine, so it is apk-managed
 # on both sides instead of copied; that also keeps it picking up CVE fixes when
 # the base image is rebased, which for a decoder is the point.
 #
 # Cold build is ~30s — configure skips probing everything that's disabled, and
 # make compiles a few dozen files instead of thousands.
-# Same base as the runtime stage, deliberately. libdav1d is the one library this
+# Same base as the runtime-base stage, deliberately. libdav1d is the one library this
 # binary links dynamically, and it is apk-installed on BOTH sides — so if the two
 # stages sat on different Alpine snapshots, a dav1d SONAME bump (libdav1d.so.7 ->
 # .so.8) in whichever one moved first would leave a binary that cannot exec. That
@@ -241,8 +244,21 @@ RUN apk add --no-cache ffmpeg \
     && test "$(dd if=/tmp/probe-fs.mp4 bs=1 \
          skip=$(( $1*16777216 + $2*65536 + $3*256 + $4 + 4 )) count=4 2>/dev/null)" = moov
 
-# --- runtime ----------------------------------------------------------
-FROM node:26-alpine AS runtime
+# --- runtime-base -----------------------------------------------------
+# The runtime's operating system: node:26-alpine plus our packages, minus what
+# a running server never touches. The runtime stage below copies this whole
+# filesystem into `scratch` rather than building FROM it, and that is the only
+# way the trimming can shrink anything: an image FROM node:26-alpine carries the
+# base layer's bytes whatever a later layer deletes. About 35 MB comes off the
+# unpacked image this way (see the trim step below for where it goes).
+#
+# Why not `FROM alpine` plus a copied node binary, which gets the same bytes:
+# the Alpine version would then be pinned here instead of following Node's. The
+# node binary links the base's libstdc++, the ffmpeg stage's libdav1d must match
+# this one's (see there), and a pinned `alpine:3.x` would be bumped by Renovate
+# on a different schedule from `node:26-alpine` — as a minor, which automerges.
+# Deriving from node:26-alpine keeps one moving part, exactly as before.
+FROM node:26-alpine AS runtime-base
 
 # tini = PID 1 with proper signal handling. Without it, SIGTERM doesn't
 # reach the Node process cleanly, which means the media purger interval
@@ -262,13 +278,49 @@ FROM node:26-alpine AS runtime
 # image scan reports them, and a stale package is a stale package. The layer
 # cache can hold an older upgrade until the base image changes; the weekly
 # image-scan.yml run is what notices.
-RUN apk upgrade --no-cache && apk add --no-cache tini sqlite
+#
+# libdav1d is for our ffmpeg (copied in by the runtime stage): the one codec
+# library it links against rather than implements — ffmpeg's own AV1 decoder
+# cannot decode in software.
+#
+# Then the trim. None of it is read by a running server:
+#   - the node binary's symbol table and DWARF debug info (~15 MB). The official
+#     build ships unstripped. JS stack traces are unaffected; what is lost is
+#     symbol names in a native crash backtrace, which nobody reads off a
+#     production image.
+#   - Node's C headers (~6.5 MB), there for compiling native addons, and this
+#     image has no compiler to compile one with.
+#   - npm's docs and man pages (~3 MB), read only by `npm help`.
+#   - the base's docker-entrypoint.sh, which tini replaces as ENTRYPOINT.
+#
+# npm and npx themselves STAY. The documented stdio MCP setup is
+# `command = "npx"` (docs/mcp.md), spawned inside this container, so removing
+# them would break every MCP server configured that way — for 16 MB.
+RUN apk upgrade --no-cache \
+ && apk add --no-cache tini sqlite libdav1d \
+ && apk add --no-cache --virtual .strip binutils \
+ && strip /usr/local/bin/node \
+ && apk del .strip \
+ && rm -rf /usr/local/include \
+           /usr/local/lib/node_modules/npm/docs \
+           /usr/local/lib/node_modules/npm/man \
+           /usr/local/share/doc /usr/local/share/man \
+           /usr/local/bin/docker-entrypoint.sh
+
+
+# --- runtime ----------------------------------------------------------
+FROM scratch AS runtime
+
+# Copying a whole filesystem is what DL3067 exists to catch, and here it is the
+# point: see runtime-base for why the trim can only land this way.
+# hadolint ignore=DL3067
+COPY --from=runtime-base / /
+# `scratch` inherits none of the base's config, so restate what it set that the
+# server relies on: PATH (for `node`, `ffmpeg`, and npx's child processes).
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Decode-and-remux, ~5 MB. See the ffmpeg stage for why it isn't
 # `apk add ffmpeg`, and for why "decode-only" stopped being the right word.
-# libdav1d is the one codec library it links against rather than implements —
-# ffmpeg's own AV1 decoder cannot decode in software.
-RUN apk add --no-cache libdav1d
 COPY --from=ffmpeg /opt/ff/bin/ffmpeg /usr/local/bin/ffmpeg
 # Prove the copied binary execs and resolved libdav1d. The end-to-end pipeline is
 # proved in the ffmpeg stage instead, where a throwaway full ffmpeg can generate
