@@ -174,39 +174,12 @@ importers:
 
   .:
     dependencies:
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.30.0
-        version: 1.30.0(zod@4.4.3)
-      '@mozilla/readability':
-        specifier: ^0.6.0
-        version: 0.6.0
       '@shikijs/langs':
         specifier: ^4.4.3
         version: 4.4.3
       '@shikijs/themes':
         specifier: ^4.4.3
         version: 4.4.3
-      '@shikijs/types':
-        specifier: ^4.4.3
-        version: 4.4.3
-      '@simplewebauthn/browser':
-        specifier: ^14.0.0
-        version: 14.0.0
-      '@simplewebauthn/server':
-        specifier: ^14.0.2
-        version: 14.0.2
-      drizzle-orm:
-        specifier: 1.0.0-rc.4
-        version: 1.0.0-rc.4(zod@4.4.3)
-      eventsource-parser:
-        specifier: ^4.1.0
-        version: 4.1.1
-      linkedom:
-        specifier: ^0.18.13
-        version: 0.18.13
-      markdown-it:
-        specifier: ^15.0.1
-        version: 15.0.2
       pyodide:
         specifier: ^314.0.6
         version: 314.0.7
@@ -216,15 +189,6 @@ importers:
       shiki:
         specifier: ^4.4.3
         version: 4.4.3
-      smol-toml:
-        specifier: ^1.8.0
-        version: 1.8.0
-      web-push:
-        specifier: ^3.6.7
-        version: 3.6.7
-      yaml:
-        specifier: ^2.9.0
-        version: 2.9.1
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -232,9 +196,24 @@ importers:
       '@lucide/svelte':
         specifier: ^1.43.0
         version: 1.47.0(svelte@5.57.0(@typescript-eslint/types@8.66.0))
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.30.0
+        version: 1.30.0(zod@4.4.3)
+      '@mozilla/readability':
+        specifier: ^0.6.0
+        version: 0.6.0
       '@playwright/test':
         specifier: ^1.63.0
         version: 1.63.0
+      '@shikijs/types':
+        specifier: ^4.4.3
+        version: 4.4.3
+      '@simplewebauthn/browser':
+        specifier: ^14.0.0
+        version: 14.0.0
+      '@simplewebauthn/server':
+        specifier: ^14.0.2
+        version: 14.0.2
       '@stylistic/eslint-plugin':
         specifier: ^5.10.0
         version: 5.10.0(eslint@10.10.0(jiti@2.7.0))
@@ -283,6 +262,9 @@ importers:
       drizzle-kit:
         specifier: 1.0.0-rc.4
         version: 1.0.0-rc.4
+      drizzle-orm:
+        specifier: 1.0.0-rc.4
+        version: 1.0.0-rc.4(zod@4.4.3)
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
@@ -298,15 +280,24 @@ importers:
       eslint-plugin-svelte:
         specifier: ^3.23.0
         version: 3.23.0(eslint@10.10.0(jiti@2.7.0))(svelte@5.57.0(@typescript-eslint/types@8.66.0))
+      eventsource-parser:
+        specifier: ^4.1.0
+        version: 4.1.1
       happy-dom:
         specifier: ^20.14.0
         version: 20.14.5
       husky:
         specifier: ^9.1.7
         version: 9.1.7
+      linkedom:
+        specifier: ^0.18.13
+        version: 0.18.13
       lint-staged:
         specifier: ^17.5.0
         version: 17.5.1
+      markdown-it:
+        specifier: ^15.0.1
+        version: 15.0.2
       prettier:
         specifier: ^3.9.6
         version: 3.9.8
@@ -316,6 +307,9 @@ importers:
       rollup-plugin-visualizer:
         specifier: ^7.1.1
         version: 7.1.1(rolldown@1.2.8)(rollup@4.62.4)
+      smol-toml:
+        specifier: ^1.8.0
+        version: 1.8.0
       svelte:
         specifier: ^5.57.0
         version: 5.57.0(@typescript-eslint/types@8.66.0)
@@ -343,6 +337,9 @@ importers:
       vitest:
         specifier: ^5.0.0
         version: 5.0.1(@types/node@26.6.1)(happy-dom@20.14.5)(vite@8.3.0(@types/node@26.6.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.49.2)(tsx@4.23.13)(yaml@2.9.1))
+      web-push:
+        specifier: ^3.6.7
+        version: 3.6.7
       workbox-expiration:
         specifier: ^7.4.1
         version: 7.4.1
@@ -358,6 +355,9 @@ importers:
       workbox-window:
         specifier: ^7.4.1
         version: 7.4.1
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.1
 
 packages:
 

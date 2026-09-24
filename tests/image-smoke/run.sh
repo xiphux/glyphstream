@@ -8,8 +8,9 @@
 # Checks, in order:
 #   1. the server boots and /api/health answers (migrations applied to a fresh DB)
 #   2. /login server-renders (following its redirect to /setup on a fresh DB)
-#   3. smoke.mjs does real work with every runtime dependency, from the image's
-#      own production node_modules (sharp's musl binary, pyodide, MCP SDK, …)
+#   3. smoke.mjs imports every server chunk (nothing the bundle left external is
+#      missing) and does real work with the packages still in node_modules
+#      (sharp's musl binary, pyodide, shiki)
 #   4. the server logged no error while doing all of the above
 set -euo pipefail
 

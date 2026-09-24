@@ -9,10 +9,61 @@
  * load (sharp's @img/sharp-linuxmusl-*), or a package whose entry point moved
  * would pass unit and e2e and break the shipped image. Each check does a small
  * piece of REAL work with the library, not just an import.
+ *
+ * Only three packages still live in node_modules: sharp, pyodide and shiki,
+ * the ones that load files from their own directory at runtime (a native
+ * binary, a WASM + stdlib bundle, lazily-imported grammars). Everything else
+ * is a devDependency that adapter-node bundles into build/server, so there is
+ * no package left to import here — and what can break changes shape. The
+ * failure is now a bare import the bundler left external to a package the
+ * image doesn't have, which every other job hides, because they run with the
+ * full dev install. `bundle` catches that; the bundled libraries' BEHAVIOUR
+ * is e2e's to cover, since Playwright runs this same production build.
  */
+import { readdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
 import process from 'node:process';
 
+// Module-resolution and link failures: the classes of error a bundling mistake
+// produces. Anything else a chunk throws at import time is the app refusing to
+// start outside the server (hooks.server wants its production config, the code
+// interpreter's worker wants a worker thread) and says nothing about the bundle.
+const isBundleError = (e) =>
+	e instanceof SyntaxError || // "does not provide an export named …"
+	['ERR_MODULE_NOT_FOUND', 'ERR_PACKAGE_PATH_NOT_EXPORTED', 'ERR_UNSUPPORTED_DIR_IMPORT'].includes(
+		e?.code,
+	);
+
 const checks = {
+	async bundle() {
+		const root = '/app/build/server';
+		const files = readdirSync(root, { recursive: true })
+			.filter((f) => f.endsWith('.js'))
+			.map((f) => join(root, f));
+		const problems = [];
+		for (const f of files) {
+			try {
+				await import(f);
+			} catch (e) {
+				if (isBundleError(e)) problems.push(`${f}: ${e.message.split('\n')[0]}`);
+			}
+		}
+		// The operator scripts are esbuild bundles with their own externals list
+		// (package.json's `build`). Run with no arguments they resolve every
+		// import, then stop at usage; a missing package fails before that.
+		for (const script of ['import-owui.js', 'faststart-backfill.js']) {
+			const r = spawnSync(process.execPath, [join('/app/build/scripts', script)], {
+				encoding: 'utf8',
+			});
+			if (/ERR_MODULE_NOT_FOUND|ERR_PACKAGE_PATH_NOT_EXPORTED|SyntaxError/.test(r.stderr)) {
+				problems.push(`${script}: ${r.stderr.split('\n').find((l) => /Error/.test(l))}`);
+			}
+		}
+		if (problems.length) throw new Error(`\n  ${problems.join('\n  ')}`);
+		if (files.length < 50) throw new Error(`only ${files.length} server chunks found`);
+	},
+
 	async sharp() {
 		const { default: sharp } = await import('sharp');
 		const png = await sharp({
@@ -34,69 +85,11 @@ const checks = {
 		if (out !== 45) throw new Error(`runPython returned ${String(out)}`);
 	},
 
-	async mcpSdk() {
-		const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
-		const { StreamableHTTPClientTransport } =
-			await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
-		const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
-		const client = new Client({ name: 'image-smoke', version: '0.0.0' });
-		new StreamableHTTPClientTransport(new URL('http://127.0.0.1:1/mcp'));
-		new StdioClientTransport({ command: 'true' });
-		if (typeof client.connect !== 'function') throw new Error('Client.connect missing');
-	},
-
-	async webPush() {
-		const { default: webpush } = await import('web-push');
-		const keys = webpush.generateVAPIDKeys();
-		webpush.setVapidDetails('mailto:smoke@example.com', keys.publicKey, keys.privateKey);
-	},
-
-	async simplewebauthn() {
-		const { generateRegistrationOptions } = await import('@simplewebauthn/server');
-		const opts = await generateRegistrationOptions({
-			rpName: 'smoke',
-			rpID: 'localhost',
-			userName: 'smoke',
-			attestationType: 'none',
-		});
-		if (!opts.challenge) throw new Error('no challenge');
-	},
-
 	async shiki() {
 		const { createHighlighter } = await import('shiki');
 		const hl = await createHighlighter({ themes: ['github-dark'], langs: ['python'] });
 		const html = hl.codeToHtml('print(1)', { lang: 'python', theme: 'github-dark' });
 		if (!html.includes('class="shiki')) throw new Error('no shiki markup');
-	},
-
-	async markdownIt() {
-		const { default: MarkdownIt } = await import('markdown-it');
-		const html = new MarkdownIt().render('# hi');
-		if (!html.includes('<h1>')) throw new Error(html);
-	},
-
-	async readability() {
-		const { parseHTML } = await import('linkedom');
-		const { Readability } = await import('@mozilla/readability');
-		const { document } = parseHTML(
-			`<html><head><title>T</title></head><body><article><h1>Heading</h1>${'<p>Body text that is long enough to count as content. </p>'.repeat(20)}</article></body></html>`,
-		);
-		const article = new Readability(document).parse();
-		if (!article?.textContent?.includes('Body text')) throw new Error('no article text');
-	},
-
-	async configParsers() {
-		const { parse: parseToml } = await import('smol-toml');
-		const { parse: parseYaml } = await import('yaml');
-		if (parseToml('a = 1').a !== 1) throw new Error('smol-toml');
-		if (parseYaml('a: 1').a !== 1) throw new Error('yaml');
-	},
-
-	async sseParser() {
-		const { createParser } = await import('eventsource-parser');
-		let data = '';
-		createParser({ onEvent: (e) => (data = e.data) }).feed('data: ok\n\n');
-		if (data !== 'ok') throw new Error(`eventsource-parser got "${data}"`);
 	},
 };
 

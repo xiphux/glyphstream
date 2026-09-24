@@ -156,11 +156,16 @@ tests/e2e/            # playwright (production-build webServer)
   several are page→layout publication channels (context flows down, not up),
   and `toast` is called from plain `.ts` modules where `getContext` is
   unavailable.
-- `bits-ui` and `lucide-svelte` belong in `devDependencies` — Vite bundles
-  them into the SSR build at compile time. Only packages that run
-  server-side at request time (`drizzle-orm`, `shiki`, `markdown-it`,
-  `smol-toml`) belong in `dependencies`. (SQLite needs no entry
-  here — it's the built-in `node:sqlite`.)
+- **`dependencies` holds only what can't be bundled**: packages that load
+  files from their own directory at runtime — `sharp` (native binary),
+  `pyodide` (WASM + stdlib), `shiki` and `@shikijs/langs`/`themes`. Everything
+  else, server libraries included (`drizzle-orm`, `markdown-it`, the MCP SDK…),
+  is a `devDependency`: adapter-node bundles those into `build/server`, and the
+  image's `--prod` install leaves them out. The esbuild'd operator scripts
+  (`build` in package.json) carry the same list as `--external:` flags, so a
+  new unbundleable package goes in both places. Getting it wrong passes unit
+  and e2e, which run on the full dev install; only `tests/image-smoke` catches
+  it. (SQLite needs no entry — it's the built-in `node:sqlite`.)
 - Test environment follows the directory (vitest `projects`):
   `tests/component/` runs in happy-dom, `tests/unit/` in `node`. A unit
   test that needs a DOM without being a component test opts in with a

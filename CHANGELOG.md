@@ -11,7 +11,7 @@ arrived.
 
 ### Changed
 
-- The Docker image is about 35 MB smaller unpacked, and about 9 MB smaller to
+- The Docker image is about 50 MB smaller unpacked, and about 13 MB smaller to
   pull. Nothing it runs has changed; `npx` is still there for stdio MCP servers.
 
 ## v0.40.1

@@ -369,13 +369,13 @@ jobs:
   # `gitleaks:allow` (current tree).
   # Build the runtime image and boot it. Everything else in CI runs a full dev
   # install on glibc; the image installs `--prod --ignore-scripts` on
-  # Alpine/musl. A runtime dependency missing from `dependencies`, a musl
-  # prebuilt that won't load (sharp), or a package whose entry point moved
-  # passes every other job and breaks the shipped image, and Dependabot
-  # auto-merges before docker.yml ever builds. tests/image-smoke/run.sh boots
-  # the container on a fresh DB, renders a page, and has smoke.mjs do real work
-  # with each runtime dependency from the image's own node_modules. Runnable
-  # locally the same way.
+  # Alpine/musl. An import the server bundle left external to a package the
+  # image doesn't install, a musl prebuilt that won't load (sharp), or a
+  # package whose entry point moved passes every other job and breaks the
+  # shipped image, and Renovate auto-merges before docker.yml ever builds.
+  # tests/image-smoke/run.sh boots the container on a fresh DB, renders a page,
+  # and has smoke.mjs import every server chunk and do real work with each
+  # package still in the image's own node_modules. Runnable locally the same way.
   #
   # amd64 only: the arm64 image is the same Dockerfile and lockfile, and an
   # arm64 runner would double the cost for the rare arm-only packaging break.

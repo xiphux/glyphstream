@@ -61,23 +61,22 @@ FROM node:26-alpine AS proddeps
 
 WORKDIR /app
 
-# Install ONLY production deps. Because @lucide/svelte and bits-ui are
-# devDependencies (their components are fully bundled into the build
-# output by Vite), this also avoids the chain of transitive peer-deps
-# they would have pulled in (typescript via runed→kit, vite/rolldown
-# via kit, lightningcss via tailwind, etc). The result is a much
-# leaner /app/node_modules without needing a manual trim list.
+# Install ONLY production deps, which is deliberately a short list: sharp,
+# pyodide and shiki, the packages that load files from their own directory at
+# runtime. Everything else — UI libraries and server libraries alike — is a
+# devDependency that adapter-node bundles into build/server, taking only what
+# the app imports (drizzle-orm alone ships every SQL dialect; the MCP SDK drags
+# in express and hono for a server side we never run). The result is a lean
+# /app/node_modules without a manual trim list. See CLAUDE.md for the rule.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # No --ignore-scripts follow-up rebuild needed: the only prod dep with a
 # native component is sharp, which ships prebuilt musl binaries (no build
 # script), and SQLite is the built-in node:sqlite.
 RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
  && pnpm install --frozen-lockfile --prod --ignore-scripts \
- # Strip declaration files and source maps — ~26 MB off the image
- # (307 -> 281 MB), a large chunk of it drizzle-orm shipping every
- # dialect's types + maps. Nothing reads either at runtime: types are a
- # compile-time artifact and the server is only ever run from the
- # pre-built bundle. Same reasoning as the builder stage's
+ # Strip declaration files and source maps. Nothing reads either at
+ # runtime: types are a compile-time artifact and the server is only ever
+ # run from the pre-built bundle. Same reasoning as the builder stage's
  # `find build/server -name '*.map' -delete`, applied to node_modules.
  # Done in this RUN, not the runtime stage, so the layer itself is
  # smaller rather than shadowing files in an earlier one.
