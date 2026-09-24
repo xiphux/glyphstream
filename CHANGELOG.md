@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.40.1
+
 ### Added
 
 - The debug panel reports whether iOS found a colour to paint the status bar
