@@ -20,10 +20,12 @@
  * full dev install. `bundle` catches that; the bundled libraries' BEHAVIOUR
  * is e2e's to cover, since Playwright runs this same production build.
  */
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
+import { Worker } from 'node:worker_threads';
 
 // Chunks whose evaluation IS the app, so importing them here would start a
 // second instance inside the running container, on the same DB: adapter-node's
@@ -91,6 +93,53 @@ const checks = {
 		const py = await loadPyodide();
 		const out = py.runPython('sum(range(10))');
 		if (out !== 45) throw new Error(`runPython returned ${String(out)}`);
+	},
+
+	// The code interpreter as the server starts it: a worker thread at the URL
+	// the pool's chunk resolves, not a path this test assumes. That URL is
+	// relative to wherever the bundler put the chunk, and adapter-node moving
+	// the chunk once left every production build without a worker to start
+	// (see scripts/place-worker.mjs) while `pyodide` above still passed.
+	async codeInterpreter() {
+		const root = '/app/build/server';
+		const spawner = readdirSync(root, { recursive: true })
+			.filter((f) => f.endsWith('.js'))
+			.map((f) => join(root, f))
+			.find((f) =>
+				/new URL\(\s*["']\.\/worker\.js["']\s*,\s*import\.meta\.url\s*\)/.test(
+					readFileSync(f, 'utf8'),
+				),
+			);
+		if (!spawner) throw new Error('no server chunk spawns ./worker.js');
+		const worker = new Worker(new URL('./worker.js', pathToFileURL(spawner)));
+		try {
+			const result = await new Promise((resolve, reject) => {
+				const timer = setTimeout(() => reject(new Error('no result within 60s')), 60_000);
+				worker.on('error', (e) => {
+					clearTimeout(timer);
+					reject(e);
+				});
+				worker.on('message', (m) => {
+					if (m.type === 'ready') {
+						worker.postMessage({
+							type: 'run',
+							callId: 1,
+							code: '6 * 7',
+							disabledFeatures: [],
+							preFiles: [],
+						});
+					} else {
+						clearTimeout(timer);
+						if (m.type === 'result') resolve(m.result);
+						else reject(new Error(`worker replied ${JSON.stringify(m)}`));
+					}
+				});
+				worker.postMessage({ type: 'init' });
+			});
+			if (result !== 42) throw new Error(`6 * 7 returned ${JSON.stringify(result)}`);
+		} finally {
+			await worker.terminate();
+		}
 	},
 
 	async shiki() {

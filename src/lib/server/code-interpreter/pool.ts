@@ -49,12 +49,12 @@ export interface WorkerFactoryArgs {
 }
 export type WorkerFactory = (args: WorkerFactoryArgs) => ManagedWorker;
 
-// NOTE: the URL resolves to `./worker.js` so this works against the
-// `pnpm build` SSR output (Vite emits the worker as a chunk in the
-// adapter-node bundle). For `pnpm dev`, Node's `worker_threads` can't
-// load `.ts` directly through Vite — a follow-up will either pre-compile
-// the worker module separately or wrap it in a tiny `.js` shim that
-// loads via tsx. Unit tests bypass this entirely via
+// NOTE: `./worker.js` is the esbuild bundle `pnpm build:worker` writes next
+// to worker.ts, which is what `pnpm dev` resolves. Vite keeps this URL in the
+// production build but doesn't emit the file, so `pnpm build` ends with
+// scripts/place-worker.mjs copying it beside whichever chunk this line lands
+// in — keep the `new URL('./worker.js', import.meta.url)` form, since that
+// script finds the chunk by it. Unit tests bypass this entirely via
 // `setWorkerFactoryForTests`.
 const defaultWorkerUrl = new URL('./worker.js', import.meta.url);
 
