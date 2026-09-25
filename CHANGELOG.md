@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.40.2
+
 ### Changed
 
 - The Docker image is about 50 MB smaller unpacked, and about 13 MB smaller to
