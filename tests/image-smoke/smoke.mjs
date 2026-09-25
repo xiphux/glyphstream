@@ -60,8 +60,12 @@ const checks = {
 			const r = spawnSync(process.execPath, [join('/app/build/scripts', script), '--help'], {
 				encoding: 'utf8',
 			});
-			if (/ERR_MODULE_NOT_FOUND|ERR_PACKAGE_PATH_NOT_EXPORTED|SyntaxError/.test(r.stderr)) {
-				problems.push(`${script}: ${r.stderr.split('\n').find((l) => /Error/.test(l))}`);
+			// Both exit 0 on --help, so any other outcome is a failure — including
+			// esbuild's own "Dynamic require of … is not supported", which a CJS
+			// package bundled as ESM throws at init.
+			if (r.error || r.status !== 0) {
+				const line = r.stderr?.split('\n').find((l) => /Error/.test(l));
+				problems.push(`${script}: ${line ?? r.error?.message ?? `exit ${r.status}`}`);
 			}
 		}
 		if (problems.length) throw new Error(`\n  ${problems.join('\n  ')}`);
