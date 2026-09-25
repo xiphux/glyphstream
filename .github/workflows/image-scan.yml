@@ -23,9 +23,11 @@
 # packages by their package.json, and only sharp, pyodide and shiki ship as
 # packages; everything else (web-push, simplewebauthn, the MCP SDK, …) is
 # inlined into server chunks with no metadata left (see CLAUDE.md on
-# `dependencies`). Those are covered by the lockfile instead — Renovate's
-# vulnerability alerts and Dependabot security updates — which is also where
-# a fix lands, since a bundled package only changes by rebuilding.
+# `dependencies`). Those are covered through the lockfile instead, by
+# Renovate's osv.dev alerts (`osvVulnerabilityAlerts` in renovate.json5), which
+# don't care that they're devDependencies — GitHub's alerts can auto-dismiss
+# dev-scoped findings. That is also where a fix lands, since a bundled package
+# only changes by rebuilding.
 #
 # Grype, not Trivy: aquasecurity/trivy-action had 75 of its 76 tags hijacked to
 # steal CI secrets in March 2026. Grype runs from a digest-pinned image, so
