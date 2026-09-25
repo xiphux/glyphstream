@@ -25,28 +25,30 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import process from 'node:process';
 
-// Module-resolution and link failures: the classes of error a bundling mistake
-// produces. Anything else a chunk throws at import time is the app refusing to
-// start outside the server (hooks.server wants its production config, the code
-// interpreter's worker wants a worker thread) and says nothing about the bundle.
-const isBundleError = (e) =>
-	e instanceof SyntaxError || // "does not provide an export named …"
-	['ERR_MODULE_NOT_FOUND', 'ERR_PACKAGE_PATH_NOT_EXPORTED', 'ERR_UNSUPPORTED_DIR_IMPORT'].includes(
-		e?.code,
-	);
+// Chunks whose evaluation IS the app, so importing them here would start a
+// second instance inside the running container, on the same DB: adapter-node's
+// handler calls `server.init`, which runs hooks.server's startup (sweepers, MCP
+// bootstrap, model listing). The code interpreter's worker refuses to load off
+// a worker thread. All three are still proven by run.sh, whose server can't
+// boot and answer /api/health unless they load.
+const SKIP = [/\/handler-[^/]*\.js$/, /\/hooks\.server\.js-[^/]*\.js$/, /\/worker\.js$/];
 
 const checks = {
 	async bundle() {
 		const root = '/app/build/server';
 		const files = readdirSync(root, { recursive: true })
 			.filter((f) => f.endsWith('.js'))
-			.map((f) => join(root, f));
+			.map((f) => join(root, f))
+			.filter((f) => !SKIP.some((re) => re.test(f)));
 		const problems = [];
 		for (const f of files) {
+			// ANY error fails, not only a missing module: with the app's own
+			// entry points skipped, nothing left has a reason to throw at import,
+			// and a bundler's CJS-interop mistake surfaces as a TypeError here.
 			try {
 				await import(f);
 			} catch (e) {
-				if (isBundleError(e)) problems.push(`${f}: ${e.message.split('\n')[0]}`);
+				problems.push(`${f}: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
 			}
 		}
 		// The operator scripts are esbuild bundles with their own externals list
