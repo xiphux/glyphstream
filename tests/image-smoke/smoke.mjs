@@ -50,10 +50,12 @@ const checks = {
 			}
 		}
 		// The operator scripts are esbuild bundles with their own externals list
-		// (package.json's `build`). Run with no arguments they resolve every
-		// import, then stop at usage; a missing package fails before that.
+		// (package.json's `build`). `--help` exits before either opens the DB,
+		// and ESM links every static import before any code runs, so a missing
+		// package still fails first. Not no arguments: faststart-backfill has no
+		// usage error to stop at, and would run a real backfill on this DB.
 		for (const script of ['import-owui.js', 'faststart-backfill.js']) {
-			const r = spawnSync(process.execPath, [join('/app/build/scripts', script)], {
+			const r = spawnSync(process.execPath, [join('/app/build/scripts', script), '--help'], {
 				encoding: 'utf8',
 			});
 			if (/ERR_MODULE_NOT_FOUND|ERR_PACKAGE_PATH_NOT_EXPORTED|SyntaxError/.test(r.stderr)) {
