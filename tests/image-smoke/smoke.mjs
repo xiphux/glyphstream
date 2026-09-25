@@ -119,6 +119,13 @@ const checks = {
 					clearTimeout(timer);
 					reject(e);
 				});
+				// A worker that dies without replying would otherwise surface as
+				// the 60s timeout rather than its exit code. After a settle, the
+				// `finally` below terminates it and this reject is a no-op.
+				worker.on('exit', (code) => {
+					clearTimeout(timer);
+					reject(new Error(`worker exited with code ${code} before replying`));
+				});
 				worker.on('message', (m) => {
 					if (m.type === 'ready') {
 						worker.postMessage({
