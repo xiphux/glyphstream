@@ -1,0 +1,54 @@
+# Delete a pull request's Actions caches when it closes.
+#
+# A cache saved during a pull_request run is scoped to that pull request's
+# merge ref: only the same pull request can ever restore it. Once the PR is
+# closed, nothing can read those caches again — but they still count against
+# the repository's 10 GB cache limit, and at the limit GitHub evicts the
+# LEAST RECENTLY USED entries, which includes the main-branch caches every
+# run does restore. When this was added, this repository was over the limit
+# with 89 such dead caches (about 4 GB) pushing live ones out.
+#
+# On close rather than on a schedule, because this repository is public and
+# its Actions minutes are free, so there is no reason to let dead caches wait.
+# (The private repositories sweep daily instead, where a job per close would
+# bill a minute each time.)
+name: Prune PR caches
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  prune:
+    # A fork's pull request runs with a read-only token and could not delete
+    # anything, so it would only ever produce a failed run.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # Deleting a cache needs write on Actions. Nothing is checked out.
+      actions: write
+    steps:
+      - name: Delete this pull request's caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        run: |
+          set -euo pipefail
+
+          deleted=0 freed=0
+          while IFS=$'\t' read -r id size; do
+            [ -n "$id" ] || continue
+            if gh cache delete "$id" --repo "$REPO"; then
+              deleted=$((deleted + 1))
+              freed=$((freed + size))
+            else
+              echo "::warning::Could not delete cache $id."
+            fi
+          done < <(gh cache list --repo "$REPO" --ref "$REF" --limit 1000 \
+                     --json id,sizeInBytes --jq '.[] | [.id, .sizeInBytes] | @tsv')
+
+          echo "Deleted $deleted cache(s) for $REF, $((freed / 1048576)) MB."

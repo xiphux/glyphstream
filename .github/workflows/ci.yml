@@ -383,6 +383,14 @@ jobs:
   # Cache: reads docker.yml's main-branch layer cache (build-linux-amd64) so a
   # warm build is quick, but writes only to its own scope, so a PR run can
   # never feed layers into the image docker.yml publishes.
+  #
+  # And it writes only on a push to main, never from a pull request. A cache
+  # saved in a pull_request run is scoped to that PR's merge ref, so only the
+  # same PR can read it back — every PR's `mode=max` export was a few hundred
+  # MB that nothing reused after it merged, while exporting every layer cost
+  # the PR run time on every build. Those exports were a large part of what
+  # held this repository over GitHub's 10 GB cache limit, where it evicts the
+  # entries still in use. A PR now reads main's layers and writes nothing.
   image:
     name: Docker image smoke
     needs: gate
@@ -407,7 +415,7 @@ jobs:
           cache-from: |
             type=gha,scope=build-linux-amd64
             type=gha,scope=ci-image-smoke
-          cache-to: type=gha,mode=max,scope=ci-image-smoke
+          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=ci-image-smoke' || '' }}
 
       - name: Boot and smoke-test the image
         run: tests/image-smoke/run.sh glyphstream:ci-smoke
