@@ -473,11 +473,36 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
-  e2e:
-    name: E2E (Playwright)
+  # Sharded three ways, because this suite is the whole critical path: run
+  # serially it was ~6.5 minutes of tests in a job every other check had long
+  # finished waiting for. This repository is public, so the extra runners
+  # cost nothing and the only thing traded is setup time, paid once per
+  # shard.
+  #
+  # The suite is serial on purpose (workers: 1, fullyParallel: false): every
+  # spec shares one server, one SQLite database and one seeded user. Sharding
+  # keeps that inside each shard and gives every shard its own runner, server
+  # and freshly seeded database via global-setup. What it assumes is that no
+  # spec FILE depends on state an earlier file left behind, because which
+  # files share a shard, and in what order, changes whenever a file is added.
+  # Checked when this was introduced by running each shard alone from a fresh
+  # seed: 118 + 112 + 113 passed, 7 skipped, all 350 accounted for. A spec
+  # that starts failing only in CI after an unrelated file is added is
+  # breaking that assumption — give it the data it needs in its own setup.
+  #
+  # The shards carry their own names so that `E2E (Playwright)` below can stay
+  # the single, stable required status check. A matrix job's check names are
+  # derived from its values, and a required check names one fixed string.
+  e2e-shard:
+    name: E2E shard ${{ matrix.shard }}/3
     needs: gate
     if: ${{ !cancelled() && needs.gate.outputs.passed != 'true' }}
     runs-on: ubuntu-latest
+    strategy:
+      # Every shard reports, so a failure says whether it is one spec or all.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -524,7 +549,7 @@ jobs:
         run: pnpm exec playwright install-deps chromium
 
       - name: Run E2E tests
-        run: pnpm test:e2e
+        run: pnpm test:e2e --shard=${{ matrix.shard }}/3
 
       # On failure, attach the Playwright HTML report + traces so the
       # PR author can debug without re-running locally.
@@ -532,8 +557,29 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: |
             playwright-report/
             test-results/
           retention-days: 14
+
+  # The required status check for e2e, and deliberately nothing more. It
+  # reads the shards' combined result and fails closed: anything other than
+  # `success`, or `skipped` when the gate stood the checks down, exits 1 —
+  # an empty result included.
+  e2e:
+    name: E2E (Playwright)
+    needs: [gate, e2e-shard]
+    if: ${{ !cancelled() && needs.gate.outputs.passed != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every shard passed, or the gate stood them down
+        env:
+          RESULT: ${{ needs.e2e-shard.result }}
+        run: |
+          set -euo pipefail
+          case "${RESULT}" in
+            success | skipped) echo "e2e: ${RESULT}" ;;
+            *) echo "e2e: ${RESULT}" >&2; exit 1 ;;
+          esac
