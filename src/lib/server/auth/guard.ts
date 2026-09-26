@@ -3,14 +3,15 @@ import { APP_LOCKED_STATUS } from '$lib/app-lock';
 import { countUsers } from '../db/queries/users';
 
 /**
- * Assert the request is authenticated, throwing a 401 otherwise.
+ * Assert the request is authenticated, throwing a 401 (no session) or a 423
+ * (an app-locked session — see server/auth/app-lock.ts) otherwise.
  *
  * Written as a TypeScript assertion function: after `requireUser(locals)`
  * the compiler narrows `locals.user` to non-null for the rest of the
  * handler, so existing `locals.user.id` accesses keep type-checking with
  * no rename.
  *
- * This is the single definition of the /api/* surface's 401. The bare
+ * This is the single definition of the /api/* surface's 401 and 423. The bare
  * /api/* routes guard themselves here (rather than in hooks.server.ts)
  * so the hook stays simple and the auth/* + health exemptions need no
  * special-casing.
@@ -69,7 +70,8 @@ export function requireUserPage(
 
 /**
  * Assert the request is authenticated AND the user is an admin, throwing
- * 401 (no session) or 403 (signed in, not an admin) otherwise.
+ * 401 (no session), 423 (app-locked session) or 403 (signed in, not an
+ * admin) otherwise.
  *
  * Like `requireUser`, it's an assertion function: after `requireAdmin(locals)`
  * the compiler narrows `locals.user` to non-null. Admin gates operator

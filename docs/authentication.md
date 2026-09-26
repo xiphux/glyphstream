@@ -231,11 +231,16 @@ The lock screen has a **Sign out** link. You can't delete your last passkey
 while app lock is on. If someone loses every passkey, an admin can turn their
 app lock off from **Settings → Users**. An admin can't do that for their
 own account, so on an instance with only one admin, recovery has to happen on
-the server. Clear the setting in the database; the next request is unlocked:
+the server. Clear the setting in the database; the next request is unlocked.
+The second statement does what the in-app switch does to sessions from a
+linked-account sign-in: without it, those would lock in every browser if app
+lock were ever turned back on.
 
 ```sh
 docker compose exec glyphstream sqlite3 /app/data/glyphstream.db \
-  "UPDATE users SET app_lock_timeout_ms = NULL WHERE email = 'you@example.com';"
+  "UPDATE users SET app_lock_timeout_ms = NULL WHERE email = 'you@example.com';
+   UPDATE sessions SET unlocked_until = NULL WHERE unlocked_until = 0
+     AND user_id = (SELECT id FROM users WHERE email = 'you@example.com');"
 ```
 
 Turning app lock off requires only an unlocked session, so anyone signed in
