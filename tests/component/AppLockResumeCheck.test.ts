@@ -124,7 +124,7 @@ async function settle() {
 	flushSync();
 }
 
-beforeEach(() => {
+beforeEach(async () => {
 	vi.useFakeTimers();
 	stub().reset();
 	checks = [];
@@ -141,12 +141,28 @@ beforeEach(() => {
 		},
 	});
 	stub().enter();
+	// The mount-time keep-alive (see the cold-launch test); answer it so each
+	// test starts from an armed, idle check.
+	expect(checks).toHaveLength(1);
+	checks[0].respond(200);
+	await settle();
+	checks = [];
 });
 afterEach(() => {
 	vi.useRealTimers();
 });
 
 describe('app-lock resume check', () => {
+	it('sends a keep-alive at mount, not only after the first interval', () => {
+		// beforeEach asserted and answered it. It matters because the keep-alive
+		// is the only request that slides the window, and a cold launch fires no
+		// resume event: without it the app would run down whatever was left of
+		// the window for a whole interval, and lock while on screen.
+		expect(checks).toHaveLength(0);
+		vi.advanceTimersByTime(19_999);
+		expect(checks).toHaveLength(0);
+	});
+
 	it('covers on hide and uncovers only once the server says the session is still open', async () => {
 		setVisibility('hidden');
 		expect(covered()).toBe(true);

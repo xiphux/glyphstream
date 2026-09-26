@@ -246,6 +246,11 @@
 			appLockCovered = false;
 			return;
 		}
+		// One now, not just one per interval: the keep-alive is the only request
+		// that slides the window, so a cold launch or reload — which the resume
+		// events never see — would otherwise leave whatever was left of it
+		// unextended for a whole interval, and lock the app while it's on screen.
+		void checkAppLock();
 		const keepAlive = setInterval(
 			() => void checkAppLock(),
 			appLockKeepAliveMs(data.appLock.timeoutMs),
