@@ -124,12 +124,12 @@ export function validateSessionToken(token: string): AuthContext | null {
 	// without re-issuing a token) but it stops resolving until the
 	// disabled flag clears.
 	//
-	// Only the four `SessionUser` columns (plus the two app-lock inputs) are
-	// projected. Selecting the whole
-	// `users` row would decode `preferences_json` and `conversation_overview`
-	// (the injected topic map — multiple KB once the summary worker has run)
-	// out of SQLite on *every* request, including presence heartbeats, to
-	// throw them away here.
+	// Only the four `SessionUser` columns (plus the two app-lock inputs:
+	// `sessions.unlocked_until` and `users.app_lock_timeout_ms`) are projected.
+	// Selecting the whole `users` row would decode `preferences_json` and
+	// `conversation_overview` (the injected topic map — multiple KB once the
+	// summary worker has run) out of SQLite on *every* request, including
+	// presence heartbeats, to throw them away here.
 	const row = db
 		.select({
 			sessionId: sessions.id,

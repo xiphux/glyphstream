@@ -12,8 +12,9 @@
  * windows.
  *
  * The server also decides one more thing the SW can't: whether to *include
- * content* in the payload. When notificationsShowContent is false the `preview`
- * is omitted entirely and `conversationTitle` is replaced by a constant, so no
+ * content* in the payload. When notificationsShowContent is false — or app lock
+ * is active for the user, which forces it off, since the lock screen is no
+ * place to read out what the passkey guards — the `preview` is omitted entirely and `conversationTitle` is replaced by a constant, so no
  * conversation content ever traverses the push service (defense-in-depth —
  * encryption alone isn't the only privacy contract; the operator's threat model
  * may include the push service itself). The title belongs in that set because it
