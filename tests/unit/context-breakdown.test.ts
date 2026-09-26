@@ -94,6 +94,16 @@ describe('buildContextBreakdown', () => {
 		expect(defs.items?.map((i) => i.label)).toEqual(['b', 'a']);
 	});
 
+	it('prices the reactions hint as part of the reaction tool', async () => {
+		const react = toolDef('react_to_message', 'x');
+		const b = await buildContextBreakdown(input({ toolDefs: [react], reactionsHint: 'hint text' }));
+
+		const defs = b.segments.find((s) => s.key === 'tools:defs')!;
+		expect(defs.items).toEqual([
+			{ label: 'react_to_message', chars: JSON.stringify(react).length + 'hint text'.length },
+		]);
+	});
+
 	it('prices the canvas tail block on its own segment', async () => {
 		const tail = '<canvas_current_state artifact_id="a1">hello world</canvas_current_state>';
 		const b = await buildContextBreakdown(input({ canvasTailText: tail }));

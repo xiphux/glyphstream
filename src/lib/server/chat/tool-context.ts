@@ -17,6 +17,7 @@ import type { ChatMessage, FeatureCategory, McpUnavailableServer } from '$lib/ty
 import type { OpenAIToolDefinition } from '../tools/types';
 import type { ChatCompletionRequest } from '../endpoints/client';
 import { openaiToolDefinitions, resolveActivatedToolDefs } from '../tools';
+import { REACTIONS_HINT } from '../tools/react';
 import { listActiveCanvases } from '../db/queries/artifacts';
 import { buildUserMcpToolDefinitions } from '../mcp/tool-bridge';
 import { getUserServerStates } from '../mcp/registry';
@@ -79,6 +80,10 @@ export interface ChatToolContext {
 	environmentBlock: string;
 	skillsCatalog: string | null;
 	toolSearchHint: string | null;
+	/** `REACTIONS_HINT` when `react_to_message` is advertised, else null. Priced
+	 *  with the tool's own definition in the context breakdown — it is what the
+	 *  feature costs, not a separate thing. */
+	reactionsHint: string | null;
 	/**
 	 * Base upstream tool list: built-ins ∪ skills ∪ per-user MCP ∪ `search_tools`
 	 * ∪ the cross-turn activation seed, in that order. NOT deduped — callers
@@ -148,6 +153,14 @@ export async function buildChatToolContext(input: ChatToolContextInput): Promise
 		: { def: null, hint: null };
 	systemPrompt = appendToolSearchHint(systemPrompt, toolSearchCtx.hint);
 
+	// Reactions: the one tool nothing in the user's message asks for, so its
+	// description alone never gets it called — see REACTIONS_HINT. Gated on the
+	// same condition that advertises the tool; the toggle is a user action, so
+	// it may change the prefix.
+	const reactionsHint =
+		supportsTools && !disabledFeatures.includes('reactions') ? REACTIONS_HINT : null;
+	if (reactionsHint) systemPrompt = [systemPrompt, reactionsHint].filter(Boolean).join('\n\n');
+
 	const toolDefs: OpenAIToolDefinition[] = [];
 	if (supportsTools) {
 		toolDefs.push(...openaiToolDefinitions({ excludeCategories: disabledFeatures }));
@@ -200,6 +213,7 @@ export async function buildChatToolContext(input: ChatToolContextInput): Promise
 		environmentBlock,
 		skillsCatalog: skillsCtx.catalog,
 		toolSearchHint: toolSearchCtx.hint,
+		reactionsHint,
 		toolDefs,
 		needsApproval,
 		unavailableMcpServers,

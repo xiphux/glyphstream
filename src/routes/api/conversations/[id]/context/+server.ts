@@ -145,6 +145,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 		environmentBlock: toolCtx.environmentBlock,
 		skillsCatalog: toolCtx.skillsCatalog,
 		toolSearchHint: toolCtx.toolSearchHint,
+		reactionsHint: toolCtx.reactionsHint,
 		toolDefs,
 		canvasTailText: canvas.tailText,
 		mediaSize,

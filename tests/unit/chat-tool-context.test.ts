@@ -63,6 +63,7 @@ vi.mock('$lib/server/chat/tool-search-context', async (orig) => ({
 }));
 
 import { buildChatToolContext } from '$lib/server/chat/tool-context';
+import { REACTIONS_HINT } from '$lib/server/tools/react';
 
 beforeEach(() => {
 	mocks.callOrder.length = 0;
@@ -84,6 +85,10 @@ const baseInput = {
 	trustedMcpTools: [] as string[],
 	timeZone: 'America/Chicago',
 };
+
+/** Most folding assertions are about the other blocks; this keeps the reactions
+ *  hint out of their way. It has its own cases below. */
+const noReactions = { ...baseInput, disabledFeatures: ['reactions'] as const };
 
 /** The environment preamble leads every system prompt (see environment-context.ts)
  *  and is unconditional, so the folding assertions below anchor to it rather than
@@ -172,13 +177,33 @@ describe('buildChatToolContext — system prompt folding', () => {
 	it('folds the skills catalog then the tool-search hint onto the base prompt', async () => {
 		mocks.buildSkillsRequestContext.mockReturnValue({ catalog: 'SKILLS', toolDefs: [] });
 		mocks.buildToolSearchRequestContext.mockResolvedValue({ def: null, hint: 'HINT' });
-		const ctx = await buildChatToolContext(baseInput);
+		const ctx = await buildChatToolContext(noReactions);
 		expect(ctx.systemPrompt).toBe(withEnv('BASE\n\nSKILLS\n\nHINT', ctx));
 	});
 
 	it('returns the base prompt unchanged when nothing is injected', async () => {
-		const ctx = await buildChatToolContext(baseInput);
+		const ctx = await buildChatToolContext(noReactions);
 		expect(ctx.systemPrompt).toBe(withEnv('BASE', ctx));
+	});
+
+	it('appends the reactions hint last, when reactions are on', async () => {
+		mocks.buildSkillsRequestContext.mockReturnValue({ catalog: 'SKILLS', toolDefs: [] });
+		mocks.buildToolSearchRequestContext.mockResolvedValue({ def: null, hint: 'HINT' });
+		const ctx = await buildChatToolContext(baseInput);
+		expect(ctx.systemPrompt).toBe(withEnv(`BASE\n\nSKILLS\n\nHINT\n\n${REACTIONS_HINT}`, ctx));
+		expect(ctx.reactionsHint).toBe(REACTIONS_HINT);
+	});
+
+	it('omits the reactions hint when the tool is not advertised', async () => {
+		// Toggled off, or a model with no tools: a hint naming a tool the model
+		// can't call would be worse than none.
+		for (const ctx of [
+			await buildChatToolContext(noReactions),
+			await buildChatToolContext({ ...baseInput, supportsTools: false }),
+		]) {
+			expect(ctx.systemPrompt).not.toContain('react_to_message');
+			expect(ctx.reactionsHint).toBeNull();
+		}
 	});
 
 	it('leads with the environment preamble, in the user’s timezone', async () => {

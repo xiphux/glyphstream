@@ -9,6 +9,11 @@ arrived.
 
 ## Unreleased
 
+### Fixed
+
+- Reactions now actually happen. The model almost never reacted on its own; it
+  now does in warm or playful conversation, and still stays out of technical work.
+
 ## v0.40.2
 
 ### Changed

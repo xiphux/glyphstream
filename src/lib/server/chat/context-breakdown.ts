@@ -24,6 +24,7 @@ import type {
 	ContextSegmentKey,
 } from '$lib/types/api';
 import { upstreamBranch, isCompactionSummary } from '$lib/chat-compaction';
+import { REACTION_TOOL_NAME } from '$lib/chat-render';
 import type { OpenAIToolDefinition } from '../tools/types';
 import type { PersonaPart } from '../db/queries/user-preferences';
 import type { ChatCompletionRequest } from '../endpoints/client';
@@ -75,6 +76,10 @@ export interface ContextBreakdownInput {
 	environmentBlock: string;
 	skillsCatalog: string | null;
 	toolSearchHint: string | null;
+	/** The system-prompt line that advertises reactions. Priced as part of the
+	 *  `react_to_message` item under `tools:defs`: it exists only because the tool
+	 *  does, so that row is what reactions cost. */
+	reactionsHint?: string | null;
 	toolDefs: readonly OpenAIToolDefinition[];
 	/** The canvas tail block(s) appended at send time (`buildCanvasInjection`),
 	 *  or null. Re-sent verbatim every turn, so it's overhead — priced on its own
@@ -111,6 +116,7 @@ export async function buildContextBreakdown(
 	for (const def of input.toolDefs) {
 		acc.add('tools:defs', JSON.stringify(def).length, def.function.name);
 	}
+	if (input.reactionsHint) acc.add('tools:defs', input.reactionsHint.length, REACTION_TOOL_NAME);
 	if (input.canvasTailText) acc.add('canvas', input.canvasTailText.length);
 
 	// --- History: what compaction can actually reclaim.

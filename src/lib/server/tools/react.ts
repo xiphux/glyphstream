@@ -49,6 +49,27 @@ import type { Tool } from './types';
 // two halves of "this tool is invisible" can't drift apart.
 import { REACTION_TOOL_NAME, validateEmoji } from '$lib/chat-render';
 
+/**
+ * System-prompt line advertising reactions, appended by `buildChatToolContext`
+ * whenever this tool is. The description alone never got a reaction out of
+ * Gemma4-26B on its own initiative: 0 of 12 warm prompts, including a user
+ * crying with joy over a job offer. Its reasoning traces planned the reply and
+ * never once mentioned the tool. A reaction is the one tool nothing in the
+ * user's message asks for, and a line in `tools[]` among thirty others is not
+ * where a model looks for "how should I behave". The same words in the system
+ * prompt took it to 6 of 9, with the technical prompts still at 0.
+ *
+ * Both clauses were measured and both carry weight. A shorter hint without
+ * "alongside your reply" and the technical-work carve-out lost the persona case
+ * entirely and doubled the rate on a technical "thanks, that fixed it". Keep the
+ * tool description's register sentence too: dropping it in favour of this line
+ * did the same. It is rent on every turn, like the description, so it follows
+ * the same rule: no growth without a measurement behind it.
+ */
+export const REACTIONS_HINT =
+	"You can react to the user's latest message with an emoji using react_to_message, the way a friend taps a reaction in a messaging app. " +
+	"It goes alongside your reply, not instead of it. In personal, warm or playful conversation, react when a message lands emotionally — good news, a joke, affection, a rough day. In technical or task-focused work, don't.";
+
 export const reactToMessageTool: Tool = {
 	definition: {
 		type: 'function',
