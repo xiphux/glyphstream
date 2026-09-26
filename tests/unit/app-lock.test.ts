@@ -57,6 +57,7 @@ import { notifyConversationComplete } from '$lib/server/push/notify';
 import { GENERIC_TITLE } from '$lib/sw/notification-copy';
 import { APP_LOCK_TIMEOUTS_MS, appLockKeepAliveMs, safeUnlockReturn } from '$lib/app-lock';
 import { PUT as putAppLock } from '../../src/routes/api/auth/app-lock/+server';
+import { load as loginLoad } from '../../src/routes/(auth)/login/+page.server';
 import { POST as unlockVerify } from '../../src/routes/api/auth/unlock/verify/+server';
 import { DELETE as deletePasskey } from '../../src/routes/api/auth/passkey/[id]/+server';
 import { PATCH as adminPatch } from '../../src/routes/api/admin/users/[id]/+server';
@@ -280,6 +281,21 @@ describe('guards', () => {
 		expect(() =>
 			redirectUnauthenticatedPage(locked, new URL('http://x.test/chat/abc?m=1')),
 		).toThrow(expect.objectContaining({ location: '/unlock?from=%2Fchat%2Fabc%3Fm%3D1' }));
+	});
+
+	it('/login forwards its own ?from= when sending a locked session to /unlock', () => {
+		const load = (search: string) => () =>
+			(loginLoad as unknown as (e: unknown) => unknown)({
+				locals: locked,
+				url: new URL(`http://x.test/login${search}`),
+			});
+		expect(load('?from=%2Fsettings%2Fsecurity')).toThrow(
+			expect.objectContaining({ location: '/unlock?from=%2Fsettings%2Fsecurity' }),
+		);
+		expect(load('')).toThrow(expect.objectContaining({ location: '/unlock' }));
+		expect(load('?from=%2F.%2F%2Fevil.test')).toThrow(
+			expect.objectContaining({ location: '/unlock?from=%2F' }),
+		);
 	});
 
 	it('the return target is restricted to a same-origin path', () => {

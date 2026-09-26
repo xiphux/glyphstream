@@ -1,4 +1,5 @@
 import { redirect } from '@sveltejs/kit';
+import { safeUnlockReturn } from '$lib/app-lock';
 import { countUsers } from '$lib/server/db/queries/users';
 import { passkeyLoginEnabled } from '$lib/server/env';
 import { listEnabledProviders } from '$lib/server/auth/oauth/registry';
@@ -19,7 +20,10 @@ export const load: PageServerLoad = ({ locals, url }) => {
 	// An app-locked session isn't signed out — it's one passkey away. Sending
 	// it here would also run the login page's client-state wipe (drafts) on
 	// what is still a live session.
-	if (locals.appLock?.locked) redirect(302, '/unlock');
+	if (locals.appLock?.locked) {
+		const from = url.searchParams.get('from');
+		redirect(302, from ? `/unlock?from=${encodeURIComponent(safeUnlockReturn(from))}` : '/unlock');
+	}
 	// On a fresh install the only way forward is the wizard. Redirect
 	// here too so a bookmarked /login on a clean DB lands operators in
 	// the right place.
