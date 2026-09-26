@@ -369,6 +369,8 @@ describe('lockout protection', () => {
 				request: jsonRequest(body),
 			});
 		expect(await statusOf(() => patch({ appLock: true }))).toBe(400);
+		expect(await statusOf(() => patch({ appLock: false, disabled: true }))).toBe(400);
+		expect(getAppLockTimeout(u.id)).toBe(MIN);
 		expect(await statusOf(() => patch({ appLock: false }))).toBe(200);
 		expect(getAppLockTimeout(u.id)).toBeNull();
 		expect(clearAppLock(u.id)).toBe(false);

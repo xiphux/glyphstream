@@ -57,6 +57,9 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	requireAdmin(locals);
 	const body = await parseJsonBody<{ disabled?: unknown; appLock?: unknown }>(request);
 	if (body.appLock !== undefined) {
+		// One mutation per request: each branch runs its own precondition gate,
+		// so silently applying one and dropping the other would be a lie.
+		if (body.disabled !== undefined) error(400, 'Send `appLock` and `disabled` separately');
 		// Off only. Turning app lock ON is the user's own ceremony — it needs a
 		// passkey assertion from their device (see PUT /api/auth/app-lock).
 		if (body.appLock !== false) error(400, '`appLock` can only be set to false');
