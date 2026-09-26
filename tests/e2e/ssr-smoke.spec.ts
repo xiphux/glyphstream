@@ -19,10 +19,12 @@ import { readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import process from 'node:process';
 import { test, expect, type Browser, type Page } from './fixtures/test';
-import { resetData, seedConversation } from './helpers';
-import { STORAGE_STATE_USER2_PATH } from './global-setup';
+import { mintLockedSession, resetData, seedConversation } from './helpers';
+import { STORAGE_STATE_USER2_PATH, TEST_USER_2 } from './global-setup';
 
-type Who = 'admin' | 'user' | 'anon';
+/** `locked`: the non-admin user on a session app lock is holding (see
+ *  mintLockedSession) — the only identity /unlock renders its own page for. */
+type Who = 'admin' | 'user' | 'anon' | 'locked';
 
 interface RouteCase {
 	/** Concrete URL to request; called after resetData() so seeds are fresh. */
@@ -73,6 +75,9 @@ const ROUTES: Record<string, RouteCase> = {
 	'/(auth)/join/[token]': { path: () => '/join/not-a-real-invite-token', renders: ['anon'] },
 	'/(auth)/login': { path: () => '/login', renders: ['anon'] },
 	'/(auth)/setup': { path: () => '/setup', renders: ['anon'] },
+	// Renders its own page only for a locked session; unlocked it bounces to
+	// `from`, signed out to /login. The redirects must come back clean too.
+	'/(auth)/unlock': { path: () => '/unlock', renders: ['locked', 'anon', 'admin'] },
 };
 
 function pageRouteIds(): string[] {
@@ -102,7 +107,12 @@ async function asRole(
 ): Promise<void> {
 	if (who === 'admin') return fn(page);
 	const ctx = await browser.newContext({
-		storageState: who === 'user' ? STORAGE_STATE_USER2_PATH : { cookies: [], origins: [] },
+		storageState:
+			who === 'user'
+				? STORAGE_STATE_USER2_PATH
+				: who === 'locked'
+					? mintLockedSession(TEST_USER_2.id)
+					: { cookies: [], origins: [] },
 	});
 	try {
 		await fn(await ctx.newPage());

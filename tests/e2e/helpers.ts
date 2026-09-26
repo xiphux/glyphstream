@@ -1,6 +1,7 @@
+import { createHash, randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { expect, type Page } from '@playwright/test';
+import { expect, type BrowserContextOptions, type Page } from '@playwright/test';
 import { TEST_USER } from './global-setup';
 
 /**
@@ -77,6 +78,11 @@ export function resetData(): void {
 		// NULL is "never touched preferences", which the parser fills in with
 		// defaults — the same state a fresh install has.
 		db.prepare(`UPDATE users SET preferences_json = NULL`).run();
+		// App lock (mintLockedSession). The global-setup sessions never carry an
+		// `unlocked_until` — with the lock off the hook never writes one — so any
+		// session that does was minted by a spec and goes with the setting.
+		db.prepare(`UPDATE users SET app_lock_timeout_ms = NULL`).run();
+		db.prepare(`DELETE FROM sessions WHERE unlocked_until IS NOT NULL`).run();
 	} finally {
 		db.close();
 	}
@@ -580,4 +586,49 @@ export async function generateImageFromHome(page: Page, prompt: string): Promise
 	// The generated asset renders as an <img> pointing at our media route.
 	await expect(page.locator('img[src*="/api/media/"]').first()).toBeVisible();
 	return page.url().split('/chat/')[1];
+}
+
+/**
+ * Turn app lock on for `userId` and mint them a BORN-LOCKED session — the state
+ * an OAuth sign-in (or a browser already signed in when the lock went on) is in
+ * until a passkey unlocks it (see server/auth/app-lock.ts). Born-locked applies
+ * in any browser, so no installed-app cookie is needed to reach /unlock.
+ *
+ * The user's global-setup session is untouched: its `unlocked_until` is NULL
+ * and it carries no installed-app cookie, so it stays unlocked. resetData()
+ * clears both the setting and the minted session.
+ *
+ * Returns a storageState for `browser.newContext()`.
+ */
+export function mintLockedSession(userId: string): BrowserContextOptions['storageState'] {
+	const token = randomBytes(20).toString('base64url');
+	const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+	const db = new DatabaseSync(DB_PATH);
+	db.exec('PRAGMA busy_timeout = 5000');
+	db.exec('PRAGMA foreign_keys = ON');
+	try {
+		db.prepare(`UPDATE users SET app_lock_timeout_ms = ? WHERE id = ?`).run(5 * 60_000, userId);
+		// Same token → sha256 id shape as global-setup / session.ts.
+		db.prepare(
+			`INSERT INTO sessions (id, user_id, expires_at, created_at, unlocked_until)
+			 VALUES (?, ?, ?, ?, 0)`,
+		).run(createHash('sha256').update(token).digest('hex'), userId, expiresAt, Date.now());
+	} finally {
+		db.close();
+	}
+	return {
+		cookies: [
+			{
+				name: 'glyphstream_session',
+				value: token,
+				domain: 'localhost',
+				path: '/',
+				expires: expiresAt / 1000,
+				httpOnly: true,
+				secure: false,
+				sameSite: 'Lax',
+			},
+		],
+		origins: [],
+	};
 }
