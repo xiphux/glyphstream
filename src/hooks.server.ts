@@ -320,13 +320,16 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// App lock. A locked session resolves to NO user, so every guard already
 	// in the tree refuses it; `locals.appLock` is what lets them send it to
 	// /unlock instead of /login. See server/auth/app-lock.ts.
+	// With passkeys disabled instance-wide nothing could unlock it, so a stored
+	// setting is suspended: no state published, and the client (settings,
+	// notification-preview checkbox, keep-alive) sees app lock as off.
 	let appLock: AppLockState | null = null;
-	if (ctx && ctx.appLock.timeoutMs !== null) {
+	if (ctx && ctx.appLock.timeoutMs !== null && passkeyLoginEnabled()) {
 		const decision = evaluateAppLock({
 			timeoutMs: ctx.appLock.timeoutMs,
 			unlockedUntil: ctx.appLock.unlockedUntil,
 			installedApp: readInstalledAppCookie(event.cookies),
-			passkeysEnabled: passkeyLoginEnabled(),
+			passkeysEnabled: true,
 			now: Date.now(),
 		});
 		if (decision.extendTo !== null) setSessionUnlockedUntil(ctx.sessionId, decision.extendTo);

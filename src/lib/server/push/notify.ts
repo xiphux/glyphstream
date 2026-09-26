@@ -31,7 +31,7 @@ import {
 	listPushSubscriptionsForUser,
 } from '../db/queries/push-subscriptions';
 import { getUserPreferences } from '../db/queries/user-preferences';
-import { getAppLockTimeout } from '../auth/app-lock';
+import { isAppLockActive } from '../auth/app-lock';
 import { isConversationBeingViewed } from './presence';
 import { truncateEllipsis } from '$lib/text';
 import { sendPushNotification, type WebPushSubscription } from './web-push';
@@ -111,7 +111,7 @@ export async function notifyConversationComplete(
 	if (!prefs || !prefs.notificationsEnabled) return;
 	// App lock implies the show-content opt-out: a notification on the lock
 	// screen would otherwise read out exactly what the passkey is guarding.
-	const showContent = prefs.notificationsShowContent && getAppLockTimeout(input.userId) === null;
+	const showContent = prefs.notificationsShowContent && !isAppLockActive(input.userId);
 
 	// Cross-device suppression: if any of the user's devices is actively
 	// rendering this conversation (streaming its turn / fan-out, or polling a

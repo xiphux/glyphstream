@@ -17,6 +17,11 @@ const mocks = vi.hoisted(() => ({
 	sendCalls: [] as string[],
 	/** Which credential the (mocked) signature check saw, if it ran. */
 	verified: [] as string[],
+	passkeysEnabled: true,
+}));
+vi.mock('$lib/server/env', async (importOriginal) => ({
+	...(await importOriginal<typeof import('$lib/server/env')>()),
+	passkeyLoginEnabled: () => mocks.passkeysEnabled,
 }));
 vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 vi.mock('$lib/server/push/web-push', () => ({
@@ -62,6 +67,7 @@ beforeEach(() => {
 	mocks.testDb = createTestDb();
 	mocks.sendCalls = [];
 	mocks.verified = [];
+	mocks.passkeysEnabled = true;
 });
 afterEach(() => closeTestDb());
 
@@ -370,6 +376,34 @@ describe('lockout protection', () => {
 });
 
 describe('notifications', () => {
+	async function notifyPayload(userId: string) {
+		upsertPushSubscription({
+			userId,
+			endpoint: 'a',
+			p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtZ1hcSSnZ2bX5J7ZK_4Q',
+			auth: 'tBHItJI5svbpez7KI4CCXg', // gitleaks:allow — sample Web Push key, not a credential
+		});
+		await notifyConversationComplete({
+			userId,
+			conversationId: 'c1',
+			assistantMessageId: 'm1',
+			conversationTitle: 'Secret plans',
+			previewText: 'The secret is…',
+			modality: 'chat',
+		});
+		return JSON.parse(mocks.sendCalls[0]) as { conversationTitle?: string; preview?: string };
+	}
+
+	it('a lock suspended by PASSKEY_LOGIN_ENABLED=0 leaves previews to the user’s setting', async () => {
+		mocks.passkeysEnabled = false;
+		const u = seedUser();
+		setUserPreferences(u.id, { notificationsEnabled: true, notificationsShowContent: true });
+		setAppLockTimeout(u.id, MIN);
+		const payload = await notifyPayload(u.id);
+		expect(payload.conversationTitle).toBe('Secret plans');
+		expect(payload.preview).toBeDefined();
+	});
+
 	it('app lock forces the show-content opt-out', async () => {
 		const u = seedUser();
 		setUserPreferences(u.id, { notificationsEnabled: true, notificationsShowContent: true });

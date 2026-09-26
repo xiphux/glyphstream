@@ -231,8 +231,10 @@ The lock screen has a **Sign out** link. You can't delete your last passkey
 while app lock is on. If someone loses every passkey, an admin can turn their
 app lock off from **Settings → Users**. Turning app lock off requires only an
 unlocked session, so anyone signed in on another device can do it without a
-passkey. When `PASSKEY_LOGIN_ENABLED=0`, app lock has no way to be unlocked
-and turns itself off.
+passkey. When `PASSKEY_LOGIN_ENABLED=0`, nothing could unlock app lock, so
+it's suspended: it stops asking, and notification previews follow your own
+setting again. The setting is kept, and applies again if passkeys are turned
+back on.
 
 ## Sessions and signed-in devices
 

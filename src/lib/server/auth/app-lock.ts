@@ -125,6 +125,15 @@ export function initialUnlockedUntil(
 
 // --- the setting ---------------------------------------------------------
 
+/**
+ * Whether app lock is in force for a user: set, AND unlockable. With passkeys
+ * disabled instance-wide nothing could unlock it, so a stored setting is
+ * suspended rather than enforced — the same rule `evaluateAppLock` applies.
+ */
+export function isAppLockActive(userId: string): boolean {
+	return passkeyLoginEnabled() && getAppLockTimeout(userId) !== null;
+}
+
 export function getAppLockTimeout(userId: string): number | null {
 	const row = getDb()
 		.select({ t: users.appLockTimeoutMs })
