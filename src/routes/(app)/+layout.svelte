@@ -37,6 +37,7 @@
 		ChevronDown,
 		Image as ImageIcon,
 		Images,
+		LockKeyhole,
 		Menu,
 		MoreVertical,
 		PanelLeftClose,
@@ -53,6 +54,7 @@
 	} from '@lucide/svelte';
 	import type { GeneratingConversationsResponse, ModelKind } from '$lib/types/api';
 	import { privateView } from '$lib/private-chat.svelte';
+	import { APP_LOCK_KEEPALIVE_MS, APP_LOCKED_STATUS } from '$lib/app-lock';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
@@ -159,12 +161,73 @@
 			});
 	}
 	function onResumeVisibility() {
-		if (document.visibilityState === 'visible') refreshConversations();
+		if (document.visibilityState === 'visible') {
+			void checkAppLock();
+			refreshConversations();
+		} else {
+			coverForAppLock();
+		}
 	}
 	// Only bfcache restores — a fresh load's pageshow already has current data.
 	function onPageShow(e: PageTransitionEvent) {
-		if (e.persisted) refreshConversations();
+		if (!e.persisted) return;
+		// A bfcache restore arrives with no `visibilitychange`, so it may not
+		// have been covered on the way out — cover now, before anything paints
+		// that the check hasn't cleared.
+		coverForAppLock();
+		void checkAppLock();
+		refreshConversations();
 	}
+	function onOnline() {
+		void checkAppLock();
+		refreshConversations();
+	}
+
+	// App lock (see server/auth/app-lock.ts). The server enforces it; this is
+	// the installed app's half. `sliding` means the idle clock runs here, so:
+	//  - a visible-only keep-alive feeds it, or reading a long thread without
+	//    touching anything would lock mid-read. iOS suspends timers in the
+	//    background, which is exactly what lets the clock run out there;
+	//  - the page is covered the moment it's hidden, so neither the app
+	//    switcher's snapshot nor the first frame of a resume shows the thread;
+	//  - a resume (BOTH events — see CLAUDE.md) asks the server before
+	//    uncovering, and goes to /unlock if the window has lapsed.
+	// Fails closed: a check that can't reach the server leaves the cover up
+	// and retries when connectivity returns.
+	let appLockCovered = $state(false);
+	let appLockCheckInFlight = false;
+	async function checkAppLock() {
+		if (!data.appLock?.sliding || document.visibilityState !== 'visible') return;
+		if (appLockCheckInFlight) return;
+		appLockCheckInFlight = true;
+		try {
+			const res = await fetch('/api/auth/app-lock');
+			if (res.status === APP_LOCKED_STATUS) {
+				const from = encodeURIComponent(location.pathname + location.search);
+				await goto(`${resolve('/unlock')}?from=${from}`, { replaceState: true });
+			} else if (res.ok) {
+				appLockCovered = false;
+			} else if (res.status === 401) {
+				// Session gone entirely — let the layout load send us to /login.
+				await invalidateAll();
+			}
+		} catch {
+			// Offline or unreachable: stay covered; `ononline` retries.
+		} finally {
+			appLockCheckInFlight = false;
+		}
+	}
+	function coverForAppLock() {
+		if (data.appLock?.sliding) appLockCovered = true;
+	}
+	$effect(() => {
+		if (!data.appLock?.sliding) {
+			appLockCovered = false;
+			return;
+		}
+		const keepAlive = setInterval(() => void checkAppLock(), APP_LOCK_KEEPALIVE_MS);
+		return () => clearInterval(keepAlive);
+	});
 
 	// Seed the sidebar's generating dots from the server's in-flight registry.
 	// The flag set is in-memory, so a reload / cold PWA launch would otherwise
@@ -1158,6 +1221,17 @@
 	</main>
 </div>
 
+<!-- App-lock privacy cover — see checkAppLock(). Opaque on purpose: a blur
+	 over a thread still leaks its shape and, at a glance, its headings. -->
+{#if appLockCovered}
+	<div
+		class="fixed inset-0 z-app-lock flex items-center justify-center bg-surface"
+		aria-hidden="true"
+	>
+		<LockKeyhole class="text-fg-muted" size={28} strokeWidth={2} />
+	</div>
+{/if}
+
 <!--
 	Singleton toast surface for the authenticated app. Sits outside the
 	flex root so its `fixed` positioning isn't accidentally clipped or
@@ -1221,7 +1295,8 @@
 <svelte:window
 	onkeydown={onGlobalKey}
 	onfocus={refreshConversations}
-	ononline={refreshConversations}
+	ononline={onOnline}
 	onpageshow={onPageShow}
+	onpagehide={coverForAppLock}
 />
 <svelte:document onvisibilitychange={onResumeVisibility} />

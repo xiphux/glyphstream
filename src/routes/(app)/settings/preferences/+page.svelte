@@ -26,7 +26,13 @@
 	} from '$lib/push-subscribe';
 
 	let { data } = $props<{
-		data: { prefs: UserPreferences; featureCategories: FeatureCategoryEntry[] };
+		data: {
+			prefs: UserPreferences;
+			featureCategories: FeatureCategoryEntry[];
+			// From the (app) layout. App lock forces the show-content opt-out
+			// server-side (push/notify.ts); the checkbox just says so.
+			appLock?: { timeoutMs: number; sliding: boolean } | null;
+		};
 	}>();
 
 	// Form state. Snapshot data.prefs once at mount — the form is the
@@ -805,9 +811,9 @@
 			>
 				<input
 					type="checkbox"
-					checked={notificationsShowContent}
+					checked={notificationsShowContent && !data.appLock}
 					onchange={(e) => toggleShowContent(e.currentTarget.checked)}
-					disabled={!notificationsEnabled || notifBusy}
+					disabled={!notificationsEnabled || notifBusy || !!data.appLock}
 					class="mt-0.5"
 				/>
 				<span>
@@ -816,6 +822,9 @@
 						— include the thread's title and a snippet of the assistant's reply in the notification.
 						Turn off if your threads are private to the device: notifications then read only "Video
 						ready" or "3 images ready", naming neither the thread nor its contents.
+						{#if data.appLock}
+							Off while app lock is on (Settings → Security).
+						{/if}
 					</span>
 				</span>
 			</label>

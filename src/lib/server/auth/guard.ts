@@ -1,4 +1,5 @@
 import { error, redirect } from '@sveltejs/kit';
+import { APP_LOCKED_STATUS } from '$lib/app-lock';
 import { countUsers } from '../db/queries/users';
 
 /**
@@ -17,7 +18,27 @@ import { countUsers } from '../db/queries/users';
 export function requireUser(
 	locals: App.Locals,
 ): asserts locals is App.Locals & { user: NonNullable<App.Locals['user']> } {
-	if (!locals.user) error(401, 'Authentication required');
+	if (!locals.user) {
+		// A locked session (see server/auth/app-lock.ts) is a session, just not
+		// a usable one — 423 so the client can send it to /unlock, not /login.
+		if (locals.appLock?.locked) error(APP_LOCKED_STATUS, 'App locked');
+		error(401, 'Authentication required');
+	}
+}
+
+/**
+ * Where an `(app)` page load sends a request with no usable session: the
+ * unlock screen for an app-locked session, the first-run wizard on a fresh
+ * install, and the login page otherwise. The one definition shared by the
+ * `(app)` layout and `requireUserPage`, so the two can't disagree.
+ */
+export function redirectUnauthenticatedPage(locals: App.Locals, url: URL): never {
+	const from = encodeURIComponent(url.pathname + url.search);
+	if (locals.appLock?.locked) redirect(302, `/unlock?from=${from}`);
+	// Fresh-install bootstrap: route the operator to the first-run wizard
+	// instead of a /login page they can't sign in at yet.
+	if (countUsers() === 0) redirect(302, '/setup');
+	redirect(302, `/login?from=${encodeURIComponent(url.pathname)}`);
 }
 
 /**
@@ -43,13 +64,7 @@ export function requireUserPage(
 	locals: App.Locals,
 	url: URL,
 ): asserts locals is App.Locals & { user: NonNullable<App.Locals['user']> } {
-	if (!locals.user) {
-		// Fresh-install bootstrap — same branch the layout takes, so a direct
-		// hit on a deep link during first-run setup lands on the wizard rather
-		// than a login page with no account to log into.
-		if (countUsers() === 0) redirect(302, '/setup');
-		redirect(302, `/login?from=${encodeURIComponent(url.pathname)}`);
-	}
+	if (!locals.user) redirectUnauthenticatedPage(locals, url);
 }
 
 /**
@@ -64,7 +79,7 @@ export function requireUserPage(
 export function requireAdmin(
 	locals: App.Locals,
 ): asserts locals is App.Locals & { user: NonNullable<App.Locals['user']> } {
-	if (!locals.user) error(401, 'Authentication required');
+	requireUser(locals);
 	if (locals.user.role !== 'admin') error(403, 'Administrator access required');
 }
 

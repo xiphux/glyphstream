@@ -31,6 +31,7 @@ import {
 	listPushSubscriptionsForUser,
 } from '../db/queries/push-subscriptions';
 import { getUserPreferences } from '../db/queries/user-preferences';
+import { getAppLockTimeout } from '../auth/app-lock';
 import { isConversationBeingViewed } from './presence';
 import { truncateEllipsis } from '$lib/text';
 import { sendPushNotification, type WebPushSubscription } from './web-push';
@@ -97,7 +98,8 @@ function truncateTitle(title: string): string {
  *    conversation (cross-device suppression — see `presence.ts`).
  *  - Lists subscriptions; bails when none.
  *  - Builds payload (omits preview and neutralizes conversationTitle to a
- *    constant unless notificationsShowContent — the title is content too).
+ *    constant unless notificationsShowContent — the title is content too;
+ *    app lock forces the opt-out).
  *  - Sends to each subscription in parallel.
  *  - Deletes any subscription that returns 404/410 (push service says
  *    the endpoint is gone).
@@ -107,6 +109,9 @@ export async function notifyConversationComplete(
 ): Promise<void> {
 	const prefs = getUserPreferences(input.userId);
 	if (!prefs || !prefs.notificationsEnabled) return;
+	// App lock implies the show-content opt-out: a notification on the lock
+	// screen would otherwise read out exactly what the passkey is guarding.
+	const showContent = prefs.notificationsShowContent && getAppLockTimeout(input.userId) === null;
 
 	// Cross-device suppression: if any of the user's devices is actively
 	// rendering this conversation (streaming its turn / fan-out, or polling a
@@ -144,10 +149,8 @@ export async function notifyConversationComplete(
 	// Sending a constant costs nothing in privacy. The push service sees the same
 	// string on every opted-out notification, which is exactly what the field's
 	// absence already told it, and nothing about the thread either way.
-	payload.conversationTitle = prefs.notificationsShowContent
-		? truncateTitle(input.conversationTitle)
-		: GENERIC_TITLE;
-	if (prefs.notificationsShowContent) {
+	payload.conversationTitle = showContent ? truncateTitle(input.conversationTitle) : GENERIC_TITLE;
+	if (showContent) {
 		const preview = buildPreview(input.previewText);
 		if (preview.length > 0) payload.preview = preview;
 	}

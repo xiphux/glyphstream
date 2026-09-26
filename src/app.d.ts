@@ -1,5 +1,6 @@
 // See https://svelte.dev/docs/kit/types#app.d.ts
 import type { SessionUser } from '$lib/server/auth/session';
+import type { AppLockState } from '$lib/server/auth/app-lock';
 import type { ModelEntry } from '$lib/types/api';
 
 declare global {
@@ -14,6 +15,14 @@ declare global {
 			 * "sign out everywhere else" spare it.
 			 */
 			sessionId: string | null;
+			/**
+			 * Set whenever app lock is on for the signed-in user (see
+			 * server/auth/app-lock.ts). When `locked`, `user` is null — the
+			 * session is treated as absent everywhere — and this is how guards
+			 * tell "locked" (→ /unlock, 423) from "signed out" (→ /login, 401).
+			 * Optional so a hand-built `locals` in a test reads as "no app lock".
+			 */
+			appLock?: AppLockState | null;
 			/**
 			 * Milliseconds this request spent inside synchronous SQLite, summed
 			 * across every load that opted in via `timeDb` — which is not every

@@ -194,6 +194,46 @@ registration is just a matter of accepting the right prompt at the time.
 When `PASSKEY_LOGIN_ENABLED=0`, the "Add passkey" button hides but the list
 stays visible so existing rows can be pruned.
 
+## App lock
+
+iOS lets you require Face ID for any native app, but it has no way to do that
+for an app added to the Home Screen from Safari. **Settings → Security → App
+lock** fills the gap: once the installed app has been closed or in the
+background for the chosen time (1, 5, 15 or 60 minutes), opening it again
+asks for your passkey. On an iPhone that's one Face ID prompt. You need at
+least one passkey registered, and turning the lock on asks you to use one
+first, so a passkey that doesn't work on this device can't lock you out.
+
+What it covers:
+
+- **The installed app.** The app tells the server it's running from the Home
+  Screen, and the lock applies to requests from it. On iOS the installed app
+  has its own cookies, separate from Safari's, so Safari itself isn't locked.
+  In desktop Chrome and on Android the installed app shares cookies with the
+  browser, so the lock applies to the browser tab too.
+- **New sign-ins through a linked account.** Someone holding your phone could
+  otherwise open Safari and use "Sign in with GitHub" against a GitHub session
+  that's still live there. So while app lock is on, a sign-in through GitHub,
+  Google or OIDC is followed by a passkey prompt in every browser. Signing in
+  with a passkey needs nothing extra.
+- **Notification previews.** They're hidden while app lock is on — see
+  [notifications](notifications.md).
+
+The server enforces the lock, not the page. A locked session is refused the
+same way a missing one is, so nothing about your conversations is sent until
+the passkey check passes. The app also covers itself when it goes to the
+background, so the app switcher doesn't show a snapshot of the open thread.
+The time is measured from when you last used the app: while it's open and
+visible it keeps itself unlocked, and iOS pauses it once it's in the
+background.
+
+The lock screen has a **Sign out** link. You can't delete your last passkey
+while app lock is on. If someone loses every passkey, an admin can turn their
+app lock off from **Settings → Users**. Turning app lock off requires only an
+unlocked session, so anyone signed in on another device can do it without a
+passkey. When `PASSKEY_LOGIN_ENABLED=0`, app lock has no way to be unlocked
+and turns itself off.
+
 ## Sessions and signed-in devices
 
 **Settings → Security → Signed-in devices** lists every session on your

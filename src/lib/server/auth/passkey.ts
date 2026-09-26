@@ -31,6 +31,7 @@ import { cookiesSecure, publicBaseUrl } from '../env';
 import type { SessionUser } from './session';
 import {
 	pickKnownTransports,
+	updateCredentialCounterAndLastUsed,
 	type AuthenticatorTransport,
 	type PasskeyCredentialRow,
 	type PasskeyDeviceType,
@@ -41,6 +42,7 @@ import {
  *  the existing GitHub OAuth state cookie. */
 const REGISTRATION_COOKIE = 'glyphstream_passkey_reg_challenge';
 const LOGIN_COOKIE = 'glyphstream_passkey_login_challenge';
+const UNLOCK_COOKIE = 'glyphstream_passkey_unlock_challenge';
 const CHALLENGE_TTL_SECONDS = 300;
 
 export const RP_NAME = 'GlyphStream';
@@ -219,6 +221,88 @@ export async function verifyAuthentication(
 }
 
 /**
+ * Build authentication options restricted to one user's own credentials — the
+ * app-lock unlock (and enable) ceremony. Unlike login, the account is already
+ * known, and ANY passkey on the device is not good enough: a second account's
+ * credential on a shared phone must not unlock this user's session. Listing the
+ * credentials makes the OS offer only those; `verifyUnlockAssertion` enforces it.
+ */
+export async function generateAuthenticationOptionsForUser(
+	credentials: PasskeyCredentialRow[],
+): Promise<PublicKeyCredentialRequestOptionsJSON> {
+	return await generateAuthenticationOptions({
+		rpID: getRpId(),
+		allowCredentials: credentials.map((c) => ({
+			id: c.id,
+			transports: c.transports ?? undefined,
+		})),
+		userVerification: 'required',
+		timeout: 60_000,
+	});
+}
+
+/**
+ * Verify a signed assertion against a credential row already resolved (and
+ * ownership-checked) by the caller, then advance its counter. Throws a 401
+ * `error()` on any failure. Shared by passkey login and the app-lock unlock so
+ * the userHandle cross-check and clone guard can't drift between them.
+ *
+ * Counter-clone guard: WebAuthn's `newCounter` should monotonically increase
+ * for hardware-counted authenticators. If `stored > 0 && new <= stored`, the
+ * credential may have been cloned and we refuse without updating. The
+ * `stored > 0` half is intentional — Apple iCloud Keychain (and some other
+ * platform authenticators) always returns 0, so a naive `new <= stored` check
+ * would lock out every Mac and iPhone user on their second use.
+ *
+ * userHandle cross-check: the authenticator returns the `userID` we stashed
+ * during registration (UTF-8 bytes of users.id). If it disagrees with the
+ * credential row's user_id, something is deeply wrong — refuse rather than
+ * guess which side to trust.
+ */
+export async function verifyStoredCredentialAssertion(
+	response: AuthenticationResponseJSON,
+	expectedChallenge: string,
+	credential: PasskeyCredentialRow,
+	logTag: string,
+): Promise<void> {
+	const handleUserId = decodeUserHandle(response.response?.userHandle ?? null);
+	if (handleUserId && handleUserId !== credential.userId) {
+		console.warn(
+			`[${logTag}] userHandle mismatch on credential ${credential.id}: ${handleUserId} vs row ${credential.userId}`,
+		);
+		error(401, 'Credential identity mismatch');
+	}
+
+	let verification: VerifiedAuthenticationResponse;
+	try {
+		verification = await verifyAuthentication(response, {
+			expectedChallenge,
+			credential: {
+				id: credential.id,
+				// `.slice()` produces a `Uint8Array<ArrayBuffer>` (the exact
+				// shape SimpleWebAuthn's `Uint8Array_` aliases). Our row type
+				// is plain `Uint8Array` to stay consumer-agnostic.
+				publicKey: credential.publicKey.slice(),
+				counter: credential.counter,
+				transports: credential.transports ?? undefined,
+			},
+		});
+	} catch (e) {
+		error(401, e instanceof Error ? e.message : 'Verification failed');
+	}
+	if (!verification.verified) error(401, 'Passkey verification failed');
+
+	const newCounter = verification.authenticationInfo.newCounter;
+	if (credential.counter > 0 && newCounter <= credential.counter) {
+		console.warn(
+			`[${logTag}] Counter regression on credential ${credential.id}: stored=${credential.counter} new=${newCounter}. Possible clone.`,
+		);
+		error(401, 'Possible cloned credential');
+	}
+	updateCredentialCounterAndLastUsed(credential.id, newCounter, Date.now());
+}
+
+/**
  * Decode the `userHandle` an authenticator returns on login back into
  * the UUID string we set as `userID` during registration. Used as a
  * belt-and-suspenders cross-check that the credential row's `userId`
@@ -275,4 +359,16 @@ export function readLoginChallengeCookie(cookies: Cookies): string | undefined {
 
 export function clearLoginChallengeCookie(cookies: Cookies): void {
 	cookies.delete(LOGIN_COOKIE, { path: '/' });
+}
+
+export function setUnlockChallengeCookie(cookies: Cookies, challenge: string): void {
+	writeChallengeCookie(cookies, UNLOCK_COOKIE, challenge);
+}
+
+export function readUnlockChallengeCookie(cookies: Cookies): string | undefined {
+	return cookies.get(UNLOCK_COOKIE);
+}
+
+export function clearUnlockChallengeCookie(cookies: Cookies): void {
+	cookies.delete(UNLOCK_COOKIE, { path: '/' });
 }

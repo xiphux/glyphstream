@@ -3,13 +3,23 @@ import type { Handle, HandleServerError } from '@sveltejs/kit';
 import {
 	readSessionCookie,
 	setSessionCookie,
+	setSessionUnlockedUntil,
 	validateSessionToken,
 } from '$lib/server/auth/session';
+import {
+	evaluateAppLock,
+	readInstalledAppCookie,
+	type AppLockState,
+} from '$lib/server/auth/app-lock';
 import { maybeCompressResponse } from '$lib/server/compression';
 import { applySecurityHeaders } from '$lib/server/security-headers';
 import { consumeRateLimitToken } from '$lib/server/rate-limit';
 import { routedPathname } from '$lib/server/util/request-path';
-import { compressDynamicResponses, validateAuthMethodsEnabled } from '$lib/server/env';
+import {
+	compressDynamicResponses,
+	passkeyLoginEnabled,
+	validateAuthMethodsEnabled,
+} from '$lib/server/env';
 import { ensureAdminBootstrap } from '$lib/server/db/queries/users';
 import { startMediaPurger, stopMediaPurger } from '$lib/server/media/purger';
 import {
@@ -307,7 +317,29 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 	const ctx = token ? validateSessionToken(token) : null;
-	event.locals.user = ctx?.user ?? null;
+	// App lock. A locked session resolves to NO user, so every guard already
+	// in the tree refuses it; `locals.appLock` is what lets them send it to
+	// /unlock instead of /login. See server/auth/app-lock.ts.
+	let appLock: AppLockState | null = null;
+	if (ctx && ctx.appLock.timeoutMs !== null) {
+		const decision = evaluateAppLock({
+			timeoutMs: ctx.appLock.timeoutMs,
+			unlockedUntil: ctx.appLock.unlockedUntil,
+			installedApp: readInstalledAppCookie(event.cookies),
+			passkeysEnabled: passkeyLoginEnabled(),
+			now: Date.now(),
+		});
+		if (decision.extendTo !== null) setSessionUnlockedUntil(ctx.sessionId, decision.extendTo);
+		appLock = {
+			locked: decision.locked,
+			sliding: decision.sliding,
+			userId: ctx.user.id,
+			sessionId: ctx.sessionId,
+			timeoutMs: ctx.appLock.timeoutMs,
+		};
+	}
+	event.locals.appLock = appLock;
+	event.locals.user = appLock?.locked ? null : (ctx?.user ?? null);
 	event.locals.sessionId = ctx?.sessionId ?? null;
 	// Renewal slid `expires_at` in the DB; push the same date to the browser.
 	// Without this the cookie keeps its original `expires`, so the row and the

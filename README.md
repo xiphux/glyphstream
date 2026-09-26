@@ -228,8 +228,9 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
 
 - **OAuth (GitHub, Google, generic OIDC) + passkeys**, together or alone;
   token-gated first-run setup wizard; a signed-in device list with per-session
-  revoke and "sign out everywhere else"; one-flag account revocation
-  ([guide](docs/authentication.md)).
+  revoke and "sign out everywhere else"; one-flag account revocation; an
+  optional **app lock** that asks for your passkey (Face ID on an iPhone) when
+  you return to the installed app ([guide](docs/authentication.md#app-lock)).
 - **Invite-only multi-user** — the setup-wizard account is the admin; everyone
   else joins via an admin-issued `/join` link (any OAuth provider or passkey). Per-user
   data isolation, plus an admin panel to invite, disable, or remove accounts

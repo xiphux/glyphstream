@@ -40,6 +40,12 @@ const PUBLIC: Record<string, string> = {
 	'/api/auth/join/passkey/verify POST': 'invite redemption, gated by the invite token',
 	'/api/auth/setup/passkey/options POST': 'first-run setup, gated by setup state/token',
 	'/api/auth/setup/passkey/verify POST': 'first-run setup, gated by setup state/token',
+	'/api/auth/app-lock/device POST':
+		'sets the installed-app marker, which can only ADD a restriction',
+	'/api/auth/unlock/options POST':
+		'app-lock unlock: a LOCKED session has no user by design; gated on locals.appLock instead',
+	'/api/auth/unlock/verify POST':
+		'app-lock unlock: a LOCKED session has no user by design; gated on locals.appLock instead',
 };
 
 /** (app) server loads that legitimately need neither parent() nor requireUserPage. */

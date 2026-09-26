@@ -111,6 +111,9 @@ export interface UserSummary {
 	createdAt: number;
 	lastLoginAt: number | null;
 	invitedByUserId: string | null;
+	/** Non-null when the user has app lock on — shown so an admin can turn it
+	 *  off for someone who has lost every passkey. */
+	appLockTimeoutMs: number | null;
 }
 
 /** All users, newest-first — for the admin user-management table. */
@@ -126,6 +129,7 @@ export function listUsers(): UserSummary[] {
 			createdAt: users.createdAt,
 			lastLoginAt: users.lastLoginAt,
 			invitedByUserId: users.invitedByUserId,
+			appLockTimeoutMs: users.appLockTimeoutMs,
 		})
 		.from(users)
 		.orderBy(desc(users.createdAt))

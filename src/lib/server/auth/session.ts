@@ -64,6 +64,8 @@ export interface AuthContext {
 	 * re-issue the cookie — see the note on {@link validateSessionToken}.
 	 */
 	renewed: boolean;
+	/** The raw inputs to the app-lock decision — see `evaluateAppLock`. */
+	appLock: { timeoutMs: number | null; unlockedUntil: number | null };
 }
 
 /**
@@ -76,6 +78,8 @@ export interface AuthContext {
 export function createSession(
 	userId: string,
 	userAgent?: string | null,
+	/** Initial app-lock state; see `initialUnlockedUntil` in app-lock.ts. */
+	unlockedUntil: number | null = null,
 ): { token: string; expiresAt: number } {
 	const token = generateToken();
 	const sessionId = hashToken(token);
@@ -90,6 +94,7 @@ export function createSession(
 			createdAt: now,
 			lastSeenAt: now,
 			userAgent: userAgent ? userAgent.slice(0, MAX_USER_AGENT_LEN) : null,
+			unlockedUntil,
 		})
 		.run();
 	return { token, expiresAt };
@@ -119,7 +124,8 @@ export function validateSessionToken(token: string): AuthContext | null {
 	// without re-issuing a token) but it stops resolving until the
 	// disabled flag clears.
 	//
-	// Only the four `SessionUser` columns are projected. Selecting the whole
+	// Only the four `SessionUser` columns (plus the two app-lock inputs) are
+	// projected. Selecting the whole
 	// `users` row would decode `preferences_json` and `conversation_overview`
 	// (the injected topic map — multiple KB once the summary worker has run)
 	// out of SQLite on *every* request, including presence heartbeats, to
@@ -130,6 +136,8 @@ export function validateSessionToken(token: string): AuthContext | null {
 			expiresAt: sessions.expiresAt,
 			createdAt: sessions.createdAt,
 			lastSeenAt: sessions.lastSeenAt,
+			unlockedUntil: sessions.unlockedUntil,
+			appLockTimeoutMs: users.appLockTimeoutMs,
 			userId: users.id,
 			displayName: users.displayName,
 			email: users.email,
@@ -172,6 +180,7 @@ export function validateSessionToken(token: string): AuthContext | null {
 		sessionId: row.sessionId,
 		expiresAt,
 		renewed,
+		appLock: { timeoutMs: row.appLockTimeoutMs, unlockedUntil: row.unlockedUntil },
 		user: {
 			id: row.userId,
 			displayName: row.displayName,
@@ -179,6 +188,11 @@ export function validateSessionToken(token: string): AuthContext | null {
 			role: row.role,
 		},
 	};
+}
+
+/** Write a session's app-lock window (see server/auth/app-lock.ts). */
+export function setSessionUnlockedUntil(sessionId: string, unlockedUntil: number | null): void {
+	getDb().update(sessions).set({ unlockedUntil }).where(eq(sessions.id, sessionId)).run();
 }
 
 export function invalidateSession(sessionId: string): void {

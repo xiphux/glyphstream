@@ -16,6 +16,7 @@
  */
 import { error, json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
+import { getAppLockTimeout } from '$lib/server/auth/app-lock';
 import {
 	deleteCredential,
 	listCredentialSummariesForUser,
@@ -53,6 +54,11 @@ export const DELETE: RequestHandler = ({ locals, params }) => {
 			409,
 			"Can't delete your last sign-in method. Add another passkey or link a provider first.",
 		);
+	}
+	// App lock can only be unlocked with a passkey, so the last one can't go
+	// while it's on — that would lock the account out of every installed app.
+	if (passkeys.length === 1 && getAppLockTimeout(locals.user.id) !== null) {
+		error(409, "Can't delete your last passkey while app lock is on. Turn app lock off first.");
 	}
 	deleteCredential(locals.user.id, params.id);
 	return new Response(null, { status: 204 });

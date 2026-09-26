@@ -1,7 +1,6 @@
-import { redirect } from '@sveltejs/kit';
 import { listConversations } from '$lib/server/db/queries/conversations';
 import { listCustomModelsForUser } from '$lib/server/db/queries/custom-models';
-import { countUsers } from '$lib/server/db/queries/users';
+import { redirectUnauthenticatedPage } from '$lib/server/auth/guard';
 import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { listEnabledSkillsForUser } from '$lib/server/db/queries/skills';
 import { listConfiguredServerIds } from '$lib/server/db/queries/mcp-credentials';
@@ -14,12 +13,7 @@ import { timeDb } from '$lib/server/util/db-timing';
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async ({ locals, url, depends, isDataRequest }) => {
-	if (!locals.user) {
-		// Fresh-install bootstrap: route the operator to the first-run
-		// wizard instead of a /login page they can't sign in at yet.
-		if (countUsers() === 0) redirect(302, '/setup');
-		redirect(302, `/login?from=${encodeURIComponent(url.pathname)}`);
-	}
+	if (!locals.user) redirectUnauthenticatedPage(locals, url);
 	// Load prefs at the layout level so every (app) page has them on
 	// first paint — the composer's enter-key handler needs to branch on
 	// `prefs.enterBehavior` synchronously without waiting on a client-
@@ -138,6 +132,12 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 	});
 	return {
 		user: locals.user,
+		// App lock as it applies to THIS client (null = off). `sliding` means the
+		// idle clock runs here — the installed app — so the layout keeps it fed
+		// while visible and covers the page when hidden. See server/auth/app-lock.ts.
+		appLock: locals.appLock
+			? { timeoutMs: locals.appLock.timeoutMs, sliding: locals.appLock.sliding }
+			: null,
 		conversations,
 		// Which of those have a generation running server-side right now. Seeds
 		// the sidebar's generating dot at layout mount so a reload / cold PWA

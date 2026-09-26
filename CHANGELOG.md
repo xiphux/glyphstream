@@ -9,6 +9,14 @@ arrived.
 
 ## Unreleased
 
+### Added
+
+- App lock: an optional setting in Settings → Security that asks for your
+  passkey (Face ID on an iPhone) when you come back to the installed app after
+  it has been away for 1, 5, 15 or 60 minutes. While it's on, signing in with a
+  linked account also asks for your passkey, and notifications don't show
+  message previews.
+
 ### Fixed
 
 - Reactions now actually happen. The model almost never reacted on its own; it

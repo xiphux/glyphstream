@@ -16,6 +16,7 @@
 		createdAt: number;
 		lastLoginAt: number | null;
 		invitedByUserId: string | null;
+		appLockTimeoutMs: number | null;
 	}
 	interface InviteRow {
 		id: string;
@@ -124,6 +125,32 @@
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ disabled: disabling }),
+			});
+			if (!res.ok) {
+				toast.error(await errorMessageFromResponse(res));
+				return;
+			}
+			await invalidate('settings:admin');
+		} finally {
+			busyUserId = null;
+		}
+	}
+
+	async function clearAppLock(u: UserRow) {
+		if (busyUserId) return;
+		const ok = await confirmDialog.ask({
+			title: `Turn off app lock for ${u.displayName ?? u.email ?? 'this user'}?`,
+			message:
+				'Their installed apps stop asking for a passkey. Use this when they have lost access to every passkey; they can turn it back on from their own settings.',
+			confirmLabel: 'Turn off',
+		});
+		if (!ok) return;
+		busyUserId = u.id;
+		try {
+			const res = await fetch(`/api/admin/users/${encodeURIComponent(u.id)}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ appLock: false }),
 			});
 			if (!res.ok) {
 				toast.error(await errorMessageFromResponse(res));
@@ -282,6 +309,11 @@
 									disabled
 								</span>
 							{/if}
+							{#if u.appLockTimeoutMs !== null}
+								<span class="rounded px-1.5 py-0.5 text-[11px] font-medium text-fg-muted">
+									app lock
+								</span>
+							{/if}
 						</div>
 						<div class="text-xs text-fg-muted">
 							{u.email ?? 'no email'} · joined {formatDate(u.createdAt)} · last login {formatDate(
@@ -292,6 +324,16 @@
 					</div>
 					{#if u.id !== data.me}
 						<div class="flex shrink-0 items-center gap-2">
+							{#if u.appLockTimeoutMs !== null}
+								<button
+									type="button"
+									onclick={() => clearAppLock(u)}
+									disabled={busyUserId === u.id}
+									class="rounded-lg border border-border px-2.5 py-1 text-xs font-medium transition hover:bg-surface-sunken disabled:opacity-50"
+								>
+									Turn off app lock
+								</button>
+							{/if}
 							<button
 								type="button"
 								onclick={() => toggleDisabled(u)}

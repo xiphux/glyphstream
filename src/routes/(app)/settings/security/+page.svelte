@@ -1,6 +1,6 @@
 <script lang="ts">
 	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
-	import { afterNavigate, goto, invalidate } from '$app/navigation';
+	import { afterNavigate, goto, invalidate, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Check, KeyRound, Laptop, Pencil, Plus, Trash2, X } from '@lucide/svelte';
 	import ProviderIcon from '$lib/components/ProviderIcon.svelte';
@@ -10,6 +10,8 @@
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import { toast } from '$lib/toast.svelte';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
+	import { APP_LOCK_TIMEOUTS_MS, describeAppLockTimeout } from '$lib/app-lock';
+	import { getAppLockAssertion } from '$lib/app-lock-ceremony';
 
 	interface ProviderInfo {
 		id: string;
@@ -25,6 +27,8 @@
 			passkeyEnabled: boolean;
 			sessions: SessionSummary[];
 			currentSessionId: string | null;
+			// From the (app) layout.
+			appLock?: { timeoutMs: number; sliding: boolean } | null;
 		};
 	}>();
 
@@ -276,6 +280,49 @@
 			await invalidate('settings:oauth-accounts');
 		} finally {
 			linkBusy = false;
+		}
+	}
+
+	// App lock. Turning it ON runs a passkey ceremony first — the server
+	// requires the assertion, so a passkey this device can't use never gets
+	// made the only way back in. Changing the window or turning it off doesn't.
+	let appLockBusy = $state(false);
+	const appLockAvailable = $derived(data.passkeyEnabled && data.passkeys.length > 0);
+
+	const savedAppLockValue = () => (data.appLock ? String(data.appLock.timeoutMs) : 'off');
+
+	async function setAppLock(select: HTMLSelectElement) {
+		if (appLockBusy) return;
+		const timeoutMs = select.value === 'off' ? null : Number(select.value);
+		appLockBusy = true;
+		try {
+			let response: unknown;
+			if (timeoutMs !== null && !data.appLock) {
+				const assertion = await getAppLockAssertion();
+				if (!assertion.ok) {
+					if (assertion.error) toast.error(assertion.error);
+					return;
+				}
+				response = assertion.response;
+			}
+			const res = await fetch('/api/auth/app-lock', {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ timeoutMs, response }),
+			});
+			if (!res.ok) {
+				toast.error(await errorMessageFromResponse(res));
+				return;
+			}
+			toast.success(timeoutMs === null ? 'App lock turned off.' : 'App lock updated.');
+		} finally {
+			// invalidateAll because the setting lives on the (app) layout's data,
+			// which also starts or stops the keep-alive. Then put the select back
+			// on the saved value by hand: after a cancelled or failed change the
+			// data is unchanged, so the one-way `value` binding never re-applies.
+			await invalidateAll();
+			select.value = savedAppLockValue();
+			appLockBusy = false;
 		}
 	}
 
@@ -604,6 +651,36 @@
 							</p>
 						{/if}
 					</div>
+				{/if}
+			</section>
+		{/if}
+
+		{#if data.passkeyEnabled || data.appLock}
+			<section class="panel-card p-4">
+				<h2 class="text-sm font-semibold">App lock</h2>
+				<p class="mt-1 text-xs text-fg-muted">
+					Ask for your passkey — Face ID on an iPhone — when you come back to the installed app
+					after it's been closed or in the background for a while. Once it's on, signing in with a
+					linked account also asks for your passkey, on any device, and notifications stop showing
+					message previews.
+				</p>
+				<div class="mt-3 flex items-center gap-3">
+					<label class="text-sm" for="app-lock-timeout">Lock after</label>
+					<select
+						id="app-lock-timeout"
+						value={savedAppLockValue()}
+						onchange={(e) => setAppLock(e.currentTarget)}
+						disabled={appLockBusy || (!appLockAvailable && !data.appLock)}
+						class="rounded border border-border bg-surface-panel px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-fg disabled:opacity-50"
+					>
+						<option value="off">Off</option>
+						{#each APP_LOCK_TIMEOUTS_MS as ms (ms)}
+							<option value={String(ms)}>{describeAppLockTimeout(ms)} away</option>
+						{/each}
+					</select>
+				</div>
+				{#if !appLockAvailable && !data.appLock}
+					<p class="mt-2 text-xs text-fg-muted">Add a passkey above to turn on app lock.</p>
 				{/if}
 			</section>
 		{/if}

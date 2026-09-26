@@ -246,6 +246,8 @@ Three independent toggles, all per-user:
   content: until the title task replaces it, a thread's title is your own first
   message verbatim, so a media generation's notification would otherwise read
   your prompt back on the lock screen. The in-app toast follows the same gate.
+  [App lock](authentication.md#app-lock) forces this off while it's on — the
+  checkbox shows unchecked and can't be changed until app lock is turned off.
 - **In-app toast for other threads** — whether a toast pops when a
   thread completes while you're in the app but on a different page.
   On by default. Turning this off doesn't affect OS notifications when

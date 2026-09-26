@@ -16,6 +16,10 @@ const ERROR_MESSAGES: Record<string, string> = {
 
 export const load: PageServerLoad = ({ locals, url }) => {
 	if (locals.user) redirect(302, '/');
+	// An app-locked session isn't signed out — it's one passkey away. Sending
+	// it here would also run the login page's client-state wipe (drafts) on
+	// what is still a live session.
+	if (locals.appLock?.locked) redirect(302, '/unlock');
 	// On a fresh install the only way forward is the wizard. Redirect
 	// here too so a bookmarked /login on a clean DB lands operators in
 	// the right place.

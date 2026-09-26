@@ -17,6 +17,7 @@
 	import { captureColdLaunchProbe } from '$lib/status-bar-probe';
 	import type { ActiveConversationReport, SwClientMessage } from '$lib/types/push';
 	import { resolve } from '$app/paths';
+	import { isStandaloneDisplay } from '$lib/app-lock';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -189,6 +190,14 @@
 	}
 
 	onMount(async () => {
+		// Tell the server this browser is the installed app, so app lock's idle
+		// clock applies to it (the server can't see display-mode). Every launch,
+		// login page included, so the marker's lifetime keeps renewing. See
+		// server/auth/app-lock.ts.
+		if (isStandaloneDisplay()) {
+			void fetch('/api/auth/app-lock/device', { method: 'POST' }).catch(() => {});
+		}
+
 		// Cold launch: no resume event will fire, so nothing else re-derives the
 		// badge until the app is next backgrounded and brought forward. A
 		// notification swiped away while the app wasn't running would otherwise

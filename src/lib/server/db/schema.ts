@@ -70,6 +70,11 @@ export const users = sqliteTable('users', {
 	// `summarized_at`s, so the overview is rebuilt only when a summary changed since
 	// it was last generated. Null = never built.
 	overviewUpdatedAt: integer('overview_updated_at'),
+	// App lock: how long an installed-app session may sit unused before it needs
+	// a passkey (Face ID on iOS) to continue. Null = off. A column rather than a
+	// preference because the session hook reads it on every request, and that
+	// read deliberately never decodes `preferences_json`. See server/auth/app-lock.ts.
+	appLockTimeoutMs: integer('app_lock_timeout_ms'),
 });
 
 // OAuth provider bindings. 1-to-many off `users` — a single user can
@@ -161,6 +166,13 @@ export const sessions = sqliteTable('sessions', {
 	// want a write amplifier.
 	lastSeenAt: integer('last_seen_at').notNull().default(0),
 	userAgent: text('user_agent'),
+	// App lock (see server/auth/app-lock.ts): the session is usable from an
+	// installed app until this instant, and each request slides it forward.
+	// NULL = never unlocked under app lock (a standalone request treats it as
+	// expired; anywhere else it's simply unlocked). 0 = born locked — minted by
+	// an OAuth sign-in for a user with app lock on, which must be followed by a
+	// passkey before the session is usable ANYWHERE.
+	unlockedUntil: integer('unlocked_until'),
 });
 
 // WebAuthn / passkey credentials. Bound to an existing user (always

@@ -1,6 +1,8 @@
 /**
  * Admin user-management mutations (admin only):
  *   PATCH  /api/admin/users/[id]  { disabled: boolean }  — enable/disable
+ *   PATCH  /api/admin/users/[id]  { appLock: false }      — turn off app lock (recovery for a
+ *                                                           user who has lost every passkey)
  *   DELETE /api/admin/users/[id]                          — delete + cascade, stop in-flight generations, unlink media files
  *
  * Two invariants the API enforces (not just the UI):
@@ -16,6 +18,7 @@ import { requireAdmin } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
 import { unlinkMediaFiles } from '$lib/server/media/disk-store';
 import { cancelInFlightGenerations } from '$lib/server/streaming/cancel';
+import { clearAppLock } from '$lib/server/auth/app-lock';
 import {
 	countActiveAdmins,
 	deleteUser,
@@ -52,7 +55,19 @@ function assertCanMutateTargetUser(
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	requireAdmin(locals);
-	const body = await parseJsonBody<{ disabled?: unknown }>(request);
+	const body = await parseJsonBody<{ disabled?: unknown; appLock?: unknown }>(request);
+	if (body.appLock !== undefined) {
+		// Off only. Turning app lock ON is the user's own ceremony — it needs a
+		// passkey assertion from their device (see PUT /api/auth/app-lock).
+		if (body.appLock !== false) error(400, '`appLock` can only be set to false');
+		assertCanMutateTargetUser(locals.user.id, params.id, {
+			selfMessage: 'Turn off your own app lock from Settings → Security',
+			strand: false,
+			strandMessage: '',
+		});
+		clearAppLock(params.id);
+		return json({ ok: true });
+	}
 	if (typeof body.disabled !== 'boolean') {
 		error(400, '`disabled` must be a boolean');
 	}
