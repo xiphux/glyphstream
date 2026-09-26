@@ -623,10 +623,12 @@ export function buildRenderedConversation(messages: ChatMessage[]): RenderedConv
 	// A hidden row's reasoning is carried onto the next row that renders, rather
 	// than dropped with it. Live, the reaction opens no segment, so the next
 	// iteration's reasoning streams into the SAME block (`appendReasoning`
-	// coalesces), and the finished bubble has to match that. Kept as its own row
-	// it drew a second, empty-looking Reasoning toggle above the reply — Gemma
-	// reasons before every call, so that was every reaction it made. The hide
-	// guarantees a later visible assistant row in the turn, so nothing is lost.
+	// coalesces); this gives the finished bubble one block as well. Not
+	// byte-identical — live the passes run together, here they get a paragraph
+	// break. Kept as its own row, the reaction drew a second, empty-looking
+	// Reasoning toggle above the reply — Gemma reasons before every call, so that
+	// was every reaction it made. The hide guarantees a later visible assistant
+	// row in the turn, so nothing is lost.
 	let carriedReasoning: string | null = null;
 	for (const { msg } of provisional) {
 		if (hidden.has(msg.id)) {
