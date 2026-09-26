@@ -86,9 +86,20 @@ export default defineConfig({
 		// ENOENT, so "config absent" is the deterministic, isolated baseline.
 		// Only effective because of the $env/dynamic/private alias above.
 		env: { CONFIG_PATH: '/glyphstream-test-no-such-config.toml' },
-		// Run each test file in its own process so DB tests with global
-		// connection state don't cross-contaminate. Cheap because the
-		// suite is small.
+		// Run each test file in its own worker so DB tests with global
+		// connection state don't cross-contaminate. `isolate: false` really
+		// does leak here: run twice in shuffled file order, it fails.
 		isolate: true,
+		// Worker threads rather than the default forked processes: still one
+		// isolated worker per file, as above, but cheaper to start. Measured
+		// over five runs each: 44s -> 38s (-14%), all passing.
+		//
+		// Not a vm pool (vmThreads/vmForks), which vitest doctor measures as
+		// faster elsewhere: here both fail, because tests/unit/vision-variant
+		// times out running sharp inside a VM context. And in heatsheet-io
+		// and football, both vm pools segfaulted intermittently with coverage
+		// on — about one run in ten. Plain threads involve no VM contexts.
+		// `npx vitest doctor` re-measures all of this.
+		pool: 'threads',
 	},
 });
