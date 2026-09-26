@@ -13,6 +13,8 @@ arrived.
 
 - Reactions now actually happen. The model almost never reacted on its own; it
   now does in warm or playful conversation, and still stays out of technical work.
+- A reaction from a reasoning model no longer leaves a second, empty-looking
+  Reasoning toggle above the reply.
 
 ## v0.40.2
 

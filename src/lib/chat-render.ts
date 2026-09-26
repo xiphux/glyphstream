@@ -620,8 +620,30 @@ export function buildRenderedConversation(messages: ChatMessage[]): RenderedConv
 		if (reactionOnly && laterVisibleAssistantInTurn) hidden.add(msg.id);
 		else laterVisibleAssistantInTurn = true;
 	}
+	// A hidden row's reasoning is carried onto the next row that renders, rather
+	// than dropped with it. Live, the reaction opens no segment, so the next
+	// iteration's reasoning streams into the SAME block (`appendReasoning`
+	// coalesces), and the finished bubble has to match that. Kept as its own row
+	// it drew a second, empty-looking Reasoning toggle above the reply — Gemma
+	// reasons before every call, so that was every reaction it made. The hide
+	// guarantees a later visible assistant row in the turn, so nothing is lost.
+	let carriedReasoning: string | null = null;
 	for (const { msg } of provisional) {
-		if (!hidden.has(msg.id)) visibleMessages.push(msg);
+		if (hidden.has(msg.id)) {
+			if (msg.reasoningText) {
+				carriedReasoning = [carriedReasoning, msg.reasoningText].filter(Boolean).join('\n\n');
+			}
+			continue;
+		}
+		if (carriedReasoning && msg.role === 'assistant' && !isCompactionSummary(msg)) {
+			visibleMessages.push({
+				...msg,
+				reasoningText: [carriedReasoning, msg.reasoningText].filter(Boolean).join('\n\n'),
+			});
+			carriedReasoning = null;
+			continue;
+		}
+		visibleMessages.push(msg);
 	}
 
 	return { visibleMessages, toolResultsByCallId, pendingApprovals, reactionsByMessageId };
@@ -630,9 +652,10 @@ export function buildRenderedConversation(messages: ChatMessage[]): RenderedConv
 // --- bubble-merge flags -------------------------------------------------
 
 /** An assistant row that carries reaction tool calls and nothing else — no
- *  text, no media, no other tool call, no reasoning to expand. Every one of its
- *  parts is dropped by `messageToBlocks`, so rendering it produces an empty
- *  bubble.
+ *  text, no media, no other tool call. Every one of its parts is dropped by
+ *  `messageToBlocks`, so rendering it produces an empty bubble. Reasoning does
+ *  not disqualify it: when the row is hidden, its reasoning moves onto the next
+ *  row of the turn (see `buildRenderedConversation`).
  *
  *  The EMPTY TEXT PART is the case that makes this non-obvious: the relay's
  *  recorder unconditionally writes `{type:'text', text: textBuf}` even when the
@@ -649,7 +672,6 @@ export function buildRenderedConversation(messages: ChatMessage[]): RenderedConv
  *  bubble, because that bubble carries the Retry control. */
 function isReactionOnlyAssistantRow(msg: ChatMessage): boolean {
 	if (msg.role !== 'assistant') return false;
-	if (msg.reasoningText) return false;
 	// At least one ACTUAL reaction, not merely "nothing renderable". Without
 	// this the predicate also swallows a row that is only an empty text part —
 	// which is exactly what a turn the user Stopped before the first token

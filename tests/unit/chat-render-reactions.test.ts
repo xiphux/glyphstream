@@ -275,6 +275,42 @@ describe('buildRenderedConversation — reactionsByMessageId', () => {
 		expect(visibleMessages.map((m) => m.id)).toEqual(['u1', 'a1']);
 	});
 
+	it('folds a hidden reaction row\u2019s reasoning into the reply, as the live stream does', () => {
+		// A reasoning model thinks before the reaction call AND before the reply.
+		// Live, both stream into one Reasoning block (no segment opens for the
+		// hidden call). Kept as its own row, the reaction drew a second toggle over
+		// the reply with nothing under it.
+		const { visibleMessages } = buildRenderedConversation([
+			msg('u1', 'user', [{ type: 'text', text: 'I got the job!!' }]),
+			msg('a1', 'assistant', [{ type: 'text', text: '' }, reactionPart('\ud83c\udf89')], {
+				reasoningText: 'They got the job. React, then congratulate.',
+			}),
+			msg('t1', 'tool', [{ type: 'tool_result', toolCallId: 'call_r', result: 'ok' }]),
+			msg('a2', 'assistant', [{ type: 'text', text: 'Congratulations!' }], {
+				reasoningText: 'Now the reply.',
+			}),
+		]);
+		expect(visibleMessages.map((m) => m.id)).toEqual(['u1', 'a2']);
+		expect(visibleMessages[1].reasoningText).toBe(
+			'They got the job. React, then congratulate.\n\nNow the reply.',
+		);
+	});
+
+	it('carries the reasoning even when the reply has none of its own', () => {
+		const { visibleMessages } = buildRenderedConversation([
+			msg('u1', 'user', [{ type: 'text', text: 'I got the job!!' }]),
+			msg('a1', 'assistant', [{ type: 'text', text: '' }, reactionPart('\ud83c\udf89')], {
+				reasoningText: 'React first.',
+			}),
+			msg('t1', 'tool', [{ type: 'tool_result', toolCallId: 'call_r', result: 'ok' }]),
+			msg('a2', 'assistant', [{ type: 'text', text: 'Congratulations!' }]),
+		]);
+		expect(visibleMessages.map((m) => [m.id, m.reasoningText])).toEqual([
+			['u1', null],
+			['a2', 'React first.'],
+		]);
+	});
+
 	it('does not let a compaction summary hide the previous turn\u2019s reaction leaf', () => {
 		// Summaries are `role: 'assistant'` and `arrangeForDisplay` moves them next
 		// to the user message they resume from — so a naive "is there a later
