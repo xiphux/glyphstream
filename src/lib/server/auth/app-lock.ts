@@ -143,8 +143,20 @@ export function getAppLockTimeout(userId: string): number | null {
 	return row?.t ?? null;
 }
 
-/** Returns false when no such user exists. */
-export function setAppLockTimeout(userId: string, timeoutMs: number | null): boolean {
+/**
+ * Change the setting. Returns false when no such user exists.
+ *
+ * `sessionId` is the session making the change, whose window is (re)started in
+ * the same transaction. That write is what keeps an installed app that just
+ * switched the lock on from finding its own session — a NULL window — locked on
+ * its very next request; apart from the setting, it's the one it depends on.
+ */
+export function setAppLockTimeout(
+	userId: string,
+	timeoutMs: number | null,
+	opts: { sessionId?: string | null; now?: number } = {},
+): boolean {
+	const now = opts.now ?? Date.now();
 	return getDb().transaction((tx) => {
 		const res = tx
 			.update(users)
@@ -152,6 +164,12 @@ export function setAppLockTimeout(userId: string, timeoutMs: number | null): boo
 			.where(eq(users.id, userId))
 			.run();
 		if (timeoutMs === null) clearBornLocked(tx, userId);
+		if (opts.sessionId) {
+			tx.update(sessions)
+				.set({ unlockedUntil: timeoutMs === null ? null : now + timeoutMs })
+				.where(and(eq(sessions.id, opts.sessionId), eq(sessions.userId, userId)))
+				.run();
+		}
 		return res.changes > 0;
 	});
 }

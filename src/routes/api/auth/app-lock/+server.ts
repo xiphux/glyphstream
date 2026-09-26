@@ -22,7 +22,6 @@ import {
 	setAppLockTimeout,
 	verifyUnlockAssertion,
 } from '$lib/server/auth/app-lock';
-import { setSessionUnlockedUntil } from '$lib/server/auth/session';
 import { countCredentialsForUser } from '$lib/server/db/queries/passkey';
 import { passkeyLoginEnabled } from '$lib/server/env';
 import { parseJsonBody } from '$lib/server/http';
@@ -51,12 +50,6 @@ export const PUT: RequestHandler = async ({ locals, request, cookies }) => {
 		}
 	}
 
-	setAppLockTimeout(locals.user.id, timeoutMs);
-	// Start this session's window now. Otherwise an installed app that just
-	// switched the lock on would find its own session (NULL window) locked on
-	// the very next request.
-	if (locals.sessionId) {
-		setSessionUnlockedUntil(locals.sessionId, timeoutMs === null ? null : Date.now() + timeoutMs);
-	}
+	setAppLockTimeout(locals.user.id, timeoutMs, { sessionId: locals.sessionId });
 	return json({ timeoutMs });
 };
