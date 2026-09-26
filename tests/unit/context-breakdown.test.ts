@@ -48,6 +48,7 @@ function input(over: Partial<ContextBreakdownInput> = {}): ContextBreakdownInput
 		environmentBlock: '',
 		skillsCatalog: null,
 		toolSearchHint: null,
+		reactionsHint: null,
 		toolDefs: [],
 		mediaSize: async () => PNG,
 		contextWindow: null,

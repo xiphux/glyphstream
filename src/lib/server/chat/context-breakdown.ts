@@ -79,7 +79,7 @@ export interface ContextBreakdownInput {
 	/** The system-prompt line that advertises reactions. Priced as part of the
 	 *  `react_to_message` item under `tools:defs`: it exists only because the tool
 	 *  does, so that row is what reactions cost. */
-	reactionsHint?: string | null;
+	reactionsHint: string | null;
 	toolDefs: readonly OpenAIToolDefinition[];
 	/** The canvas tail block(s) appended at send time (`buildCanvasInjection`),
 	 *  or null. Re-sent verbatim every turn, so it's overhead — priced on its own
