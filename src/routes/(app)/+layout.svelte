@@ -160,7 +160,9 @@
 				resumeInFlight = false;
 			});
 	}
-	function onResumeVisibility() {
+	// Both directions: a resume checks the lock and refreshes; going hidden
+	// puts the app-lock cover up.
+	function onVisibilityChange() {
 		if (document.visibilityState === 'visible') {
 			void checkAppLock();
 			refreshConversations();
@@ -1299,4 +1301,4 @@
 	onpageshow={onPageShow}
 	onpagehide={coverForAppLock}
 />
-<svelte:document onvisibilitychange={onResumeVisibility} />
+<svelte:document onvisibilitychange={onVisibilityChange} />

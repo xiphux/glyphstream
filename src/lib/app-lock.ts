@@ -30,7 +30,7 @@ export function describeAppLockTimeout(ms: number): string {
 /**
  * Keep-alive cadence while the installed app is visible. Well under the
  * shortest timeout, and under the server's extension throttle's worst case
- * (see `unlockExtension`): a request slides the window at most a quarter of the
+ * (see `evaluateAppLock`): a request slides the window at most a quarter of the
  * timeout late, so with a one-minute timeout any gap under ~45s is safe.
  */
 export const APP_LOCK_KEEPALIVE_MS = 20_000;
