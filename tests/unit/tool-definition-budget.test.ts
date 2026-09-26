@@ -32,7 +32,7 @@ import { webSearchTool } from '$lib/server/tools/web-search';
 import { searchConversationsTool } from '$lib/server/tools/conversation-search';
 import { createCanvasTool } from '$lib/server/tools/create-canvas';
 import { updateCanvasTool } from '$lib/server/tools/update-canvas';
-import { reactToMessageTool } from '$lib/server/tools/react';
+import { REACTIONS_HINT, reactToMessageTool } from '$lib/server/tools/react';
 import type { Tool } from '$lib/server/tools/types';
 
 /** Serialized size of a definition exactly as it goes on the wire. */
@@ -55,7 +55,9 @@ const BUDGETS: ReadonlyArray<readonly [string, Tool, number]> = [
 	// description is pure behavioral calibration (react rarely, never announce
 	// it), which is the kind of prose that grows a sentence at a time. It has no
 	// mechanism to explain and no enum of "common" emoji — deliberately, see the
-	// note in react.ts — so it has no business getting longer.
+	// note in react.ts — so it has no business getting longer. It is also not
+	// the feature's whole cost: REACTIONS_HINT rides the system prompt alongside
+	// it, and has its own ceiling below.
 	['react_to_message', reactToMessageTool, 700],
 ];
 
@@ -72,8 +74,18 @@ describe('tool definition budget', () => {
 		// calibration the model can't infer — that a reaction is silent, that its
 		// rate follows the register, and that reacting doesn't cost the reply.
 		// Without them a model either reacts to everything, which is the failure
-		// that kills the feature, or never reacts at all. Nothing else grew.
+		// that kills the feature, or never reacts at all. (They turned out not to be
+		// enough on their own: see the reactions-hint budget below.)
 		expect(total).toBeLessThanOrEqual(10500);
+	});
+
+	it('keeps the reactions system-prompt hint within its budget', () => {
+		// Not a tool definition, but the same rent: it's appended to the system
+		// prompt on every turn reactions are on, so reactions cost this plus the
+		// def above. It exists because the description alone never got a
+		// reaction out of the model (measured — see react.ts), and each of its
+		// clauses was measured too, so growth here needs the same justification.
+		expect(REACTIONS_HINT.length).toBeLessThanOrEqual(420);
 	});
 
 	it('keeps update_canvas within its wire budget', () => {
