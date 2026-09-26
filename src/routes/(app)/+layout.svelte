@@ -54,7 +54,7 @@
 	} from '@lucide/svelte';
 	import type { GeneratingConversationsResponse, ModelKind } from '$lib/types/api';
 	import { privateView } from '$lib/private-chat.svelte';
-	import { APP_LOCKED_STATUS, appLockKeepAliveMs } from '$lib/app-lock';
+	import { APP_LOCK_KEEPALIVE_PATH, APP_LOCKED_STATUS, appLockKeepAliveMs } from '$lib/app-lock';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
@@ -216,7 +216,7 @@
 		appLockCheck = check;
 		const timeout = setTimeout(() => check.abort(), APP_LOCK_CHECK_TIMEOUT_MS);
 		try {
-			const res = await fetch('/api/auth/app-lock', { signal: check.signal });
+			const res = await fetch(APP_LOCK_KEEPALIVE_PATH, { signal: check.signal });
 			if (appLockCheck !== check) return;
 			if (res.status === APP_LOCKED_STATUS) {
 				const from = encodeURIComponent(location.pathname + location.search);

@@ -228,9 +228,10 @@ The server enforces the lock, not the page. A locked session is refused the
 same way a missing one is, so nothing about your conversations is sent until
 the passkey check passes. The app also covers itself when it goes to the
 background, so the app switcher doesn't show a snapshot of the open thread.
-The time is measured from when you last used the app: while it's open and
-visible it keeps itself unlocked, and iOS pauses it once it's in the
-background.
+The time is measured from when the app was last on screen: while it's open and
+visible it keeps itself unlocked, and once it's hidden the clock runs. That
+holds even where a hidden page keeps working in the background (desktop and
+Android): a reply still generating doesn't keep the app unlocked.
 
 The lock screen has a **Sign out** link. You can't delete your last passkey
 while app lock is on. If someone loses every passkey, an admin can turn their

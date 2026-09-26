@@ -43,6 +43,12 @@ export function appLockKeepAliveMs(timeoutMs: number): number {
 	return Math.max(20_000, timeoutMs / 4);
 }
 
+/**
+ * The keep-alive endpoint — the ONLY request that slides the idle window (see
+ * `evaluateAppLock`). Shared so the hook and the client can't disagree on it.
+ */
+export const APP_LOCK_KEEPALIVE_PATH = '/api/auth/app-lock';
+
 /** HTTP status a locked session gets from the API surface. */
 export const APP_LOCKED_STATUS = 423;
 

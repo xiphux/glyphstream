@@ -124,6 +124,7 @@ describe('evaluateAppLock', () => {
 		unlockedUntil: 1_000_000 + 5 * MIN,
 		installedApp: true,
 		passkeysEnabled: true,
+		activity: true, // the keep-alive
 		now: 1_000_000,
 	};
 
@@ -162,6 +163,28 @@ describe('evaluateAppLock', () => {
 		expect(evaluateAppLock({ ...base, unlockedUntil: base.now + 4 * MIN }).extendTo).toBe(
 			base.now + 5 * MIN,
 		);
+	});
+
+	it('only the keep-alive slides the window — a background poll never does', () => {
+		// Desktop Chrome / Android throttle hidden timers instead of freezing
+		// them, so a recovery poll can fire from a hidden app. It still sees the
+		// session (it isn't locked yet)...
+		const poll = evaluateAppLock({
+			...base,
+			activity: false,
+			unlockedUntil: base.now + 4 * MIN,
+		});
+		expect(poll.locked).toBe(false);
+		// ...but must not hold it open.
+		expect(poll.extendTo).toBeNull();
+		// Nor revive it once the window is gone.
+		expect(evaluateAppLock({ ...base, activity: false, unlockedUntil: base.now }).locked).toBe(
+			true,
+		);
+		// Shortening an over-long window is not a slide, so any request may.
+		expect(
+			evaluateAppLock({ ...base, activity: false, unlockedUntil: base.now + 60 * MIN }).extendTo,
+		).toBe(base.now + 5 * MIN);
 	});
 
 	it('pulls an over-long window in, so shortening the setting applies immediately', () => {

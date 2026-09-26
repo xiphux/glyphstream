@@ -15,10 +15,11 @@
  * Three pieces of state:
  *
  * - `users.app_lock_timeout_ms` — the setting. Null = off.
- * - `sessions.unlocked_until` — the idle clock. Every request from the
- *   installed app slides it forward, so while the app is in use it never
- *   expires; once the app is backgrounded (iOS suspends its timers, so the
- *   visible-only keep-alive stops too) it runs out.
+ * - `sessions.unlocked_until` — the idle clock. The installed app's
+ *   keep-alive, sent only while the page is visible, slides it forward, so
+ *   while the app is on screen it never expires; once the app is hidden the
+ *   keep-alive stops and it runs out. Other requests don't slide it — a hidden
+ *   page can still poll where timers are throttled rather than frozen.
  * - the installed-app device cookie — which requests the idle lock applies to.
  *   The server can't see display-mode, so the client reports it once per launch
  *   (`POST /api/auth/app-lock/device`) and gets an httpOnly marker back. On iOS
@@ -81,6 +82,15 @@ export interface AppLockDecision {
  * passkeys disabled instance-wide, which leaves nothing to unlock WITH —
  * short-circuits to unlocked everywhere.
  *
+ * Only the keep-alive (`activity`) slides the window forward. It is the one
+ * request that proves someone is LOOKING: the client sends it only while the
+ * page is visible. Any other request — a recovery poll for a generation, say —
+ * can fire from a hidden page on platforms that throttle background timers
+ * rather than freezing them (desktop Chrome, Android), and letting those slide
+ * the window kept a backgrounded app unlocked for as long as the generation ran.
+ * The keep-alive's own interval is sized to hold the window open on its own
+ * (see `appLockKeepAliveMs`), so nothing else needs to.
+ *
  * Writes are throttled like `last_seen_at`: the session read is on every
  * request, and paying a write per request for a minute-resolution clock would
  * be waste. The window is only slid once it has decayed by a quarter of the
@@ -91,6 +101,8 @@ export function evaluateAppLock(input: {
 	unlockedUntil: number | null;
 	installedApp: boolean;
 	passkeysEnabled: boolean;
+	/** This request is the visible-only keep-alive — see above. */
+	activity: boolean;
 	now: number;
 }): AppLockDecision {
 	const { timeoutMs, unlockedUntil, installedApp, now } = input;
@@ -108,7 +120,9 @@ export function evaluateAppLock(input: {
 	const throttle = Math.min(30_000, timeoutMs / 4);
 	// Also rewrite when the window is LONGER than the timeout, so shortening the
 	// setting takes effect on the next request instead of after the old window.
-	const extend = remaining < timeoutMs - throttle || remaining > timeoutMs;
+	// That one only ever shortens the window, so any request may do it.
+	const grow = input.activity && remaining < timeoutMs - throttle;
+	const extend = grow || remaining > timeoutMs;
 	return { locked: false, sliding: true, extendTo: extend ? now + timeoutMs : null };
 }
 

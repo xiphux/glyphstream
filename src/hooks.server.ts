@@ -11,6 +11,7 @@ import {
 	readInstalledAppCookie,
 	type AppLockState,
 } from '$lib/server/auth/app-lock';
+import { APP_LOCK_KEEPALIVE_PATH } from '$lib/app-lock';
 import { maybeCompressResponse } from '$lib/server/compression';
 import { applySecurityHeaders } from '$lib/server/security-headers';
 import { consumeRateLimitToken } from '$lib/server/rate-limit';
@@ -330,6 +331,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 			unlockedUntil: ctx.appLock.unlockedUntil,
 			installedApp: readInstalledAppCookie(event.cookies),
 			passkeysEnabled: true,
+			// Only the visible-only keep-alive counts as use; see evaluateAppLock.
+			activity: event.request.method === 'GET' && path === APP_LOCK_KEEPALIVE_PATH,
 			now: Date.now(),
 		});
 		if (decision.extendTo !== null) setSessionUnlockedUntil(ctx.sessionId, decision.extendTo);

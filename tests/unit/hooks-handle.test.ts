@@ -324,6 +324,25 @@ describe('auth-surface rate limit', () => {
 	});
 });
 
+describe('app lock idle window', () => {
+	it('slides only on the keep-alive, not on other requests from the installed app', async () => {
+		const u = seedUser();
+		setAppLockTimeout(u.id, 60_000);
+		const now = Date.now();
+		// 40s left of a one-minute window: past the 15s throttle, due a slide.
+		const { token } = createSession(u.id, null, now + 40_000);
+		const cookies = { [SESSION_COOKIE]: token, glyphstream_installed_app: '1' };
+		const until = () => mocks.testDb.select().from(sessions).get()!.unlockedUntil!;
+
+		await call('/api/conversations/abc/stream-status', { cookies });
+		expect(until()).toBe(now + 40_000);
+
+		const { seenUser } = await call('/api/auth/app-lock', { cookies });
+		expect(seenUser).not.toBeNull();
+		expect(until()).toBeGreaterThanOrEqual(now + 60_000);
+	});
+});
+
 describe('response decoration', () => {
 	it('applies security headers', async () => {
 		const { response } = await call('/api/health');

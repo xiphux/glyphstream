@@ -167,7 +167,8 @@ export const sessions = sqliteTable('sessions', {
 	lastSeenAt: integer('last_seen_at').notNull().default(0),
 	userAgent: text('user_agent'),
 	// App lock (see server/auth/app-lock.ts): the session is usable from an
-	// installed app until this instant, and each request slides it forward.
+	// installed app until this instant, and its visible-only keep-alive slides it
+	// forward (no other request does).
 	// NULL = never unlocked under app lock (a standalone request treats it as
 	// expired; anywhere else it's simply unlocked). 0 = born locked — minted by
 	// an OAuth sign-in for a user with app lock on, or set on the user's other
