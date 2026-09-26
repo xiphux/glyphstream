@@ -164,7 +164,7 @@
 	// puts the app-lock cover up.
 	function onVisibilityChange() {
 		if (document.visibilityState === 'visible') {
-			void checkAppLock();
+			void checkAppLock({ supersede: true });
 			refreshConversations();
 		} else {
 			coverForAppLock();
@@ -177,11 +177,11 @@
 		// have been covered on the way out — cover now, before anything paints
 		// that the check hasn't cleared.
 		coverForAppLock();
-		void checkAppLock();
+		void checkAppLock({ supersede: true });
 		refreshConversations();
 	}
 	function onOnline() {
-		void checkAppLock();
+		void checkAppLock({ supersede: true });
 		refreshConversations();
 	}
 
@@ -195,15 +195,29 @@
 	//  - a resume (BOTH events — see CLAUDE.md) asks the server before
 	//    uncovering, and goes to /unlock if the window has lapsed.
 	// Fails closed: a check that can't reach the server leaves the cover up
-	// and retries when connectivity returns.
+	// and retries on the next keep-alive tick or when connectivity returns.
+	//
+	// One check at a time, and only the CURRENT one may act on its answer. A
+	// keep-alive can be in flight when the app is suspended, and it may settle
+	// long after the resume — rejected ("network connection was lost"), or with
+	// a 200 that predates the lapse. So a resume aborts it and asks afresh, as
+	// does going hidden, and a stalled request is cut off by a timeout rather
+	// than holding the slot (and silently stopping every later check) forever.
 	let appLockCovered = $state(false);
-	let appLockCheckInFlight = false;
-	async function checkAppLock() {
+	let appLockCheck: AbortController | null = null;
+	const APP_LOCK_CHECK_TIMEOUT_MS = 8_000;
+	async function checkAppLock({ supersede = false } = {}) {
 		if (!data.appLock?.sliding || document.visibilityState !== 'visible') return;
-		if (appLockCheckInFlight) return;
-		appLockCheckInFlight = true;
+		if (appLockCheck) {
+			if (!supersede) return;
+			appLockCheck.abort();
+		}
+		const check = new AbortController();
+		appLockCheck = check;
+		const timeout = setTimeout(() => check.abort(), APP_LOCK_CHECK_TIMEOUT_MS);
 		try {
-			const res = await fetch('/api/auth/app-lock');
+			const res = await fetch('/api/auth/app-lock', { signal: check.signal });
+			if (appLockCheck !== check) return;
 			if (res.status === APP_LOCKED_STATUS) {
 				const from = encodeURIComponent(location.pathname + location.search);
 				await goto(`${resolve('/unlock')}?from=${from}`, { replaceState: true });
@@ -214,13 +228,18 @@
 				await invalidateAll();
 			}
 		} catch {
-			// Offline or unreachable: stay covered; `ononline` retries.
+			// Offline, unreachable, timed out or superseded: stay covered.
 		} finally {
-			appLockCheckInFlight = false;
+			clearTimeout(timeout);
+			if (appLockCheck === check) appLockCheck = null;
 		}
 	}
 	function coverForAppLock() {
-		if (data.appLock?.sliding) appLockCovered = true;
+		if (!data.appLock?.sliding) return;
+		appLockCovered = true;
+		// A check started before the hide must not uncover the page after it.
+		appLockCheck?.abort();
+		appLockCheck = null;
 	}
 	$effect(() => {
 		if (!data.appLock?.sliding) {
