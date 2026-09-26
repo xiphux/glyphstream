@@ -170,8 +170,9 @@ export const sessions = sqliteTable('sessions', {
 	// installed app until this instant, and each request slides it forward.
 	// NULL = never unlocked under app lock (a standalone request treats it as
 	// expired; anywhere else it's simply unlocked). 0 = born locked — minted by
-	// an OAuth sign-in for a user with app lock on, which must be followed by a
-	// passkey before the session is usable ANYWHERE.
+	// an OAuth sign-in for a user with app lock on, or set on the user's other
+	// sessions when they turn the lock on; must be followed by a passkey before
+	// the session is usable ANYWHERE.
 	unlockedUntil: integer('unlocked_until'),
 });
 

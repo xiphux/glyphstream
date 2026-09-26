@@ -216,6 +216,29 @@ describe('session lifecycle', () => {
 	});
 });
 
+describe('turning the lock on', () => {
+	it("marks the user's OTHER sessions born locked, and opens the acting one", () => {
+		const u = seedUser();
+		const someoneElse = seedUser();
+		const ids = [u.id, u.id, someoneElse.id].map(
+			(id) => validateSessionToken(createSession(id).token)!.sessionId,
+		);
+		const [acting, safari, theirs] = ids;
+
+		setAppLockTimeout(u.id, MIN, { sessionId: acting, now: 1000 });
+		expect(unlockedUntilOf(acting)).toBe(1000 + MIN);
+		expect(unlockedUntilOf(safari)).toBe(0);
+		expect(unlockedUntilOf(theirs)).toBeNull();
+
+		// Changing the window of a lock that's already on leaves them be.
+		const { token } = createSession(u.id, null, 5555);
+		const later = validateSessionToken(token)!.sessionId;
+		setAppLockTimeout(u.id, 15 * MIN, { sessionId: acting, now: 2000 });
+		expect(unlockedUntilOf(later)).toBe(5555);
+		expect(unlockedUntilOf(acting)).toBe(2000 + 15 * MIN);
+	});
+});
+
 describe('turning the lock off', () => {
 	it('retires born-locked markers, so turning it back on does not lock them everywhere', () => {
 		const u = seedUser();

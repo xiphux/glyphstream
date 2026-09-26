@@ -28,17 +28,19 @@
  *   browser too, which errs toward locking more. The marker can only add a
  *   restriction, so the endpoint that sets it needs no auth.
  *
- * Scoping to the installed app leaves one bypass open: someone holding the
- * phone opens Safari (or a desktop browser) and uses "Sign in with GitHub"
- * against a provider session that's still live there. So an OAuth sign-in for
- * a user with app lock on mints a session that is BORN LOCKED
- * (`unlocked_until = 0`), in any browser, and needs a passkey before first use.
- * A passkey sign-in already did the user verification, so it starts unlocked.
+ * Scoping to the installed app would leave two ways around it through the
+ * ordinary browser on the same phone: a Safari session that was already signed
+ * in when the lock went on, and "Sign in with GitHub" against a provider session
+ * still live there. So both are BORN LOCKED (`unlocked_until = 0`): turning the
+ * lock on marks the user's other existing sessions that way, and an OAuth
+ * sign-in while it's on mints one. A born-locked session needs a passkey before
+ * it's usable in ANY browser, once. A passkey sign-in already did the user
+ * verification, so it starts unlocked.
  */
 
 import { error, type Cookies } from '@sveltejs/kit';
 import type { AuthenticationResponseJSON } from '@simplewebauthn/server';
-import { and, eq, isNotNull } from 'drizzle-orm';
+import { and, eq, isNotNull, ne } from 'drizzle-orm';
 import { cookiesSecure, passkeyLoginEnabled } from '../env';
 import { getDb, type Tx } from '../db/client';
 import { sessions, users } from '../db/schema';
@@ -150,6 +152,14 @@ export function getAppLockTimeout(userId: string): number | null {
  * the same transaction. That write is what keeps an installed app that just
  * switched the lock on from finding its own session — a NULL window — locked on
  * its very next request; apart from the setting, it's the one it depends on.
+ *
+ * Turning the lock ON (from off) also marks every OTHER session of the user
+ * born locked. The rule is the one OAuth sign-ins follow: a session nobody has
+ * passed a passkey on since the lock went on needs one before it's usable
+ * anywhere. Without it, a Safari tab already signed in on the same phone —
+ * which the installed-app scoping leaves alone — would keep full access,
+ * including to this switch. The cost is one passkey prompt per other device.
+ * Changing the window of a lock that's already on leaves them be.
  */
 export function setAppLockTimeout(
 	userId: string,
@@ -158,12 +168,25 @@ export function setAppLockTimeout(
 ): boolean {
 	const now = opts.now ?? Date.now();
 	return getDb().transaction((tx) => {
+		const wasOn =
+			tx.select({ t: users.appLockTimeoutMs }).from(users).where(eq(users.id, userId)).get()?.t !=
+			null;
 		const res = tx
 			.update(users)
 			.set({ appLockTimeoutMs: timeoutMs })
 			.where(eq(users.id, userId))
 			.run();
 		if (timeoutMs === null) clearBornLocked(tx, userId);
+		else if (!wasOn) {
+			tx.update(sessions)
+				.set({ unlockedUntil: 0 })
+				.where(
+					opts.sessionId
+						? and(eq(sessions.userId, userId), ne(sessions.id, opts.sessionId))
+						: eq(sessions.userId, userId),
+				)
+				.run();
+		}
 		if (opts.sessionId) {
 			tx.update(sessions)
 				.set({ unlockedUntil: timeoutMs === null ? null : now + timeoutMs })

@@ -211,9 +211,14 @@ What it covers:
   has its own cookies, separate from Safari's, so Safari itself isn't locked.
   In desktop Chrome and on Android the installed app shares cookies with the
   browser, so the lock applies to the browser tab too.
-- **New sign-ins through a linked account.** Someone holding your phone could
-  otherwise open Safari and use "Sign in with GitHub" against a GitHub session
-  that's still live there. So while app lock is on, a sign-in through GitHub,
+- **Your other signed-in devices, once.** Someone holding your phone could
+  otherwise just open Safari, if you were already signed in there. So turning
+  app lock on asks every other session on your account for a passkey the next
+  time it's used, in any browser. After that, only the installed app locks
+  again. Changing how long the lock waits doesn't ask again.
+- **New sign-ins through a linked account.** For the same reason, someone
+  could otherwise use "Sign in with GitHub" against a GitHub session that's
+  still live in Safari. So while app lock is on, a sign-in through GitHub,
   Google or OIDC is followed by a passkey prompt in every browser. Signing in
   with a passkey needs nothing extra.
 - **Notification previews.** They're hidden while app lock is on — see
