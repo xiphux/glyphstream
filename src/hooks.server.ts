@@ -355,11 +355,15 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// The target is CPU, not credential guessing: passkey login/verify runs a
 	// full WebAuthn signature verification on the same event loop that serves
 	// chat SSE, so unbounded volume degrades live conversations. Applied to the
-	// whole `/api/auth/*` subtree — none of it is polled, so a limit generous
-	// enough to be invisible to real sign-ins still blunts a flood.
+	// whole `/api/auth/*` subtree — none of the SIGNED-OUT part of it is polled
+	// (the app-lock keep-alive is, but only by a resolved session, which is
+	// exempt below), so a limit generous enough to be invisible to real
+	// sign-ins still blunts a flood.
 	//
-	// Deliberately AFTER session resolution, and skipped for a request that
-	// resolved to a user. The bucket key is the client address, which behind a
+	// Deliberately AFTER session resolution, and skipped for a request whose
+	// session resolved — keyed on `ctx`, NOT `locals.user`: an app-locked
+	// session has no `locals.user` by design, but it is still a real account's
+	// session, and its unlock ceremony must not queue behind an anonymous flood. The bucket key is the client address, which behind a
 	// reverse proxy with no `ADDRESS_HEADER` is the proxy for everyone — one
 	// shared bucket for the whole instance. Limiting signed-in requests too
 	// would hand any unauthenticated client an instance-wide auth kill switch:
@@ -377,7 +381,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// An authenticated user can still exhaust the bucket for the signed-out
 	// surface, but they have an account the operator can disable, which is the
 	// accountability an anonymous flooder lacks.
-	if (!event.locals.user && path.startsWith(AUTH_RATE_LIMIT_PATH_PREFIX)) {
+	if (!ctx && path.startsWith(AUTH_RATE_LIMIT_PATH_PREFIX)) {
 		const decision = consumeRateLimitToken(clientKey(event));
 		if (!decision.allowed) {
 			return new Response('Too many requests', {

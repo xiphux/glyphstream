@@ -60,6 +60,7 @@ vi.mock('$lib/server/code-interpreter/pool', () => ({ stopPool: vi.fn(async () =
 
 import { handle } from '../../src/hooks.server';
 import { createSession } from '$lib/server/auth/session';
+import { setAppLockTimeout } from '$lib/server/auth/app-lock';
 import { resetRateLimits } from '$lib/server/rate-limit';
 import { sessions } from '$lib/server/db/schema';
 
@@ -280,6 +281,23 @@ describe('auth-surface rate limit', () => {
 			cookies: { [SESSION_COOKIE]: token },
 		});
 		expect(response.status).toBe(200);
+	});
+
+	it('never limits an app-LOCKED session either — its unlock must not queue behind a flood', async () => {
+		// A locked session has no locals.user by design, but it is still a real
+		// account's session; the exemption keys on the session, not the user.
+		for (let i = 0; i < 3; i++) await login();
+		expect((await login()).response.status).toBe(429);
+		const u = seedUser();
+		setAppLockTimeout(u.id, 60_000);
+		const { token } = createSession(u.id, null, 0); // born locked
+		const { response, seenUser } = await call('/api/auth/unlock/options', {
+			method: 'POST',
+			headers: { 'sec-fetch-site': 'same-origin' },
+			cookies: { [SESSION_COOKIE]: token },
+		});
+		expect(response.status).toBe(200);
+		expect(seenUser).toBeNull();
 	});
 
 	it('counts a percent-encoded /api/auth path against the same bucket', async () => {
