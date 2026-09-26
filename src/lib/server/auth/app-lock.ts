@@ -40,7 +40,7 @@ import { error, type Cookies } from '@sveltejs/kit';
 import type { AuthenticationResponseJSON } from '@simplewebauthn/server';
 import { and, eq, isNotNull } from 'drizzle-orm';
 import { cookiesSecure, passkeyLoginEnabled } from '../env';
-import { getDb } from '../db/client';
+import { getDb, type Tx } from '../db/client';
 import { sessions, users } from '../db/schema';
 import { findCredentialById } from '../db/queries/passkey';
 import {
@@ -145,24 +145,28 @@ export function getAppLockTimeout(userId: string): number | null {
 
 /** Returns false when no such user exists. */
 export function setAppLockTimeout(userId: string, timeoutMs: number | null): boolean {
-	const res = getDb()
-		.update(users)
-		.set({ appLockTimeoutMs: timeoutMs })
-		.where(eq(users.id, userId))
-		.run();
-	if (timeoutMs === null) clearBornLocked(userId);
-	return res.changes > 0;
+	return getDb().transaction((tx) => {
+		const res = tx
+			.update(users)
+			.set({ appLockTimeoutMs: timeoutMs })
+			.where(eq(users.id, userId))
+			.run();
+		if (timeoutMs === null) clearBornLocked(tx, userId);
+		return res.changes > 0;
+	});
 }
 
 /** Admin recovery: turn a user's app lock off. False when it wasn't on. */
 export function clearAppLock(userId: string): boolean {
-	const res = getDb()
-		.update(users)
-		.set({ appLockTimeoutMs: null })
-		.where(and(eq(users.id, userId), isNotNull(users.appLockTimeoutMs)))
-		.run();
-	clearBornLocked(userId);
-	return res.changes > 0;
+	return getDb().transaction((tx) => {
+		const res = tx
+			.update(users)
+			.set({ appLockTimeoutMs: null })
+			.where(and(eq(users.id, userId), isNotNull(users.appLockTimeoutMs)))
+			.run();
+		clearBornLocked(tx, userId);
+		return res.changes > 0;
+	});
 }
 
 /**
@@ -172,9 +176,8 @@ export function clearAppLock(userId: string): boolean {
  * lock in EVERY browser the moment the lock was turned back on, rather than
  * behaving like any other session the user already had.
  */
-function clearBornLocked(userId: string): void {
-	getDb()
-		.update(sessions)
+function clearBornLocked(tx: Tx, userId: string): void {
+	tx.update(sessions)
 		.set({ unlockedUntil: null })
 		.where(and(eq(sessions.userId, userId), eq(sessions.unlockedUntil, 0)))
 		.run();
