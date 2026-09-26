@@ -45,7 +45,11 @@ export const APP_LOCKED_STATUS = 423;
  * before it resolves anything, so `"/\t/evil.test"` passes a `//` check yet
  * lands on evil.test once a browser follows it out of a `Location` header.
  * Resolving against a throwaway origin and requiring it to survive is the only
- * check that agrees with the browser by construction.
+ * check that agrees with the browser by construction — but not on its own:
+ * resolution also removes dot segments (and turns `\` into `/`), so
+ * `"/.//evil.test"` keeps the origin yet comes out as the path `//evil.test`,
+ * which is protocol-relative once it's a `Location` header. So the RESULT
+ * must not start with `//` either.
  */
 export function safeUnlockReturn(from: string | null | undefined): string {
 	if (!from || !from.startsWith('/')) return '/';
@@ -56,7 +60,7 @@ export function safeUnlockReturn(from: string | null | undefined): string {
 	} catch {
 		return '/';
 	}
-	if (url.origin !== base) return '/';
+	if (url.origin !== base || url.pathname.startsWith('//')) return '/';
 	return url.pathname + url.search + url.hash;
 }
 

@@ -255,6 +255,18 @@ describe('guards', () => {
 		expect(safeUnlockReturn('/\n/evil.test')).toBe('/');
 		expect(safeUnlockReturn('/\r/evil.test')).toBe('/');
 		expect(safeUnlockReturn('/\t\\evil.test')).toBe('/');
+		// Dot-segment removal (and \ → /) can collapse a same-origin path into a
+		// protocol-relative one AFTER the origin check.
+		for (const from of [
+			'/.//evil.test',
+			'/..//evil.test',
+			'/%2e//evil.test',
+			'/%2E%2E//evil.test',
+			'/a/..//evil.test',
+			'/./\\evil.test',
+		]) {
+			expect(safeUnlockReturn(from), from).toBe('/');
+		}
 		// A same-origin path keeps its query and hash.
 		expect(safeUnlockReturn('/chat/abc?m=1#x')).toBe('/chat/abc?m=1#x');
 	});
