@@ -11,15 +11,29 @@ export type AppLockAssertionResult =
 	/** `error: null` = the user dismissed the prompt; nothing to show. */
 	| { ok: false; error: string | null };
 
+/** Bound on the options request — the same reasoning as the layout's lock check. */
+const OPTIONS_TIMEOUT_MS = 8_000;
+
 export async function getAppLockAssertion(): Promise<AppLockAssertionResult> {
-	// Dynamic import, as on the login page: the WebAuthn shim stays off the
-	// critical path of every route that never runs a ceremony.
-	const { startAuthentication } = await import('@simplewebauthn/browser');
-	const optionsRes = await fetch('/api/auth/unlock/options', { method: 'POST' });
-	if (!optionsRes.ok) return { ok: false, error: await errorMessageFromResponse(optionsRes) };
-	const optionsJSON = (await optionsRes.json()) as Parameters<
-		typeof startAuthentication
-	>[0]['optionsJSON'];
+	// Everything before the prompt can fail on the network — most likely right
+	// after a backgrounded app resumes, which is exactly when this runs — and
+	// must come back as an error the caller can show. Thrown out of here it
+	// would leave the unlock screen on a bare button with nothing said.
+	let startAuthentication: typeof import('@simplewebauthn/browser').startAuthentication;
+	let optionsJSON: Parameters<typeof startAuthentication>[0]['optionsJSON'];
+	try {
+		// Dynamic import, as on the login page: the WebAuthn shim stays off the
+		// critical path of every route that never runs a ceremony.
+		({ startAuthentication } = await import('@simplewebauthn/browser'));
+		const optionsRes = await fetch('/api/auth/unlock/options', {
+			method: 'POST',
+			signal: AbortSignal.timeout(OPTIONS_TIMEOUT_MS),
+		});
+		if (!optionsRes.ok) return { ok: false, error: await errorMessageFromResponse(optionsRes) };
+		optionsJSON = (await optionsRes.json()) as typeof optionsJSON;
+	} catch {
+		return { ok: false, error: "Couldn't reach the server. Check your connection and try again." };
+	}
 	try {
 		return { ok: true, response: await startAuthentication({ optionsJSON }) };
 	} catch (e) {
