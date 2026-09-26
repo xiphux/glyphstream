@@ -8,7 +8,7 @@
  *
  * There is no "immediately": the lock is an idle clock the server keeps, fed by
  * the app's own requests plus a visible-only keep-alive (see
- * `APP_LOCK_KEEPALIVE_MS`), so the shortest useful window has to comfortably
+ * `appLockKeepAliveMs`), so the shortest useful window has to comfortably
  * clear the keep-alive interval — or someone reading a long thread without
  * touching anything would lock mid-read.
  */
@@ -28,12 +28,20 @@ export function describeAppLockTimeout(ms: number): string {
 }
 
 /**
- * Keep-alive cadence while the installed app is visible. Well under the
- * shortest timeout, and under the server's extension throttle's worst case
- * (see `evaluateAppLock`): a request slides the window at most a quarter of the
- * timeout late, so with a one-minute timeout any gap under ~45s is safe.
+ * Keep-alive cadence while the installed app is visible, for a given window.
+ *
+ * The safety bound is the server's extension throttle (see `evaluateAppLock`):
+ * a request slides the window only once it has decayed by
+ * `min(30s, timeout/4)`, so the gap between requests must stay under
+ * `timeout - min(30s, timeout/4)` — 45s for the one-minute window. A quarter
+ * of the timeout clears that for every window with room to spare, floored at
+ * 20s so the shortest window keeps a margin too. Scaling matters on a phone:
+ * a flat 20s against the one-hour window is ~180 radio wake-ups an hour to
+ * defend a lapse that is 60 minutes away.
  */
-export const APP_LOCK_KEEPALIVE_MS = 20_000;
+export function appLockKeepAliveMs(timeoutMs: number): number {
+	return Math.max(20_000, timeoutMs / 4);
+}
 
 /** HTTP status a locked session gets from the API surface. */
 export const APP_LOCKED_STATUS = 423;

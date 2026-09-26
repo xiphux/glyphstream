@@ -54,7 +54,7 @@
 	} from '@lucide/svelte';
 	import type { GeneratingConversationsResponse, ModelKind } from '$lib/types/api';
 	import { privateView } from '$lib/private-chat.svelte';
-	import { APP_LOCK_KEEPALIVE_MS, APP_LOCKED_STATUS } from '$lib/app-lock';
+	import { APP_LOCKED_STATUS, appLockKeepAliveMs } from '$lib/app-lock';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
@@ -246,7 +246,10 @@
 			appLockCovered = false;
 			return;
 		}
-		const keepAlive = setInterval(() => void checkAppLock(), APP_LOCK_KEEPALIVE_MS);
+		const keepAlive = setInterval(
+			() => void checkAppLock(),
+			appLockKeepAliveMs(data.appLock.timeoutMs),
+		);
 		return () => clearInterval(keepAlive);
 	});
 

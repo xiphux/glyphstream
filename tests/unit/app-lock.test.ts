@@ -55,7 +55,7 @@ import { setUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { sessions } from '$lib/server/db/schema';
 import { notifyConversationComplete } from '$lib/server/push/notify';
 import { GENERIC_TITLE } from '$lib/sw/notification-copy';
-import { safeUnlockReturn } from '$lib/app-lock';
+import { APP_LOCK_TIMEOUTS_MS, appLockKeepAliveMs, safeUnlockReturn } from '$lib/app-lock';
 import { PUT as putAppLock } from '../../src/routes/api/auth/app-lock/+server';
 import { POST as unlockVerify } from '../../src/routes/api/auth/unlock/verify/+server';
 import { DELETE as deletePasskey } from '../../src/routes/api/auth/passkey/[id]/+server';
@@ -167,6 +167,22 @@ describe('evaluateAppLock', () => {
 		expect(evaluateAppLock({ ...base, unlockedUntil: base.now + 60 * MIN }).extendTo).toBe(
 			base.now + 5 * MIN,
 		);
+	});
+
+	it('every offered window is kept alive by its own keep-alive interval', () => {
+		// Worst case: the last slide happened just before the throttle elapsed,
+		// and the next request is a full keep-alive interval after that.
+		for (const timeoutMs of APP_LOCK_TIMEOUTS_MS) {
+			const throttle = Math.min(30_000, timeoutMs / 4);
+			const lastSlide = base.now;
+			const next = evaluateAppLock({
+				...base,
+				timeoutMs,
+				unlockedUntil: lastSlide + timeoutMs,
+				now: lastSlide + throttle - 1 + appLockKeepAliveMs(timeoutMs),
+			});
+			expect(next.locked, `${timeoutMs}ms window`).toBe(false);
+		}
 	});
 
 	it('keeps a one-minute window alive across the client keep-alive interval', () => {
