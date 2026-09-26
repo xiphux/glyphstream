@@ -38,10 +38,26 @@ export const APP_LOCK_KEEPALIVE_MS = 20_000;
 /** HTTP status a locked session gets from the API surface. */
 export const APP_LOCKED_STATUS = 423;
 
-/** `/unlock?from=` target, restricted to a same-origin path. */
+/**
+ * `/unlock?from=` target, restricted to a same-origin path.
+ *
+ * Parsed, not prefix-matched. The URL parser strips ASCII tab and newline
+ * before it resolves anything, so `"/\t/evil.test"` passes a `//` check yet
+ * lands on evil.test once a browser follows it out of a `Location` header.
+ * Resolving against a throwaway origin and requiring it to survive is the only
+ * check that agrees with the browser by construction.
+ */
 export function safeUnlockReturn(from: string | null | undefined): string {
-	if (!from || !from.startsWith('/') || from.startsWith('//') || from.startsWith('/\\')) return '/';
-	return from;
+	if (!from || !from.startsWith('/')) return '/';
+	const base = 'http://unlock.invalid';
+	let url: URL;
+	try {
+		url = new URL(from, base);
+	} catch {
+		return '/';
+	}
+	if (url.origin !== base) return '/';
+	return url.pathname + url.search + url.hash;
 }
 
 /**

@@ -221,6 +221,14 @@ describe('guards', () => {
 		expect(safeUnlockReturn('/\\evil.test')).toBe('/');
 		expect(safeUnlockReturn('https://evil.test')).toBe('/');
 		expect(safeUnlockReturn(null)).toBe('/');
+		// The URL parser strips tab/newline before resolving, so these would
+		// become `//evil.test` in a browser following the Location header.
+		expect(safeUnlockReturn('/\t/evil.test')).toBe('/');
+		expect(safeUnlockReturn('/\n/evil.test')).toBe('/');
+		expect(safeUnlockReturn('/\r/evil.test')).toBe('/');
+		expect(safeUnlockReturn('/\t\\evil.test')).toBe('/');
+		// A same-origin path keeps its query and hash.
+		expect(safeUnlockReturn('/chat/abc?m=1#x')).toBe('/chat/abc?m=1#x');
 	});
 });
 
