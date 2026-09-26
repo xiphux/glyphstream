@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.41.0
+
 ### Added
 
 - App lock: an optional setting in Settings → Security that asks for your
