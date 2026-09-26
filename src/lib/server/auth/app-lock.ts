@@ -41,7 +41,7 @@ import type { AuthenticationResponseJSON } from '@simplewebauthn/server';
 import { and, eq, isNotNull } from 'drizzle-orm';
 import { cookiesSecure, passkeyLoginEnabled } from '../env';
 import { getDb } from '../db/client';
-import { users } from '../db/schema';
+import { sessions, users } from '../db/schema';
 import { findCredentialById } from '../db/queries/passkey';
 import {
 	clearUnlockChallengeCookie,
@@ -141,6 +141,7 @@ export function setAppLockTimeout(userId: string, timeoutMs: number | null): boo
 		.set({ appLockTimeoutMs: timeoutMs })
 		.where(eq(users.id, userId))
 		.run();
+	if (timeoutMs === null) clearBornLocked(userId);
 	return res.changes > 0;
 }
 
@@ -151,7 +152,23 @@ export function clearAppLock(userId: string): boolean {
 		.set({ appLockTimeoutMs: null })
 		.where(and(eq(users.id, userId), isNotNull(users.appLockTimeoutMs)))
 		.run();
+	clearBornLocked(userId);
 	return res.changes > 0;
+}
+
+/**
+ * Turning the lock off retires the born-locked marker along with it. `0` only
+ * means something while the lock is on, and left behind it would outlive the
+ * setting: an OAuth session used freely in a desktop browser for weeks would
+ * lock in EVERY browser the moment the lock was turned back on, rather than
+ * behaving like any other session the user already had.
+ */
+function clearBornLocked(userId: string): void {
+	getDb()
+		.update(sessions)
+		.set({ unlockedUntil: null })
+		.where(and(eq(sessions.userId, userId), eq(sessions.unlockedUntil, 0)))
+		.run();
 }
 
 // --- the device marker ----------------------------------------------------

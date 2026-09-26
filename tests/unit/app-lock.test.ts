@@ -194,6 +194,28 @@ describe('session lifecycle', () => {
 	});
 });
 
+describe('turning the lock off', () => {
+	it('retires born-locked markers, so turning it back on does not lock them everywhere', () => {
+		const u = seedUser();
+		setAppLockTimeout(u.id, MIN);
+		const { token: oauth } = createSession(u.id, null, 0);
+		const { token: other } = createSession(u.id, null, 12345);
+		const oauthId = validateSessionToken(oauth)!.sessionId;
+		const otherId = validateSessionToken(other)!.sessionId;
+
+		setAppLockTimeout(u.id, null);
+		expect(unlockedUntilOf(oauthId)).toBeNull();
+		expect(unlockedUntilOf(otherId)).toBe(12345);
+
+		// Same for the admin's recovery switch.
+		setAppLockTimeout(u.id, MIN);
+		const { token: again } = createSession(u.id, null, 0);
+		const againId = validateSessionToken(again)!.sessionId;
+		clearAppLock(u.id);
+		expect(unlockedUntilOf(againId)).toBeNull();
+	});
+});
+
 describe('guards', () => {
 	const locked = {
 		user: null,
