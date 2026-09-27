@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.41.1
+
 ### Fixed
 
 - An avatar comparison reopened after a reload (or after iOS closed the app in the
