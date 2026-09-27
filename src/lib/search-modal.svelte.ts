@@ -16,16 +16,61 @@
 class SearchModalStore {
 	open = $state(false);
 
+	/**
+	 * iOS raises the keyboard for a programmatic `focus()` only inside the
+	 * user gesture that caused it. The modal is lazy-imported, so on the first
+	 * open of a session its input mounts a network round trip after the tap
+	 * and the focus is silently refused (later opens resolve the cached module
+	 * within the gesture's microtasks, which is why only a cold launch showed
+	 * it). So `show()` focuses this invisible stand-in synchronously, inside the
+	 * gesture, and the modal moves focus onto its real input once mounted —
+	 * iOS does allow focus to hop from one text field to another. 16px so the
+	 * stand-in doesn't trigger iOS's focus zoom either.
+	 */
+	#focusProxy: HTMLInputElement | null = null;
+
 	show(): void {
+		if (!this.open) this.#raiseFocusProxy();
 		this.open = true;
 	}
 
 	hide(): void {
+		this.releaseFocusProxy();
 		this.open = false;
 	}
 
 	toggle(): void {
-		this.open = !this.open;
+		if (this.open) this.hide();
+		else this.show();
+	}
+
+	/**
+	 * Called by the modal after focusing its input. Returns whatever was typed
+	 * into the stand-in while the modal was still loading, so no keystroke is
+	 * lost.
+	 */
+	releaseFocusProxy(): string {
+		const proxy = this.#focusProxy;
+		if (!proxy) return '';
+		this.#focusProxy = null;
+		proxy.remove();
+		return proxy.value;
+	}
+
+	#raiseFocusProxy(): void {
+		if (typeof document === 'undefined') return;
+		this.releaseFocusProxy();
+		const proxy = document.createElement('input');
+		proxy.type = 'text';
+		proxy.tabIndex = -1;
+		proxy.setAttribute('aria-hidden', 'true');
+		// Fixed at the top so focusing it doesn't scroll the page; not
+		// `display:none`/`visibility:hidden`, which iOS won't focus.
+		proxy.style.cssText =
+			'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;font-size:16px;border:0;padding:0;pointer-events:none;';
+		document.body.appendChild(proxy);
+		proxy.focus();
+		this.#focusProxy = proxy;
 	}
 }
 

@@ -9,6 +9,11 @@ arrived.
 
 ## Unreleased
 
+### Fixed
+
+- On iPhone, opening search for the first time after launching the app focuses the
+  search box and raises the keyboard, and tapping into the box no longer zooms the page.
+
 ## v0.41.1
 
 ### Fixed

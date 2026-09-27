@@ -43,16 +43,24 @@
 	let activeRequestId = 0;
 
 	// On open: reset transient state and focus the input on the next
-	// microtask (the <input> needs to be in the DOM first). On close:
-	// drop any in-flight debounce so a late fire can't reopen state
-	// we just cleared.
+	// microtask (the <input> needs to be in the DOM first), taking focus
+	// over from the store's iOS keyboard stand-in — see `focusProxy` in
+	// search-modal.svelte.ts. On close: drop any in-flight debounce so a
+	// late fire can't reopen state we just cleared.
 	$effect(() => {
 		if (searchModal.open) {
 			query = '';
 			results = [];
 			error = null;
 			highlightedIdx = 0;
-			queueMicrotask(() => inputEl?.focus());
+			queueMicrotask(() => {
+				inputEl?.focus();
+				const typedWhileLoading = searchModal.releaseFocusProxy();
+				if (typedWhileLoading) {
+					query = typedWhileLoading;
+					scheduleSearch();
+				}
+			});
 		} else if (debounceTimer) {
 			clearTimeout(debounceTimer);
 			debounceTimer = null;
@@ -180,7 +188,7 @@
 					type="text"
 					placeholder="Search your chats…"
 					aria-label="Search query"
-					class="min-w-0 flex-1 bg-transparent text-sm focus:outline-none"
+					class="min-w-0 flex-1 bg-transparent text-base focus:outline-none sm:text-sm"
 				/>
 				{#if loading}
 					<span

@@ -187,3 +187,46 @@ describe('SearchModal — activation', () => {
 		fetchSpy.mockRestore();
 	});
 });
+
+describe('SearchModal — iOS keyboard focus stand-in', () => {
+	// iOS only raises the keyboard for a focus() inside the tap's gesture, and
+	// the modal is lazy-imported, so on a cold launch its input mounts too late.
+	// show() therefore focuses a stand-in input synchronously; the modal takes
+	// focus over from it once mounted.
+	it('focuses a stand-in input synchronously inside show()', () => {
+		searchModal.show();
+		const active = document.activeElement as HTMLInputElement;
+		expect(active.tagName).toBe('INPUT');
+		expect(active.getAttribute('aria-hidden')).toBe('true');
+	});
+
+	it('hands focus to the real input and removes the stand-in on mount', async () => {
+		searchModal.show();
+		const proxy = document.activeElement as HTMLInputElement;
+		render(SearchModal);
+		const input = await screen.findByPlaceholderText('Search your chats…');
+		await waitFor(() => expect(document.activeElement).toBe(input));
+		expect(proxy.isConnected).toBe(false);
+	});
+
+	it('carries over text typed before the modal finished loading', async () => {
+		const fetchSpy = vi
+			.spyOn(global, 'fetch')
+			.mockResolvedValue(new Response(JSON.stringify({ results: [] }), { status: 200 }));
+		searchModal.show();
+		(document.activeElement as HTMLInputElement).value = 'onio';
+		render(SearchModal);
+		const input = await screen.findByPlaceholderText<HTMLInputElement>('Search your chats…');
+		await waitFor(() => expect(input.value).toBe('onio'));
+		vi.advanceTimersByTime(300);
+		await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
+		fetchSpy.mockRestore();
+	});
+
+	it('removes the stand-in when closed before the modal mounts', () => {
+		searchModal.show();
+		const proxy = document.activeElement as HTMLInputElement;
+		searchModal.hide();
+		expect(proxy.isConnected).toBe(false);
+	});
+});
