@@ -70,6 +70,17 @@ class SearchModalStore {
 		// `display:none`/`visibility:hidden`, which iOS won't focus.
 		proxy.style.cssText =
 			'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;font-size:16px;border:0;padding:0;pointer-events:none;';
+		// If the modal never mounts to take focus over (its chunk failed to
+		// load), tapping away must not leave an invisible field holding the
+		// keyboard. Deferred because the normal handoff blurs the stand-in too,
+		// synchronously inside the modal's `focus()` call, and the modal then
+		// reads the typed text through `releaseFocusProxy()` — by the time this
+		// runs, it has already let go and the identity check makes it a no-op.
+		proxy.addEventListener('blur', () => {
+			queueMicrotask(() => {
+				if (this.#focusProxy === proxy) this.releaseFocusProxy();
+			});
+		});
 		document.body.appendChild(proxy);
 		proxy.focus();
 		this.#focusProxy = proxy;

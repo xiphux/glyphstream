@@ -230,4 +230,14 @@ describe('SearchModal — iOS keyboard focus stand-in', () => {
 		searchModal.hide();
 		expect(proxy.isConnected).toBe(false);
 	});
+
+	it('removes the stand-in when it loses focus before the modal mounts', async () => {
+		// The modal's chunk failed to load: nothing will take focus over, so
+		// tapping away has to drop the invisible field (and iOS's keyboard).
+		searchModal.show();
+		const proxy = document.activeElement as HTMLInputElement;
+		proxy.blur();
+		await Promise.resolve();
+		expect(proxy.isConnected).toBe(false);
+	});
 });
