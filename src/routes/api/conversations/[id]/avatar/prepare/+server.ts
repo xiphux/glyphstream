@@ -130,7 +130,9 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	setFanoutParent(params.id, locals.user.id, source.id, leaf !== source.id);
 
 	const response: PrepareAvatarDrawResponse = {
-		siblings: getSiblingAssistants(params.id, source.id),
+		// With their prompts: these seed the live grid, and re-rolling an earlier
+		// round's portrait re-sends what drew IT, not this round's prompt.
+		siblings: getSiblingAssistants(params.id, source.id, { avatarPrompts: true }),
 	};
 	return json(response);
 };

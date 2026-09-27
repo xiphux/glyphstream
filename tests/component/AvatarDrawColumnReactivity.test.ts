@@ -133,10 +133,10 @@ describe('an avatar comparison drives the reactive columns', () => {
 		// The seeded portrait plus both new ones, all settled with a persisted row.
 		expect(fc.columns.map((c) => c.status)).toEqual(['done', 'done', 'done']);
 		expect(fc.columns.every((c) => c.persisted !== null)).toBe(true);
-		// The grid is still up and still this page's, which is what keeps the
-		// reviewed prompt (and so Regenerate) available.
+		// The grid is still up, and the fresh columns carry the reviewed prompt
+		// a re-roll re-sends.
 		expect(fc.comparing).toBe(true);
-		expect(fc.canRegenerate).toBe(true);
+		expect(fc.columns.slice(1).every((c) => fc.canRegenerate(c))).toBe(true);
 		// And nothing told the user their draw came back empty.
 		expect(errors).toEqual([]);
 

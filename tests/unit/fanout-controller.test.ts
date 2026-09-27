@@ -1318,31 +1318,72 @@ describe('FanoutController — avatar comparisons', () => {
 		expect(state.activeModel).toBeNull();
 	});
 
-	it('offers no re-roll on a recovered avatar grid', async () => {
-		// Regenerate re-sends the prompt the user reviewed in the dialog, and a
-		// reloaded page never saw it. The media row's promptFull is not a stand-in:
-		// for an enhanced draw it holds what the ENHANCER wrote, so re-rolling from
-		// it would quietly draw something else.
-		const fetchMock = vi.fn(async () => jsonResponse({}));
-		vi.stubGlobal('fetch', fetchMock);
+	it('re-rolls a recovered avatar portrait from its own prompt', async () => {
+		// A reload loses the prompt the page held, so recovery reads each
+		// portrait's back off its media row — the TYPED prompt plus whether the
+		// enhancer rewrote it, never the enhancer's output (re-enhancing that would
+		// draw something else). The iOS case: a backgrounded PWA is killed and the
+		// user comes back to the grid expecting to keep re-rolling.
+		const posts = stubDraw();
 		const { deps } = makeDeps();
 		const fc = new FanoutController(deps);
+		const p1 = imageSibling('p1', 'bridge::sdxl', null);
+		p1.avatarPrompt = { prompt: 'a weathered navigator', enhance: true };
+		p1.fanoutIndex = 0;
 		fc.syncFromServer({
 			parentMessageId: 'desc',
 			avatar: true,
 			kind: 'image',
-			siblings: [imageSibling('p1', 'bridge::sdxl', null)],
+			siblings: [p1],
 			pending: 0,
 			pendingModelIds: [],
 			pendingStartedAt: [],
 			pendingSourceMediaIds: [],
 		});
-		expect(fc.canRegenerate).toBe(false);
+		expect(fc.canRegenerate(fc.columns[0])).toBe(true);
 
-		// And the backstop behind the hidden control: no column appears, nothing is
-		// posted.
 		await fc.regenerate(fc.columns[0]);
-		expect(fc.columns).toHaveLength(1);
+
+		expect(posts).toHaveLength(1);
+		expect(posts[0].url).toBe('/api/conversations/c1/avatar/generate');
+		expect(posts[0].body).toEqual({
+			fanout: true,
+			sourceMessageId: 'desc',
+			modelId: 'bridge::sdxl',
+			prompt: 'a weathered navigator',
+			enhance: true,
+			branchIndex: 0,
+		});
+		expect(fc.columns).toHaveLength(2);
+	});
+
+	it('offers no re-roll on a recovered portrait with no prompt to re-send', async () => {
+		// A failed branch has no media row, so recovery has nothing to read a
+		// prompt off. The grid hides the control; this is the backstop behind it.
+		const fetchMock = vi.fn(async () => jsonResponse({}));
+		vi.stubGlobal('fetch', fetchMock);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		const ok = imageSibling('p1', 'bridge::sdxl', null);
+		ok.avatarPrompt = { prompt: 'p', enhance: false };
+		fc.syncFromServer({
+			parentMessageId: 'desc',
+			avatar: true,
+			kind: 'image',
+			siblings: [
+				ok,
+				mediaSibling('e1', 'bridge::flux', null, [{ type: 'error', message: 'boom' }]),
+			],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		});
+		expect(fc.canRegenerate(fc.columns[0])).toBe(true);
+		expect(fc.canRegenerate(fc.columns[1])).toBe(false);
+
+		await fc.regenerate(fc.columns[1]);
+		expect(fc.columns).toHaveLength(2);
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
@@ -1387,18 +1428,11 @@ describe('FanoutController — avatar comparisons', () => {
 		expect(posts.some((u) => u.includes('/avatar/'))).toBe(false);
 	});
 
-	it("does not carry one conversation's prompt into another's recovered grid", async () => {
-		// `#avatarDraw` holds the prompt the user reviewed in the dialog, and it is
-		// deliberately kept across a handoff-to-recovery so a re-roll stays possible
-		// on the grid this page dispatched. It must not survive into a DIFFERENT
-		// grid: leave A mid-comparison, open B which has its own parked comparison,
-		// and a re-roll there would draw A's description under B's anchor and record
-		// A's text as that portrait's prompt.
-		//
-		// One controller for both conversations on purpose — the page constructs it
-		// once and navigates with it. The neighbouring recovered-grid test builds a
-		// fresh controller, which is exactly why it cannot see this.
-		stubDraw();
+	it("re-rolls another conversation's recovered grid with that grid's prompt", async () => {
+		// One controller serves every conversation — the page constructs it once
+		// and navigates with it. Leave A mid-comparison, open B's parked one, and a
+		// re-roll there must draw B's prompt under B's anchor, never A's.
+		const posts = stubDraw();
 		const { deps } = makeDeps();
 		const fc = new FanoutController(deps);
 		await fc.sendAvatarDraw({
@@ -1407,23 +1441,29 @@ describe('FanoutController — avatar comparisons', () => {
 			enhance: true,
 			branches: TWO_MODELS,
 		});
-		expect(fc.canRegenerate).toBe(true);
 
-		// Navigate away without resolving, then land on B's parked comparison.
 		fc.teardown();
+		const b1 = imageSibling('b1', 'bridge::sdxl', null);
+		b1.avatarPrompt = { prompt: "B's prompt", enhance: false };
 		fc.syncFromServer({
 			parentMessageId: 'descB',
 			avatar: true,
 			kind: 'image',
-			siblings: [imageSibling('b1', 'bridge::sdxl', null)],
+			siblings: [b1],
 			pending: 0,
 			pendingModelIds: [],
 			pendingStartedAt: [],
 			pendingSourceMediaIds: [],
 		});
+		posts.length = 0;
+		await fc.regenerate(fc.columns[0]);
 
-		expect(fc.isAvatar).toBe(true);
-		expect(fc.canRegenerate).toBe(false);
+		expect(posts).toHaveLength(1);
+		expect(posts[0].body).toMatchObject({
+			sourceMessageId: 'descB',
+			prompt: "B's prompt",
+			enhance: false,
+		});
 	});
 
 	it('takes down a grid where every branch failed', async () => {
@@ -1540,6 +1580,7 @@ describe('FanoutController — avatar comparisons', () => {
 				error: null,
 				aspectRatio: null,
 				errorMessageId: null,
+				avatarPrompt: null,
 			},
 		];
 
@@ -1550,64 +1591,6 @@ describe('FanoutController — avatar comparisons', () => {
 		]);
 
 		vi.unstubAllGlobals();
-	});
-
-	it('drops the prompt when the parked anchor moves under it', async () => {
-		// The case `teardown()` cannot reach, and therefore the one that proves the
-		// anchor test is what closes this rather than the teardown clears: no
-		// navigation happens at all. A suspend hands the live grid to recovery
-		// (which keeps the prompt on purpose), and meanwhile another tab resolves
-		// that comparison and parks a new one on a different anchor in the SAME
-		// conversation. The rebuild follows the new anchor; the prompt must not.
-		stubDraw();
-		const { deps } = makeDeps();
-		const fc = new FanoutController(deps);
-		await fc.sendAvatarDraw({
-			sourceMessageId: 'descX',
-			prompt: "X's reviewed prompt",
-			enhance: true,
-			branches: TWO_MODELS,
-		});
-		fc.handoffToRecovery();
-		fc.syncFromServer({
-			parentMessageId: 'descY',
-			avatar: true,
-			kind: 'image',
-			siblings: [imageSibling('y1', 'bridge::sdxl', null)],
-			pending: 0,
-			pendingModelIds: [],
-			pendingStartedAt: [],
-			pendingSourceMediaIds: [],
-		});
-		expect(fc.canRegenerate).toBe(false);
-	});
-
-	it('keeps the prompt when the same grid is handed to recovery', async () => {
-		// The other half of the anchor test, so the rule above can't be satisfied by
-		// simply dropping the prompt on every rebuild: a handoff-to-recovery rebuilds
-		// the SAME anchor, this page does still hold the real prompt, and Regenerate
-		// has to survive it.
-		stubDraw();
-		const { deps } = makeDeps();
-		const fc = new FanoutController(deps);
-		await fc.sendAvatarDraw({
-			sourceMessageId: 'desc',
-			prompt: 'p',
-			enhance: true,
-			branches: TWO_MODELS,
-		});
-		fc.handoffToRecovery();
-		fc.syncFromServer({
-			parentMessageId: 'desc',
-			avatar: true,
-			kind: 'image',
-			siblings: [imageSibling('out-1', 'bridge::sdxl', null)],
-			pending: 0,
-			pendingModelIds: [],
-			pendingStartedAt: [],
-			pendingSourceMediaIds: [],
-		});
-		expect(fc.canRegenerate).toBe(true);
 	});
 
 	it('keeps dispatching avatar branches after a conversation switch', async () => {
@@ -1682,19 +1665,46 @@ describe('FanoutController — avatar comparisons', () => {
 		vi.unstubAllGlobals();
 	});
 
-	it('offers a re-roll while this page still owns the draw', async () => {
-		// The live half of the same rule — otherwise the test above would pass
-		// against a `canRegenerate` hardcoded to false.
-		stubDraw();
+	it('re-rolls a live portrait with the prompt reviewed in the dialog', async () => {
+		const posts = stubDraw();
 		const { deps } = makeDeps();
 		const fc = new FanoutController(deps);
 		await fc.sendAvatarDraw({
 			sourceMessageId: 'desc',
-			prompt: 'p',
-			enhance: true,
+			prompt: 'the reviewed prompt',
+			enhance: false,
 			branches: TWO_MODELS,
 		});
-		expect(fc.canRegenerate).toBe(true);
+		expect(fc.columns.every((c) => fc.canRegenerate(c))).toBe(true);
+
+		posts.length = 0;
+		await fc.regenerate(fc.columns[1]);
+		expect(posts[0].body).toMatchObject({
+			modelId: 'bridge::flux',
+			prompt: 'the reviewed prompt',
+			enhance: false,
+		});
+	});
+
+	it("re-rolls an earlier round's portrait with ITS prompt, not the new round's", async () => {
+		// One description collects several draw rounds, and the live grid seeds
+		// the earlier ones. "Again with this model" means what drew that portrait.
+		const earlier = imageSibling('old', 'bridge::sdxl', null);
+		earlier.avatarPrompt = { prompt: 'round one', enhance: true };
+		const posts = stubDraw([earlier]);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		await fc.sendAvatarDraw({
+			sourceMessageId: 'desc',
+			prompt: 'round two',
+			enhance: false,
+			branches: TWO_MODELS,
+		});
+		expect(fc.columns[0].persisted?.id).toBe('old');
+
+		posts.length = 0;
+		await fc.regenerate(fc.columns[0]);
+		expect(posts[0].body).toMatchObject({ prompt: 'round one', enhance: true });
 	});
 });
 

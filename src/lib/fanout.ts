@@ -7,7 +7,7 @@
  */
 
 import type { InFlightSegment } from './chat-render';
-import type { ChatMessage, ModelKind } from './types/api';
+import type { AvatarDrawPrompt, ChatMessage, ModelKind } from './types/api';
 
 /**
  * Hard ceiling on concurrent fan-out branches per conversation. Each branch
@@ -229,6 +229,20 @@ export interface FanoutColumn {
 	 * to its index once it lands.
 	 */
 	dispatchIndex: number | null;
+	/**
+	 * Avatar comparisons only: what drew this portrait, which a re-roll re-sends.
+	 * The dialog's reviewed prompt for a live branch; off the media row
+	 * (`ChatMessage.avatarPrompt`) for one rebuilt from server truth, so a grid
+	 * recovered after a reload can still re-roll.
+	 *
+	 * Per column rather than per grid because one anchor collects several draw
+	 * rounds, each possibly from a different prompt — "try again with this model"
+	 * means this portrait's prompt, not the latest round's. Null in a turn fan-out
+	 * (the server re-derives that prompt), and for a recovered avatar column with
+	 * nothing to read one from: a failed branch, or one still generating. Those
+	 * offer no Regenerate — see `FanoutController.canRegenerate`.
+	 */
+	avatarPrompt: AvatarDrawPrompt | null;
 	/** The persisted assistant message, set on the branch's `done` event (or
 	 *  hydrated from getSiblingAssistants on reload). */
 	persisted: ChatMessage | null;

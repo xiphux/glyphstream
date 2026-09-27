@@ -171,6 +171,13 @@ test.describe('flow: comparing avatar models', () => {
 		// this" and picks by continuing the chat with an image model.
 		await expect(page.getByRole('button', { name: 'Continue with this' })).toHaveCount(0);
 
+		// Re-rolling survives the reload too: the page's copy of the reviewed
+		// prompt is gone, so each column re-sends the one read off its media row.
+		const regenerate = page.getByRole('button', { name: 'Regenerate' });
+		await expect(regenerate).toHaveCount(2);
+		await regenerate.first().click();
+		await expect(pick).toHaveCount(3, { timeout: 15_000 });
+
 		// A pick after recovery still adopts the face — the half that would break if
 		// the flag were lost, since the endpoint it posts to is chosen by mode.
 		await pick.first().click();

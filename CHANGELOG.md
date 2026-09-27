@@ -9,6 +9,12 @@ arrived.
 
 ## Unreleased
 
+### Fixed
+
+- An avatar comparison reopened after a reload (or after iOS closed the app in the
+  background) keeps its Regenerate buttons, re-rolling each portrait from the prompt
+  that drew it.
+
 ## v0.41.0
 
 ### Added

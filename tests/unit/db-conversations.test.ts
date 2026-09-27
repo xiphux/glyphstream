@@ -1897,6 +1897,59 @@ describe('multi-model fan-out: sibling appends + active_leaf pinning', () => {
 		expect(byId.get(plain.id)).toBeNull();
 	});
 
+	it('getSiblingAssistants recovers each portrait’s re-roll prompt only when asked', () => {
+		// An avatar grid rebuilt after a reload re-rolls from these, so they must be
+		// what the user TYPED: `promptFull` holds the enhancer's output for an
+		// enhanced draw, and re-enhancing that would draw something else.
+		const { u, conv, user } = seedConvWithUser();
+		const out = (name: string, promptFull: string, originalPrompt: string | null) =>
+			insertMedia({
+				userId: u.id,
+				storagePath: `ab/cd/${name}.png`,
+				contentType: 'image/png',
+				byteSize: 2048,
+				kind: 'image',
+				sourceEndpointId: 'bridge',
+				sourceModel: 'bridge::sdxl',
+				promptExcerpt: promptFull,
+				promptFull,
+				originalPrompt,
+			});
+		const sibling = (mediaId: string) =>
+			appendMessage({
+				conversationId: conv.id,
+				parentMessageId: user.id,
+				role: 'assistant',
+				parts: [{ type: 'image', mediaId }],
+				modelUsed: 'bridge::sdxl',
+				advanceActiveLeaf: false,
+			});
+		const enhanced = sibling(out('enh', 'cinematic portrait, rim light', 'a navigator').id);
+		const verbatim = sibling(out('verb', 'a navigator', null).id);
+		const failed = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'error', message: 'boom' }],
+			modelUsed: 'bridge::sdxl',
+			advanceActiveLeaf: false,
+		});
+
+		const byId = new Map(
+			getSiblingAssistants(conv.id, user.id, { avatarPrompts: true }).map((m) => [
+				m.id,
+				m.avatarPrompt,
+			]),
+		);
+		expect(byId.get(enhanced.id)).toEqual({ prompt: 'a navigator', enhance: true });
+		expect(byId.get(verbatim.id)).toEqual({ prompt: 'a navigator', enhance: false });
+		// No media row to read one off.
+		expect(byId.get(failed.id)).toBeUndefined();
+
+		// Not asked (a turn fan-out): nothing extra in the payload.
+		expect(getSiblingAssistants(conv.id, user.id).every((m) => !('avatarPrompt' in m))).toBe(true);
+	});
+
 	it('getSiblingAssistants excludes non-assistant children and other parents', () => {
 		const { conv, user } = seedConvWithUser();
 		const a = appendMessage({

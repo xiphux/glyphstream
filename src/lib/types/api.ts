@@ -655,6 +655,28 @@ export interface ChatMessage {
 	 * non-fan-out rows and on rows predating the column.
 	 */
 	fanoutIndex?: number | null;
+	/**
+	 * What drew this portrait, as the inputs a re-roll re-sends. Populated by
+	 * `getSiblingAssistants` for an AVATAR comparison only (a turn fan-out's
+	 * re-roll re-derives its prompt server-side from the shared user message),
+	 * so a grid rebuilt from server truth can offer Regenerate. Undefined
+	 * elsewhere, and on a branch that failed (no media row to read it off).
+	 */
+	avatarPrompt?: AvatarDrawPrompt | null;
+}
+
+/**
+ * The inputs an avatar portrait was drawn from: the prompt the user reviewed
+ * in the draw dialog and whether the enhancer ran on it. Recovered from the
+ * media row as `original_prompt ?? prompt_full` — `prompt_full` alone would be
+ * the ENHANCER's output for an enhanced draw, and re-rolling from that would
+ * enhance an already-enhanced prompt. `enhance` is true exactly when the
+ * enhancer rewrote it (`original_prompt` set); a draw it passed through
+ * unchanged re-rolls verbatim, which is what that portrait was drawn from.
+ */
+export interface AvatarDrawPrompt {
+	prompt: string;
+	enhance: boolean;
 }
 
 // --- user preferences --------------------------------------------------

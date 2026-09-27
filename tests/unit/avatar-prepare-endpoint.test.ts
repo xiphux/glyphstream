@@ -224,7 +224,9 @@ describe('POST /avatar/prepare — what the grid starts from', () => {
 		mocks.getSiblingAssistants.mockReturnValue(siblings);
 		const res = await call();
 		expect(await res.json()).toEqual({ siblings });
-		expect(mocks.getSiblingAssistants.mock.calls).toEqual([['c1', 'desc']]);
+		expect(mocks.getSiblingAssistants.mock.calls).toEqual([
+			['c1', 'desc', { avatarPrompts: true }],
+		]);
 	});
 
 	it('rejects a user message as the anchor', async () => {

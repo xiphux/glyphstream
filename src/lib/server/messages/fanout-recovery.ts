@@ -56,10 +56,11 @@ export function getFanoutRecoveryState(
 	const parentRole = getMessageRole(conversationId, parent);
 	// Re-rolls are additive (a new sibling next to the original, deleting
 	// nothing), so every persisted sibling is a real column — no shadowing.
-	const siblings = getSiblingAssistants(conversationId, parent);
+	const avatar = parentRole === 'assistant';
+	const siblings = getSiblingAssistants(conversationId, parent, { avatarPrompts: avatar });
 	return {
 		parentMessageId: parent,
-		avatar: parentRole === 'assistant',
+		avatar,
 		kind: entries[0]?.modelKind ?? null,
 		siblings,
 		pending: entries.length,

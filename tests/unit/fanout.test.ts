@@ -142,6 +142,7 @@ describe('allColumnsSettled', () => {
 		error: null,
 		aspectRatio: null,
 		errorMessageId: null,
+		avatarPrompt: null,
 	});
 
 	it('is false while any column is queued or streaming', () => {
@@ -218,6 +219,7 @@ describe('gridMediaIds + applyDisplayOrder', () => {
 		error: null,
 		aspectRatio: null,
 		errorMessageId: null,
+		avatarPrompt: null,
 	});
 	const pending = (branchId: string): FanoutColumn => ({
 		...shot(branchId),
@@ -297,6 +299,7 @@ describe('lightbox discard helpers', () => {
 		error: null,
 		aspectRatio: null,
 		errorMessageId: null,
+		avatarPrompt: null,
 	});
 	const ref = (id: string) => ({ id, kind: 'image' as const });
 	const ids = (...xs: string[]) => new Set(xs);
@@ -362,6 +365,7 @@ describe('dispatch-index placement', () => {
 		error: null,
 		aspectRatio: null,
 		errorMessageId: null,
+		avatarPrompt: null,
 	});
 
 	describe('nextDispatchIndex', () => {

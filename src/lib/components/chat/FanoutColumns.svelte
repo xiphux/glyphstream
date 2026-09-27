@@ -47,6 +47,10 @@
 		/** Re-roll a column: add a fresh variation with the same model/prompt
 		 *  beside it (additive, non-destructive). */
 		onRegenerate?: (column: FanoutColumn) => void;
+		/** Per-column gate on Regenerate, which is hidden where this says no. An
+		 *  avatar portrait recovered without its prompt (a failed branch) has
+		 *  nothing to re-roll from. Defaults to every column. */
+		canRegenerate?: (column: FanoutColumn) => boolean;
 		onImageClick: (mediaId: string) => void;
 		/** A pick/discard/regenerate request is in flight — disables the controls. */
 		busy?: boolean;
@@ -58,6 +62,7 @@
 		pickLabel = 'Continue with this',
 		onDiscard,
 		onRegenerate,
+		canRegenerate = () => true,
 		onImageClick,
 		busy = false,
 	}: Props = $props();
@@ -238,7 +243,7 @@
 								{pickLabel}
 							</button>
 						{/if}
-						{#if onRegenerate}
+						{#if onRegenerate && canRegenerate(c)}
 							<button
 								type="button"
 								onclick={() => onRegenerate(c)}

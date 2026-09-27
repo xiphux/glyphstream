@@ -70,19 +70,10 @@ export interface FanoutDeps {
 	scrollToBottom(): void;
 }
 
-/** The reviewed prompt behind a live avatar comparison, as `sendAvatarDraw`
- *  captured it. See `FanoutController.#avatarDraw`. */
-interface AvatarDrawHandle {
-	sourceMessageId: string;
-	prompt: string;
-	enhance: boolean;
-}
-
 /** What a dispatch loop's branches ARE, snapshotted when the loop starts rather
  *  than read per branch — see `#dispatchColumns`. */
 interface DispatchMode {
 	mode: 'turn' | 'avatar';
-	avatar: AvatarDrawHandle | null;
 }
 
 /** branchId prefix for the server-driven "Generating…" placeholder columns of a
@@ -153,17 +144,6 @@ export class FanoutController {
 	 * and what a pick MEANS differ, and both read this.
 	 */
 	#mode = $state<'turn' | 'avatar'>('turn');
-	/**
-	 * The avatar draw's dispatch inputs, held for re-rolls.
-	 *
-	 * Null in turn mode, and also on a grid recovered from server truth: the
-	 * prompt that drew these portraits was reviewed in the dialog and lives only
-	 * in the page that dispatched them. The media row's `promptFull` is not a
-	 * substitute — for an enhanced draw it holds what the ENHANCER wrote, so
-	 * re-rolling from it would silently draw something else. So Regenerate is
-	 * offered only while we still have the real prompt; see `canRegenerate`.
-	 */
-	#avatarDraw: AvatarDrawHandle | null = $state(null);
 
 	comparing = $derived(this.columns.length > 0);
 	streaming = $derived(this.columns.some((c) => c.status === 'queued' || c.status === 'streaming'));
@@ -189,10 +169,13 @@ export class FanoutController {
 	/** An avatar comparison: keep-many like any image grid, but ALSO pick-one —
 	 *  the pick adopts a face rather than continuing the thread with that model. */
 	isAvatar = $derived(this.#mode === 'avatar');
-	/** Whether a re-roll can be dispatched. Always, for a turn fan-out (the server
-	 *  re-derives the prompt from the shared user message); for an avatar grid only
-	 *  while this page still holds the reviewed prompt — see `#avatarDraw`. */
-	canRegenerate = $derived(this.#mode === 'turn' || this.#avatarDraw !== null);
+
+	/** Whether `col` can be re-rolled. Always, for a turn fan-out (the server
+	 *  re-derives the prompt from the shared user message); for an avatar column
+	 *  only when it knows what drew it — see `FanoutColumn.avatarPrompt`. */
+	canRegenerate(col: FanoutColumn): boolean {
+		return this.#mode === 'turn' || col.avatarPrompt !== null;
+	}
 
 	constructor(deps: FanoutDeps) {
 		this.#deps = deps;
@@ -267,6 +250,9 @@ export class FanoutController {
 				// Read back off the row so a re-roll fired from a RECOVERED grid
 				// inherits its source's grid position, exactly as a live one does.
 				dispatchIndex: m.fanoutIndex ?? null,
+				// Set only for an avatar comparison's portraits; a failed one has no
+				// media row to read it off, so it can't be re-rolled once recovered.
+				avatarPrompt: m.avatarPrompt ?? null,
 				persisted: m,
 				error: errPart?.message ?? null,
 				errorMessageId: errPart ? m.id : null,
@@ -301,6 +287,8 @@ export class FanoutController {
 			// already render after the settled columns; see #buildRecoveredColumns'
 			// return.
 			dispatchIndex: null,
+			// No media row yet. It gets one when it lands and the grid rebuilds.
+			avatarPrompt: null,
 			persisted: null,
 			error: null,
 			errorMessageId: null,
@@ -348,7 +336,6 @@ export class FanoutController {
 		// to the avatar route. Set at every entry point rather than cleared at every
 		// exit, so a new exit can't quietly reintroduce it.
 		this.#mode = 'turn';
-		this.#avatarDraw = null;
 		this.#deps.setBusy(true);
 		this.#deps.setError(null);
 		// Clear the suspend/offline flags for this turn (mirrors ChatTurnController.send()).
@@ -404,6 +391,7 @@ export class FanoutController {
 			startedAt: null,
 			inputMediaId: b.inputMediaId,
 			aspectRatio,
+			avatarPrompt: null,
 			persisted: null,
 			error: null,
 			errorMessageId: null,
@@ -476,7 +464,7 @@ export class FanoutController {
 		// Snapshot what these branches ARE, once, instead of letting each read the
 		// live fields. The loop dispatches one at a time — each waits for the prior
 		// to reach the endpoint gate — and a conversation switch runs `teardown()`
-		// in that gap, which resets `#mode`/`#avatarDraw`. Read fresh, a
+		// in that gap, which resets `#mode`. Read fresh, a
 		// not-yet-dispatched avatar branch would build a TURN body against its
 		// assistant anchor, which /messages refuses with a 400; and nobody would
 		// ever see it, because the resolution below has already bailed on the
@@ -487,7 +475,7 @@ export class FanoutController {
 		// `finally` precisely so a branch that dies before its first event still
 		// releases the sequence — so `teardown()`'s aborts ADVANCE this loop rather
 		// than stopping it.
-		const dispatch: DispatchMode = { mode: this.#mode, avatar: this.#avatarDraw };
+		const dispatch: DispatchMode = { mode: this.#mode };
 		const branchRuns: Array<Promise<ChatMessage | null>> = [];
 		for (const col of cols) {
 			let signalEnqueued!: () => void;
@@ -571,11 +559,7 @@ export class FanoutController {
 		}
 
 		this.#mode = 'avatar';
-		this.#avatarDraw = {
-			sourceMessageId: input.sourceMessageId,
-			prompt: input.prompt,
-			enhance: input.enhance,
-		};
+		const avatarPrompt = { prompt: input.prompt, enhance: input.enhance };
 		this.userMessageId = input.sourceMessageId;
 		this.live = true;
 
@@ -602,6 +586,7 @@ export class FanoutController {
 			inputMediaId: null,
 			// Avatar portraits are pinned square server-side, not picked here.
 			aspectRatio: null,
+			avatarPrompt,
 			persisted: null,
 			error: null,
 			errorMessageId: null,
@@ -640,7 +625,6 @@ export class FanoutController {
 			this.columns = [];
 			this.userMessageId = null;
 			this.live = false;
-			this.#avatarDraw = null;
 			this.#deps.setError('No model produced an image. Try again, or pick another model.');
 			try {
 				await invalidateAll();
@@ -687,7 +671,11 @@ export class FanoutController {
 			// assistant message, which the messages route refuses as a fan-out
 			// parent, so it goes to the avatar route instead. Both speak the same
 			// SSE, which is why everything below this line is shared.
-			const { mode, avatar } = opts?.dispatch ?? { mode: this.#mode, avatar: this.#avatarDraw };
+			const { mode } = opts?.dispatch ?? { mode: this.#mode };
+			const avatar = col.avatarPrompt;
+			// Unreachable through the UI (`canRegenerate` hides the control), but a
+			// turn body posted for an avatar branch would anchor on the description.
+			if (mode === 'avatar' && !avatar) throw new Error('Nothing to draw this portrait from');
 			const url =
 				mode === 'avatar'
 					? `/api/conversations/${turnConvId}/avatar/generate`
@@ -893,7 +881,6 @@ export class FanoutController {
 			}
 			this.userMessageId = null;
 			this.live = false;
-			this.#avatarDraw = null;
 		} catch (e) {
 			this.columns = savedColumns;
 			this.#deps.setError(e instanceof Error ? e.message : String(e));
@@ -941,7 +928,6 @@ export class FanoutController {
 			await invalidateAll();
 			this.userMessageId = null;
 			this.live = false;
-			this.#avatarDraw = null;
 		} catch (e) {
 			this.columns = savedColumns;
 			this.#deps.setError(e instanceof Error ? e.message : String(e));
@@ -1003,9 +989,9 @@ export class FanoutController {
 		// disables at the active-branch cap) + server-side (429); a click slipping
 		// past is a harmless no-op rather than something to error on here.
 		if (!this.userMessageId || this.picking) return;
-		// An avatar grid recovered from server truth has no prompt to re-roll with;
-		// the grid hides the control, and this is the backstop behind it.
-		if (!this.canRegenerate) return;
+		// An avatar column with no known prompt (a recovered failure) has nothing
+		// to re-roll with; the grid hides the control, and this is the backstop.
+		if (!this.canRegenerate(col)) return;
 		const convId = this.#deps.convId();
 		const newColumn: FanoutColumn = {
 			branchId: `reroll:${this.userMessageId}:${this.#nextRerollSeq++}`,
@@ -1026,6 +1012,8 @@ export class FanoutController {
 			inputMediaId: col.inputMediaId,
 			// Inherited from the source column, so a re-roll reproduces its shape.
 			aspectRatio: col.aspectRatio,
+			// Likewise its prompt: "again with this model" means what drew THIS one.
+			avatarPrompt: col.avatarPrompt,
 			persisted: null,
 			error: null,
 			errorMessageId: null,
@@ -1079,13 +1067,9 @@ export class FanoutController {
 		this.userMessageId = null;
 		this.live = false;
 		// The comparison we're leaving belongs to a conversation we're no longer
-		// on. `#mode` would be re-established by the next rebuild anyway; the
-		// reviewed prompt would not, and it must not follow us. Defence in depth —
-		// `#rebuildFrom`'s anchor test is what actually closes this — but cheap, and
-		// it stops the stale draw sitting around at all rather than only being
-		// disarmed at the moment it would have been used.
+		// on. The next rebuild re-establishes `#mode` anyway; this just stops it
+		// sitting around stale in between.
 		this.#mode = 'turn';
-		this.#avatarDraw = null;
 		// The next conversation's recovery state is applied however it compares.
 		this.#lastSynced = NOT_SYNCED;
 		// A grid action still in flight belongs to the conversation we're leaving,
@@ -1114,20 +1098,6 @@ export class FanoutController {
 		// is indistinguishable from an image fan-out by its contents, and getting
 		// this wrong would make "use this face" continue the chat with SDXL.
 		this.#mode = f.avatar ? 'avatar' : 'turn';
-		// The reviewed prompt is never RESTORED here — it lives only in the page
-		// that dispatched the draw, so a grid rebuilt on a fresh page has none and
-		// Regenerate stays off. But one already in hand is KEPT, and only for its
-		// own anchor: that's the handoff-to-recovery case, where this page did see
-		// the prompt and a re-roll is legitimate.
-		//
-		// Any other anchor is a different grid — another conversation's parked
-		// comparison, or one parked from another tab — and keeping the prompt there
-		// is not merely stale, it draws THIS prompt under THAT description. Note
-		// that clearing it in `teardown()` alone would not cover the same-anchor-
-		// changed case, since a handoff never tears down.
-		if (this.#avatarDraw && this.#avatarDraw.sourceMessageId !== f.parentMessageId) {
-			this.#avatarDraw = null;
-		}
 		this.columns = this.#buildRecoveredColumns(f.siblings, pendingBranches(f), f.kind);
 	}
 
@@ -1162,7 +1132,6 @@ export class FanoutController {
 				this.columns = [];
 				this.userMessageId = null;
 				this.#mode = 'turn';
-				this.#avatarDraw = null;
 			}
 			return;
 		}

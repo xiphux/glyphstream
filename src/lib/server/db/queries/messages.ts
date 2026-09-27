@@ -589,10 +589,16 @@ export function getMessageRole(conversationId: string, messageId: string): Messa
  * active. Each returned message carries its own `modelUsed` so the column
  * header can label which model produced it. Scoped to assistant rows so a
  * (future) tool message child can't leak into the column grid.
+ *
+ * `avatarPrompts` also attaches each portrait's re-roll inputs
+ * (`ChatMessage.avatarPrompt`). Opt-in because only an avatar comparison needs
+ * them — a turn fan-out re-derives its prompt from the shared user message, and
+ * shipping every sibling's prompt again would only grow the page payload.
  */
 export function getSiblingAssistants(
 	conversationId: string,
 	parentUserMessageId: string,
+	opts?: { avatarPrompts?: boolean },
 ): ChatMessage[] {
 	const db = getDb();
 	const rows = db
@@ -665,7 +671,13 @@ export function getSiblingAssistants(
 	const outputIds = msgs.map(outputMediaId).filter((id): id is string => id !== null);
 	if (outputIds.length > 0) {
 		const srcRows = db
-			.select({ id: media.id, src: media.sourceMediaId, ratio: media.aspectRatio })
+			.select({
+				id: media.id,
+				src: media.sourceMediaId,
+				ratio: media.aspectRatio,
+				promptFull: media.promptFull,
+				originalPrompt: media.originalPrompt,
+			})
 			.from(media)
 			.where(inArray(media.id, outputIds))
 			.all();
@@ -679,6 +691,11 @@ export function getSiblingAssistants(
 			// rebuilt after a reload has to reproduce its column's shape rather than
 			// reframe it at the model's default.
 			m.aspectRatio = row?.ratio ?? null;
+			if (opts?.avatarPrompts) {
+				// The typed prompt, never the enhancer's output — see `AvatarDrawPrompt`.
+				const prompt = row?.originalPrompt ?? row?.promptFull ?? null;
+				m.avatarPrompt = prompt ? { prompt, enhance: row?.originalPrompt != null } : null;
+			}
 		}
 	}
 	return msgs;

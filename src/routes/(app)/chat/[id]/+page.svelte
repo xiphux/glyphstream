@@ -2669,8 +2669,8 @@
 						<!-- Text fan-out: pick one to continue. Media fan-out (keep-many):
 					     discard duds + regenerate, no single pick. An avatar comparison
 					     is both — the portraits stay as siblings AND one becomes the
-					     conversation's face — and it drops Regenerate once recovered
-					     from server truth, where the reviewed prompt is gone. -->
+					     conversation's face. Its Regenerate re-sends the column's own
+					     prompt, so a portrait with none recovered (a failure) has none. -->
 						<FanoutColumns
 							columns={fanout.columns}
 							onPick={fanout.isMedia && !fanout.isAvatar
@@ -2678,9 +2678,10 @@
 								: (c: FanoutColumn) => void fanout.pick(c)}
 							pickLabel={fanout.isAvatar ? 'Use this avatar' : 'Continue with this'}
 							onDiscard={fanout.isMedia ? (c: FanoutColumn) => void fanout.discard(c) : undefined}
-							onRegenerate={fanout.isMedia && fanout.canRegenerate
+							onRegenerate={fanout.isMedia
 								? (c: FanoutColumn) => void fanout.regenerate(c)
 								: undefined}
+							canRegenerate={(c: FanoutColumn) => fanout.canRegenerate(c)}
 							onImageClick={openImageInLightbox}
 							busy={fanout.picking}
 						/>
