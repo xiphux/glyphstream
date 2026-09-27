@@ -197,7 +197,8 @@ describe('SearchModal — iOS keyboard focus stand-in', () => {
 		searchModal.show();
 		const active = document.activeElement as HTMLInputElement;
 		expect(active.tagName).toBe('INPUT');
-		expect(active.getAttribute('aria-hidden')).toBe('true');
+		expect(active.getAttribute('aria-label')).toBe('Search query');
+		expect(screen.queryByRole('dialog')).toBeNull();
 	});
 
 	it('hands focus to the real input and removes the stand-in on mount', async () => {

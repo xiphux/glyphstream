@@ -63,7 +63,9 @@ class SearchModalStore {
 		const proxy = document.createElement('input');
 		proxy.type = 'text';
 		proxy.tabIndex = -1;
-		proxy.setAttribute('aria-hidden', 'true');
+		// Labelled, not aria-hidden: it holds focus until the modal mounts, and
+		// a focused element hidden from assistive tech announces as nothing.
+		proxy.setAttribute('aria-label', 'Search query');
 		// Fixed at the top so focusing it doesn't scroll the page; not
 		// `display:none`/`visibility:hidden`, which iOS won't focus.
 		proxy.style.cssText =
