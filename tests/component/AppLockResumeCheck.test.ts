@@ -185,6 +185,45 @@ describe('app-lock resume check', () => {
 		expect(covered()).toBe(true);
 	});
 
+	it('carries a navigation already in flight, not the page it is leaving', async () => {
+		// Tapping a completion notification resumes the app AND posts
+		// navigate_to_conversation into it. The lock redirect supersedes that
+		// navigation, so the thread has to ride along in `from` — reading the
+		// committed URL sent the user to the page they were on before the tap.
+		stub().navigating.current = {
+			from: { url: new URL('http://localhost/chat/abc') },
+			to: { url: new URL('http://localhost/chat/tapped') },
+			type: 'goto',
+			willUnload: false,
+			complete: new Promise(() => {}),
+		};
+		setVisibility('hidden');
+		setVisibility('visible');
+		checks[0].respond(423);
+		await settle();
+		expect(nav.goto).toHaveBeenCalledWith(`/unlock?from=${encodeURIComponent('/chat/tapped')}`, {
+			replaceState: true,
+		});
+	});
+
+	it('leaves a navigation already headed for /unlock alone', async () => {
+		// The in-flight load hit the server's lock redirect first and is already
+		// carrying the right `from`; a second goto would only replace it.
+		stub().navigating.current = {
+			from: { url: new URL('http://localhost/chat/abc') },
+			to: { url: new URL('http://localhost/unlock?from=%2Fchat%2Ftapped') },
+			type: 'goto',
+			willUnload: false,
+			complete: new Promise(() => {}),
+		};
+		setVisibility('hidden');
+		setVisibility('visible');
+		checks[0].respond(423);
+		await settle();
+		expect(nav.goto).not.toHaveBeenCalled();
+		expect(covered()).toBe(true);
+	});
+
 	it('a keep-alive in flight across the suspend cannot uncover the page, and does not block the resume check', async () => {
 		vi.advanceTimersByTime(20_000); // keep-alive tick
 		expect(checks).toHaveLength(1);

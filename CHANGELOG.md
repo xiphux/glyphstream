@@ -14,6 +14,8 @@ arrived.
 - On iPhone, opening search for the first time after launching the app focuses the
   search box and raises the keyboard, and tapping into the box in portrait no longer
   zooms the page.
+- Tapping a completion notification while app lock is engaged opens that conversation
+  once you unlock, instead of the home screen.
 
 ## v0.41.1
 

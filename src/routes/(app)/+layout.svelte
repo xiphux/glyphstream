@@ -219,7 +219,18 @@
 			const res = await fetch(APP_LOCK_KEEPALIVE_PATH, { signal: check.signal });
 			if (appLockCheck !== check) return;
 			if (res.status === APP_LOCKED_STATUS) {
-				const from = encodeURIComponent(location.pathname + location.search);
+				// Carry where the user is HEADED, not where they are. A resume is
+				// often the start of a navigation — a tapped notification posts
+				// `navigate_to_conversation` into this window as it comes forward —
+				// and this goto supersedes it. Reading `location` here sent the
+				// user to whatever was on screen before the tap (usually the home
+				// page), and after unlocking they landed there, not on the thread.
+				const dest = navigating.to?.url;
+				// Already on its way to /unlock (the in-flight load hit the server's
+				// lock redirect first), with the right `from`: leave it alone.
+				if (dest?.pathname === resolve('/unlock')) return;
+				const target = dest ?? location;
+				const from = encodeURIComponent(target.pathname + target.search);
 				await goto(`${resolve('/unlock')}?from=${from}`, { replaceState: true });
 			} else if (res.ok) {
 				appLockCovered = false;
