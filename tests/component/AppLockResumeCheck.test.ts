@@ -224,6 +224,22 @@ describe('app-lock resume check', () => {
 		expect(covered()).toBe(true);
 	});
 
+	it('leaves an /unlock that has already committed alone', async () => {
+		// Same race, other ending: the redirect committed before the check came
+		// back. The check outlives this layout's unmount, and must not nest a
+		// second /unlock hop around the first one's `from`.
+		setVisibility('hidden');
+		setVisibility('visible');
+		history.replaceState(null, '', '/unlock?from=%2Fchat%2Ftapped');
+		try {
+			checks[0].respond(423);
+			await settle();
+			expect(nav.goto).not.toHaveBeenCalled();
+		} finally {
+			history.replaceState(null, '', '/');
+		}
+	});
+
 	it('a keep-alive in flight across the suspend cannot uncover the page, and does not block the resume check', async () => {
 		vi.advanceTimersByTime(20_000); // keep-alive tick
 		expect(checks).toHaveLength(1);

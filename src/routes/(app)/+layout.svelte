@@ -225,11 +225,12 @@
 				// and this goto supersedes it. Reading `location` here sent the
 				// user to whatever was on screen before the tap (usually the home
 				// page), and after unlocking they landed there, not on the thread.
-				const dest = navigating.to?.url;
-				// Already on its way to /unlock (the in-flight load hit the server's
-				// lock redirect first), with the right `from`: leave it alone.
-				if (dest?.pathname === resolve('/unlock')) return;
-				const target = dest ?? location;
+				const target = navigating.to?.url ?? location;
+				// Already on its way to /unlock, or already there (the tap's load hit
+				// the server's lock redirect first, which carries the right `from`
+				// and unmounts this layout — but not this check, still in flight):
+				// leave it alone. Another hop would only nest `from` inside itself.
+				if (target.pathname === resolve('/unlock')) return;
 				const from = encodeURIComponent(target.pathname + target.search);
 				await goto(`${resolve('/unlock')}?from=${from}`, { replaceState: true });
 			} else if (res.ok) {
