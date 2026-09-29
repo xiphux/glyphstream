@@ -986,7 +986,7 @@
 								bind:value={queryText}
 								oninput={onQueryInput}
 								onblur={onSearchBlur}
-								placeholder="Search prompts…"
+								placeholder="Search…"
 								aria-label="Search prompts"
 								class="h-8 w-32 rounded-md border border-border-strong bg-surface-panel px-3 pr-7 text-base leading-4 transition focus:border-border-focus focus:outline-none sm:w-52 sm:text-xs"
 							/>
