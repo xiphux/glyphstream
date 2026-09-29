@@ -977,6 +977,8 @@
 				{/snippet}
 				{#if !drillUnit}
 					{#if searchExpanded}
+						<!-- w-32 on mobile is a width budget: title + open box + Favorites +
+						     View options + Select must fit one row at 360px (w-40 wrapped). -->
 						<div class="relative">
 							<input
 								type="search"
@@ -986,7 +988,7 @@
 								onblur={onSearchBlur}
 								placeholder="Search prompts…"
 								aria-label="Search prompts"
-								class="h-8 w-40 rounded-md border border-border-strong bg-surface-panel px-3 pr-7 text-base leading-4 transition focus:border-border-focus focus:outline-none sm:w-52 sm:text-xs"
+								class="h-8 w-32 rounded-md border border-border-strong bg-surface-panel px-3 pr-7 text-base leading-4 transition focus:border-border-focus focus:outline-none sm:w-52 sm:text-xs"
 							/>
 							{#if queryText}
 								<button
