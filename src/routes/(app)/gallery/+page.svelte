@@ -276,7 +276,9 @@
 	}
 
 	const viewNonDefault = $derived(!stacking || granularity !== 'month');
-	const filterActive = $derived(kindFilter !== null || data.model != null || data.favorite);
+	// Only what the mobile popover hides: Favorites sits in the bar at every width
+	// and shows its own pressed state, so it doesn't light the popover's dot.
+	const filterActive = $derived(kindFilter !== null || data.model != null);
 
 	// --- Sections (from the layout) -----------------------------------------
 	const sections = $derived(feed.layout ? buildLayoutSections(feed.layout.days, granularity) : []);
@@ -919,30 +921,39 @@
 						{/each}
 					</div>
 				{/snippet}
-				{#snippet favoriteFacet()}
+				{#snippet favoriteFacet(compact: boolean)}
 					<!--
 						A toggle, not a third value in the kind group: it ANDs with kind and
 						model rather than replacing either, and the filled star reads as
 						on/off the way the lightbox's does. Always visible (no `can-hover:`
 						fade) — it's a toolbar peer, and hiding a filter until hover would
-						leave it unreachable on touch.
+						leave it unreachable on touch. Unlike kind/model it stays in the bar
+						on mobile too (icon-only, sized like the search button): looking at
+						your favorites is far more common than narrowing by type or model.
+						The compact form keeps the "Favorites" accessible name via aria-label.
+						Neutral like its toolbar peers until on, then the lightbox's filled
+						accent star (plus an accent border) rather than the kind/model facets'
+						inverse fill — the accent color means "favorite" everywhere else.
 					-->
 					<button
 						type="button"
 						onclick={() => setFavorite(!data.favorite)}
 						aria-pressed={data.favorite}
+						aria-label={compact ? 'Favorites' : undefined}
 						title={data.favorite ? 'Showing favorites only' : 'Show favorites only'}
-						class="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 transition {data.favorite
-							? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
-							: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
+						class="inline-flex items-center rounded-md border transition {compact
+							? 'h-8 justify-center px-1.5'
+							: 'gap-1.5 px-3 py-1.5'} bg-surface-panel hover:bg-surface-raised {data.favorite
+							? 'border-favorite'
+							: 'border-border-strong'}"
 					>
 						<Star
-							size={14}
+							size={compact ? 16 : 14}
 							strokeWidth={2.25}
-							class={data.favorite ? '' : 'text-favorite'}
+							class={data.favorite ? 'text-favorite' : 'text-fg-secondary'}
 							fill={data.favorite ? 'currentColor' : 'none'}
 						/>
-						Favorites
+						{#if !compact}Favorites{/if}
 					</button>
 				{/snippet}
 				{#snippet modelFacet()}
@@ -1000,10 +1011,14 @@
 						</button>
 					{/if}
 					<!-- Kind + model facets: inline on desktop; on mobile they move into the
-					     View popover below to keep the bar to a single row. -->
+					     View popover below to keep the bar to a single row. Favorites stays
+					     in the bar at both widths, icon-only on mobile. -->
+					<div class="contents sm:hidden">
+						{@render favoriteFacet(true)}
+					</div>
 					<div class="hidden sm:contents">
 						{@render kindFacet()}
-						{@render favoriteFacet()}
+						{@render favoriteFacet(false)}
 						{@render modelFacet()}
 					</div>
 					<Popover.Root>
@@ -1043,10 +1058,6 @@
 									<div class="flex items-center justify-between gap-3 p-2">
 										<span class="font-medium text-fg">Type</span>
 										{@render kindFacet()}
-									</div>
-									<div class="flex items-center justify-between gap-3 p-2">
-										<span class="font-medium text-fg">Starred</span>
-										{@render favoriteFacet()}
 									</div>
 									{#if modelOptions.length >= 2 || data.model != null}
 										<div class="flex items-center justify-between gap-3 p-2">

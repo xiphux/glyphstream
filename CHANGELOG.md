@@ -9,6 +9,12 @@ arrived.
 
 ## Unreleased
 
+### Changed
+
+- On phones, the gallery's Favorites filter is a star button in the toolbar next to
+  search, instead of being tucked inside the filter panel. At every size it now
+  matches the other toolbar buttons until turned on, when its star fills in.
+
 ### Fixed
 
 - On iPhone, opening search for the first time after launching the app focuses the

@@ -25,20 +25,14 @@ import { resetData, seedMediaPrompts } from './helpers';
 const TILE = 'li[data-tile] img[src*="/api/media/"]';
 const STAR_BADGE = 'li[data-tile] [title="Favorite"]';
 
-/** Toggle the Favorites filter, reaching it through the View options popover on
- *  mobile — and dismissing that popover afterwards, since it survives the
- *  filter's navigation and would swallow the next click.
+/** Toggle the Favorites filter. It sits in the toolbar at every width (icon-only
+ *  on mobile, named by aria-label), so no popover is involved.
  *
  *  `exact` matters: role-name matching is substring-based, and a favorited stack
  *  card's accessible name ends in "N favorites", so a loose "Favorites" would
  *  match the grid as well as this toggle. */
-async function toggleFavoritesFilter(
-	page: import('@playwright/test').Page,
-	isMobile: boolean,
-): Promise<void> {
-	if (isMobile) await page.getByRole('button', { name: 'View options' }).click();
+async function toggleFavoritesFilter(page: import('@playwright/test').Page): Promise<void> {
 	await page.getByRole('button', { name: 'Favorites', exact: true }).click();
-	if (isMobile) await page.keyboard.press('Escape');
 }
 
 test.beforeEach(() => {
@@ -47,10 +41,7 @@ test.beforeEach(() => {
 });
 
 test.describe('gallery: favorites', () => {
-	test('starring in the lightbox badges the tile and drives the filter', async ({
-		page,
-		isMobile,
-	}) => {
+	test('starring in the lightbox badges the tile and drives the filter', async ({ page }) => {
 		await page.goto('/gallery');
 		await expect(page.locator(TILE)).toHaveCount(3);
 		await expect(page.locator(STAR_BADGE)).toHaveCount(0);
@@ -70,13 +61,11 @@ test.describe('gallery: favorites', () => {
 
 		// Filtering narrows the whole browse view to the starred item. The toggle
 		// keeps one accessible name and reports its state through aria-pressed.
-		if (isMobile) await page.getByRole('button', { name: 'View options' }).click();
 		await expect(page.getByRole('button', { name: 'Favorites', exact: true })).toHaveAttribute(
 			'aria-pressed',
 			'false',
 		);
-		if (isMobile) await page.keyboard.press('Escape');
-		await toggleFavoritesFilter(page, isMobile);
+		await toggleFavoritesFilter(page);
 		await expect(page.locator(TILE)).toHaveCount(1);
 
 		// The filter is in the URL, so it survives a reload — and the reloaded page
@@ -95,7 +84,7 @@ test.describe('gallery: favorites', () => {
 		await expect(page.locator(TILE)).toHaveCount(0);
 	});
 
-	test('a drilled-in stack shows the same members its card counted', async ({ page, isMobile }) => {
+	test('a drilled-in stack shows the same members its card counted', async ({ page }) => {
 		// The drill-in is a SIXTH read (/api/media/unit-members) with its own params,
 		// and it is the one the other tests never touch: they star solos, so no stack
 		// is ever built. Worse, the case that breaks hardest needs the stack's NEWEST
@@ -129,7 +118,7 @@ test.describe('gallery: favorites', () => {
 		}
 		await page.getByRole('button', { name: 'Back to gallery' }).click();
 
-		await toggleFavoritesFilter(page, isMobile);
+		await toggleFavoritesFilter(page);
 		// The card re-forms from the starred subset only.
 		// The count of starred members is spoken in the card's own accessible name —
 		// the star badge is aria-hidden decoration, so this is the only way a screen
@@ -144,10 +133,7 @@ test.describe('gallery: favorites', () => {
 		await expect(page.locator(STAR_BADGE)).toHaveCount(2);
 	});
 
-	test('re-starring inside the filter puts the item back on the grid', async ({
-		page,
-		isMobile,
-	}) => {
+	test('re-starring inside the filter puts the item back on the grid', async ({ page }) => {
 		// The undo path. Unstarring while filtered drops the tile, which leaves the
 		// lightbox open on an item that is no longer in the grid behind it — so the
 		// star is right there to click again, and that has to restore the tile rather
@@ -158,7 +144,7 @@ test.describe('gallery: favorites', () => {
 		await expect(page.getByRole('button', { name: 'Remove from favorites' })).toBeVisible();
 		await page.getByRole('button', { name: 'Close', exact: true }).click();
 
-		await toggleFavoritesFilter(page, isMobile);
+		await toggleFavoritesFilter(page);
 		await expect(page.locator(TILE)).toHaveCount(1);
 
 		await page.locator(TILE).first().click();
@@ -175,10 +161,7 @@ test.describe('gallery: favorites', () => {
 		await expect(page.locator(STAR_BADGE)).toHaveCount(1);
 	});
 
-	test('unstarring inside a filtered search drops the row and its count', async ({
-		page,
-		isMobile,
-	}) => {
+	test('unstarring inside a filtered search drops the row and its count', async ({ page }) => {
 		// Search renders its own ranked list, not the browse feed, so the filtered
 		// browse reseed can't fix it: the row used to sit there with an empty star and
 		// a stale "N results" while the same action in browse removed the tile.
@@ -190,7 +173,7 @@ test.describe('gallery: favorites', () => {
 			await page.getByRole('button', { name: 'Close', exact: true }).click();
 		}
 
-		await toggleFavoritesFilter(page, isMobile);
+		await toggleFavoritesFilter(page);
 		await page.getByRole('button', { name: 'Search prompts' }).click();
 		await page.getByRole('searchbox', { name: 'Search prompts' }).fill('sunset');
 		await expect(page.getByText('2 results for "sunset"')).toBeVisible();
@@ -205,7 +188,7 @@ test.describe('gallery: favorites', () => {
 		await expect(page.locator(TILE)).toHaveCount(1);
 	});
 
-	test('composes with prompt search instead of replacing it', async ({ page, isMobile }) => {
+	test('composes with prompt search instead of replacing it', async ({ page }) => {
 		await page.goto('/gallery');
 		await expect(page.locator(TILE)).toHaveCount(3);
 
@@ -217,7 +200,7 @@ test.describe('gallery: favorites', () => {
 		await expect(page.getByRole('button', { name: 'Remove from favorites' })).toBeVisible();
 		await page.getByRole('button', { name: 'Close', exact: true }).click();
 
-		await toggleFavoritesFilter(page, isMobile);
+		await toggleFavoritesFilter(page);
 		await expect(page.locator(TILE)).toHaveCount(1);
 
 		// Searching inside Favorites ANDs the two: one of the two sunsets is starred.
@@ -231,7 +214,7 @@ test.describe('gallery: favorites', () => {
 
 		// Dropping the filter widens the SAME query to both sunsets — so the
 		// narrowing above was the favorite filter, not the query doing all the work.
-		await toggleFavoritesFilter(page, isMobile);
+		await toggleFavoritesFilter(page);
 		await expect(page.getByText('2 results for "sunset"')).toBeVisible();
 		await expect(page.locator(TILE)).toHaveCount(2);
 	});
