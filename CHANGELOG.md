@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.41.2
+
 ### Changed
 
 - On phones, the gallery's Favorites filter is a star button in the toolbar next to
