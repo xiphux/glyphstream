@@ -53,10 +53,11 @@ export interface ConsumeChatStreamCallbacks {
 	 *  row, which `done` / the post-turn refetch brings back. */
 	onReaction?(messageId: string, emoji: string): void;
 	onProgress?(percent: number | null, status: string | null): void;
-	/** The request is waiting for a per-endpoint concurrency slot. Fires at
-	 *  most once, before any generation events; the next real event signals
-	 *  the slot was granted. `ahead` is how many generations are in line first. */
-	onQueued?(ahead: number): void;
+	/** The request is waiting for a per-endpoint concurrency slot. Fires
+	 *  before any generation events, then again as the line drains and when an
+	 *  admin pauses or resumes the endpoint; the next real event signals the slot
+	 *  was granted. `ahead` is how many generations are in line first. */
+	onQueued?(ahead: number, paused: boolean): void;
 	/** One or more per-user MCP servers enabled for this conversation are down;
 	 *  their tools were skipped this turn. Fires at most once, near the start. */
 	onMcpUnavailable?(servers: McpUnavailableServer[]): void;
@@ -158,7 +159,7 @@ export async function consumeChatStream(
 				cb.onProgress?.(event.percent, event.status ?? null);
 				break;
 			case 'queued':
-				cb.onQueued?.(event.ahead);
+				cb.onQueued?.(event.ahead, event.paused);
 				break;
 			case 'mcp_unavailable':
 				cb.onMcpUnavailable?.(event.servers);

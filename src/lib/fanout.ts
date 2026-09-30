@@ -150,6 +150,9 @@ export interface FanoutColumn {
 	status: FanoutColumnStatus;
 	/** How many generations were ahead of this one in the endpoint's queue. */
 	queuedAhead: number;
+	/** The endpoint's queue is paused by an admin (from the `queued` event).
+	 *  Absent on recovered columns, which read as plain QUEUED. */
+	queuedPaused?: boolean;
 	/**
 	 * True from the moment a live column is created until its branch's first
 	 * SSE event — i.e. the server hasn't yet reported this branch reaching the

@@ -261,7 +261,7 @@ export function startMediaRelay(
 						// absent from both lists for a poll to catch.
 						supersedes: pending ?? undefined,
 						signal: params.abortSignal,
-						onQueued: ({ ahead }) => safeWrite({ type: 'queued', ahead }),
+						onQueued: (info) => safeWrite({ type: 'queued', ...info }),
 						onReleasing: () =>
 							safeWrite({ type: 'progress', percent: null, status: 'Freeing GPU memory…' }),
 					});

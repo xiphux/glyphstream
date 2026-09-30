@@ -1,5 +1,7 @@
 <!--
-	Read-only endpoint health + activity view (admin only).
+	Endpoint health + activity view (admin only). Endpoints themselves are
+	configured in `config.toml`; the one thing this page changes is whether a
+	resource group's queue is paused.
 
 	Answers the operator questions that `config.toml` can't: is each endpoint
 	reachable, how many models does it advertise, is it generating right now and
@@ -26,6 +28,8 @@
 		CircleHelp,
 		CircleSlash,
 		Loader2,
+		Pause,
+		Play,
 		RefreshCw,
 	} from '@lucide/svelte';
 	import { SvelteSet } from 'svelte/reactivity';
@@ -69,6 +73,8 @@
 	// Both the handler guard and the `disabled` binding read this — changing only
 	// the binding would leave the other buttons enabled but silently inert.
 	const rechecking = new SvelteSet<string>();
+	// Keyed by resource group, since that is what a pause acts on.
+	const pausing = new SvelteSet<string>();
 
 	// Ticks once a second so elapsed times advance between the 3s polls.
 	let nowMs = $state(Date.now());
@@ -221,6 +227,32 @@
 		}
 	}
 
+	/**
+	 * Pause or resume a group's queue. Addressed through one of its endpoints
+	 * because that's what the route takes; the server resolves the group. Unlike
+	 * Recheck this has no upstream call behind it, so no client deadline — it is
+	 * one row written and a flag flipped.
+	 */
+	async function setPaused(group: EndpointGroupStatus, pause: boolean) {
+		if (pausing.has(group.resourceGroup)) return;
+		pausing.add(group.resourceGroup);
+		try {
+			const id = encodeURIComponent(group.endpoints[0].id);
+			const res = await fetch(`/api/admin/endpoints/${id}/pause`, {
+				method: pause ? 'PUT' : 'DELETE',
+			});
+			if (!res.ok) {
+				toast.error(await errorMessageFromResponse(res));
+				return;
+			}
+			applySnapshot((await res.json()) as EndpointsStatusResponse);
+		} catch {
+			toast.error(pause ? 'Could not pause the queue' : 'Could not resume the queue');
+		} finally {
+			pausing.delete(group.resourceGroup);
+		}
+	}
+
 	/** Seconds since a server-stamped instant, floored at zero. */
 	function elapsed(since: number): number {
 		return Math.max(0, Math.round((nowMs - skewMs - since) / 1000));
@@ -352,7 +384,8 @@
 <SettingsPage title="Endpoints">
 	{#snippet description()}
 		Health and live activity for the endpoints in <code class="font-mono">config.toml</code>.
-		Read-only — endpoints are configured in that file and picked up on restart.
+		Endpoints are configured in that file and picked up on restart. Pause a queue before restarting
+		the backend behind it, so waiting generations hold their place instead of failing.
 	{/snippet}
 
 	<div class="mx-auto flex max-w-2xl flex-col gap-3">
@@ -390,12 +423,18 @@
 							<div class="text-xs font-medium uppercase tracking-wide text-fg-muted">
 								Shared resource · <span class="font-mono normal-case">{group.resourceGroup}</span>
 							</div>
-							<div class="text-xs text-fg-muted">
-								{group.active}/{capLabel(group.maxConcurrent)} slots{group.waiting > 0
-									? ` · ${group.waiting} queued`
-									: ''}{group.pending > 0 ? ` · ${group.pending} pending` : ''}
+							<div class="flex items-center gap-2 text-xs text-fg-muted">
+								<span>
+									{group.active}/{capLabel(group.maxConcurrent)} slots{group.waiting > 0
+										? ` · ${group.waiting} queued`
+										: ''}{group.pending > 0 ? ` · ${group.pending} pending` : ''}
+								</span>
+								{@render pauseButton(group)}
 							</div>
 						</header>
+						{#if group.paused}
+							<div class="mb-2">{@render pausedNotice(group)}</div>
+						{/if}
 						{#if group.evicting}
 							<div
 								class="mb-2 flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs alert-warning"
@@ -457,8 +496,15 @@
 						aria-hidden="true"
 					/>
 				</button>
+				<!-- A shared group's control lives on the group header: the pause is
+				     the group's, and a button per member would suggest otherwise. -->
+				{#if !isSharedGroup(group)}{@render pauseButton(group)}{/if}
 			</div>
 		</header>
+
+		{#if group.paused && !isSharedGroup(group)}
+			<div class="mt-3">{@render pausedNotice(group)}</div>
+		{/if}
 
 		{#if ep.error}
 			<div
@@ -601,4 +647,42 @@
 			</span>
 		</div>
 	</section>
+{/snippet}
+
+{#snippet pauseButton(group: EndpointGroupStatus)}
+	<button
+		type="button"
+		onclick={() => void setPaused(group, !group.paused)}
+		disabled={pausing.has(group.resourceGroup) || lostSession}
+		title={group.paused
+			? 'Resume granting queued work'
+			: 'Let current work finish, then hold the queue'}
+		class="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs transition hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50"
+	>
+		{#if group.paused}
+			<Play size={12} strokeWidth={2.25} aria-hidden="true" />
+			<span>Resume</span>
+		{:else}
+			<Pause size={12} strokeWidth={2.25} aria-hidden="true" />
+			<span>Pause</span>
+		{/if}
+	</button>
+{/snippet}
+
+{#snippet pausedNotice(group: EndpointGroupStatus)}
+	<!-- Worded by what is still running, because that is what the operator is
+	     waiting on before it's safe to restart the backend. -->
+	<div class="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs alert-warning">
+		<Pause size={13} strokeWidth={2.25} class="shrink-0" aria-hidden="true" />
+		<span>
+			{#if group.active > 0}
+				Queue paused — waiting for {group.active} running generation{group.active === 1 ? '' : 's'} to
+				finish. Nothing new will start until resumed.
+			{:else}
+				Queue paused — nothing is running, so it's safe to restart the backend. {group.waiting > 0
+					? `${group.waiting} waiting until resumed.`
+					: 'New work will wait until resumed.'}
+			{/if}
+		</span>
+	</div>
 {/snippet}

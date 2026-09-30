@@ -33,7 +33,7 @@ import type {
 } from '$lib/types/api';
 import { MODEL_KINDS } from '$lib/types/api';
 import { ConfigError, type LoadedEndpoint } from './config';
-import { getResourceGroupSnapshot, type SlotSnapshot } from './concurrency';
+import { getResourceGroupSnapshot, isResourceGroupPaused, type SlotSnapshot } from './concurrency';
 import { getModelCacheEntry } from './list-models';
 import { parseModelId } from './model-id';
 import { listEndpoints } from './registry';
@@ -222,6 +222,10 @@ export function getEndpointsStatus(): EndpointsStatusResponse {
 			// admit on, and a second source for it is a second thing to drift.
 			pending: groupPending.length,
 			evicting: snapshot?.evicting ?? false,
+			// Asked of the gate module rather than the snapshot alone: a pause is
+			// persisted, so a group nothing has reached since a restart is paused
+			// with no gate to say so.
+			paused: isResourceGroupPaused(resourceGroup),
 			lastHolderId: snapshot?.lastHolderId ?? null,
 			endpoints: members.map((ep) => buildEndpoint(ep, groupHolders, groupQueued, groupPending)),
 		});

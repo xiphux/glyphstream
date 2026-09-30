@@ -83,8 +83,8 @@ Two guardrails are enforced by the API, not just hidden in the UI:
 
 ## Endpoint health
 
-**Settings → Endpoints** is a read-only diagnostic view of the backends in
-[`config.toml`](configuration.md). It answers the questions the config file
+**Settings → Endpoints** is a diagnostic view of the backends in
+[`config.toml`](configuration.md), plus one control: pausing a queue (below). It answers the questions the config file
 can't:
 
 - **Reachable / Degraded / Unreachable**, and how many models each endpoint
@@ -127,6 +127,35 @@ or navigating — and refreshes the shared model cache if it has passed its
 at most once a minute and only when something actually invalidates; nothing
 re-probes on a timer, and a tab genuinely left untouched produces none. That is
 the same cache every other page shares, not traffic this view invents.
+
+### Pausing a queue
+
+**Pause** holds an endpoint's queue so you can restart the backend behind it —
+upgrading ComfyUI, say — without losing the line in front of it. Without it, a
+restart fails the running generation, and every queued one then gets the slot
+in turn, hits the dead backend and fails too, one after another.
+
+While paused:
+
+- whatever is **already generating finishes** normally;
+- **nothing new starts** — neither the next queued request nor a brand-new one
+  arriving on an idle endpoint;
+- queued requests **keep their place**, and show as _Paused_ instead of
+  _Queued_ in the chat. **Stop** still removes one from the line.
+
+The banner says when nothing is running any more, which is when it's safe to
+restart the backend. **Resume** carries on in the original order.
+
+A pause applies to the endpoint's whole `resource_group` — members of a group
+share one queue — and it applies to _all_ work on it, not just images: a paused
+LLM endpoint holds chat turns, titles and memory work too.
+
+The pause is **saved in the database**, so it survives restarting GlyphStream
+itself: an endpoint paused before a redeploy is still paused when the new
+container starts, and stays that way until you resume it. What does _not_
+survive a GlyphStream restart is the queue — queued requests live in the server
+process, so recreating the GlyphStream container still drops them. Pause, let
+the queue drain, then restart.
 
 Editing endpoints from this page is not supported: they live in `config.toml`
 and are read at startup. See [Configuration](configuration.md#endpoints).

@@ -9,6 +9,12 @@ arrived.
 
 ## Unreleased
 
+### Added
+
+- Admins can pause an endpoint's queue from **Settings → Endpoints**: the current
+  generation finishes, queued ones wait (shown as _Paused_) instead of failing
+  against a backend that's restarting, and the pause survives a GlyphStream restart.
+
 ## v0.41.2
 
 ### Changed

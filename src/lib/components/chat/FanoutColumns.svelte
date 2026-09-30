@@ -211,7 +211,7 @@
 								<span
 									class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-fg-secondary"
 								>
-									Queued
+									{c.queuedPaused ? 'Paused' : 'Queued'}
 								</span>
 								{#if c.queuedAhead > 0}<span>{c.queuedAhead} ahead</span>{/if}
 							</p>

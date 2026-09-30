@@ -1333,13 +1333,17 @@ export interface StreamErrorEvent {
  * Sent before any generation events when the request had to wait for a
  * per-endpoint concurrency slot (the endpoint's `max_concurrent` was full).
  * The in-flight bubble shows a "Queued…" state until the first real event
- * (`start` / `text` / `progress`) arrives once the slot is granted. May be
- * emitted once; absent entirely when the slot was free immediately.
+ * (`start` / `text` / `progress`) arrives once the slot is granted. Re-emitted
+ * as the line drains and on pause/resume; absent entirely when the slot was
+ * free immediately.
  */
 export interface StreamQueuedEvent {
 	type: 'queued';
 	/** How many other queued generations are ahead of this one. */
 	ahead: number;
+	/** The endpoint's queue is paused by an admin — the line won't move until
+	 *  it's resumed. Re-sent (with the current `ahead`) on pause and resume. */
+	paused: boolean;
 }
 
 // --- tool-call streaming events -----------------------------------------
@@ -1980,6 +1984,9 @@ export interface EndpointGroupStatus {
 	/** A handover eviction is running: the group's slot is taken but its new
 	 *  holder is waiting for the previous one to unload. */
 	evicting: boolean;
+	/** An admin paused the group: work already holding a slot finishes, nothing
+	 *  new is granted until resumed. Persisted, so it survives a restart. */
+	paused: boolean;
 	/** The member granted the group's slot most recently — on a shared GPU, the
 	 *  endpoint whose model is presumed still resident. Null before any traffic. */
 	lastHolderId: string | null;

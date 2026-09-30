@@ -121,7 +121,16 @@ interface Waiter {
 	/** Re-report this waiter's current position as the line drains, so the
 	 *  client's "N ahead" counts down (not just at enqueue). Same channel as the
 	 *  initial onQueued. */
-	notifyAhead?: (ahead: number) => void;
+	notifyAhead?: (info: QueuedInfo) => void;
+}
+
+/** What a queued caller is told about its place in line. */
+export interface QueuedInfo {
+	/** How many waiters are ahead of it. */
+	ahead: number;
+	/** True while an admin has the group paused — see `setResourceGroupPaused`.
+	 *  Distinct from a long line: nothing ahead will move until someone acts. */
+	paused: boolean;
 }
 
 interface Gate {
@@ -176,6 +185,36 @@ interface Gate {
 	 * the happy path (see `supersedes`).
 	 */
 	pending: Set<WorkRecord>;
+	/**
+	 * An admin has paused this group: grant nothing new, let what already holds a
+	 * slot finish. Both grant paths check it, exactly as they check `evicting`.
+	 *
+	 * The reason this exists is what happens WITHOUT it when the backend behind a
+	 * cap-1 group is restarted: the running generation fails, its release grants
+	 * the next waiter, which hits the dead upstream and fails in turn, and the
+	 * whole line drains into error rows in seconds. A pause holds the line
+	 * instead — waiters keep their place, their "N ahead", and their open
+	 * streams — until the backend is back.
+	 */
+	paused: boolean;
+}
+
+/**
+ * Where a NEW gate learns whether its group starts paused.
+ *
+ * Injected rather than imported because the answer lives in the database (a
+ * pause must survive the process being recreated — that is half of what it is
+ * for), and this module is exercised by pure-logic tests with no database. The
+ * server entry installs the persisted source at boot; without one, nothing
+ * starts paused, which is exactly the pre-pause behaviour.
+ *
+ * Consulted once per gate, at creation. After that the gate's own flag is the
+ * authority and `setResourceGroupPaused` keeps it in step with the store.
+ */
+let pausedSource: (resourceGroup: string) => boolean = () => false;
+
+export function setPausedResourceGroupSource(source: (resourceGroup: string) => boolean): void {
+	pausedSource = source;
 }
 
 const gates = new Map<string, Gate>();
@@ -195,6 +234,7 @@ function getGate(resourceGroup: string, max: number): Gate {
 		evicting: false,
 		holders: new Set(),
 		pending: new Set(),
+		paused: pausedSource(resourceGroup),
 	};
 	gates.set(resourceGroup, gate);
 	return gate;
@@ -272,9 +312,9 @@ export interface AcquireOptions {
 	/** Fires when the request had to queue (capacity was full): once
 	 *  synchronously with the initial count ahead, then again with the updated
 	 *  count each time the line drains in front of it — so the `queued` SSE event
-	 *  it emits lets the client count "N ahead" down. Not called on the
-	 *  immediate-grant fast path. */
-	onQueued?: (info: { ahead: number }) => void;
+	 *  it emits lets the client count "N ahead" down — and again whenever the
+	 *  group is paused or resumed. Not called on the immediate-grant fast path. */
+	onQueued?: (info: QueuedInfo) => void;
 	/**
 	 * The slot is ours, but the group's previous holder is being asked to free
 	 * the shared resource first — see `takeSlot`. Fires at most once, on a
@@ -435,7 +475,7 @@ function makeSlot(gate: Gate, record: WorkRecord): EndpointSlot {
 
 function pump(gate: Gate): void {
 	let granted = 0;
-	while (gate.active < gate.max && !gate.evicting && gate.waiters.length > 0) {
+	while (gate.active < gate.max && !gate.evicting && !gate.paused && gate.waiters.length > 0) {
 		const waiter = gate.waiters.shift()!;
 		if (waiter.signal && waiter.onAbort) {
 			waiter.signal.removeEventListener('abort', waiter.onAbort);
@@ -452,11 +492,12 @@ function pump(gate: Gate): void {
 
 /** Re-emit each still-queued waiter's current position (its index = how many are
  *  ahead of it). Called whenever the line shifts — a grant pumps the front off,
- *  or an abort splices one out — so a waiting caller's "N ahead" stays live. */
+ *  or an abort splices one out — so a waiting caller's "N ahead" stays live, and
+ *  on a pause or resume, which changes what the line means without moving it. */
 function notifyWaiterPositions(gate: Gate): void {
 	for (let i = 0; i < gate.waiters.length; i++) {
 		try {
-			gate.waiters[i].notifyAhead?.(i);
+			gate.waiters[i].notifyAhead?.({ ahead: i, paused: gate.paused });
 		} catch {
 			// Caller-supplied, and `pump` runs from the eviction's finally — where a
 			// throw would escape on the SUCCESS path, with the slot counted and no
@@ -518,9 +559,10 @@ function acquire(endpoint: LoadedEndpoint, opts: AcquireOptions): Promise<Endpoi
 
 	if (signal?.aborted) return Promise.reject(abortError());
 
-	// Fast path: capacity available (always true for an effectively-unlimited max)
-	// and no eviction in flight.
-	if (gate.active < gate.max && !gate.evicting) {
+	// Fast path: capacity available (always true for an effectively-unlimited max),
+	// no eviction in flight, and not paused — a paused group queues even when
+	// idle, which is the point: its backend may be down for a restart.
+	if (gate.active < gate.max && !gate.evicting && !gate.paused) {
 		// Increment BEFORE any await in `takeSlot`: the slot is ours from this
 		// moment. At a cap of 1 that alone makes a concurrent acquire queue; above
 		// 1 it doesn't, which is what `gate.evicting` is for.
@@ -530,7 +572,7 @@ function acquire(endpoint: LoadedEndpoint, opts: AcquireOptions): Promise<Endpoi
 
 	// Slow path: enqueue. Report how many are already waiting before pushing.
 	const ahead = gate.waiters.length;
-	onQueued?.({ ahead });
+	onQueued?.({ ahead, paused: gate.paused });
 
 	return new Promise<EndpointSlot>((resolve, reject) => {
 		const waiter: Waiter = {
@@ -545,7 +587,7 @@ function acquire(endpoint: LoadedEndpoint, opts: AcquireOptions): Promise<Endpoi
 			record: workRecord(endpoint.id, work, 'queued'),
 			// Re-emit position as the line drains so the client's "N ahead" counts
 			// down. Routes through the same onQueued → `queued` SSE channel.
-			notifyAhead: onQueued ? (ahead) => onQueued({ ahead }) : undefined,
+			notifyAhead: onQueued,
 		};
 		if (signal) {
 			const onAbort = () => {
@@ -562,6 +604,34 @@ function acquire(endpoint: LoadedEndpoint, opts: AcquireOptions): Promise<Endpoi
 		}
 		gate.waiters.push(waiter);
 	});
+}
+
+/**
+ * Pause or resume `endpoint`'s resource group — the admin view's toggle.
+ *
+ * Group-wide because the gate is: on a shared GPU the members ARE one queue,
+ * and pausing one of them while the other keeps granting would still put work
+ * on the box being restarted. The caller persists the flag (see
+ * `endpoints/pause.ts`); this only moves the live gate.
+ *
+ * Pausing never touches a slot already held — a generation in progress runs to
+ * completion — and never reorders or drops a waiter. Resuming pumps, since a
+ * group paused while idle may have waiters that were admissible all along.
+ * Either way every waiter is re-notified so an open stream flips between
+ * "queued" and "paused" without waiting for the line to move.
+ */
+export function setResourceGroupPaused(endpoint: LoadedEndpoint, paused: boolean): void {
+	const gate = getGate(endpoint.resourceGroup, endpoint.resourceGroupMaxConcurrent);
+	if (gate.paused === paused) return;
+	gate.paused = paused;
+	notifyWaiterPositions(gate);
+	if (!paused) pump(gate);
+}
+
+/** Whether a group is paused, including one no request has reached yet (and so
+ *  has no gate). */
+export function isResourceGroupPaused(resourceGroup: string): boolean {
+	return gates.get(resourceGroup)?.paused ?? pausedSource(resourceGroup);
 }
 
 /** Live counts for a resource group — the test seam for the queue semantics.
@@ -601,6 +671,7 @@ export interface ResourceGroupSnapshot {
 	/** The group's gate capacity, or null when effectively unlimited. */
 	max: number | null;
 	evicting: boolean;
+	paused: boolean;
 	/** Which member was granted the group's slot most recently — on a shared GPU,
 	 *  the endpoint whose model is presumed still resident. */
 	lastHolderId: string | null;
@@ -654,6 +725,7 @@ export function getResourceGroupSnapshot(resourceGroup: string): ResourceGroupSn
 		/** null = effectively unlimited. */
 		max: Number.isFinite(gate.max) ? gate.max : null,
 		evicting: gate.evicting,
+		paused: gate.paused,
 		lastHolderId: gate.lastHolder?.id ?? null,
 		holders: [...gate.holders].map(cloneRecord),
 		// In queue order, so the view's list reads the way the line will drain.
@@ -680,4 +752,5 @@ export function resetEndpointGatesForTests(): void {
 		gate.pending.clear();
 	}
 	gates.clear();
+	pausedSource = () => false;
 }

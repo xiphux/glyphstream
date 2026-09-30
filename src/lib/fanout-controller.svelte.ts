@@ -711,13 +711,14 @@ export class FanoutController {
 			if (!res.body) throw new Error('Server returned no body');
 			await consumeChatStream(res.body, {
 				shouldContinue: () => this.#deps.convId() === turnConvId,
-				onQueued(ahead) {
+				onQueued(ahead, paused) {
 					// First event from this branch (it queued at the gate) — release
 					// the next branch's dispatch. `ahead` then counts down via the
 					// gate's re-emitted `queued` events as the line drains.
 					markEnqueued();
 					col.status = 'queued';
 					col.queuedAhead = ahead;
+					col.queuedPaused = paused;
 					// Past the (pre-slot) enhancement phase — drop its transient label.
 					col.statusLabel = null;
 				},

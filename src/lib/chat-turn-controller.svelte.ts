@@ -157,7 +157,7 @@ export class ChatTurnController {
 	inFlightStatus = $state<string | null>(null);
 	/** Set when the server emits a `queued` event (the endpoint's max_concurrent
 	 *  was full); drives the "Queued…" placeholder in the in-flight bubble. */
-	inFlightQueued = $state<{ ahead: number } | null>(null);
+	inFlightQueued = $state<{ ahead: number; paused?: boolean } | null>(null);
 	/**
 	 * When this turn ACQUIRED its endpoint slot — set from `start`, which both
 	 * relays emit strictly after `acquireEndpointSlot` resolves, and as a
@@ -345,10 +345,10 @@ export class ChatTurnController {
 			// Abandoned mid-stream by a conversation switch — stop touching shared
 			// render state; it belongs to a different conversation now.
 			shouldContinue: () => this.#deps.convId() === ctx.turnConvId,
-			onQueued: (ahead) => {
+			onQueued: (ahead, paused) => {
 				// Waiting on a per-endpoint concurrency slot. Show "Queued…" until
 				// the slot is granted and the first real event lands.
-				this.inFlightQueued = { ahead };
+				this.inFlightQueued = { ahead, paused };
 				// Past the (pre-slot) enhancement phase — drop its transient status.
 				this.inFlightStatus = null;
 			},

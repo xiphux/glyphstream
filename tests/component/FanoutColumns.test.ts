@@ -33,6 +33,7 @@ function col(overrides: Partial<FanoutColumn>): FanoutColumn {
 		segments: overrides.segments ?? [],
 		status: overrides.status ?? 'streaming',
 		queuedAhead: overrides.queuedAhead ?? 0,
+		queuedPaused: overrides.queuedPaused,
 		dispatching: overrides.dispatching ?? false,
 		progress: overrides.progress ?? null,
 		statusLabel: overrides.statusLabel ?? null,
@@ -238,6 +239,19 @@ describe('FanoutColumns — media (keep-many) mode', () => {
 		});
 		expect(screen.getByText('Queued')).toBeInTheDocument();
 		expect(screen.getByText('2 ahead')).toBeInTheDocument();
+	});
+
+	it('shows PAUSED in place of QUEUED while the endpoint queue is paused', () => {
+		render(FanoutColumns, {
+			props: {
+				columns: [col({ branchId: 'p', status: 'queued', queuedAhead: 1, queuedPaused: true })],
+				onPick: vi.fn(),
+				onImageClick: vi.fn(),
+			},
+		});
+		expect(screen.getByText('Paused')).toBeInTheDocument();
+		expect(screen.queryByText('Queued')).toBeNull();
+		expect(screen.getByText('1 ahead')).toBeInTheDocument();
 	});
 
 	it('shows "Starting…", not QUEUED, for a branch that has not reached the gate yet', () => {

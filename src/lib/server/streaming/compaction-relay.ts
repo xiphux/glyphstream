@@ -45,7 +45,7 @@ export function streamCompaction(args: StreamCompactionArgs): ReadableStream<Uin
 					slot = await acquireEndpointSlot(plan.endpoint, {
 						work: { purpose: 'compaction', modelId: plan.upstreamId },
 						signal: abortSignal,
-						onQueued: ({ ahead }) => write({ type: 'queued', ahead }),
+						onQueued: (info) => write({ type: 'queued', ...info }),
 					});
 				} catch (e) {
 					write({

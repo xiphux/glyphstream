@@ -91,7 +91,7 @@ describe('acquireEndpointSlot', () => {
 
 		await flush();
 		expect(granted).toBe(false);
-		expect(onQueued).toHaveBeenCalledWith({ ahead: 0 });
+		expect(onQueued).toHaveBeenCalledWith({ ahead: 0, paused: false });
 		expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 1 });
 
 		a.release();
@@ -124,8 +124,8 @@ describe('acquireEndpointSlot', () => {
 
 		await flush();
 		// Second waiter sees one ahead of it.
-		expect(queued1).toHaveBeenCalledWith({ ahead: 0 });
-		expect(queued2).toHaveBeenCalledWith({ ahead: 1 });
+		expect(queued1).toHaveBeenCalledWith({ ahead: 0, paused: false });
+		expect(queued2).toHaveBeenCalledWith({ ahead: 1, paused: false });
 		expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 2 });
 
 		a.release();
@@ -150,22 +150,22 @@ describe('acquireEndpointSlot', () => {
 		await flush();
 
 		// Initial positions at enqueue.
-		expect(q0).toHaveBeenLastCalledWith({ ahead: 0 });
-		expect(q1).toHaveBeenLastCalledWith({ ahead: 1 });
-		expect(q2).toHaveBeenLastCalledWith({ ahead: 2 });
+		expect(q0).toHaveBeenLastCalledWith({ ahead: 0, paused: false });
+		expect(q1).toHaveBeenLastCalledWith({ ahead: 1, paused: false });
+		expect(q2).toHaveBeenLastCalledWith({ ahead: 2, paused: false });
 
 		// First generation finishes → q0 is granted; q1 and q2 each move up one.
 		active.release();
 		const s0 = await p0;
-		expect(q1).toHaveBeenLastCalledWith({ ahead: 0 });
-		expect(q2).toHaveBeenLastCalledWith({ ahead: 1 });
+		expect(q1).toHaveBeenLastCalledWith({ ahead: 0, paused: false });
+		expect(q2).toHaveBeenLastCalledWith({ ahead: 1, paused: false });
 		// The granted waiter is no longer re-notified.
 		expect(q0).toHaveBeenCalledTimes(1);
 
 		// Next finishes → q1 granted, q2 reaches the front (0 ahead).
 		s0.release();
 		const s1 = await p1;
-		expect(q2).toHaveBeenLastCalledWith({ ahead: 0 });
+		expect(q2).toHaveBeenLastCalledWith({ ahead: 0, paused: false });
 
 		s1.release();
 		(await p2).release();
@@ -199,12 +199,12 @@ describe('acquireEndpointSlot', () => {
 		const p1 = acquire(ep('ep', 1), { signal: c1.signal, onQueued: q1 });
 		const p2 = acquire(ep('ep', 1), { onQueued: q2 });
 		await flush();
-		expect(q2).toHaveBeenLastCalledWith({ ahead: 2 });
+		expect(q2).toHaveBeenLastCalledWith({ ahead: 2, paused: false });
 
 		// Abort the middle waiter — the one behind it moves up to 1 ahead.
 		c1.abort();
 		await expect(p1).rejects.toMatchObject({ name: 'AbortError' });
-		expect(q2).toHaveBeenLastCalledWith({ ahead: 1 });
+		expect(q2).toHaveBeenLastCalledWith({ ahead: 1, paused: false });
 
 		active.release();
 		const s0 = await p0;
@@ -381,10 +381,10 @@ describe('resource groups', () => {
 		const second = acquire(ep('llama', 1, 'gpu0'), { onQueued: secondQueued });
 		await flush();
 
-		expect(firstQueued).toHaveBeenCalledWith({ ahead: 0 });
+		expect(firstQueued).toHaveBeenCalledWith({ ahead: 0, paused: false });
 		// The one it's behind is on the OTHER endpoint — the number only comes
 		// out right because both share the group's single line.
-		expect(secondQueued).toHaveBeenCalledWith({ ahead: 1 });
+		expect(secondQueued).toHaveBeenCalledWith({ ahead: 1, paused: false });
 
 		held.release();
 		(await first).release();

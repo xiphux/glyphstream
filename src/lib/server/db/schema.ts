@@ -1071,3 +1071,21 @@ export const artifactVersions = sqliteTable(
 		index('idx_artifact_versions_created_by_message').on(t.createdByMessageId),
 	],
 );
+
+// --- endpoint operations ---------------------------------------------------
+
+// Resource groups an admin has PAUSED from `/settings/endpoints`: the gate lets
+// the work already holding a slot finish and grants nothing new until resumed,
+// so the backend behind it can be restarted without the queue draining into
+// failures against a dead upstream. A row's presence is the whole state.
+//
+// Persisted rather than held on the in-memory gate so a pause survives the
+// GlyphStream process being recreated too — an operator upgrading the whole
+// stack must not have the endpoint come back unpaused before its backend does.
+// Keyed by the group NAME from config.toml (an endpoint's own id when it names
+// no `resource_group`), so a row for a group that no longer exists is inert.
+// Deliberately not user-owned: this is operator state, like config.toml.
+export const pausedResourceGroups = sqliteTable('paused_resource_groups', {
+	resourceGroup: text('resource_group').primaryKey(),
+	pausedAt: integer('paused_at').notNull(),
+});

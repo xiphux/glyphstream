@@ -31,8 +31,9 @@
 		progress: number | null;
 		/** Non-null while waiting for a per-endpoint concurrency slot. Shows a
 		 *  "Queued…" placeholder instead of the generating verb until the slot
-		 *  is granted. `ahead` is how many generations are in line first. */
-		queued?: { ahead: number } | null;
+		 *  is granted. `ahead` is how many generations are in line first;
+		 *  `paused` means an admin has paused the endpoint's queue. */
+		queued?: { ahead: number; paused?: boolean } | null;
 		elapsedSeconds: number;
 		onImageClick: (mediaId: string) => void;
 		openingLightboxFor?: string | null;
@@ -126,7 +127,7 @@
 		     progress/elapsed indicators. Once any text, tool_call, or canvas
 		     card lands, RenderBlocks (+ the cards above) takes over. -->
 		<div class="mt-1 flex items-center gap-2 text-fg-muted">
-			<span>{queued ? 'Queued' : label}</span>
+			<span>{queued ? (queued.paused ? 'Paused' : 'Queued') : label}</span>
 			<span class="inline-flex gap-1">
 				<span class="animate-pulse">·</span>
 				<span class="animate-pulse [animation-delay:120ms]">·</span>

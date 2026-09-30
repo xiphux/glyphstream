@@ -35,6 +35,7 @@ import {
 } from '$lib/server/memory/conversation-summary';
 import { bootstrapMcp } from '$lib/server/mcp/bootstrap';
 import { listAllModels } from '$lib/server/endpoints/list-models';
+import { installPersistedPauses } from '$lib/server/endpoints/pause';
 import { stopMcp } from '$lib/server/mcp/registry';
 import { stopPool } from '$lib/server/code-interpreter/pool';
 import { maxLoopLagSince, startLoopLagSampler } from '$lib/server/util/loop-lag';
@@ -67,6 +68,11 @@ let adminBootstrapChecked = false;
 // reason to re-read on every request, and a deploy that flips it
 // restarts the process anyway.
 const SHOULD_COMPRESS_DYNAMIC = compressDynamicResponses();
+
+// Endpoint pauses live in the database so they survive a restart; point the
+// concurrency gate at them before anything can acquire a slot. Opens nothing
+// yet — the set is read on the first gate created.
+installPersistedPauses();
 
 // Start the media purge sweeper at module load — runs once per Node process.
 // Using top-level rather than the first-request handler so the sweep clock

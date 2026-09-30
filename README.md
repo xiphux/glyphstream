@@ -240,7 +240,9 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   generating right now (including background work like title generation and
   memory consolidation), and how deep the queue behind it is — so a shared-GPU
   box that looks stalled can be told from one that's simply busy
-  ([guide](docs/multi-user.md#endpoint-health)).
+  ([guide](docs/multi-user.md#endpoint-health)). An admin can **pause** an
+  endpoint's queue to restart its backend without failing the generations
+  waiting in line ([guide](docs/multi-user.md#pausing-a-queue)).
 - **Installable PWA** with iOS-aware safe areas and **push notifications**
   when long generations finish — a count on the app icon for threads waiting
   on you, plus a sidebar dot marking any conversation still generating (filled

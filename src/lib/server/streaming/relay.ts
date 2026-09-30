@@ -296,7 +296,7 @@ export async function startStreamingRelay(
 				slot = await acquireEndpointSlot(params.endpoint, {
 					work: { purpose: 'chat', modelId: params.storedModelId },
 					signal: params.abortSignal,
-					onQueued: ({ ahead }) => write({ type: 'queued', ahead }),
+					onQueued: (info) => write({ type: 'queued', ...info }),
 					// Not queued — the slot is ours; we're waiting on the endpoint that
 					// shares this GPU to unload. Reads as a hang otherwise.
 					onReleasing: () =>
