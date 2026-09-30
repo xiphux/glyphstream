@@ -2212,7 +2212,9 @@
 				if (releaseEntryHold === release) releaseEntryHold = null;
 			};
 			const onKey = (e: KeyboardEvent) => {
-				if (!ENTRY_HOLD_SCROLL_KEYS.has(e.key)) return;
+				// A menu or listbox preventDefaults the arrows it consumes; a key that
+				// really scrolls the page is never prevented.
+				if (e.defaultPrevented || !ENTRY_HOLD_SCROLL_KEYS.has(e.key)) return;
 				const t = e.target;
 				if (
 					t instanceof HTMLElement &&
