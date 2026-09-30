@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { drizzle } from 'drizzle-orm/node-sqlite';
 import { migrate } from 'drizzle-orm/node-sqlite/migrator';
-import { test, expect, type APIRequestContext } from './fixtures/test';
+import { test, expect, SERVER_ERRORS_LOG, type APIRequestContext } from './fixtures/test';
 import { selectModel } from './helpers';
 
 /**
@@ -85,23 +85,38 @@ function jobCount(): number {
 	}
 }
 
-async function startServer(port: number): Promise<ChildProcess> {
-	const server = spawn(process.execPath, ['build/index.js'], {
-		env: {
-			...process.env,
-			HOST: '127.0.0.1',
-			PORT: String(port),
-			DB_PATH,
-			MEDIA_DIR: resolve(ROOT, 'media'),
-			AUTH_SECRET: 'e2e-restart-secret-not-used-in-prod-32chars',
-			GITHUB_OAUTH_CLIENT_ID: 'e2e-stub',
-			GITHUB_OAUTH_CLIENT_SECRET: 'e2e-stub',
-			EXTERNAL_BASE_URL: `http://localhost:${port}`,
-			CONFIG_PATH: configPath(),
-			LOG_LEVEL: 'warn',
+/**
+ * Boot the production build on `port`. Loaded with the same error capture as
+ * the suite's own server, so a `console.error` or uncaught exception in this
+ * process — a resumed job failing, say — fails the test through the fixture
+ * rather than scrolling past unseen. Everything it prints is also appended to
+ * `output`, for the report if the test fails.
+ */
+async function startServer(port: number, output: string[]): Promise<ChildProcess> {
+	const server = spawn(
+		process.execPath,
+		['--import', './tests/e2e/fixtures/capture-server-errors.mjs', 'build/index.js'],
+		{
+			env: {
+				...process.env,
+				HOST: '127.0.0.1',
+				PORT: String(port),
+				DB_PATH,
+				MEDIA_DIR: resolve(ROOT, 'media'),
+				AUTH_SECRET: 'e2e-restart-secret-not-used-in-prod-32chars',
+				GITHUB_OAUTH_CLIENT_ID: 'e2e-stub',
+				GITHUB_OAUTH_CLIENT_SECRET: 'e2e-stub',
+				EXTERNAL_BASE_URL: `http://localhost:${port}`,
+				CONFIG_PATH: configPath(),
+				LOG_LEVEL: 'warn',
+				E2E_SERVER_ERRORS_LOG: SERVER_ERRORS_LOG,
+			},
+			stdio: ['ignore', 'pipe', 'pipe'],
 		},
-		stdio: 'ignore',
-	});
+	);
+	const record = (chunk: Buffer) => output.push(chunk.toString());
+	server.stdout?.on('data', record);
+	server.stderr?.on('data', record);
 	for (let i = 0; i < 100; i++) {
 		try {
 			if ((await fetch(`http://127.0.0.1:${port}/api/health`)).ok) return server;
@@ -144,7 +159,8 @@ test('a queued generation survives the server being killed and restarted', async
 	const token = seed();
 	const port = await freePort();
 	const base = `http://localhost:${port}`;
-	let server = await startServer(port);
+	const output: string[] = [];
+	let server = await startServer(port, output);
 	const context = await browser.newContext();
 	try {
 		await context.addCookies([
@@ -165,7 +181,7 @@ test('a queued generation survives the server being killed and restarted', async
 		expect(jobCount()).toBe(1);
 
 		await crash(server);
-		server = await startServer(port);
+		server = await startServer(port, output);
 
 		// A page load after the restart sees the job back in flight — the first
 		// signed-in request resumes the queue before its own reads (this reload,
@@ -184,6 +200,12 @@ test('a queued generation survives the server being killed and restarted', async
 		});
 		expect(jobCount()).toBe(0);
 	} finally {
+		if (testInfo.status !== testInfo.expectedStatus) {
+			await testInfo.attach('restart-server-output', {
+				body: output.join('') || '(no output)',
+				contentType: 'text/plain',
+			});
+		}
 		await context.close();
 		await crash(server);
 		rmSync(ROOT, { recursive: true, force: true });
