@@ -599,6 +599,31 @@ describe('a video that was rendering on the bridge', () => {
 		});
 	});
 
+	it('treats a status timeout at reattach as a blip, not a Stop', async () => {
+		// A hung or rebooting bridge host: the request times out, and the error's
+		// message says "aborted". It must not read as the user pressing Stop.
+		const s = seed();
+		rendering(s);
+		mocks.videoStatus
+			.mockRejectedValueOnce(
+				new UpstreamError(
+					'Network error polling endpoint "bridge": The operation was aborted due to timeout',
+					null,
+					null,
+				),
+			)
+			.mockResolvedValue({ id: 'bridge-1', status: 'completed', progress: 100 });
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		resumeGenerationJobs();
+		await until(() => jobRows().length === 0, 'the video to land', 3000);
+		expect(mocks.videoCancel).not.toHaveBeenCalled();
+		expect(getSiblingAssistants(s.conv.id, s.userMessage.id)[0].parts[0]).toMatchObject({
+			type: 'video',
+		});
+		warn.mockRestore();
+	});
+
 	it('keeps polling through a blip reaching the bridge', async () => {
 		const s = seed();
 		rendering(s);

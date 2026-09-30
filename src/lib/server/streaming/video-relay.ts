@@ -237,7 +237,12 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 				if (DEBUG) console.debug(`[video-relay] reattached to job`, job);
 				params.onJobId?.(job.id);
 			} catch (e) {
-				if (isAbortError(e) || abortSignal?.aborted) {
+				// The user's own signal only. `videoStatus` takes none of it — its one
+				// abort is the request TIMEOUT, whose wrapped message reads "aborted"
+				// and would pass `isAbortError`. A bridge host that's rebooting or hung
+				// times out exactly like that, and it's the blip handled just below,
+				// not a Stop: cancelling here would DELETE a render that may be fine.
+				if (abortSignal?.aborted) {
 					await videoCancel(params.endpoint, upstreamJobId);
 					write({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
 					return null;
