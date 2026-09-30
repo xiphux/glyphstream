@@ -656,6 +656,19 @@ describe('a video that was rendering on the bridge', () => {
 		expect(mocks.videoStatus).not.toHaveBeenCalled();
 	});
 
+	it('lets go of the bridge job when the runner itself fails', async () => {
+		// Something outside the relay broke — here a corrupt checkpoint — so the
+		// row is about to be deleted with the render still going.
+		const s = seed();
+		rendering(s, { preparedJson: '{not json' });
+		const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		resumeGenerationJobs();
+		await until(() => jobRows().length === 0, 'the job to be cleaned up');
+		expect(mocks.videoCancel).toHaveBeenCalledWith(expect.anything(), 'bridge-1');
+		err.mockRestore();
+	});
+
 	it('cancels the bridge job on Stop', async () => {
 		const s = seed();
 		rendering(s);

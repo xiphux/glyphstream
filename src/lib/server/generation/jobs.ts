@@ -555,6 +555,12 @@ async function runJob(
 		// The relay turns every generation failure into an event; reaching here
 		// means something outside it broke (a DB error, a malformed row).
 		console.error(`[generation-jobs] job ${row.id} failed:`, errorMessage(e));
+		// Whatever bridge job this run held — reattached, or created here — has
+		// nobody left to collect it once the row is deleted below.
+		const endpoint = endpointFor(row);
+		if (endpoint && entry.videoJobId) {
+			void videoCancel(endpoint, entry.videoJobId).catch(() => {});
+		}
 		sink.write({ type: 'error', message: errorMessage(e) } satisfies StreamErrorEvent);
 		sink.close();
 	} finally {
