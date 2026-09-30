@@ -23,7 +23,8 @@
  * and the recovery flow picks it up.
  */
 
-import { linkMessageMedia } from '../db/queries/media';
+import { hardDeleteMediaForUser, linkMessageMedia } from '../db/queries/media';
+import { unlinkMediaFiles } from '../media/disk-store';
 import { appendMessage } from '../db/queries/messages';
 import {
 	acquireEndpointSlot,
@@ -450,6 +451,20 @@ export async function runMediaRelay(
 				},
 			});
 		} catch (e) {
+			if (e instanceof GenerationDiscardedError) {
+				// The result has nowhere to land, but `generate` already stored it —
+				// and generated media is never reaped by the purger, so an
+				// unreferenced row would sit in the library (and its file on disk)
+				// for good. Its link was rolled back with the append, so nothing
+				// else references it.
+				const deleted = hardDeleteMediaForUser(produced.mediaId, params.userId);
+				if (deleted) {
+					await unlinkMediaFiles(
+						[{ id: produced.mediaId, storagePath: deleted.storagePath }],
+						'media-relay.discard',
+					);
+				}
+			}
 			safeWrite({
 				type: 'error',
 				message: e instanceof GenerationDiscardedError ? 'Cancelled' : errorMessage(e),

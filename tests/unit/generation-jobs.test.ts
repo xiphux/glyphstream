@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
 	getImageEnhancerModel: vi.fn(),
 	enhancePrompt: vi.fn(),
 	notifyFanout: vi.fn(),
+	unlinkMediaFiles: vi.fn(async () => {}),
 	endpoint: null as unknown as import('$lib/server/endpoints/config').LoadedEndpoint | undefined,
 }));
 
@@ -43,6 +44,7 @@ vi.mock('$lib/server/db/queries/media', async (orig) => ({
 	linkMessageMedia: mocks.linkMessageMedia,
 }));
 vi.mock('$lib/server/push/notify', () => ({ notifyConversationComplete: mocks.notify }));
+vi.mock('$lib/server/media/disk-store', () => ({ unlinkMediaFiles: mocks.unlinkMediaFiles }));
 vi.mock('$lib/server/messages/fanout-notify', () => ({
 	notifyFanoutCompleteIfLast: mocks.notifyFanout,
 }));
@@ -59,7 +61,8 @@ vi.mock('$lib/server/streaming/prompt-enhancer', () => ({
 
 import { createConversation, deleteConversation } from '$lib/server/db/queries/conversations';
 import { appendMessage, getSiblingAssistants } from '$lib/server/db/queries/messages';
-import { generationJobs } from '$lib/server/db/schema';
+import { generationJobs, media } from '$lib/server/db/schema';
+import { insertMedia } from '$lib/server/db/queries/media';
 import { insertGenerationJob } from '$lib/server/db/queries/generation-jobs';
 import {
 	resetEndpointGatesForTests,
@@ -110,6 +113,7 @@ beforeEach(() => {
 	mocks.getImageEnhancerModel.mockReset().mockReturnValue(null);
 	mocks.enhancePrompt.mockReset();
 	mocks.notifyFanout.mockReset();
+	mocks.unlinkMediaFiles.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -423,6 +427,43 @@ describe('a job whose anchor goes away', () => {
 		const events = await drain(stream);
 		expect(events.at(-1)).toMatchObject({ type: 'error', message: 'Cancelled' });
 		expect(getSiblingAssistants(s.conv.id, s.userMessage.id)).toEqual([]);
+	});
+
+	it('deletes the media it generated when the result is discarded', async () => {
+		const s = seed();
+		// A real media row this time, so its fate is observable.
+		mocks.persistGeneratedImage.mockImplementation(async () => {
+			return insertMedia({
+				userId: s.user.id,
+				storagePath: 'generated/out.png',
+				contentType: 'image/png',
+				byteSize: 16,
+				kind: 'image',
+				sourceEndpointId: 'bridge',
+				sourceModel: 'bridge::sdxl',
+				promptExcerpt: 'a cat',
+			}).id;
+		});
+		let release!: () => void;
+		mocks.imageGeneration.mockReturnValue(
+			new Promise((r) => {
+				release = () => r({ data: [{ url: 'http://img/out.png' }] });
+			}),
+		);
+		const stream = submitGenerationJob(job(s));
+		await until(() => jobRows()[0]?.state === 'running', 'the job to start');
+		// Deleted mid-generation: the result will have nowhere to land.
+		mocks.testDb.delete(generationJobs).run();
+		release();
+
+		const events = await drain(stream);
+		expect(events.at(-1)).toMatchObject({ type: 'error', message: 'Cancelled' });
+		const [row] = mocks.testDb.select().from(media).all();
+		expect(row.hardDeletedAt).not.toBeNull();
+		expect(mocks.unlinkMediaFiles).toHaveBeenCalledWith(
+			[{ id: row.id, storagePath: 'generated/out.png' }],
+			'media-relay.discard',
+		);
 	});
 });
 
