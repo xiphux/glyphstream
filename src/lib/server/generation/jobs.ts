@@ -44,6 +44,7 @@ import { Buffer } from 'node:buffer';
 import { generateId } from '../util/id';
 import { getEndpoint } from '../endpoints/registry';
 import { parseModelId } from '../endpoints/model-id';
+import { videoCancel } from '../endpoints/client';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { getConversationMeta, setConversationAvatar } from '../db/queries/conversations';
 import { appendMessage, getMessage } from '../db/queries/messages';
@@ -313,7 +314,7 @@ export function resetGenerationJobsForTests(): void {
 }
 
 function register(row: GenerationJobRow, endpoint: LoadedEndpoint): InFlightEntry {
-	return registerInFlight(
+	const entry = registerInFlight(
 		row.conversationId,
 		endpoint,
 		// A single send takes the conversation's default slot and an avatar draw
@@ -327,6 +328,21 @@ function register(row: GenerationJobRow, endpoint: LoadedEndpoint): InFlightEntr
 		// the grid and the aggregate notification must not count it.
 		row.origin !== 'avatar',
 	);
+	// A reattached video is rendering on the bridge from the moment it's back in
+	// flight — not only once it regains its slot, which is when the relay would
+	// otherwise report the id. Stop and conversation delete cancel the bridge job
+	// by this field, so without it a Stop while the job waits in line (a paused
+	// endpoint, say) would leave the render running with nothing to collect it.
+	if (isReattachable(row)) entry.videoJobId = row.upstreamJobId!;
+	return entry;
+}
+
+/** Best-effort cancel of the bridge job a reattachable row was rendering — for
+ *  the exits that end the job without the relay ever reaching it. */
+function releaseUpstreamJob(row: GenerationJobRow): void {
+	const endpoint = endpointFor(row);
+	if (!endpoint || !isReattachable(row)) return;
+	void videoCancel(endpoint, row.upstreamJobId!).catch(() => {});
 }
 
 /** A video that was rendering on the bridge when the process stopped, whose
@@ -388,6 +404,8 @@ async function runJob(
 		// Its conversation or anchor is gone. The FK cascade normally takes the row
 		// with it; this is the window where the delete landed after the read.
 		if (!meta || !anchor) {
+			// Nothing will collect a bridge job this row was still rendering.
+			releaseUpstreamJob(row);
 			sink.write({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
 			sink.close();
 			return;

@@ -88,6 +88,7 @@ import {
 	submitGenerationJob,
 	type SubmitGenerationJob,
 } from '$lib/server/generation/jobs';
+import { cancelInFlightGenerations } from '$lib/server/streaming/cancel';
 import {
 	getInFlightEntries,
 	getInFlightSince,
@@ -599,6 +600,20 @@ describe('a video that was rendering on the bridge', () => {
 			type: 'video',
 		});
 		warn.mockRestore();
+	});
+
+	it('cancels the bridge job on Stop while it still waits for its slot', async () => {
+		// The endpoint is paused (a pause survives the restart): the reattached
+		// job sits in line, never reaching the relay — but the bridge IS rendering.
+		const s = seed();
+		rendering(s);
+		setResourceGroupPaused(endpoint(), true);
+		resumeGenerationJobs();
+
+		await cancelInFlightGenerations(s.conv.id);
+		expect(mocks.videoCancel).toHaveBeenCalledWith(expect.anything(), 'bridge-1');
+		await until(() => jobRows().length === 0, 'the job to stop');
+		expect(mocks.videoStatus).not.toHaveBeenCalled();
 	});
 
 	it('cancels the bridge job on Stop', async () => {
