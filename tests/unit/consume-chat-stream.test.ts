@@ -86,6 +86,25 @@ describe('consumeChatStream', () => {
 		expect(sawToolCalls).toBe(false);
 	});
 
+	it('passes a queued frame’s position and paused flag through, as often as they come', async () => {
+		// Re-emitted as the line drains and on every pause / resume, so the
+		// consumer must forward each one rather than only the first.
+		const onQueued = vi.fn();
+		await consumeChatStream(
+			streamFromEvents([
+				{ type: 'queued', ahead: 2, paused: false },
+				{ type: 'queued', ahead: 2, paused: true },
+				{ type: 'queued', ahead: 1, paused: false },
+			]),
+			{ onQueued },
+		);
+		expect(onQueued.mock.calls).toEqual([
+			[2, false],
+			[2, true],
+			[1, false],
+		]);
+	});
+
 	it('flips sawToolCalls when a tool_call_start arrives, and threads it into onDone', async () => {
 		const onDone = vi.fn();
 		const body = streamFromEvents([

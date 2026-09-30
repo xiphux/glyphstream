@@ -89,6 +89,7 @@ import type { LoadedEndpoint } from '$lib/server/endpoints/config';
 import {
 	resetGenerationJobsForTests,
 	resumeGenerationJobs,
+	scheduleGenerationJobResume,
 	stopGenerationJobResume,
 	submitGenerationJob,
 	type SubmitGenerationJob,
@@ -463,6 +464,22 @@ describe('after a restart', () => {
 		err.mockRestore();
 		expect(setTimeoutSpy).not.toHaveBeenCalled();
 		setTimeoutSpy.mockRestore();
+	});
+
+	it('resumes on its own after the boot delay, with no request to trigger it', async () => {
+		vi.useFakeTimers();
+		try {
+			const s = seed();
+			leftover(s);
+			setResourceGroupPaused(endpoint(), true);
+			scheduleGenerationJobResume();
+			vi.advanceTimersByTime(9_999);
+			expect(getInFlightEntries(s.conv.id)).toEqual([]);
+			vi.advanceTimersByTime(1);
+			expect(getInFlightEntries(s.conv.id)).toHaveLength(1);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('only resumes once per process', async () => {

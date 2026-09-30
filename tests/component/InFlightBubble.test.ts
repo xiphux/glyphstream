@@ -44,6 +44,22 @@ describe('InFlightBubble — placeholder (no blocks yet)', () => {
 		expect(container.querySelector('.bg-surface-sunken')).toBeNull();
 	});
 
+	it('reads Queued, with how many are ahead, while waiting on the endpoint', () => {
+		render(InFlightBubble, { props: { ...base, blocks: [], queued: { ahead: 3 } } });
+		expect(screen.getByText('Queued')).toBeInTheDocument();
+		expect(screen.getByText('3 ahead')).toBeInTheDocument();
+		expect(screen.queryByText('Thinking')).toBeNull();
+	});
+
+	it('reads Paused instead while an admin has the endpoint’s queue paused', () => {
+		render(InFlightBubble, {
+			props: { ...base, blocks: [], queued: { ahead: 1, paused: true } },
+		});
+		expect(screen.getByText('Paused')).toBeInTheDocument();
+		expect(screen.queryByText('Queued')).toBeNull();
+		expect(screen.getByText('1 ahead')).toBeInTheDocument();
+	});
+
 	it('shows progress percent when set', () => {
 		render(InFlightBubble, { props: { ...base, blocks: [], progress: 42.7 } });
 		expect(screen.getByText('43%')).toBeInTheDocument();
