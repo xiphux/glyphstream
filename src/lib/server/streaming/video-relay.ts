@@ -216,6 +216,10 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 		// evicted it. Start over with a new job if the caller allows the re-run.
 		const replaceLostJob = async (lostId: string, cause: unknown) => {
 			console.warn(`[video-relay] job ${lostId} is gone upstream:`, errorMessage(cause));
+			// Best-effort, and a no-op for the usual 404. But any permanent 4xx counts
+			// as "lost", and a bridge that answered, say, 422 may still be rendering
+			// it — which must not run on beside its replacement (or the failure).
+			await videoCancel(params.endpoint, lostId).catch(() => {});
 			if (!params.reattach!.onLost()) {
 				return {
 					error: 'The video job was lost on the bridge (it restarted or discarded the job)',

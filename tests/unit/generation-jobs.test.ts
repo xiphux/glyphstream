@@ -543,6 +543,8 @@ describe('a video that was rendering on the bridge', () => {
 
 		resumeGenerationJobs();
 		await until(() => mocks.videoCreate.mock.calls.length === 1, 'a fresh bridge job');
+		// Let go of the old id first, in case the bridge does still hold it.
+		expect(mocks.videoCancel).toHaveBeenCalledWith(expect.anything(), 'bridge-1');
 		await until(() => jobRows()[0]?.upstreamJobId === 'fresh-job', 'the new job id');
 		expect(jobRows()[0].attempts).toBe(1);
 		finish();
