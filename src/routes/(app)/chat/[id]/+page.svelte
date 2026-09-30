@@ -2153,7 +2153,8 @@
 	// conversation changes — a same-id `invalidate` re-seeds `data.conversation`
 	// but must not move the reader. Declared after the auto-scroll effect so, on
 	// mount, its tick lands second and the grid position wins over the bottom.
-	// A `#msg-` deep link is left to onMount's scroll-and-highlight.
+	// A `#msg-` deep link is left alone: on a cold load onMount scrolls to and
+	// highlights it, and on a switch (no remount) Kit's own hash scroll lands it.
 	//
 	// One placement isn't enough: images carry no stored dimensions, so at tick
 	// time an image thread is a fraction of its eventual height, and the bottom
