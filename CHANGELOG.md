@@ -15,7 +15,8 @@ arrived.
   generation finishes, queued ones wait (shown as _Paused_) instead of failing
   against a backend that's restarting, and the pause survives a GlyphStream restart.
 - Queued and in-progress image and video generations survive a GlyphStream
-  restart: they go back in line in their original order when it comes back up.
+  restart: they go back in line in their original order when it comes back up,
+  and a video still rendering on the bridge is picked up where it left off.
 
 ## v0.41.2
 

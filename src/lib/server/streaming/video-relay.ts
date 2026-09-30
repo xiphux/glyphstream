@@ -33,6 +33,7 @@ import { runPromptEnhancement } from './media-enhance';
 import {
 	runMediaRelay,
 	startMediaRelay,
+	type MediaFailure,
 	type MediaGenerate,
 	type MediaRelayParams,
 	type MediaRelayScaffoldParams,
@@ -67,6 +68,17 @@ export interface VideoRelayParams extends MediaRelayParams {
 	 * in-flight registry's keying — the caller owns which entry to update.
 	 */
 	onJobId?: (jobId: string) => void;
+	/**
+	 * Pick up a bridge job this generation already started, instead of creating
+	 * one — a job that was rendering when GlyphStream restarted. The bridge kept
+	 * working the whole time; this just resumes asking it how far along it is.
+	 *
+	 * `onLost` is called if the bridge no longer knows the job (it restarted
+	 * too, or evicted it). Returning true starts the generation over with a new
+	 * job; false fails it. The caller decides, because starting over is a
+	 * re-run it may be limiting.
+	 */
+	reattach?: { upstreamJobId: string; onLost: () => boolean };
 	/** Target model's preferred prompt style (canonical video-style key) or null
 	 *  when unknown — null runs the enhancer's format-preserving clarify-only pass. */
 	promptStyle?: string | null;
@@ -143,7 +155,14 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 		prepare: params.preparedPrompt ? undefined : { purpose: 'enhance' as const, run: prepareRun },
 		modality: 'video' as const,
 	};
-	const generate: MediaGenerate = async ({ write, abortSignal }) => {
+	// POST /v1/videos. Resolves to the new job — wrapped, since a VideoJob has an
+	// `error` field of its own and must not read as a MediaFailure — or, like
+	// `generate` itself, a MediaFailure for a genuine failure, or null after
+	// emitting a cancellation.
+	const startJob = async (
+		write: SseWriter['write'],
+		abortSignal: AbortSignal | undefined,
+	): Promise<{ job: VideoJob } | MediaFailure | null> => {
 		let job: VideoJob;
 		try {
 			const req: VideoCreateRequest = {
@@ -180,6 +199,52 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 			// durable error sibling, so it can carry that row's id (see MediaFailure).
 			const message = `Could not start video job: ${msg}`;
 			return { error: message };
+		}
+		return { job };
+	};
+
+	const generate: MediaGenerate = async ({ write, abortSignal }) => {
+		let job: VideoJob;
+		if (params.reattach) {
+			const { upstreamJobId, onLost } = params.reattach;
+			try {
+				job = await videoStatus(params.endpoint, upstreamJobId);
+				if (DEBUG) console.debug(`[video-relay] reattached to job`, job);
+				params.onJobId?.(job.id);
+			} catch (e) {
+				if (isAbortError(e) || abortSignal?.aborted) {
+					await videoCancel(params.endpoint, upstreamJobId);
+					write({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
+					return null;
+				}
+				if (!isPermanentRequestError(e)) {
+					// A blip, not an answer: assume it's still rendering and let the poll
+					// loop keep asking, exactly as it would mid-job.
+					console.warn(`[video-relay] could not reach job ${upstreamJobId} to reattach:`, e);
+					job = {
+						id: upstreamJobId,
+						status: 'in_progress',
+						progress: null,
+						seconds: null,
+						size: null,
+						error: null,
+					};
+					params.onJobId?.(job.id);
+				} else {
+					// The bridge doesn't know it — it restarted too, or evicted the job.
+					console.warn(`[video-relay] job ${upstreamJobId} is gone upstream:`, errorMessage(e));
+					if (!onLost()) {
+						return { error: 'The video job was lost when the server restarted' };
+					}
+					const created = await startJob(write, abortSignal);
+					if (!created || !('job' in created)) return created;
+					job = created.job;
+				}
+			}
+		} else {
+			const created = await startJob(write, abortSignal);
+			if (!created || !('job' in created)) return created;
+			job = created.job;
 		}
 
 		// Distinct out-of-spec statuses already logged for this job, so a 20-minute

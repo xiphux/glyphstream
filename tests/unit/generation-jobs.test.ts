@@ -12,13 +12,20 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
+import { Buffer } from 'node:buffer';
+import { Readable } from 'node:stream';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
 	imageGeneration: vi.fn(),
+	videoCreate: vi.fn(),
+	videoStatus: vi.fn(),
+	videoFetchContent: vi.fn(),
+	videoCancel: vi.fn(),
 	persistGeneratedImage: vi.fn(),
+	persistGeneratedVideo: vi.fn(),
 	linkMessageMedia: vi.fn(),
 	notify: vi.fn(async () => {}),
 	getImageEnhancerModel: vi.fn(),
@@ -32,12 +39,17 @@ vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: ()
 vi.mock('$lib/server/endpoints/client', async (orig) => ({
 	...(await orig<typeof import('$lib/server/endpoints/client')>()),
 	imageGeneration: mocks.imageGeneration,
+	videoCreate: mocks.videoCreate,
+	videoStatus: mocks.videoStatus,
+	videoFetchContent: mocks.videoFetchContent,
+	videoCancel: mocks.videoCancel,
 }));
 vi.mock('$lib/server/endpoints/registry', () => ({
 	getEndpoint: (id: string) => (mocks.endpoint?.id === id ? mocks.endpoint : undefined),
 }));
 vi.mock('$lib/server/media/persister', () => ({
 	persistGeneratedImage: mocks.persistGeneratedImage,
+	persistGeneratedVideo: mocks.persistGeneratedVideo,
 }));
 vi.mock('$lib/server/db/queries/media', async (orig) => ({
 	...(await orig<typeof import('$lib/server/db/queries/media')>()),
@@ -81,6 +93,7 @@ import {
 	getInFlightSince,
 	resetInFlight,
 } from '$lib/server/streaming/in-flight';
+import { UpstreamError } from '$lib/server/endpoints/client';
 import type { StreamEvent } from '$lib/types/api';
 
 function endpoint(maxConcurrent = 1): LoadedEndpoint {
@@ -109,6 +122,20 @@ beforeEach(() => {
 	mocks.endpoint = endpoint();
 	mocks.imageGeneration.mockReset().mockResolvedValue({ data: [{ url: 'http://img/out.png' }] });
 	mocks.persistGeneratedImage.mockReset().mockResolvedValue('media-out');
+	// A job that is already done when first asked, so no test waits on the poll
+	// loop's real backoff.
+	mocks.videoCreate
+		.mockReset()
+		.mockResolvedValue({ id: 'fresh-job', status: 'completed', progress: 100 });
+	mocks.videoStatus
+		.mockReset()
+		.mockResolvedValue({ id: 'bridge-1', status: 'completed', progress: 100 });
+	mocks.videoFetchContent.mockReset().mockImplementation(async () => ({
+		stream: Readable.from(Buffer.from([0, 1, 2])),
+		contentType: 'video/mp4',
+	}));
+	mocks.videoCancel.mockReset().mockResolvedValue(undefined);
+	mocks.persistGeneratedVideo.mockReset().mockResolvedValue('vid-out');
 	mocks.linkMessageMedia.mockReset();
 	mocks.notify.mockReset().mockResolvedValue(undefined);
 	mocks.getImageEnhancerModel.mockReset().mockReturnValue(null);
@@ -217,8 +244,8 @@ async function drain(stream: ReadableStream<Uint8Array>): Promise<StreamEvent[]>
 	return events;
 }
 
-async function until(cond: () => boolean, what: string) {
-	for (let i = 0; i < 200; i++) {
+async function until(cond: () => boolean, what: string, timeoutMs = 1000) {
+	for (let i = 0; i < timeoutMs / 5; i++) {
 		if (cond()) return;
 		await new Promise((r) => setTimeout(r, 5));
 	}
@@ -351,6 +378,20 @@ describe('after a restart', () => {
 		});
 	});
 
+	it('puts interrupted jobs back ahead of the queue', async () => {
+		const a = seed('queued');
+		const b = seed('interrupted');
+		leftover(a, { prompt: 'queued', createdAt: 1000 });
+		leftover(b, { prompt: 'interrupted', createdAt: 2000, state: 'running', startedAt: 2001 });
+
+		resumeGenerationJobs();
+		await until(() => jobRows().length === 0, 'both jobs to finish');
+		const prompts = mocks.imageGeneration.mock.calls.map(
+			(c) => (c[1] as { prompt: string }).prompt,
+		);
+		expect(prompts).toEqual(['interrupted', 'queued']);
+	});
+
 	it('fails a job interrupted a second time instead of running it again', async () => {
 		const s = seed();
 		leftover(s, { state: 'running', attempts: 1 });
@@ -454,6 +495,105 @@ describe('after a restart', () => {
 			(c) => (c[1] as { prompt: string }).prompt,
 		);
 		expect(prompts).toEqual(['leftover', 'fresh']);
+	});
+});
+
+describe('a video that was rendering on the bridge', () => {
+	function rendering(s: ReturnType<typeof seed>, over: Parameters<typeof leftover>[1] = {}) {
+		leftover(s, {
+			kind: 'video',
+			modelId: 'bridge::wan',
+			state: 'running',
+			startedAt: 1,
+			upstreamJobId: 'bridge-1',
+			...over,
+		});
+	}
+
+	it('is picked back up where it is — not re-created, cancelled or counted', async () => {
+		const s = seed();
+		rendering(s);
+		resumeGenerationJobs();
+		// Still the same job, with no interruption charged against it.
+		expect(jobRows()[0]).toMatchObject({ upstreamJobId: 'bridge-1', attempts: 0 });
+
+		await until(() => jobRows().length === 0, 'the video to land');
+		expect(mocks.videoStatus).toHaveBeenCalledWith(expect.anything(), 'bridge-1');
+		expect(mocks.videoCreate).not.toHaveBeenCalled();
+		expect(mocks.videoCancel).not.toHaveBeenCalled();
+		expect(getSiblingAssistants(s.conv.id, s.userMessage.id)[0].parts).toEqual([
+			{ type: 'video', mediaId: 'vid-out' },
+		]);
+	});
+
+	it('starts over, spending its one interruption, when the bridge lost it', async () => {
+		const s = seed();
+		rendering(s);
+		mocks.videoStatus.mockRejectedValue(new UpstreamError('not found', 404, null));
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		// Held open so the row can be inspected mid-run.
+		let finish!: () => void;
+		mocks.videoFetchContent.mockReturnValue(
+			new Promise((r) => {
+				finish = () => r({ stream: Readable.from(Buffer.from([0])), contentType: 'video/mp4' });
+			}),
+		);
+
+		resumeGenerationJobs();
+		await until(() => mocks.videoCreate.mock.calls.length === 1, 'a fresh bridge job');
+		await until(() => jobRows()[0]?.upstreamJobId === 'fresh-job', 'the new job id');
+		expect(jobRows()[0].attempts).toBe(1);
+		finish();
+		await until(() => jobRows().length === 0, 'the video to land');
+		warn.mockRestore();
+	});
+
+	it('fails if the bridge lost it and it was already interrupted once', async () => {
+		const s = seed();
+		rendering(s, { attempts: 1 });
+		mocks.videoStatus.mockRejectedValue(new UpstreamError('not found', 404, null));
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		resumeGenerationJobs();
+		await until(() => jobRows().length === 0, 'the job to fail');
+		expect(mocks.videoCreate).not.toHaveBeenCalled();
+		expect(getSiblingAssistants(s.conv.id, s.userMessage.id)[0].parts[0]).toMatchObject({
+			type: 'error',
+			message: 'The video job was lost when the server restarted',
+		});
+		warn.mockRestore();
+	});
+
+	it('keeps polling through a blip reaching the bridge', async () => {
+		const s = seed();
+		rendering(s);
+		mocks.videoStatus
+			.mockRejectedValueOnce(new UpstreamError('bad gateway', 502, null))
+			.mockResolvedValue({ id: 'bridge-1', status: 'completed', progress: 100 });
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		resumeGenerationJobs();
+		// One real poll interval (1.5s) before it asks again.
+		await until(() => jobRows().length === 0, 'the video to land', 3000);
+		expect(mocks.videoCreate).not.toHaveBeenCalled();
+		expect(getSiblingAssistants(s.conv.id, s.userMessage.id)[0].parts[0]).toMatchObject({
+			type: 'video',
+		});
+		warn.mockRestore();
+	});
+
+	it('cancels the bridge job on Stop', async () => {
+		const s = seed();
+		rendering(s);
+		// Still rendering, so the poll loop is where Stop lands.
+		mocks.videoStatus.mockResolvedValue({ id: 'bridge-1', status: 'in_progress', progress: 40 });
+
+		resumeGenerationJobs();
+		await until(() => mocks.videoStatus.mock.calls.length > 0, 'the reattach');
+		await until(() => getInFlightEntries(s.conv.id)[0]?.videoJobId === 'bridge-1', 'the job id');
+		getInFlightEntries(s.conv.id)[0].controller.abort();
+		await until(() => jobRows().length === 0, 'the job to stop', 3000);
+		expect(mocks.videoCancel).toHaveBeenCalledWith(expect.anything(), 'bridge-1');
 	});
 });
 

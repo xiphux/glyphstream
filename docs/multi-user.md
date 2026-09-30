@@ -159,10 +159,19 @@ container starts, and stays that way until you resume it.
 Image and video generations are saved as they're queued, so restarting or
 recreating the GlyphStream container doesn't lose them. When it comes back up,
 everything that was waiting goes back in line in its original order — on the
-first page load, or within about ten seconds if nobody opens the app. A
-generation that was **running** when GlyphStream stopped is started again from
-the beginning (an image comes back with a different seed); if it's interrupted a
-second time it's shown as a failed column instead of being retried forever.
+first page load, or within about ten seconds if nobody opens the app.
+
+Generations that were **running** when GlyphStream stopped go back to the front
+of the line:
+
+- A **video** keeps rendering on the bridge while GlyphStream is down, so it's
+  picked back up where it is — nothing is redone. If the bridge was restarted
+  too and no longer has the job, the video starts over from the beginning.
+- An **image** is started again from the beginning (it comes back with a
+  different seed).
+
+A generation that has to start over and is then interrupted a second time is
+shown as a failed column instead of being retried forever.
 
 Chat replies aren't resumed: a reply cut off by a restart is lost, as before.
 

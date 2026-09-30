@@ -75,6 +75,19 @@ export function requeueGenerationJob(id: string, attempts: number): void {
 }
 
 /**
+ * Count an interruption against a job that is still running — a reattached
+ * video whose bridge job was lost, now starting over with a new one. Its old
+ * upstream id is cleared with it; the new one is recorded when created.
+ */
+export function recordGenerationJobInterruption(id: string, attempts: number): void {
+	getDb()
+		.update(generationJobs)
+		.set({ attempts, upstreamJobId: null })
+		.where(eq(generationJobs.id, id))
+		.run();
+}
+
+/**
  * Delete the job as part of the transaction that persists its outcome.
  *
  * The row's deletion IS the commit token: returning false means the row was

@@ -21,11 +21,16 @@
  *  - COMMIT deletes the row in the same transaction that appends the result
  *    (or the durable error sibling). A crash either side of it therefore either
  *    re-runs the job or doesn't — never both, and never neither.
- *  - RESUME, once per process, re-registers every leftover row in submission
- *    order. (That is the order they rejoin in; a job that must first redo
- *    prompt enhancement or load a source image can still be overtaken on the
- *    way to the endpoint gate by one that needn't, as at submit time.) A row still `running` was interrupted mid-generation: it is re-run
- *    once, and failed as a normal error column if it is interrupted again.
+ *  - RESUME, once per process, re-registers every leftover row: the ones
+ *    that were running first (they held the endpoint), then the queue in
+ *    submission order. (That is the order they rejoin in; a job that must
+ *    first redo prompt enhancement or load a source image can still be
+ *    overtaken on the way to the endpoint gate by one that needn't, as at
+ *    submit time.) A video that was rendering is REATTACHED — the bridge kept
+ *    rendering it, so the runner resumes polling the same bridge job. Anything
+ *    else that was running is re-run once, and failed as a normal error column
+ *    if it is interrupted again; a reattached video whose bridge job was lost
+ *    starts over under the same rule.
  *
  * Because resumed jobs go back into the same in-flight registry, everything
  * that reads it — the recovered grid and bubble, the sidebar dots, Stop, the
@@ -39,7 +44,6 @@ import { Buffer } from 'node:buffer';
 import { generateId } from '../util/id';
 import { getEndpoint } from '../endpoints/registry';
 import { parseModelId } from '../endpoints/model-id';
-import { videoCancel } from '../endpoints/client';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { getConversationMeta, setConversationAvatar } from '../db/queries/conversations';
 import { appendMessage, getMessage } from '../db/queries/messages';
@@ -49,6 +53,7 @@ import {
 	insertGenerationJob,
 	listGenerationJobs,
 	markGenerationJobRunning,
+	recordGenerationJobInterruption,
 	requeueGenerationJob,
 	setGenerationJobPrepared,
 	setGenerationJobUpstreamId,
@@ -233,7 +238,14 @@ export function resumeGenerationJobs(): void {
 	// asks "am I the last of my grid?" of the registry, and must not find it empty
 	// only because its siblings haven't been re-registered yet.
 	const failures: Array<{ row: GenerationJobRow; message: string }> = [];
-	for (const found of rows) {
+	// Interrupted jobs first: they held the endpoint when the process stopped, so
+	// they go back to the front of the line rather than behind everything queued
+	// after them. Stable, so submission order holds within each group.
+	const ordered = [
+		...rows.filter((r) => r.state === 'running'),
+		...rows.filter((r) => r.state !== 'running'),
+	];
+	for (const found of ordered) {
 		let row = found;
 		try {
 			const endpoint = endpointFor(row);
@@ -241,13 +253,13 @@ export function resumeGenerationJobs(): void {
 				failures.push({ row, message: `Model "${row.modelId}" is no longer configured` });
 				continue;
 			}
-			if (row.state === 'running') {
-				// It was generating when the process died. Whatever the upstream was
-				// doing for it is orphaned — nobody will ever collect it — so let go of
-				// a bridge video job rather than leave it holding the GPU.
-				if (row.kind === 'video' && row.upstreamJobId) {
-					void videoCancel(endpoint, row.upstreamJobId).catch(() => {});
-				}
+			// A video that was rendering on the bridge kept rendering while this
+			// process was down: it is picked up where it is (see `runJob`), not
+			// re-run, so it costs no interruption. Its row is left exactly as it was.
+			if (row.state === 'running' && !isReattachable(row)) {
+				// It was generating when the process died, and there is nothing
+				// upstream to pick back up — an image is one blocking call, and a video
+				// with no recorded job id never got as far as creating one.
 				const attempts = row.attempts + 1;
 				if (attempts > MAX_INTERRUPTIONS) {
 					failures.push({ row, message: 'Generation was interrupted by a server restart' });
@@ -315,6 +327,12 @@ function register(row: GenerationJobRow, endpoint: LoadedEndpoint): InFlightEntr
 		// the grid and the aggregate notification must not count it.
 		row.origin !== 'avatar',
 	);
+}
+
+/** A video that was rendering on the bridge when the process stopped, whose
+ *  bridge job can be asked for again rather than re-run. */
+function isReattachable(row: GenerationJobRow): boolean {
+	return row.state === 'running' && row.kind === 'video' && row.upstreamJobId !== null;
 }
 
 function endpointFor(row: GenerationJobRow): LoadedEndpoint | undefined {
@@ -403,7 +421,12 @@ async function runJob(
 			inFlight: entry,
 			preparedPrompt: row.preparedJson
 				? (JSON.parse(row.preparedJson) as PreparedPrompt)
-				: undefined,
+				: // A reattached job is already rendering: its prompt was decided before
+					// the restart, so don't run enhancement again for a job it can't
+					// change. (Enhancement that did change it was checkpointed above.)
+					isReattachable(row)
+					? { effectivePrompt: params.prompt, originalPrompt: null }
+					: undefined,
 			onPromptPrepared: (prepared) => setGenerationJobPrepared(row.id, JSON.stringify(prepared)),
 			onGenerationStarted: () => {
 				// The row is gone: its branch or conversation was deleted while it
@@ -473,12 +496,25 @@ async function runJob(
 				promptHint: params.promptHint,
 				enhancementEnabled: params.enhancementEnabled,
 				aspectRatio: params.aspectRatio,
-				// Recorded so Stop can DELETE the bridge job, and so a restart can let
-				// go of it (see resume).
+				// Recorded so Stop can DELETE the bridge job, and so a restart can pick
+				// it back up (see resume).
 				onJobId: (jobId) => {
 					entry.videoJobId = jobId;
 					setGenerationJobUpstreamId(row.id, jobId);
 				},
+				reattach: isReattachable(row)
+					? {
+							upstreamJobId: row.upstreamJobId!,
+							// The bridge lost it (it restarted too): starting over IS a re-run,
+							// so it spends the job's one interruption — or fails it.
+							onLost: () => {
+								const attempts = row.attempts + 1;
+								if (attempts > MAX_INTERRUPTIONS) return false;
+								recordGenerationJobInterruption(row.id, attempts);
+								return true;
+							},
+						}
+					: undefined,
 			},
 			sink,
 		);
