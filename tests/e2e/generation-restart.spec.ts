@@ -116,6 +116,11 @@ async function startServer(port: number): Promise<ChildProcess> {
 
 /** Kill with no chance to clean up — a crash, an OOM kill, a pulled plug. */
 async function crash(server: ChildProcess) {
+	// Already gone — it died on its own, or this is the first server after a
+	// restart that failed to come up. 'exit' is never re-emitted to a listener
+	// added now, so waiting for it would hang the test until its timeout and bury
+	// the error that actually failed it.
+	if (server.exitCode !== null || server.signalCode !== null) return;
 	const exited = new Promise((r) => server.once('exit', r));
 	server.kill('SIGKILL');
 	await exited;
