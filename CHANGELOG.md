@@ -18,6 +18,12 @@ arrived.
   restart: they go back in line in their original order when it comes back up,
   and a video still rendering on the bridge is picked up where it left off.
 
+### Fixed
+
+- Switching conversations opens the new one at its latest message, rather than at
+  wherever the previous one was scrolled to — or, when it has an open comparison
+  grid, at the top of the grid.
+
 ## v0.41.2
 
 ### Changed

@@ -2143,6 +2143,61 @@
 		void tick().then(() => scrollToBottom());
 	});
 
+	// Where a conversation opens. /chat/a → /chat/b reuses this component, and
+	// with it `scrollContainer` and its scrollTop — so the effect above, which
+	// only follows content while already near the bottom, left b opened wherever
+	// a was scrolled to. Entering a conversation positions explicitly instead: at
+	// the top of a parked fan-out grid (so its results read from the first one,
+	// rather than from past the end of the last), otherwise at the latest
+	// message. Keyed on the id VALUE, which only a navigation to another
+	// conversation changes — a same-id `invalidate` re-seeds `data.conversation`
+	// but must not move the reader. Declared after the auto-scroll effect so, on
+	// mount, its tick lands second and the grid position wins over the bottom.
+	// A `#msg-` deep link is left to onMount's scroll-and-highlight.
+	//
+	// One placement isn't enough: images carry no stored dimensions, so at tick
+	// time an image thread is a fraction of its eventual height, and the bottom
+	// (or grid top) it lands on moves as they load. So the position is re-applied
+	// on every resize of the list until the reader takes over — the first touch,
+	// wheel, key or pointer in the scroll area — or a new conversation is entered.
+	// The time cap only bounds a reader who never touches anything.
+	let fanoutGridEl = $state<HTMLElement | null>(null);
+	let messageListEl = $state<HTMLElement | null>(null);
+	let enteredConvId: string | null = null;
+	let releaseEntryHold: (() => void) | null = null;
+	$effect(() => {
+		const id = data.conversation.id;
+		if (id === enteredConvId) return;
+		enteredConvId = id;
+		releaseEntryHold?.();
+		if (/^#msg-/.test(location.hash)) return;
+		const place = () => {
+			if (untrack(() => fanout.comparing) && fanoutGridEl) {
+				fanoutGridEl.scrollIntoView({ block: 'start', behavior: 'auto' });
+			} else {
+				scrollToBottom();
+			}
+		};
+		void tick().then(() => {
+			const el = scrollContainer;
+			if (data.conversation.id !== id || !el || !messageListEl) return;
+			place();
+			const ro = new ResizeObserver(place);
+			ro.observe(messageListEl);
+			const events = ['touchstart', 'wheel', 'keydown', 'pointerdown'] as const;
+			const release = () => {
+				ro.disconnect();
+				clearTimeout(cap);
+				for (const e of events) el.removeEventListener(e, release);
+				if (releaseEntryHold === release) releaseEntryHold = null;
+			};
+			const cap = setTimeout(release, 15_000);
+			for (const e of events) el.addEventListener(e, release, { passive: true });
+			releaseEntryHold = release;
+		});
+	});
+	onDestroy(() => releaseEntryHold?.());
+
 	// First-message handoff from /(app)/+page.svelte: when the new-chat page
 	// creates a conversation, it stashes the first message in sessionStorage
 	// and navigates here so the response can stream in this page's lifecycle.
@@ -2501,6 +2556,7 @@
 	-->
 		<div bind:this={scrollContainer} class="flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4">
 			<div
+				bind:this={messageListEl}
 				class="mx-auto min-w-0 max-w-3xl space-y-4"
 				style="padding-bottom: {composerHeight + 24}px"
 			>
@@ -2668,7 +2724,11 @@
 					</div>
 				{/if}
 				{#if fanout.comparing}
-					<div in:fade={{ duration: listMounted && !reduceMotion ? 160 : 0 }}>
+					<div
+						bind:this={fanoutGridEl}
+						class="scroll-mt-4"
+						in:fade={{ duration: listMounted && !reduceMotion ? 160 : 0 }}
+					>
 						<!-- Text fan-out: pick one to continue. Media fan-out (keep-many):
 					     discard duds + regenerate, no single pick. An avatar comparison
 					     is both — the portraits stay as siblings AND one becomes the
