@@ -204,9 +204,24 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 	};
 
 	const generate: MediaGenerate = async ({ write, abortSignal }) => {
+		// The bridge no longer knows the reattached job — it restarted too, or
+		// evicted it. Start over with a new job if the caller allows the re-run.
+		const replaceLostJob = async (lostId: string, cause: unknown) => {
+			console.warn(`[video-relay] job ${lostId} is gone upstream:`, errorMessage(cause));
+			if (!params.reattach!.onLost()) {
+				return { error: 'The video job was lost when the server restarted' } satisfies MediaFailure;
+			}
+			return startJob(write, abortSignal);
+		};
+
 		let job: VideoJob;
+		// True while a reattached job has never answered a status request — the
+		// bridge was unreachable when we reattached, so we're polling on faith. A
+		// 404 then means the bridge came back WITHOUT the job (it restarted too),
+		// which is a lost job to replace, not a generation that failed.
+		let unconfirmedReattach = false;
 		if (params.reattach) {
-			const { upstreamJobId, onLost } = params.reattach;
+			const { upstreamJobId } = params.reattach;
 			try {
 				job = await videoStatus(params.endpoint, upstreamJobId);
 				if (DEBUG) console.debug(`[video-relay] reattached to job`, job);
@@ -229,14 +244,10 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 						size: null,
 						error: null,
 					};
+					unconfirmedReattach = true;
 					params.onJobId?.(job.id);
 				} else {
-					// The bridge doesn't know it — it restarted too, or evicted the job.
-					console.warn(`[video-relay] job ${upstreamJobId} is gone upstream:`, errorMessage(e));
-					if (!onLost()) {
-						return { error: 'The video job was lost when the server restarted' };
-					}
-					const created = await startJob(write, abortSignal);
+					const created = await replaceLostJob(upstreamJobId, e);
 					if (!created || !('job' in created)) return created;
 					job = created.job;
 				}
@@ -254,7 +265,7 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 		// Initial state
 		emitProgress(write, job, warnedStatuses);
 
-		const startedAt = Date.now();
+		let startedAt = Date.now();
 		let pollInterval = MIN_POLL_INTERVAL_MS;
 		while (job.status !== 'completed' && job.status !== 'failed') {
 			// User clicked Stop — release the bridge slot via DELETE and emit a
@@ -276,11 +287,24 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 			pollInterval = Math.min(Math.floor(pollInterval * 1.5), MAX_POLL_INTERVAL_MS);
 			try {
 				job = await videoStatus(params.endpoint, job.id);
+				unconfirmedReattach = false;
 				if (DEBUG)
 					console.debug(
 						`[video-relay] poll job=${job.id} status=${job.status} progress=${job.progress}`,
 					);
 			} catch (e) {
+				if (unconfirmedReattach && isPermanentRequestError(e)) {
+					// See `unconfirmedReattach`: the bridge restarted and lost it.
+					const created = await replaceLostJob(job.id, e);
+					if (!created || !('job' in created)) return created;
+					job = created.job;
+					unconfirmedReattach = false;
+					// A fresh job gets a fresh budget and the tight opening cadence.
+					startedAt = Date.now();
+					pollInterval = MIN_POLL_INTERVAL_MS;
+					emitProgress(write, job, warnedStatuses);
+					continue;
+				}
 				// A permanent, request-specific failure (e.g. the bridge restarted
 				// and lost the job → 404) will recur identically on every future
 				// poll — bail now instead of re-polling to MAX_WAIT_MS while holding

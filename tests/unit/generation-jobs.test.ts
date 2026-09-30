@@ -564,6 +564,25 @@ describe('a video that was rendering on the bridge', () => {
 		warn.mockRestore();
 	});
 
+	it('starts over when the bridge was down at reattach and came back without it', async () => {
+		// Both containers restarted: the bridge is still booting when GlyphStream
+		// resumes (connection refused), then answers — without the job.
+		const s = seed();
+		rendering(s);
+		mocks.videoStatus
+			.mockRejectedValueOnce(new UpstreamError('connect ECONNREFUSED', null, null))
+			.mockRejectedValueOnce(new UpstreamError('not found', 404, null));
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		resumeGenerationJobs();
+		await until(() => jobRows().length === 0, 'the video to land', 3000);
+		expect(mocks.videoCreate).toHaveBeenCalledOnce();
+		expect(getSiblingAssistants(s.conv.id, s.userMessage.id)[0].parts[0]).toMatchObject({
+			type: 'video',
+		});
+		warn.mockRestore();
+	});
+
 	it('keeps polling through a blip reaching the bridge', async () => {
 		const s = seed();
 		rendering(s);
