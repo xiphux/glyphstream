@@ -468,6 +468,30 @@ describe('a job whose anchor goes away', () => {
 });
 
 describe('a grid branch', () => {
+	it('survives a failing notification on a resumed run', async () => {
+		// Nobody awaits a resumed run, so a throw escaping its cleanup would be an
+		// unhandled rejection — which vitest fails the run on, as Node would crash.
+		const s = seed();
+		// An early exit — the source frame of this image-to-video branch is gone —
+		// so the runner's own cleanup is what settles it, not the relay's.
+		leftover(s, {
+			origin: 'fanout',
+			kind: 'video',
+			fanoutIndex: 0,
+			paramsJson: JSON.stringify({ ...job(s).params, dispatchMediaIds: ['vanished-media'] }),
+		});
+		mocks.notifyFanout.mockImplementation(() => {
+			throw new Error('push service down');
+		});
+		const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		resumeGenerationJobs();
+		await until(() => jobRows().length === 0, 'the resumed branch to finish');
+		await until(() => getInFlightEntries(s.conv.id).length === 0, 'the registry to clear');
+		expect(err).toHaveBeenCalled();
+		err.mockRestore();
+	});
+
 	it('registers per job, pins the leaf, and defers to the aggregate notification', async () => {
 		const s = seed();
 		setResourceGroupPaused(endpoint(), true);

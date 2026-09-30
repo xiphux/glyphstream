@@ -241,7 +241,11 @@ export function resumeGenerationJobs(): void {
 			const entry = register(row, endpoint);
 			// The queue wait counts from when the user asked, not from the restart.
 			entry.startedAt = row.createdAt;
-			void runJob(row, entry, NO_LISTENER);
+			// `runJob` is built not to reject, but nothing awaits this run: a
+			// rejection that slipped through would be unhandled, which is fatal.
+			runJob(row, entry, NO_LISTENER).catch((e: unknown) =>
+				console.error(`[generation-jobs] resumed job ${row.id} failed:`, errorMessage(e)),
+			);
 		} catch (e) {
 			console.error(`[generation-jobs] could not resume job ${row.id}:`, errorMessage(e));
 		}
@@ -315,19 +319,27 @@ async function runJob(
 	// Clears the registry and, for a grid branch, lets the last one to settle fire
 	// the aggregate "N ready". Idempotent, because the relay calls it from its own
 	// `finally` and this function calls it again from its own.
+	//
+	// Guarded: it runs from `finally` blocks, and the notification reads the DB.
+	// A throw there would reject a run nobody awaits (a resumed job's), which
+	// Node treats as fatal — a lost notification is not worth the process.
 	const settle = () => {
 		if (settled) return;
 		settled = true;
-		clearInFlight(row.conversationId, entry);
-		if (isFanoutOrigin(row.origin)) {
-			notifyFanoutCompleteIfLast({
-				conversationId: row.conversationId,
-				userId: row.userId,
-				userMessageId: row.anchorMessageId,
-				conversationTitle: getConversationMeta(row.conversationId, row.userId)?.title ?? null,
-				modality: row.kind,
-				fanoutSize: params.fanoutSize,
-			});
+		try {
+			clearInFlight(row.conversationId, entry);
+			if (isFanoutOrigin(row.origin)) {
+				notifyFanoutCompleteIfLast({
+					conversationId: row.conversationId,
+					userId: row.userId,
+					userMessageId: row.anchorMessageId,
+					conversationTitle: getConversationMeta(row.conversationId, row.userId)?.title ?? null,
+					modality: row.kind,
+					fanoutSize: params.fanoutSize,
+				});
+			}
+		} catch (e) {
+			console.error(`[generation-jobs] could not settle job ${row.id}:`, errorMessage(e));
 		}
 	};
 
