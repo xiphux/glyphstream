@@ -90,6 +90,21 @@
 	// automated writes to -- so a bump cannot reach them in the first place.
 	labels: ['dependencies'],
 
+	// Weekly, re-resolve the whole lockfile within the ranges already declared.
+	// Renovate otherwise updates only what a package.json names, so a transitive
+	// dependency moves only when something above it does -- which is how
+	// mysteryd8podcast sat on a vulnerable brace-expansion for 15 days after the
+	// fixed release, until an advisory failed every PR's audit. pnpm's
+	// minimumReleaseAge (pnpm-workspace.yaml) holds what this pulls in to the
+	// same cooldown, which Renovate's own setting does not reach. CI gates it
+	// like any other update, so it merges unattended. Mondays, for a whole day
+	// rather than the default few hours, so a job is sure to land in it.
+	lockFileMaintenance: {
+		enabled: true,
+		automerge: true,
+		schedule: ['* * * * 1'],
+	},
+
 	packageRules: [
 		{
 			matchManagers: ['github-actions'],

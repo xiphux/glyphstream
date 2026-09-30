@@ -57,3 +57,17 @@ allowBuilds:
 # because it is what Docker ships and CI tests. Once Dependabot runs Node 26,
 # this can move back to `engines` for a hard local error.
 engineStrict: true
+
+# Supply-chain cooldown for everything pnpm resolves, transitive dependencies
+# included: a version published fewer than this many minutes ago is never
+# chosen, and a lockfile that holds one fails `pnpm install --frozen-lockfile`
+# in CI and on deploy. Renovate's minimumReleaseAge delays only the packages it
+# proposes; this covers what they pull in, and the weekly lockFileMaintenance
+# PR that re-resolves the whole lockfile.
+#
+# Keep it at or below the shortest age .github/renovate.json5 asks for
+# (7 days; it has no shorter patch age), or Renovate's own PRs fail to install. A security fix
+# younger than this can't be installed either, though Renovate raises those
+# immediately: for an urgent one, add the package to minimumReleaseAgeExclude
+# with a note, and take it back out once that version is three days old.
+minimumReleaseAge: 4320
