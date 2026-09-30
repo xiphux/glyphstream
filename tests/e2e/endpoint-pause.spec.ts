@@ -60,8 +60,10 @@ test.describe('endpoint pause', () => {
 		await expect(page.getByText('Paused', { exact: true })).toBeVisible();
 		await expect(page.locator('img[src*="/api/media/"]')).toHaveCount(0);
 
-		// The settings page lists it in line (its poll picks it up within 3s).
-		await expect(settings.getByText(/^waiting /)).toBeVisible();
+		// The settings page lists it in line. It learns of it from its 3s poll, so
+		// allow a couple of polls rather than the default 5s, which leaves a slow
+		// runner little headroom.
+		await expect(settings.getByText(/^waiting /)).toBeVisible({ timeout: 10_000 });
 
 		// Resume → the held generation runs and lands in the chat that's still open.
 		await settings.getByRole('button', { name: 'Resume' }).click();
