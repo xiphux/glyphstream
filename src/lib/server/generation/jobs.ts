@@ -200,6 +200,8 @@ const RESUMED = Symbol.for('glyphstream.generationJobs.resumed');
 const processState = globalThis as typeof globalThis & { [RESUMED]?: boolean };
 
 let resumeTimer: ReturnType<typeof setTimeout> | null = null;
+/** Set by the shutdown hook: a draining process arms no new fallback timer. */
+let shuttingDown = false;
 
 /**
  * Re-register every job left over from a previous process. Idempotent: the
@@ -277,14 +279,16 @@ export function resumeGenerationJobs(): void {
 
 /** Arm the fallback resume for a server nobody visits. Called once at boot. */
 export function scheduleGenerationJobResume(): void {
-	if (processState[RESUMED] || resumeTimer) return;
+	if (processState[RESUMED] || resumeTimer || shuttingDown) return;
 	resumeTimer = setTimeout(resumeGenerationJobs, RESUME_DELAY_MS);
 	// Must not hold a shutting-down process open on its own.
 	resumeTimer.unref?.();
 }
 
-/** Disarm the fallback resume — the shutdown hook. Queued rows stay put. */
+/** Disarm the fallback resume for good — the shutdown hook. A failed read
+ *  during the drain won't re-arm it. Queued rows stay put. */
 export function stopGenerationJobResume(): void {
+	shuttingDown = true;
 	if (resumeTimer) clearTimeout(resumeTimer);
 	resumeTimer = null;
 }
@@ -292,6 +296,7 @@ export function stopGenerationJobResume(): void {
 /** Test-only: forget that this process has resumed. */
 export function resetGenerationJobsForTests(): void {
 	stopGenerationJobResume();
+	shuttingDown = false;
 	processState[RESUMED] = false;
 }
 

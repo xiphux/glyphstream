@@ -72,6 +72,7 @@ import type { LoadedEndpoint } from '$lib/server/endpoints/config';
 import {
 	resetGenerationJobsForTests,
 	resumeGenerationJobs,
+	stopGenerationJobResume,
 	submitGenerationJob,
 	type SubmitGenerationJob,
 } from '$lib/server/generation/jobs';
@@ -395,6 +396,23 @@ describe('after a restart', () => {
 		mocks.testDb = real;
 		resumeGenerationJobs();
 		expect(getInFlightEntries(s.conv.id)).toHaveLength(1);
+	});
+
+	it('does not re-arm the retry once shutdown has begun', () => {
+		const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+		stopGenerationJobResume();
+		const real = mocks.testDb;
+		mocks.testDb = {
+			select: () => {
+				throw new Error('database is locked');
+			},
+		} as unknown as TestDB;
+		const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+		resumeGenerationJobs();
+		mocks.testDb = real;
+		err.mockRestore();
+		expect(setTimeoutSpy).not.toHaveBeenCalled();
+		setTimeoutSpy.mockRestore();
 	});
 
 	it('only resumes once per process', async () => {
