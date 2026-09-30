@@ -22,7 +22,9 @@
  *    (or the durable error sibling). A crash either side of it therefore either
  *    re-runs the job or doesn't — never both, and never neither.
  *  - RESUME, once per process, re-registers every leftover row in submission
- *    order. A row still `running` was interrupted mid-generation: it is re-run
+ *    order. (That is the order they rejoin in; a job that must first redo
+ *    prompt enhancement or load a source image can still be overtaken on the
+ *    way to the endpoint gate by one that needn't, as at submit time.) A row still `running` was interrupted mid-generation: it is re-run
  *    once, and failed as a normal error column if it is interrupted again.
  *
  * Because resumed jobs go back into the same in-flight registry, everything
@@ -91,6 +93,10 @@ export type JobOrigin = GenerationJobRow['origin'];
  * The inputs a job needs beyond its row's own columns. Resolved once, at
  * submit, and stored — so a job resumed after a restart runs with what the
  * user asked for then, not with whatever the model catalogue says now.
+ *
+ * A PERSISTED format that crosses versions: a job queued before an upgrade is
+ * resumed by the new release. Add fields as optional; don't rename or repurpose
+ * one without handling rows the previous release wrote.
  */
 export interface GenerationJobParams {
 	prompt: string;
@@ -147,8 +153,9 @@ const NO_LISTENER: MediaRelaySink = { write: () => {}, close: () => {} };
  * this is where the job registers in flight, and it does so before returning.
  */
 export function submitGenerationJob(input: SubmitGenerationJob): ReadableStream<Uint8Array> {
-	// Resume BEFORE queueing anything new, so the leftover queue keeps its place
-	// ahead of work submitted after the restart. A no-op once it has run.
+	// Resume BEFORE queueing anything new, so the leftover queue re-registers
+	// ahead of work submitted after the restart (modulo the async pre-slot steps
+	// noted in the header). A no-op once it has run.
 	resumeGenerationJobs();
 
 	const row: GenerationJobRow = {

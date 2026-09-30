@@ -145,13 +145,14 @@ export interface MediaRelayParams {
 	 * that persisted fine into an `error` frame.
 	 */
 	onMediaPersisted?: (mediaId: string) => void;
-	/** Fires when the relay truly finishes — the route clears the in-flight slot. */
+	/** Fires when the relay truly finishes — the caller (the generation-job
+	 *  runner) clears the in-flight slot and settles any grid notification. */
 	onComplete: () => void;
 	/**
 	 * Fires when the GENERATION settles — media persisted, `done` written —
 	 * which is earlier than `onComplete`: the stream stays open past this point
 	 * for the auto-title race, so `onComplete` trails by up to
-	 * TITLE_DELIVERY_BUDGET_MS. The route frees the in-flight registry entry
+	 * TITLE_DELIVERY_BUDGET_MS. The caller frees the in-flight registry entry
 	 * here, since "in flight" means a generation is running and by now none is.
 	 * Matters most for media: a video is exactly the thing a user walks away
 	 * from, so a registry that lingers through the title task is what the
@@ -255,10 +256,10 @@ export type MediaGenerate = (ctx: {
  * default is not a contract, and a third modality wired up without setting it
  * would have been labelled `image` on the admin endpoint view: no crash, no
  * failing test, just a diagnostic surface quietly lying. Stated HERE rather
- * than on `MediaRelayParams` because the routes build those, and a route has no
- * business naming a modality that could disagree with the relay it chose;
- * `startImageRelay` / `startVideoRelay` are the only callers and each knows its
- * own answer statically.
+ * than on `MediaRelayParams` because callers build those, and a caller has no
+ * business naming a modality that could disagree with the relay it chose; the
+ * image and video relays' builders (behind their `start*` / `run*` wrappers)
+ * are the only callers and each knows its own answer statically.
  */
 export type MediaRelayScaffoldParams = MediaRelayParams & { modality: 'image' | 'video' };
 

@@ -61,9 +61,10 @@ export interface VideoRelayParams extends MediaRelayParams {
 	inputReference?: { bytes: Buffer; contentType: string };
 	/**
 	 * Fires with the bridge-side job id as soon as POST /v1/videos returns,
-	 * so the route can stash it on the in-flight entry for cancellation
-	 * (DELETE /v1/videos/{id}). Keeps this relay decoupled from the in-flight
-	 * registry's keying — the route owns which entry to update.
+	 * so the caller can stash it on the in-flight entry for cancellation
+	 * (DELETE /v1/videos/{id}) — and the job runner on its job row, so a restart
+	 * can let go of the bridge job. Keeps this relay decoupled from the
+	 * in-flight registry's keying — the caller owns which entry to update.
 	 */
 	onJobId?: (jobId: string) => void;
 	/** Target model's preferred prompt style (canonical video-style key) or null

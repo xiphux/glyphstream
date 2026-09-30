@@ -1,8 +1,9 @@
 /**
  * Streaming image-generation relay — the one and only image-generation path,
- * used unconditionally by both a single-mode send and each multi-model fan-out
- * branch (the route streams image regardless; there's no sync POST→JSON variant
- * anymore).
+ * used unconditionally by a single-mode send, each multi-model fan-out branch
+ * and avatar draws alike. The generation-job runner drives it via
+ * `runImageRelay` (see server/generation/jobs.ts); there's no sync POST→JSON
+ * variant anymore.
  *
  * The full relay lifecycle (slot/queued, start, title, persist as a sibling,
  * notify, done) lives in the shared `startMediaRelay`
