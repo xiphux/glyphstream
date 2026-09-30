@@ -551,6 +551,11 @@ async function runJob(
 			},
 			sink,
 		);
+		// A reattached job that ended without ever regaining its slot — superseded
+		// by a newer send while it waited, or a failed acquire — never reached the
+		// relay's own cancel, and superseding aborts without one. The bridge is
+		// still rendering it for nobody.
+		if (entry.generationStartedAt === null) releaseUpstreamJob(row);
 	} catch (e) {
 		// The relay turns every generation failure into an event; reaching here
 		// means something outside it broke (a DB error, a malformed row).

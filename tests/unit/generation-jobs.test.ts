@@ -90,6 +90,7 @@ import {
 } from '$lib/server/generation/jobs';
 import { cancelInFlightGenerations } from '$lib/server/streaming/cancel';
 import {
+	registerInFlight,
 	getInFlightEntries,
 	getInFlightSince,
 	resetInFlight,
@@ -653,6 +654,20 @@ describe('a video that was rendering on the bridge', () => {
 		await cancelInFlightGenerations(s.conv.id);
 		expect(mocks.videoCancel).toHaveBeenCalledWith(expect.anything(), 'bridge-1');
 		await until(() => jobRows().length === 0, 'the job to stop');
+		expect(mocks.videoStatus).not.toHaveBeenCalled();
+	});
+
+	it('lets go of the bridge job when superseded before regaining its slot', async () => {
+		// A newer send in the same conversation takes the default slot: the
+		// registry aborts the reattached one, which never reached the relay.
+		const s = seed();
+		rendering(s);
+		setResourceGroupPaused(endpoint(), true);
+		resumeGenerationJobs();
+
+		registerInFlight(s.conv.id, endpoint());
+		await until(() => jobRows().length === 0, 'the superseded job to end');
+		expect(mocks.videoCancel).toHaveBeenCalledWith(expect.anything(), 'bridge-1');
 		expect(mocks.videoStatus).not.toHaveBeenCalled();
 	});
 
