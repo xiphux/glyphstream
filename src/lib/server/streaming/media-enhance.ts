@@ -58,7 +58,8 @@ export interface MediaEnhanceResult {
  * prompt unchanged — when enhancement is off, the send is an edit/reference,
  * or no enhancer model is configured. Emits the transient "Enhancing prompt…"
  * status via `ctx.write` (which also doubles as the fan-out dispatch-release
- * signal, so it's emitted before waiting on the enhancer slot).
+ * signal, so it's emitted before waiting on the enhancer slot), switching to
+ * "Prompt enhancer paused…" for as long as the enhancer's endpoint is paused.
  */
 export async function runPromptEnhancement(
 	input: MediaEnhanceInput,
