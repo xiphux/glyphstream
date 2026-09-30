@@ -560,7 +560,7 @@ describe('a video that was rendering on the bridge', () => {
 		expect(mocks.videoCreate).not.toHaveBeenCalled();
 		expect(getSiblingAssistants(s.conv.id, s.userMessage.id)[0].parts[0]).toMatchObject({
 			type: 'error',
-			message: 'The video job was lost when the server restarted',
+			message: 'The video job was lost on the bridge (it restarted or discarded the job)',
 		});
 		warn.mockRestore();
 	});

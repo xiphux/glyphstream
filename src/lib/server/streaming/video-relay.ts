@@ -68,10 +68,10 @@ export interface VideoRelayParams extends MediaRelayParams {
 	 */
 	loadInputReference?: () => Promise<{ bytes: Buffer; contentType: string }>;
 	/**
-	 * Fires with the bridge-side job id as soon as POST /v1/videos returns,
-	 * so the caller can stash it on the in-flight entry for cancellation
-	 * (DELETE /v1/videos/{id}) — and the job runner on its job row, so a restart
-	 * can let go of the bridge job. Keeps this relay decoupled from the
+	 * Fires with the bridge-side job id as soon as POST /v1/videos returns (or a
+	 * reattach confirms it), so the caller can stash it on the in-flight entry
+	 * for cancellation (DELETE /v1/videos/{id}) — and the job runner on its job
+	 * row, so a restart can pick the bridge job back up (see `reattach`). Keeps this relay decoupled from the
 	 * in-flight registry's keying — the caller owns which entry to update.
 	 */
 	onJobId?: (jobId: string) => void;
@@ -217,7 +217,9 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 		const replaceLostJob = async (lostId: string, cause: unknown) => {
 			console.warn(`[video-relay] job ${lostId} is gone upstream:`, errorMessage(cause));
 			if (!params.reattach!.onLost()) {
-				return { error: 'The video job was lost when the server restarted' } satisfies MediaFailure;
+				return {
+					error: 'The video job was lost on the bridge (it restarted or discarded the job)',
+				} satisfies MediaFailure;
 			}
 			return startJob(write, abortSignal);
 		};
