@@ -2186,7 +2186,9 @@
 		};
 		void tick().then(() => {
 			const pane = scrollContainer?.parentElement;
-			if (data.conversation.id !== id || !pane || !messageListEl) return;
+			// `isConnected`: the page can be destroyed between the effect and this
+			// tick (onDestroy found no hold to release yet), and bind:this nulls lag.
+			if (data.conversation.id !== id || !pane?.isConnected || !messageListEl) return;
 			place();
 			const ro = new ResizeObserver(place);
 			ro.observe(messageListEl);
