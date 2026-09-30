@@ -61,7 +61,8 @@ export interface InFlightEntry {
 	 *  to be in flight; the recovered bubble's elapsed timer counts from
 	 *  `generationStartedAt`, not this. */
 	startedAt: number;
-	/** For video kind: bridge-side job id, set as soon as videoCreate returns. */
+	/** For video kind: bridge-side job id, set as soon as videoCreate returns —
+	 *  or, for a video reattached after a restart, at registration. */
 	videoJobId?: string;
 	/** The key this entry is filed under within its conversation. */
 	branchKey: string;
