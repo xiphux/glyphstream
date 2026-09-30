@@ -6,9 +6,10 @@ import { resetData, selectModel } from './helpers';
  * /settings/endpoints, the banner, a generation holding as "Paused" in the chat
  * while it waits, and resuming it from the settings page.
  *
- * The pause is server-wide AND held in the running server's memory, which
- * `resetData()` can't reach — a pause left behind by a failing test would stall
- * every image generation in the suite after it. So every test starts and ends
+ * The pause is server-wide, held in the running server's memory AND saved in
+ * the database (so it would even outlive a server restart), and `resetData()`
+ * clears neither — a pause left behind by a failing test would stall every
+ * image generation in the suite after it. So every test starts and ends
  * by resuming through the API, whatever happened in between.
  */
 

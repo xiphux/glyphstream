@@ -167,8 +167,9 @@ test('a queued generation survives the server being killed and restarted', async
 		await crash(server);
 		server = await startServer(port);
 
-		// A page load after the restart sees the job back in flight — resumed by
-		// this very request, before its own reads — still waiting, as the pause
+		// A page load after the restart sees the job back in flight — the first
+		// signed-in request resumes the queue before its own reads (this reload,
+		// or one the still-open page got in first) — still waiting, as the pause
 		// survived too.
 		await page.reload();
 		await expect(page.getByText('Queued', { exact: true })).toBeVisible();
