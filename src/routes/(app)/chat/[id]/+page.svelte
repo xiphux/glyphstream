@@ -2160,8 +2160,13 @@
 	// time an image thread is a fraction of its eventual height, and the bottom
 	// (or grid top) it lands on moves as they load. So the position is re-applied
 	// on every resize of the list until the reader takes over — the first touch,
-	// wheel, key or pointer in the scroll area — or a new conversation is entered.
-	// The time cap only bounds a reader who never touches anything.
+	// wheel or pointer anywhere in the chat pane, or any key — or a new
+	// conversation is entered. The pane, not just the scroll area: the composer
+	// overlay is its sibling, and its jump-to-latest and Compact buttons scroll
+	// the list themselves, so a hold that outlived them would undo that scroll on
+	// the next image load. Keys on `window` because PageDown/Space scroll with
+	// focus on `body`, outside the pane. The time cap only bounds a reader who
+	// never touches anything.
 	let fanoutGridEl = $state<HTMLElement | null>(null);
 	let messageListEl = $state<HTMLElement | null>(null);
 	let enteredConvId: string | null = null;
@@ -2180,20 +2185,22 @@
 			}
 		};
 		void tick().then(() => {
-			const el = scrollContainer;
-			if (data.conversation.id !== id || !el || !messageListEl) return;
+			const pane = scrollContainer?.parentElement;
+			if (data.conversation.id !== id || !pane || !messageListEl) return;
 			place();
 			const ro = new ResizeObserver(place);
 			ro.observe(messageListEl);
-			const events = ['touchstart', 'wheel', 'keydown', 'pointerdown'] as const;
+			const events = ['touchstart', 'wheel', 'pointerdown'] as const;
 			const release = () => {
 				ro.disconnect();
 				clearTimeout(cap);
-				for (const e of events) el.removeEventListener(e, release);
+				for (const e of events) pane.removeEventListener(e, release);
+				window.removeEventListener('keydown', release);
 				if (releaseEntryHold === release) releaseEntryHold = null;
 			};
 			const cap = setTimeout(release, 15_000);
-			for (const e of events) el.addEventListener(e, release, { passive: true });
+			for (const e of events) pane.addEventListener(e, release, { passive: true });
+			window.addEventListener('keydown', release);
 			releaseEntryHold = release;
 		});
 	});
