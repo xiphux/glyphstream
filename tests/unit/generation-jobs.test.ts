@@ -584,6 +584,21 @@ describe('a video that was rendering on the bridge', () => {
 		warn.mockRestore();
 	});
 
+	it('finishes an image-to-video render whose source image has since been deleted', async () => {
+		// The bridge job already has its reference frame; needing it again only
+		// matters if the job has to start over.
+		const s = seed();
+		rendering(s, {
+			paramsJson: JSON.stringify({ ...job(s).params, dispatchMediaIds: ['vanished-media'] }),
+		});
+
+		resumeGenerationJobs();
+		await until(() => jobRows().length === 0, 'the video to land');
+		expect(getSiblingAssistants(s.conv.id, s.userMessage.id)[0].parts[0]).toMatchObject({
+			type: 'video',
+		});
+	});
+
 	it('keeps polling through a blip reaching the bridge', async () => {
 		const s = seed();
 		rendering(s);

@@ -494,8 +494,16 @@ async function runJob(
 		// I2V: the reference frame is loaded here, at run time, rather than by the
 		// route — a resumed job has no route. Only one reference is honored: the
 		// /v1/videos spec is single-reference.
+		//
+		// Not for a reattached job: its bridge job already has the reference, and
+		// loading it up front would only delay it rejoining the line (letting later
+		// jobs overtake a video that is ALREADY rendering) — or, if the image has
+		// since been deleted, throw away a nearly finished render. It's loaded
+		// lazily instead, if the job has to start over.
+		const referenceId = params.dispatchMediaIds[0];
+		const reattaching = isReattachable(row);
 		let inputReference: { bytes: Buffer; contentType: string } | undefined;
-		if (params.dispatchMediaIds.length > 0) {
+		if (referenceId !== undefined && !reattaching) {
 			try {
 				const loaded = await loadMediaBytes(params.dispatchMediaIds[0], row.userId);
 				inputReference = { bytes: loaded.bytes, contentType: loaded.contentType };
@@ -510,6 +518,13 @@ async function runJob(
 				...common,
 				prompt: params.prompt,
 				inputReference,
+				loadInputReference:
+					referenceId !== undefined && reattaching
+						? async () => {
+								const loaded = await loadMediaBytes(referenceId, row.userId);
+								return { bytes: loaded.bytes, contentType: loaded.contentType };
+							}
+						: undefined,
 				promptStyle: params.promptStyle,
 				promptHint: params.promptHint,
 				enhancementEnabled: params.enhancementEnabled,

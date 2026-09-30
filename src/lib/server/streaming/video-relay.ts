@@ -61,6 +61,13 @@ export interface VideoRelayParams extends MediaRelayParams {
 	 */
 	inputReference?: { bytes: Buffer; contentType: string };
 	/**
+	 * Load the reference image only if a new bridge job actually has to be
+	 * created — for a reattached job (see `reattach`), whose bridge job already
+	 * has its reference and which only needs one if it has to start over.
+	 * Ignored when `inputReference` is given.
+	 */
+	loadInputReference?: () => Promise<{ bytes: Buffer; contentType: string }>;
+	/**
 	 * Fires with the bridge-side job id as soon as POST /v1/videos returns,
 	 * so the caller can stash it on the in-flight entry for cancellation
 	 * (DELETE /v1/videos/{id}) — and the job runner on its job row, so a restart
@@ -169,15 +176,16 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 				model: parseModelId(params.storedModelId)?.upstreamId ?? params.storedModelId,
 				prompt: effectivePrompt,
 			};
-			if (params.inputReference) {
-				req.inputReference = params.inputReference;
+			const inputReference = params.inputReference ?? (await params.loadInputReference?.());
+			if (inputReference) {
+				req.inputReference = inputReference;
 			}
 			if (params.aspectRatio) {
 				req.aspectRatio = params.aspectRatio;
 			}
 			if (DEBUG) {
-				const refSummary = params.inputReference
-					? `, input_reference=${params.inputReference.contentType}:${params.inputReference.bytes.byteLength}B`
+				const refSummary = inputReference
+					? `, input_reference=${inputReference.contentType}:${inputReference.bytes.byteLength}B`
 					: '';
 				console.debug(
 					`[video-relay] POST /videos to ${params.endpoint.id} model=${req.model}${refSummary}`,
