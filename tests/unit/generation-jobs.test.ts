@@ -71,9 +71,14 @@ vi.mock('$lib/server/streaming/prompt-enhancer', () => ({
 	enhancePrompt: mocks.enhancePrompt,
 }));
 
-import { createConversation, deleteConversation } from '$lib/server/db/queries/conversations';
+import {
+	createConversation,
+	deleteConversation,
+	setFanoutParent,
+} from '$lib/server/db/queries/conversations';
+import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
 import { appendMessage, getSiblingAssistants } from '$lib/server/db/queries/messages';
-import { generationJobs, media } from '$lib/server/db/schema';
+import { conversations, generationJobs, media } from '$lib/server/db/schema';
 import { insertMedia } from '$lib/server/db/queries/media';
 import { insertGenerationJob } from '$lib/server/db/queries/generation-jobs';
 import {
@@ -92,6 +97,8 @@ import { cancelInFlightGenerations } from '$lib/server/streaming/cancel';
 import {
 	registerInFlight,
 	getInFlightEntries,
+	getInFlightGeneratingSince,
+	getAvatarDrawSince,
 	getInFlightSince,
 	resetInFlight,
 } from '$lib/server/streaming/in-flight';
@@ -820,5 +827,114 @@ describe('a grid branch', () => {
 		setResourceGroupPaused(endpoint(), false);
 		await until(() => jobRows().length === 0, 'both branches to finish');
 		expect(mocks.notifyFanout.mock.calls.at(-1)?.[0]).toMatchObject({ fanoutSize: 2 });
+	});
+});
+
+describe('what a page load sees after a restart', () => {
+	// The recovery UI — the restored grid's pending columns, the "still
+	// generating" bubble, the sidebar dot — reads the in-flight registry, which a
+	// restart empties. These pin that resume puts back exactly what it reads.
+
+	it('a restored grid reports its unfinished branches as pending columns', () => {
+		const s = seed();
+		setFanoutParent(s.conv.id, s.user.id, s.userMessage.id);
+		leftover(s, { origin: 'fanout', fanoutIndex: 0, modelId: 'bridge::sdxl' });
+		// This one was generating when the process died: it goes back in line.
+		leftover(s, { origin: 'fanout', fanoutIndex: 1, modelId: 'bridge::flux', state: 'running' });
+		setResourceGroupPaused(endpoint(), true);
+
+		resumeGenerationJobs();
+		const state = getFanoutRecoveryState(s.conv.id, s.user.id, s.userMessage.id);
+		expect(state.pending).toBe(2);
+		expect([...state.pendingModelIds].sort()).toEqual(['bridge::flux', 'bridge::sdxl']);
+		// Nothing holds the GPU yet: both columns read QUEUED, not generating.
+		expect(state.pendingStartedAt.every((t) => t === null)).toBe(true);
+	});
+
+	it('a restored single send reads as queued since it was submitted', () => {
+		const s = seed();
+		leftover(s, { createdAt: 12345 });
+		setResourceGroupPaused(endpoint(), true);
+
+		resumeGenerationJobs();
+		expect(getInFlightSince(s.conv.id)).toBe(12345);
+		expect(getInFlightGeneratingSince(s.conv.id)).toBeNull();
+	});
+});
+
+describe('a resumed avatar draw', () => {
+	function seedDescription() {
+		const s = seed();
+		const description = appendMessage({
+			conversationId: s.conv.id,
+			parentMessageId: s.userMessage.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'a weathered navigator in an orange coat' }],
+		});
+		mocks.persistGeneratedImage.mockImplementation(async () => {
+			return insertMedia({
+				userId: s.user.id,
+				storagePath: 'generated/portrait.png',
+				contentType: 'image/png',
+				byteSize: 16,
+				kind: 'image',
+				sourceEndpointId: 'bridge',
+				sourceModel: 'bridge::sdxl',
+				promptExcerpt: 'a navigator',
+			}).id;
+		});
+		return { ...s, description };
+	}
+
+	function avatarOf(convId: string) {
+		return mocks.testDb
+			.select({ avatar: conversations.avatarMediaId, leaf: conversations.activeLeafMessageId })
+			.from(conversations)
+			.where(eq(conversations.id, convId))
+			.get()!;
+	}
+
+	it('applies the portrait as the conversation’s avatar', async () => {
+		const s = seedDescription();
+		leftover(s, {
+			origin: 'avatar',
+			anchorMessageId: s.description.id,
+			paramsJson: JSON.stringify({ ...job(s).params, displayOnly: true }),
+		});
+
+		resumeGenerationJobs();
+		await until(() => jobRows().length === 0, 'the portrait to land');
+		const [portrait] = getSiblingAssistants(s.conv.id, s.description.id);
+		const [stored] = mocks.testDb.select({ id: media.id }).from(media).all();
+		expect(portrait.parts).toEqual([{ type: 'image', mediaId: stored.id, displayOnly: true }]);
+		expect(avatarOf(s.conv.id)).toEqual({ avatar: stored.id, leaf: portrait.id });
+	});
+
+	it('leaves the thread where the user took it while it was down', async () => {
+		const s = seedDescription();
+		leftover(s, { origin: 'avatar', anchorMessageId: s.description.id });
+		// The user carried on before the restart; the draw must not rewind them.
+		const later = appendMessage({
+			conversationId: s.conv.id,
+			parentMessageId: s.description.id,
+			role: 'user',
+			parts: [{ type: 'text', text: 'and then?' }],
+		});
+
+		resumeGenerationJobs();
+		await until(() => jobRows().length === 0, 'the portrait to land');
+		expect(avatarOf(s.conv.id).leaf).toBe(later.id);
+		// Still applied: the face isn't a thread position.
+		expect(avatarOf(s.conv.id).avatar).not.toBeNull();
+	});
+
+	it('is not counted as part of the conversation’s turn', () => {
+		const s = seedDescription();
+		leftover(s, { origin: 'avatar', anchorMessageId: s.description.id });
+		setResourceGroupPaused(endpoint(), true);
+
+		resumeGenerationJobs();
+		expect(getAvatarDrawSince(s.conv.id)).not.toBeNull();
+		expect(getInFlightSince(s.conv.id)).toBeNull();
 	});
 });
