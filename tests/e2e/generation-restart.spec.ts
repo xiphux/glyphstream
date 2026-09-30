@@ -191,6 +191,12 @@ test('a queued generation survives the server being killed and restarted', async
 		await expect(page.getByText('Queued', { exact: true })).toBeVisible();
 		await expect(page.locator('img[src*="/api/media/"]')).toHaveCount(0);
 		expect(jobCount()).toBe(1);
+		// Said outright rather than inferred from the job still being there: the
+		// recovered bubble reads "Queued" either way, and a lost pause would only
+		// show up as a race against the mock's instant render.
+		const status = await context.request.get(`${base}/api/admin/endpoints/status`);
+		const { groups } = (await status.json()) as { groups: Array<{ paused: boolean }> };
+		expect(groups.map((g) => g.paused)).toEqual([true]);
 
 		// Resume: it runs, lands, and leaves nothing queued. The page picks the
 		// result up through its recovery poll.
