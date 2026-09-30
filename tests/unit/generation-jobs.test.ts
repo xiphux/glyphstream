@@ -407,6 +407,21 @@ describe('after a restart', () => {
 		expect(getInFlightEntries(s.conv.id)).toHaveLength(1);
 	});
 
+	it('does not resume again when the module is re-evaluated (a dev hot reload)', async () => {
+		const s = seed();
+		leftover(s);
+		setResourceGroupPaused(endpoint(), true);
+		resumeGenerationJobs();
+
+		vi.resetModules();
+		const fresh = await import('$lib/server/generation/jobs');
+		const freshInFlight = await import('$lib/server/streaming/in-flight');
+		fresh.resumeGenerationJobs();
+		// The job is still this process's live one — not taken back a second time.
+		expect(freshInFlight.getInFlightEntries(s.conv.id)).toEqual([]);
+		expect(getInFlightEntries(s.conv.id)[0].controller.signal.aborted).toBe(false);
+	});
+
 	it('keeps the leftover queue ahead of work submitted after the restart', async () => {
 		const old = seed('leftover');
 		leftover(old, { prompt: 'leftover' });

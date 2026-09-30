@@ -188,7 +188,17 @@ export function submitGenerationJob(input: SubmitGenerationJob): ReadableStream<
 	});
 }
 
-let resumed = false;
+/**
+ * Whether this PROCESS has taken its leftover queue back — kept on `globalThis`
+ * rather than in a module variable because it describes the process, not this
+ * module instance. Under `pnpm dev` an edit re-evaluates this module; a fresh
+ * `false` would then have the next resume read the rows of generations still
+ * running in the old instance as leftovers, re-register them (aborting the
+ * live ones, which share their registry keys) and run them again.
+ */
+const RESUMED = Symbol.for('glyphstream.generationJobs.resumed');
+const processState = globalThis as typeof globalThis & { [RESUMED]?: boolean };
+
 let resumeTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
@@ -197,7 +207,7 @@ let resumeTimer: ReturnType<typeof setTimeout> | null = null;
  * a failure here must not take down the request that happened to trigger it.
  */
 export function resumeGenerationJobs(): void {
-	if (resumed) return;
+	if (processState[RESUMED]) return;
 	if (resumeTimer) clearTimeout(resumeTimer);
 	resumeTimer = null;
 
@@ -214,7 +224,7 @@ export function resumeGenerationJobs(): void {
 		return;
 	}
 	// Set once the read succeeded, and before anything below can re-enter.
-	resumed = true;
+	processState[RESUMED] = true;
 	if (rows.length > 0) console.log(`[generation-jobs] resuming ${rows.length} generation(s)`);
 
 	// Failed AFTER everything resumable is registered: a grid branch failing here
@@ -267,7 +277,7 @@ export function resumeGenerationJobs(): void {
 
 /** Arm the fallback resume for a server nobody visits. Called once at boot. */
 export function scheduleGenerationJobResume(): void {
-	if (resumed || resumeTimer) return;
+	if (processState[RESUMED] || resumeTimer) return;
 	resumeTimer = setTimeout(resumeGenerationJobs, RESUME_DELAY_MS);
 	// Must not hold a shutting-down process open on its own.
 	resumeTimer.unref?.();
@@ -282,7 +292,7 @@ export function stopGenerationJobResume(): void {
 /** Test-only: forget that this process has resumed. */
 export function resetGenerationJobsForTests(): void {
 	stopGenerationJobResume();
-	resumed = false;
+	processState[RESUMED] = false;
 }
 
 function register(row: GenerationJobRow, endpoint: LoadedEndpoint): InFlightEntry {
