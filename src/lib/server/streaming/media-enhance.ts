@@ -69,8 +69,13 @@ export async function runPromptEnhancement(
 	const enhancerModel = getImageEnhancerModel();
 	if (!enhancerModel) return passthrough;
 
-	ctx.write({ type: 'progress', percent: null, status: 'Enhancing prompt…' });
+	const ENHANCING = 'Enhancing prompt…';
+	ctx.write({ type: 'progress', percent: null, status: ENHANCING });
 	let enhSlot: EndpointSlot | null = null;
+	// Whether the last status written says the enhancer is paused, so the
+	// position updates `onQueued` re-fires as its line drains don't each re-send
+	// an unchanged status.
+	let showingPaused = false;
 	try {
 		enhSlot = await acquireEndpointSlot(enhancerModel.endpoint, {
 			work: { purpose: 'enhance', modelId: enhancerModel.upstreamId },
@@ -81,6 +86,20 @@ export async function runPromptEnhancement(
 			// quick. The generation phase re-emits its own status after this.
 			onReleasing: () =>
 				ctx.write({ type: 'progress', percent: null, status: 'Freeing GPU memory…' }),
+			// A paused enhancer endpoint holds this step until an admin resumes it —
+			// indefinitely, unlike an ordinary wait in line. This runs before the
+			// generation slot is requested, so the branch never reaches the queue
+			// that would otherwise report the pause, and "Enhancing prompt…" alone
+			// would read as a hang. An ordinary wait keeps that status unchanged.
+			onQueued: ({ paused }) => {
+				if (paused === showingPaused) return;
+				showingPaused = paused;
+				ctx.write({
+					type: 'progress',
+					percent: null,
+					status: paused ? 'Prompt enhancer paused…' : ENHANCING,
+				});
+			},
 		});
 		const normalize = input.medium === 'video' ? normalizeVideoStyle : normalizeStyle;
 		const { enhanced, changed } = await enhancePrompt({
