@@ -11,7 +11,7 @@ There are two roles, `admin` and `user`:
 
 - **`admin`** — everything a user can do, plus the two **Administration** pages
   in the account menu: **Users** (manage accounts, issue invites) and
-  **Endpoints** (read-only health + activity). The setup-wizard user is the
+  **Endpoints** (health + activity, and pausing a queue). The setup-wizard user is the
   admin, and an admin can grant the role to others by issuing an admin-role
   invite.
 - **`user`** — a normal account; the Administration section of the menu isn't

@@ -208,8 +208,8 @@ interface Gate {
  * server entry installs the persisted source at boot; without one, nothing
  * starts paused, which is exactly the pre-pause behaviour.
  *
- * Consulted once per gate, at creation. After that the gate's own flag is the
- * authority and `setResourceGroupPaused` keeps it in step with the store.
+ * Consulted when a gate is created, and by `isResourceGroupPaused` for a group
+ * that has no gate yet. Once a gate exists, its own flag is the authority and `setResourceGroupPaused` keeps it in step with the store.
  */
 let pausedSource: (resourceGroup: string) => boolean = () => false;
 

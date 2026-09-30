@@ -4,8 +4,9 @@ import { getEndpointsStatus } from '$lib/server/endpoints/status';
 import type { PageServerLoad } from './$types';
 
 /**
- * Read-only endpoint health + activity view. Admin-only (requireAdmin throws
- * 403 for non-admins).
+ * Endpoint health + activity view. Admin-only (requireAdmin throws 403 for
+ * non-admins). Its one write — pausing a queue — goes through
+ * `/api/admin/endpoints/[id]/pause`, not this load.
  *
  * SSRs a first snapshot so the page paints populated, then the client polls
  * `/api/admin/endpoints/status` for the live half. This load is the only
