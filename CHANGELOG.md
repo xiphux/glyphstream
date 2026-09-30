@@ -23,6 +23,7 @@ arrived.
 - Switching conversations opens the new one at its latest message, rather than at
   wherever the previous one was scrolled to — or, when it has an open comparison
   grid, at the top of the grid.
+- Typing in the gallery search box no longer loses characters when a search finishes mid-word.
 
 ## v0.41.2
 

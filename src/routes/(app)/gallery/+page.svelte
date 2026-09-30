@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
-	import { goto, invalidate } from '$app/navigation';
+	import { afterNavigate, goto, invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Popover, Switch } from 'bits-ui';
 	import { ChevronLeft, Search, SlidersHorizontal, SquareCheck, Star } from '@lucide/svelte';
@@ -236,18 +236,25 @@
 
 	// --- Prompt search box --------------------------------------------------
 	// svelte-ignore state_referenced_locally
-	// The $effect below resyncs from the URL on back-nav; local typing must
-	// survive until then, so this isn't a plain writable $derived.
-	// eslint-disable-next-line svelte/prefer-writable-derived
 	let queryText = $state(data.q ?? '');
+	// The query this page last pushed into the URL. A search navigation lands
+	// after the debounce, by which time the user has usually typed more — so
+	// the box resyncs from the URL only when the URL's query is one we didn't
+	// put there (back/forward, a link). Resyncing on our own commit reverted
+	// the box to the searched prefix, eating whatever was typed meanwhile.
+	// svelte-ignore state_referenced_locally
+	let committedQuery = data.q ?? '';
 	let queryDebounce: ReturnType<typeof setTimeout> | null = null;
 	let searchOpen = $state(false);
 	let searchInput = $state<HTMLInputElement | null>(null);
 	const searchExpanded = $derived(searchOpen || !!data.q);
 
-	$effect(() => {
-		// Keep the box in sync with the URL after a back-nav away from search.
-		queryText = data.q ?? '';
+	afterNavigate(({ to }) => {
+		const q = to?.url.searchParams.get('q')?.trim() ?? '';
+		if (q === committedQuery) return;
+		if (queryDebounce) clearTimeout(queryDebounce);
+		committedQuery = q;
+		queryText = q;
 	});
 
 	function openSearch() {
@@ -260,6 +267,7 @@
 	function commitQuery(q: string) {
 		const url = new URL(page.url);
 		const trimmed = q.trim();
+		committedQuery = trimmed;
 		if (trimmed) url.searchParams.set('q', trimmed);
 		else url.searchParams.delete('q');
 		void goto(url, { keepFocus: true, noScroll: true, replaceState: true });
