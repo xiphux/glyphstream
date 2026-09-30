@@ -502,7 +502,10 @@
 			// announced as one.
 			let drew: boolean | null = null;
 			await consumeChatStream(res.body, {
-				onQueued: (ahead) => setStatus(ahead > 0 ? `Queued — ${ahead} ahead…` : 'Queued…'),
+				onQueued: (ahead, paused) => {
+					const verb = paused ? 'Paused' : 'Queued';
+					setStatus(ahead > 0 ? `${verb} — ${ahead} ahead…` : `${verb}…`);
+				},
 				onProgress: (_percent, statusText) => setStatus(statusText ?? 'Drawing…'),
 				onStart: () => {
 					setStatus('Drawing…');
