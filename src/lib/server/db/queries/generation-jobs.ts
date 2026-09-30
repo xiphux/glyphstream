@@ -22,8 +22,9 @@ export function insertGenerationJob(job: NewGenerationJob): void {
 }
 
 /**
- * Every job left over from a previous process, in submission order (the order
- * the runner re-registers them in).
+ * Every job left over from a previous process, in submission order. The runner
+ * then moves interrupted (`running`) jobs ahead of queued ones — see
+ * `resumeGenerationJobs`.
  *
  * Ordered by `created_at` with `rowid` as the tiebreak: a fan-out's branches can
  * land in the same millisecond, and without a tiebreak their resumed order would

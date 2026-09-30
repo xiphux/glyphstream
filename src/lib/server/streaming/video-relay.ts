@@ -69,7 +69,7 @@ export interface VideoRelayParams extends MediaRelayParams {
 	loadInputReference?: () => Promise<{ bytes: Buffer; contentType: string }>;
 	/**
 	 * Fires with the bridge-side job id as soon as POST /v1/videos returns (or a
-	 * reattach confirms it), so the caller can stash it on the in-flight entry
+	 * reattach resumes it), so the caller can stash it on the in-flight entry
 	 * for cancellation (DELETE /v1/videos/{id}) — and the job runner on its job
 	 * row, so a restart can pick the bridge job back up (see `reattach`). Keeps this relay decoupled from the
 	 * in-flight registry's keying — the caller owns which entry to update.
