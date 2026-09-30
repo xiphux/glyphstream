@@ -2165,10 +2165,21 @@
 	// overlay is its sibling, and its jump-to-latest and Compact buttons scroll
 	// the list themselves, so a hold that outlived them would undo that scroll on
 	// the next image load. Keys on `window` because PageDown/Space scroll with
-	// focus on `body`, outside the pane. The time cap only bounds a reader who
-	// never touches anything.
+	// focus on `body`, outside the pane — but only scroll keys, and not from a
+	// text field: desktop auto-focuses the composer on every switch, so typing a
+	// follow-up straight away would otherwise drop the hold while images still
+	// load. The time cap only bounds a reader who never touches anything.
 	let fanoutGridEl = $state<HTMLElement | null>(null);
 	let messageListEl = $state<HTMLElement | null>(null);
+	const ENTRY_HOLD_SCROLL_KEYS = new Set([
+		'PageUp',
+		'PageDown',
+		'Home',
+		'End',
+		'ArrowUp',
+		'ArrowDown',
+		' ',
+	]);
 	let enteredConvId: string | null = null;
 	let releaseEntryHold: (() => void) | null = null;
 	$effect(() => {
@@ -2197,12 +2208,22 @@
 				ro.disconnect();
 				clearTimeout(cap);
 				for (const e of events) pane.removeEventListener(e, release);
-				window.removeEventListener('keydown', release);
+				window.removeEventListener('keydown', onKey);
 				if (releaseEntryHold === release) releaseEntryHold = null;
+			};
+			const onKey = (e: KeyboardEvent) => {
+				if (!ENTRY_HOLD_SCROLL_KEYS.has(e.key)) return;
+				const t = e.target;
+				if (
+					t instanceof HTMLElement &&
+					(t.isContentEditable || t.closest('input, textarea, select'))
+				)
+					return;
+				release();
 			};
 			const cap = setTimeout(release, 15_000);
 			for (const e of events) pane.addEventListener(e, release, { passive: true });
-			window.addEventListener('keydown', release);
+			window.addEventListener('keydown', onKey);
 			releaseEntryHold = release;
 		});
 	});
