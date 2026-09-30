@@ -457,11 +457,20 @@ export async function runMediaRelay(
 				// unreferenced row would sit in the library (and its file on disk)
 				// for good. Its link was rolled back with the append, so nothing
 				// else references it.
-				const deleted = hardDeleteMediaForUser(produced.mediaId, params.userId);
-				if (deleted) {
-					await unlinkMediaFiles(
-						[{ id: produced.mediaId, storagePath: deleted.storagePath }],
-						'media-relay.discard',
+				// Best-effort: a failed cleanup leaves the orphan this exists to
+				// prevent, but must not turn a cancellation into a relay that throws.
+				try {
+					const deleted = hardDeleteMediaForUser(produced.mediaId, params.userId);
+					if (deleted) {
+						await unlinkMediaFiles(
+							[{ id: produced.mediaId, storagePath: deleted.storagePath }],
+							'media-relay.discard',
+						);
+					}
+				} catch (cleanupError) {
+					console.warn(
+						`[media-relay] could not delete discarded media ${produced.mediaId}:`,
+						errorMessage(cleanupError),
 					);
 				}
 			}
