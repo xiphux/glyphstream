@@ -108,6 +108,9 @@ test.describe('auto-compaction', () => {
 		setAutoCompaction(true, 10);
 
 		await page.goto('/');
+		// Gate on hydration + default-model selection: a click on the SSR'd picker
+		// trigger before its handler is attached is silently dropped.
+		await expect(page.getByRole('button', { name: 'Select model' })).toContainText('Mock Chat');
 		await selectModel(page, 'Mock Chat Tiny');
 
 		// Turn 1 from the home composer.
@@ -138,6 +141,9 @@ test.describe('auto-compaction', () => {
 		setAutoCompaction(true, 10);
 
 		await page.goto('/');
+		// Gate on hydration + default-model selection: a click on the SSR'd picker
+		// trigger before its handler is attached is silently dropped.
+		await expect(page.getByRole('button', { name: 'Select model' })).toContainText('Mock Chat');
 		await selectModel(page, 'Mock Chat Tiny');
 
 		// Turn 1 carries the sentinel that forces a blank summary; it's an early
