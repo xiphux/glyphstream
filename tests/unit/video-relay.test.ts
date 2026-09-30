@@ -208,7 +208,7 @@ describe('startVideoRelay — happy path', () => {
 		const newId = (events.find((e) => e.type === 'done') as { assistantMessage: ChatMessage })
 			.assistantMessage.id;
 		expect(getSiblingAssistants(conv.id, userMessage.id).map((s) => s.id)).toEqual([newId]);
-		expect(mocks.linkMessageMedia).toHaveBeenCalledWith(newId, 'media-vid');
+		expect(mocks.linkMessageMedia).toHaveBeenCalledWith(newId, 'media-vid', expect.anything());
 	});
 });
 

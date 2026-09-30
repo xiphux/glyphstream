@@ -17,7 +17,14 @@ import { logLevel } from '../env';
 import { loadMediaBytes } from '../media/data-url';
 import { persistGeneratedImage } from '../media/persister';
 import { runPromptEnhancement } from './media-enhance';
-import { startMediaRelay, type MediaRelayParams } from './media-relay';
+import {
+	runMediaRelay,
+	startMediaRelay,
+	type MediaGenerate,
+	type MediaRelayParams,
+	type MediaRelayScaffoldParams,
+	type MediaRelaySink,
+} from './media-relay';
 import { errorMessage, isAbortError } from './sse-transport';
 import type { StreamErrorEvent, StreamProgressEvent } from '$lib/types/api';
 
@@ -68,12 +75,21 @@ export interface ImageRelayParams extends MediaRelayParams {
 }
 
 export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8Array> {
+	return startMediaRelay(...buildImageRelay(params));
+}
+
+/** Image relay writing to any sink — see `runMediaRelay`. */
+export function runImageRelay(params: ImageRelayParams, sink: MediaRelaySink): Promise<void> {
+	return runMediaRelay(...buildImageRelay(params), sink);
+}
+
+function buildImageRelay(params: ImageRelayParams): [MediaRelayScaffoldParams, MediaGenerate] {
 	// `effectivePrompt` is what actually generates the image (the enhanced prompt
 	// when enhancement changed it, else the verbatim prompt); `originalPrompt`
 	// preserves the user's text only when it changed. Both are populated by the
 	// prepare step below and read by the generate step.
-	let effectivePrompt = params.prompt;
-	let originalPrompt: string | null = null;
+	let effectivePrompt = params.preparedPrompt?.effectivePrompt ?? params.prompt;
+	let originalPrompt: string | null = params.preparedPrompt?.originalPrompt ?? null;
 
 	// Prompt enhancement runs as the relay's PRE-SLOT prepare step (shared with
 	// the video relay — see `media-enhance.ts`). Text-to-image only: an i2i
@@ -95,6 +111,7 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 		);
 		effectivePrompt = r.effectivePrompt;
 		originalPrompt = r.originalPrompt;
+		params.onPromptPrepared?.(r);
 	};
 
 	const relayParams = {
@@ -102,10 +119,12 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 		// `enhance` is what the scaffold shows this generation as waiting behind
 		// while the rewrite runs — including when it no-ops (enhancement off, or
 		// an edit send), which settles within the same tick and never surfaces.
-		prepare: { purpose: 'enhance' as const, run: prepareRun },
+		// A resumed generation already has its prompt (see `preparedPrompt`), so
+		// it has no pre-slot step at all.
+		prepare: params.preparedPrompt ? undefined : { purpose: 'enhance' as const, run: prepareRun },
 		modality: 'image' as const,
 	};
-	return startMediaRelay(relayParams, async ({ write, abortSignal }) => {
+	const generate: MediaGenerate = async ({ write, abortSignal }) => {
 		try {
 			// I2I when input images are attached, else T2I. The bridge consumes
 			// repeated `image` fields in order for multi-input ComfyUI workflows.
@@ -180,5 +199,6 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 			if (DEBUG) console.error('[image-relay] generation failed:', msg);
 			return { error: msg };
 		}
-	});
+	};
+	return [relayParams, generate];
 }

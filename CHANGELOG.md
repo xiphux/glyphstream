@@ -14,6 +14,8 @@ arrived.
 - Admins can pause an endpoint's queue from **Settings → Endpoints**: the current
   generation finishes, queued ones wait (shown as _Paused_) instead of failing
   against a backend that's restarting, and the pause survives a GlyphStream restart.
+- Queued and in-progress image and video generations survive a GlyphStream
+  restart: they go back in line in their original order when it comes back up.
 
 ## v0.41.2
 

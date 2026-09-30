@@ -32,6 +32,7 @@ import {
 	type PendingWork,
 	type SlotPurpose,
 } from '../endpoints/concurrency';
+import type { Tx } from '../db/client';
 import type { InFlightEntry } from './in-flight';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { notifyConversationComplete, type NotifyModality } from '../push/notify';
@@ -157,6 +158,59 @@ export interface MediaRelayParams {
 	 * sidebar's generating dot would keep reporting.
 	 */
 	onGenerationSettled?: () => void;
+	/**
+	 * Fires the instant the endpoint slot is granted, alongside the in-flight
+	 * stamp. The job runner records the job as running here — and, if its row
+	 * has vanished while it waited in line (the branch or conversation was
+	 * deleted), aborts through `abortSignal` rather than spend a generation on a
+	 * result with nowhere to land.
+	 */
+	onGenerationStarted?: () => void;
+	/**
+	 * Extra writes that must commit atomically with the outcome — run inside the
+	 * transaction that appends the result or the durable error sibling. Throwing
+	 * {@link GenerationDiscardedError} rolls the append back and ends the relay as
+	 * a cancellation; any other throw rolls it back as a failure.
+	 */
+	persistWith?: (tx: Tx) => void;
+	/**
+	 * A prompt-enhancement result from an earlier run of this same generation.
+	 * When present the relay skips enhancement and generates from it — a resumed
+	 * job must neither pay for the rewrite twice nor come back with a different
+	 * one.
+	 */
+	preparedPrompt?: PreparedPrompt;
+	/** Fires once enhancement has produced the prompt to generate from, so the
+	 *  caller can checkpoint it (see `preparedPrompt`). */
+	onPromptPrepared?: (prepared: PreparedPrompt) => void;
+}
+
+/** The outcome of the pre-slot prompt-enhancement step. */
+export interface PreparedPrompt {
+	/** What actually generates: the enhanced prompt, or the verbatim one. */
+	effectivePrompt: string;
+	/** The user's own prompt when enhancement changed it; null otherwise. */
+	originalPrompt: string | null;
+}
+
+/**
+ * Thrown from `persistWith` when the outcome must not land at all — the job it
+ * belongs to is gone. The relay rolls the append back and reports a
+ * cancellation, which is what it is from the user's side: they deleted the
+ * thing this was being generated for.
+ */
+export class GenerationDiscardedError extends Error {
+	constructor() {
+		super('Generation discarded');
+		this.name = 'GenerationDiscardedError';
+	}
+}
+
+/** Where a relay's events go — a response stream, or nowhere at all for a
+ *  generation resumed after a restart that no client is attached to yet. */
+export interface MediaRelaySink {
+	write: SseWriter['write'];
+	close: SseWriter['close'];
 }
 
 /** What a modality's generate step yields on success. The scaffold persists it
@@ -213,215 +267,243 @@ export function startMediaRelay(
 	generate: MediaGenerate,
 ): ReadableStream<Uint8Array> {
 	return new ReadableStream({
-		async start(controller) {
-			const { write: safeWrite, close: safeClose } = sseWriter(controller);
-			let slot: EndpointSlot | null = null;
-			// Declared BEFORE the prepare step and handed to the acquire below, so
-			// this generation is visible on its own endpoint for the whole time it
-			// is stuck behind that step rather than appearing in the queue the
-			// instant the step lets go. A batch of media sends with enhancement on
-			// otherwise reads on `/settings/endpoints` as a generation queue that
-			// grows by itself with nobody submitting — see `declarePendingWork`.
-			// Null when there is no pre-slot step: there is then nothing to be
-			// pending behind, and the acquire happens on the next line anyway.
-			let pending: PendingWork | null = null;
-			try {
-				// Pre-slot prepare phase (e.g. prompt enhancement). Runs OFF this
-				// endpoint's slot so a slow / cross-endpoint CPU step doesn't hold the
-				// generation slot — it manages its own concurrency (and serializes
-				// against generation only when they share an endpoint). A Stop during
-				// it surfaces as a cancellation (no slot held yet); any other failure
-				// is swallowed by the prepare itself and we proceed with what we have.
-				if (params.prepare) {
-					pending = declarePendingWork(
-						params.endpoint,
-						{ purpose: params.modality, modelId: params.storedModelId },
-						params.prepare.purpose,
-					);
-					try {
-						await params.prepare.run({ write: safeWrite, abortSignal: params.abortSignal });
-					} catch (e) {
-						if (isAbortError(e) || params.abortSignal?.aborted) {
-							safeWrite({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
-							safeClose();
-							return;
-						}
-						// Non-abort: best-effort — log and proceed to generation.
-						console.warn('[media-relay] prepare step failed (continuing):', errorMessage(e));
-					}
-				}
-
-				// Hold a per-endpoint slot across the whole generation so a
-				// single-GPU backend serializes; emit `queued` while waiting.
-				try {
-					slot = await acquireEndpointSlot(params.endpoint, {
-						work: { purpose: params.modality, modelId: params.storedModelId },
-						// Retires the declaration above at the exact moment this
-						// acquisition takes its place in the gate, so the work is never
-						// absent from both lists for a poll to catch.
-						supersedes: pending ?? undefined,
-						signal: params.abortSignal,
-						onQueued: (info) => safeWrite({ type: 'queued', ...info }),
-						onReleasing: () =>
-							safeWrite({ type: 'progress', percent: null, status: 'Freeing GPU memory…' }),
-					});
-				} catch (e) {
-					// Stop clicked while queued — nothing started; surface as a
-					// cancellation. No slot held, so the finally's release no-ops.
-					safeWrite({
-						type: 'error',
-						message: isAbortError(e) || params.abortSignal?.aborted ? 'Cancelled' : errorMessage(e),
-					} satisfies StreamErrorEvent);
-					safeClose();
-					return;
-				}
-
-				// Slot acquired → generation begins. `start` flips the client column
-				// from QUEUED to a live timer; the stamp lets a recovery rebuild do
-				// the same, and lets the sidebar tell this conversation from the ones
-				// still in line behind it.
-				params.inFlight.generationStartedAt = Date.now();
-				// Generation clock starts here — after the queue wait, so the
-				// recorded time is decode/render only, not slot contention.
-				const genStartedAt = Date.now();
-				safeWrite({
-					type: 'start',
-					userMessage: params.userMessage,
-					assistantMessageId: '',
-				} satisfies StreamStartEvent);
-
-				const titlePromise = params.suppressTitleTask
-					? Promise.resolve<string | null>(null)
-					: startTitleTaskIfFirstExchange(params.conversationId, params.userId);
-
-				// Modality-specific: produce + persist the media bytes. Returns null
-				// after emitting its own cancel event — bail quietly. Returns a
-				// MediaFailure WITHOUT emitting an error event — the scaffold below
-				// persists a durable error sibling (so a recovered fan-out can still
-				// show it) and only then emits the frame, carrying that row's id.
-				const produced = await generate({ write: safeWrite, abortSignal: params.abortSignal });
-				if (!produced) {
-					safeClose();
-					return;
-				}
-				if ('error' in produced) {
-					// A genuine failure (not a Stop). Persist a durable record so the
-					// branch survives a client disconnect. Without this, the relay's
-					// `finally` clears the in-flight slot and the branch leaves no trace
-					// — a fan-out grid recovered after an iOS suspend would silently drop
-					// the column (and a lone branch's grid would evaporate to just the
-					// prompt). advanceActiveLeaf mirrors the success path: a fan-out
-					// branch stays a pinned sibling (recovery rebuilds the failed column);
-					// a single send advances the leaf so the failure shows in the thread.
-					// `sourceMediaId` is the split-attachments input, which only the error
-					// part can carry — the success path reads it off the output media row.
-					let persistedId: string | undefined;
-					try {
-						persistedId = appendMessage({
-							conversationId: params.conversationId,
-							parentMessageId: params.userMessage.id,
-							role: 'assistant',
-							parts: [
-								{
-									type: 'error',
-									message: produced.error,
-									sourceMediaId: params.sourceMediaId ?? null,
-								},
-							],
-							modelUsed: params.storedModelId,
-							genMs: Date.now() - genStartedAt,
-							advanceActiveLeaf: params.advanceActiveLeaf ?? true,
-							advanceActiveLeafIfCurrent: params.advanceActiveLeafIfCurrent,
-							fanoutIndex: params.fanoutIndex,
-						}).id;
-					} catch (e) {
-						// Best-effort durability — the client still gets the error frame
-						// below, just without a handle to the (absent) row.
-						console.warn('[media-relay] failed to persist error sibling:', errorMessage(e));
-					}
-					// The terminal `error` frame is emitted HERE, not by the generate step,
-					// so it can carry the persisted row's id: a fan-out column that fails
-					// is a real server-side row, and the grid's discard button has to
-					// delete it or a "removed" failure reappears on the next reload.
-					safeWrite({
-						type: 'error',
-						message: produced.error,
-						messageId: persistedId,
-					} satisfies StreamErrorEvent);
-					safeClose();
-					return;
-				}
-
-				let assistantMessage: ChatMessage;
-				try {
-					assistantMessage = appendMessage({
-						conversationId: params.conversationId,
-						parentMessageId: params.userMessage.id,
-						role: 'assistant',
-						parts: [produced.part],
-						modelUsed: params.storedModelId,
-						rawResponseJson: produced.rawResponseJson,
-						genMs: Date.now() - genStartedAt,
-						advanceActiveLeaf: params.advanceActiveLeaf ?? true,
-						advanceActiveLeafIfCurrent: params.advanceActiveLeafIfCurrent,
-						fanoutIndex: params.fanoutIndex,
-					});
-					linkMessageMedia(assistantMessage.id, produced.mediaId);
-				} catch (e) {
-					safeWrite({ type: 'error', message: errorMessage(e) } satisfies StreamErrorEvent);
-					safeClose();
-					return;
-				}
-
-				// Whatever this generation was FOR, now that it durably exists. Outside
-				// the append's try: a failure to apply is not a failure to generate,
-				// and must not be reported as one.
-				try {
-					params.onMediaPersisted?.(produced.mediaId);
-				} catch (e) {
-					console.warn('[media-relay] onMediaPersisted failed:', errorMessage(e));
-				}
-
-				// A fan-out branch suppresses its own notify; the route fires one
-				// aggregate "N ready" when the last branch settles.
-				if (!params.suppressNotify) {
-					void notifyConversationComplete({
-						userId: params.userId,
-						conversationId: params.conversationId,
-						assistantMessageId: assistantMessage.id,
-						conversationTitle: params.conversationTitle ?? 'New conversation',
-						previewText: '',
-						modality: produced.modality,
-					}).catch((e) => console.warn('[media-relay] notify failed:', e));
-				}
-
-				safeWrite({ type: 'done', assistantMessage } satisfies StreamDoneEvent);
-				// Generation + persistence are done — free the endpoint slot BEFORE the
-				// title race, not after. The title task is gated on the same endpoint
-				// slot now (see callTaskModel), so on a single-GPU (max_concurrent=1)
-				// endpoint holding the slot here would block the title task from ever
-				// being granted → raceTitle would burn its whole budget and the next
-				// queued generation would wait it out. The finally is the idempotent
-				// backstop for the early-return / error paths.
-				slot?.release();
-				// Same boundary for the in-flight registry: generation is over, so
-				// stop reporting it as running rather than holding the entry through
-				// the title race. Identity-guarded, so the finally's onComplete stays
-				// a harmless no-op (and can't clobber a fast follow-up's entry).
-				params.onGenerationSettled?.();
-				const title = await raceTitle(titlePromise, TITLE_DELIVERY_BUDGET_MS);
-				if (title) safeWrite({ type: 'title', title } satisfies StreamTitleEvent);
-				safeClose();
-			} finally {
-				slot?.release();
-				// Idempotent, and already done by the acquire on the happy path. This
-				// is for the paths that never reach it: a Stop during the prepare
-				// step, a throw out of it, a rejected acquisition. A declaration that
-				// outlives its request is a phantom for the life of the process — the
-				// same failure the gate's own eviction unwind exists to prevent.
-				pending?.settle();
-				params.onComplete();
-			}
+		start(controller) {
+			return runMediaRelay(params, generate, sseWriter(controller));
 		},
 	});
+}
+
+/**
+ * The relay lifecycle itself, writing to any sink. Resolves once the relay is
+ * completely finished (after `onComplete`). Never rejects for a generation
+ * failure — those become `error` events and durable error siblings.
+ */
+export async function runMediaRelay(
+	params: MediaRelayScaffoldParams,
+	generate: MediaGenerate,
+	sink: MediaRelaySink,
+): Promise<void> {
+	const { write: safeWrite, close: safeClose } = sink;
+	let slot: EndpointSlot | null = null;
+	// Declared BEFORE the prepare step and handed to the acquire below, so
+	// this generation is visible on its own endpoint for the whole time it
+	// is stuck behind that step rather than appearing in the queue the
+	// instant the step lets go. A batch of media sends with enhancement on
+	// otherwise reads on `/settings/endpoints` as a generation queue that
+	// grows by itself with nobody submitting — see `declarePendingWork`.
+	// Null when there is no pre-slot step: there is then nothing to be
+	// pending behind, and the acquire happens on the next line anyway.
+	let pending: PendingWork | null = null;
+	try {
+		// Pre-slot prepare phase (e.g. prompt enhancement). Runs OFF this
+		// endpoint's slot so a slow / cross-endpoint CPU step doesn't hold the
+		// generation slot — it manages its own concurrency (and serializes
+		// against generation only when they share an endpoint). A Stop during
+		// it surfaces as a cancellation (no slot held yet); any other failure
+		// is swallowed by the prepare itself and we proceed with what we have.
+		if (params.prepare) {
+			pending = declarePendingWork(
+				params.endpoint,
+				{ purpose: params.modality, modelId: params.storedModelId },
+				params.prepare.purpose,
+			);
+			try {
+				await params.prepare.run({ write: safeWrite, abortSignal: params.abortSignal });
+			} catch (e) {
+				if (isAbortError(e) || params.abortSignal?.aborted) {
+					safeWrite({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
+					safeClose();
+					return;
+				}
+				// Non-abort: best-effort — log and proceed to generation.
+				console.warn('[media-relay] prepare step failed (continuing):', errorMessage(e));
+			}
+		}
+
+		// Hold a per-endpoint slot across the whole generation so a
+		// single-GPU backend serializes; emit `queued` while waiting.
+		try {
+			slot = await acquireEndpointSlot(params.endpoint, {
+				work: { purpose: params.modality, modelId: params.storedModelId },
+				// Retires the declaration above at the exact moment this
+				// acquisition takes its place in the gate, so the work is never
+				// absent from both lists for a poll to catch.
+				supersedes: pending ?? undefined,
+				signal: params.abortSignal,
+				onQueued: (info) => safeWrite({ type: 'queued', ...info }),
+				onReleasing: () =>
+					safeWrite({ type: 'progress', percent: null, status: 'Freeing GPU memory…' }),
+			});
+		} catch (e) {
+			// Stop clicked while queued — nothing started; surface as a
+			// cancellation. No slot held, so the finally's release no-ops.
+			safeWrite({
+				type: 'error',
+				message: isAbortError(e) || params.abortSignal?.aborted ? 'Cancelled' : errorMessage(e),
+			} satisfies StreamErrorEvent);
+			safeClose();
+			return;
+		}
+
+		// Slot acquired → generation begins. `start` flips the client column
+		// from QUEUED to a live timer; the stamp lets a recovery rebuild do
+		// the same, and lets the sidebar tell this conversation from the ones
+		// still in line behind it.
+		params.inFlight.generationStartedAt = Date.now();
+		params.onGenerationStarted?.();
+		// Generation clock starts here — after the queue wait, so the
+		// recorded time is decode/render only, not slot contention.
+		const genStartedAt = Date.now();
+		safeWrite({
+			type: 'start',
+			userMessage: params.userMessage,
+			assistantMessageId: '',
+		} satisfies StreamStartEvent);
+
+		const titlePromise = params.suppressTitleTask
+			? Promise.resolve<string | null>(null)
+			: startTitleTaskIfFirstExchange(params.conversationId, params.userId);
+
+		// Modality-specific: produce + persist the media bytes. Returns null
+		// after emitting its own cancel event — bail quietly. Returns a
+		// MediaFailure WITHOUT emitting an error event — the scaffold below
+		// persists a durable error sibling (so a recovered fan-out can still
+		// show it) and only then emits the frame, carrying that row's id.
+		const produced = await generate({ write: safeWrite, abortSignal: params.abortSignal });
+		if (!produced) {
+			safeClose();
+			return;
+		}
+		if ('error' in produced) {
+			// A genuine failure (not a Stop). Persist a durable record so the
+			// branch survives a client disconnect. Without this, the relay's
+			// `finally` clears the in-flight slot and the branch leaves no trace
+			// — a fan-out grid recovered after an iOS suspend would silently drop
+			// the column (and a lone branch's grid would evaporate to just the
+			// prompt). advanceActiveLeaf mirrors the success path: a fan-out
+			// branch stays a pinned sibling (recovery rebuilds the failed column);
+			// a single send advances the leaf so the failure shows in the thread.
+			// `sourceMediaId` is the split-attachments input, which only the error
+			// part can carry — the success path reads it off the output media row.
+			let persistedId: string | undefined;
+			try {
+				persistedId = appendMessage({
+					conversationId: params.conversationId,
+					parentMessageId: params.userMessage.id,
+					role: 'assistant',
+					parts: [
+						{
+							type: 'error',
+							message: produced.error,
+							sourceMediaId: params.sourceMediaId ?? null,
+						},
+					],
+					modelUsed: params.storedModelId,
+					genMs: Date.now() - genStartedAt,
+					advanceActiveLeaf: params.advanceActiveLeaf ?? true,
+					advanceActiveLeafIfCurrent: params.advanceActiveLeafIfCurrent,
+					fanoutIndex: params.fanoutIndex,
+					inTransaction: params.persistWith,
+				}).id;
+			} catch (e) {
+				// Best-effort durability — the client still gets the error frame
+				// below, just without a handle to the (absent) row. A discarded
+				// outcome is the expected case, not worth a warning.
+				if (!(e instanceof GenerationDiscardedError)) {
+					console.warn('[media-relay] failed to persist error sibling:', errorMessage(e));
+				}
+			}
+			// The terminal `error` frame is emitted HERE, not by the generate step,
+			// so it can carry the persisted row's id: a fan-out column that fails
+			// is a real server-side row, and the grid's discard button has to
+			// delete it or a "removed" failure reappears on the next reload.
+			safeWrite({
+				type: 'error',
+				message: produced.error,
+				messageId: persistedId,
+			} satisfies StreamErrorEvent);
+			safeClose();
+			return;
+		}
+
+		let assistantMessage: ChatMessage;
+		try {
+			assistantMessage = appendMessage({
+				conversationId: params.conversationId,
+				parentMessageId: params.userMessage.id,
+				role: 'assistant',
+				parts: [produced.part],
+				modelUsed: params.storedModelId,
+				rawResponseJson: produced.rawResponseJson,
+				genMs: Date.now() - genStartedAt,
+				advanceActiveLeaf: params.advanceActiveLeaf ?? true,
+				advanceActiveLeafIfCurrent: params.advanceActiveLeafIfCurrent,
+				fanoutIndex: params.fanoutIndex,
+				// Linked inside the append's transaction, so a crash can't leave
+				// the media row persisted with nothing referencing it — generated
+				// media is never reaped by the purger, so it would sit there for
+				// good.
+				inTransaction: (tx, messageId) => {
+					linkMessageMedia(messageId, produced.mediaId, tx);
+					params.persistWith?.(tx);
+				},
+			});
+		} catch (e) {
+			safeWrite({
+				type: 'error',
+				message: e instanceof GenerationDiscardedError ? 'Cancelled' : errorMessage(e),
+			} satisfies StreamErrorEvent);
+			safeClose();
+			return;
+		}
+
+		// Whatever this generation was FOR, now that it durably exists. Outside
+		// the append's try: a failure to apply is not a failure to generate,
+		// and must not be reported as one.
+		try {
+			params.onMediaPersisted?.(produced.mediaId);
+		} catch (e) {
+			console.warn('[media-relay] onMediaPersisted failed:', errorMessage(e));
+		}
+
+		// A fan-out branch suppresses its own notify; the route fires one
+		// aggregate "N ready" when the last branch settles.
+		if (!params.suppressNotify) {
+			void notifyConversationComplete({
+				userId: params.userId,
+				conversationId: params.conversationId,
+				assistantMessageId: assistantMessage.id,
+				conversationTitle: params.conversationTitle ?? 'New conversation',
+				previewText: '',
+				modality: produced.modality,
+			}).catch((e) => console.warn('[media-relay] notify failed:', e));
+		}
+
+		safeWrite({ type: 'done', assistantMessage } satisfies StreamDoneEvent);
+		// Generation + persistence are done — free the endpoint slot BEFORE the
+		// title race, not after. The title task is gated on the same endpoint
+		// slot now (see callTaskModel), so on a single-GPU (max_concurrent=1)
+		// endpoint holding the slot here would block the title task from ever
+		// being granted → raceTitle would burn its whole budget and the next
+		// queued generation would wait it out. The finally is the idempotent
+		// backstop for the early-return / error paths.
+		slot?.release();
+		// Same boundary for the in-flight registry: generation is over, so
+		// stop reporting it as running rather than holding the entry through
+		// the title race. Identity-guarded, so the finally's onComplete stays
+		// a harmless no-op (and can't clobber a fast follow-up's entry).
+		params.onGenerationSettled?.();
+		const title = await raceTitle(titlePromise, TITLE_DELIVERY_BUDGET_MS);
+		if (title) safeWrite({ type: 'title', title } satisfies StreamTitleEvent);
+		safeClose();
+	} finally {
+		slot?.release();
+		// Idempotent, and already done by the acquire on the happy path. This
+		// is for the paths that never reach it: a Stop during the prepare
+		// step, a throw out of it, a rejected acquisition. A declaration that
+		// outlives its request is a phantom for the life of the process — the
+		// same failure the gate's own eviction unwind exists to prevent.
+		pending?.settle();
+		params.onComplete();
+	}
 }

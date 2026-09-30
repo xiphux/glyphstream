@@ -1089,3 +1089,67 @@ export const pausedResourceGroups = sqliteTable('paused_resource_groups', {
 	resourceGroup: text('resource_group').primaryKey(),
 	pausedAt: integer('paused_at').notNull(),
 });
+
+// --- durable media generations -------------------------------------------
+
+// One row per image / video generation that is QUEUED or RUNNING — the durable
+// half of a generation, so a GlyphStream restart resumes the queue instead of
+// dropping it. See `server/generation/jobs.ts`.
+//
+// A row exists only while there is something to resume: it is deleted in the
+// same transaction that appends the result (or the durable error sibling), and
+// by the runner's cleanup on any other exit (Stop, a vanished anchor). The
+// table therefore holds the live queue and nothing else — its size tracks queue
+// depth, not history.
+//
+// Every FK is declared HERE, in the CREATE TABLE. An ON DELETE clause added
+// later by ALTER TABLE is silently dropped by SQLite (that is how
+// `conversations.fanout_parent_message_id` ended up NO ACTION), and these
+// cascades are load-bearing: deleting the anchor's branch, the conversation or
+// the user must take its queued work with it, or the runner would append a
+// result under a message that no longer exists (`messages.parent_message_id`
+// has no FK to stop it).
+export const generationJobs = sqliteTable(
+	'generation_jobs',
+	{
+		id: text('id').primaryKey(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		conversationId: text('conversation_id')
+			.notNull()
+			.references(() => conversations.id, { onDelete: 'cascade' }),
+		// The message the result hangs off: the prompting user message, or — for
+		// an avatar draw — the assistant reply holding the appearance description.
+		anchorMessageId: text('anchor_message_id')
+			.notNull()
+			.references((): AnySQLiteColumn => messages.id, { onDelete: 'cascade' }),
+		kind: text('kind', { enum: ['image', 'video'] }).notNull(),
+		// What the generation is for, which decides how it registers in flight
+		// and what happens on completion (see `JobOrigin`).
+		origin: text('origin', { enum: ['send', 'fanout', 'avatar', 'avatar_fanout'] }).notNull(),
+		// Conversation-facing `endpoint::model` id.
+		modelId: text('model_id').notNull(),
+		fanoutIndex: integer('fanout_index'),
+		// `running` once the endpoint slot was granted. A row still `running` at
+		// startup was interrupted mid-generation; `attempts` counts those
+		// interruptions, so a job that keeps dying is failed rather than retried
+		// forever.
+		state: text('state', { enum: ['queued', 'running'] })
+			.notNull()
+			.default('queued'),
+		attempts: integer('attempts').notNull().default(0),
+		// Everything the relay needs that the row's columns don't carry — see
+		// `GenerationJobParams`. Text, not `blob()`: a bare drizzle blob is JSON
+		// mode with its own encoding rules, and this is parsed in one place.
+		paramsJson: text('params_json').notNull(),
+		// The prompt-enhancement result, checkpointed so a resumed job doesn't
+		// pay for (or re-roll) the rewrite. Null until enhancement has run.
+		preparedJson: text('prepared_json'),
+		// Bridge-side video job id, once POST /v1/videos returned one.
+		upstreamJobId: text('upstream_job_id'),
+		createdAt: integer('created_at').notNull(),
+		startedAt: integer('started_at'),
+	},
+	(t) => [index('idx_generation_jobs_anchor').on(t.anchorMessageId)],
+);

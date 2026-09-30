@@ -36,6 +36,11 @@ import {
 import { bootstrapMcp } from '$lib/server/mcp/bootstrap';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import { installPersistedPauses } from '$lib/server/endpoints/pause';
+import {
+	resumeGenerationJobs,
+	scheduleGenerationJobResume,
+	stopGenerationJobResume,
+} from '$lib/server/generation/jobs';
 import { stopMcp } from '$lib/server/mcp/registry';
 import { stopPool } from '$lib/server/code-interpreter/pool';
 import { maxLoopLagSince, startLoopLagSampler } from '$lib/server/util/loop-lag';
@@ -73,6 +78,13 @@ const SHOULD_COMPRESS_DYNAMIC = compressDynamicResponses();
 // concurrency gate at them before anything can acquire a slot. Opens nothing
 // yet — the set is read on the first gate created.
 installPersistedPauses();
+
+// Image / video generations are durable jobs; whatever was queued or running
+// when the last process stopped goes back in line. Resumed by the first
+// signed-in request (see `handle`), or by this timer for a server nobody is
+// visiting — never at module load, for the same reason the admin bootstrap
+// isn't (below).
+scheduleGenerationJobResume();
 
 // Start the media purge sweeper at module load — runs once per Node process.
 // Using top-level rather than the first-request handler so the sweep clock
@@ -147,6 +159,9 @@ process.on('sveltekit:shutdown', async () => {
 	stopEmbeddingBackfiller();
 	stopTopicBackfiller();
 	stopConversationSummaryWorker();
+	// Only the fallback timer. Queued and running generations are deliberately
+	// left alone: their rows are what the next process resumes from.
+	stopGenerationJobResume();
 	await stopMcp();
 	await stopPool();
 });
@@ -322,6 +337,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 		} catch (err) {
 			console.error('[auth] ensureAdminBootstrap failed:', err);
 		}
+		// Before this request's own reads: a page load right after a restart
+		// should already see the resumed queue in flight. Never throws.
+		resumeGenerationJobs();
 	}
 	const ctx = token ? validateSessionToken(token) : null;
 	// App lock. A locked session resolves to NO user, so every guard already

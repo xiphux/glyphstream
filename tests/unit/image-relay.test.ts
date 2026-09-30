@@ -376,7 +376,11 @@ describe('startImageRelay — happy path', () => {
 		const sibs = getSiblingAssistants(conv.id, userMessage.id);
 		expect(sibs.map((s) => s.id)).toEqual([persistedId]);
 		expect(mocks.persistGeneratedImage).toHaveBeenCalledOnce();
-		expect(mocks.linkMessageMedia).toHaveBeenCalledWith(persistedId, 'media-out');
+		expect(mocks.linkMessageMedia).toHaveBeenCalledWith(
+			persistedId,
+			'media-out',
+			expect.anything(),
+		);
 	});
 
 	it('signals onGenerationSettled once, before onComplete', async () => {

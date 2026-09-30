@@ -11,8 +11,11 @@
  * succeeded. The apply now rides the relay's `onMediaPersisted`, which runs
  * server-side and doesn't care whether anyone is still listening.
  *
- * So these drive the handler with `startImageRelay` mocked, capture the params
- * it was handed, and invoke the hook the way the relay would.
+ * The route queues a durable generation job, and the job runner is what turns
+ * the job's origin into relay params — so these drive the handler through the
+ * REAL runner with only the relay (`runImageRelay`) and the job table mocked,
+ * capture the params the relay was handed, and invoke its hooks the way the
+ * relay would.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -25,6 +28,7 @@ import {
 import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '$lib/fanout';
 import type { LoadedEndpoint } from '$lib/server/endpoints/config';
 import type { ImageRelayParams } from '$lib/server/streaming/image-relay';
+import { resetGenerationJobsForTests } from '$lib/server/generation/jobs';
 
 const mocks = vi.hoisted(() => ({
 	getConversationMeta: vi.fn<(...a: unknown[]) => unknown>(),
@@ -34,7 +38,7 @@ const mocks = vi.hoisted(() => ({
 	getSiblingAssistants: vi.fn<(...a: unknown[]) => unknown[]>(),
 	getEndpoint: vi.fn<(...a: unknown[]) => unknown>(),
 	listAllModels: vi.fn<(...a: unknown[]) => unknown>(),
-	startImageRelay: vi.fn<(p: ImageRelayParams) => ReadableStream<Uint8Array>>(),
+	runImageRelay: vi.fn<(p: ImageRelayParams) => Promise<void>>(),
 	notifyFanoutCompleteIfLast: vi.fn<(...a: unknown[]) => void>(),
 }));
 
@@ -46,6 +50,19 @@ vi.mock('$lib/server/db/queries/conversations', () => ({
 vi.mock('$lib/server/db/queries/messages', () => ({
 	getMessage: (...a: unknown[]) => mocks.getMessage(...a),
 	getSiblingAssistants: (...a: unknown[]) => mocks.getSiblingAssistants(...a),
+	appendMessage: () => ({ id: 'appended' }),
+}));
+// The job's row is exercised by the generation-jobs tests; here only the
+// runner's translation of it into relay params is under test.
+vi.mock('$lib/server/db/queries/generation-jobs', () => ({
+	insertGenerationJob: () => {},
+	listGenerationJobs: () => [],
+	deleteGenerationJob: () => {},
+	markGenerationJobRunning: () => true,
+	requeueGenerationJob: () => {},
+	setGenerationJobPrepared: () => {},
+	setGenerationJobUpstreamId: () => {},
+	consumeGenerationJob: () => true,
 }));
 vi.mock('$lib/server/endpoints/registry', () => ({
 	getEndpoint: (...a: unknown[]) => mocks.getEndpoint(...a),
@@ -54,7 +71,7 @@ vi.mock('$lib/server/endpoints/list-models', () => ({
 	listAllModels: (...a: unknown[]) => mocks.listAllModels(...a),
 }));
 vi.mock('$lib/server/streaming/image-relay', () => ({
-	startImageRelay: (p: ImageRelayParams) => mocks.startImageRelay(p),
+	runImageRelay: (p: ImageRelayParams) => mocks.runImageRelay(p),
 }));
 vi.mock('$lib/server/messages/fanout-notify', () => ({
 	notifyFanoutCompleteIfLast: (...a: unknown[]) => mocks.notifyFanoutCompleteIfLast(...a),
@@ -83,10 +100,10 @@ function call(body: Record<string, unknown> = {}) {
 	>[0]);
 }
 
-/** The params the handler passed to the relay on the most recent call. */
+/** The params the job runner passed to the relay on the most recent call. */
 function relayParams(): ImageRelayParams {
-	const call = mocks.startImageRelay.mock.calls.at(-1);
-	if (!call) throw new Error('startImageRelay was never called');
+	const call = mocks.runImageRelay.mock.calls.at(-1);
+	if (!call) throw new Error('runImageRelay was never called');
 	return call[0];
 }
 
@@ -122,7 +139,9 @@ beforeEach(() => {
 		{ id: 'ep::sdxl', kind: 'image', displayName: 'SDXL' },
 		{ id: 'ep::chat', kind: 'chat', displayName: 'Chat' },
 	]);
-	mocks.startImageRelay.mockReset().mockReturnValue(new ReadableStream<Uint8Array>());
+	// Never settles: the generation stays in flight for the test's duration,
+	// which is what the registry assertions need.
+	mocks.runImageRelay.mockReset().mockReturnValue(new Promise<void>(() => {}));
 	mocks.notifyFanoutCompleteIfLast.mockReset();
 	// Default: a comparison is parked on the anchor, which is the state every
 	// fan-out branch runs in. The background-draw tests override it.
@@ -132,10 +151,11 @@ beforeEach(() => {
 
 afterEach(() => {
 	resetInFlight();
+	resetGenerationJobsForTests();
 });
 
 describe('POST /avatar/generate — applying the portrait', () => {
-	it('hands the relay an onMediaPersisted that sets the conversation avatar', async () => {
+	it('queues a job whose relay gets an onMediaPersisted that sets the conversation avatar', async () => {
 		mocks.getFanoutParent.mockReturnValue(null);
 		await call();
 		const params = relayParams();
@@ -193,7 +213,7 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 		// its portrait under a message the leaf isn't on.
 		mocks.getFanoutParent.mockReturnValue(null);
 		await expect(call({ fanout: true })).rejects.toMatchObject({ status: 409 });
-		expect(mocks.startImageRelay).not.toHaveBeenCalled();
+		expect(mocks.runImageRelay).not.toHaveBeenCalled();
 	});
 
 	it('refuses a branch whose anchor is not the parked one', async () => {
@@ -203,7 +223,7 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 		// conversationTurnEntries is conversation-scoped.
 		mocks.getFanoutParent.mockReturnValue('a-different-description');
 		await expect(call({ fanout: true })).rejects.toMatchObject({ status: 409 });
-		expect(mocks.startImageRelay).not.toHaveBeenCalled();
+		expect(mocks.runImageRelay).not.toHaveBeenCalled();
 	});
 
 	it('applies nothing on arrival', async () => {
@@ -275,7 +295,7 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 			parts: [{ type: 'text', text: 'draw me' }],
 		});
 		await call();
-		expect(mocks.startImageRelay).toHaveBeenCalled();
+		expect(mocks.runImageRelay).toHaveBeenCalled();
 	});
 
 	it.each([
@@ -335,7 +355,7 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 		mocks.getFanoutParent.mockReturnValue('m1');
 		mocks.getSiblingAssistants.mockReturnValue([{ id: 'p1', parts: [{ type: 'image' }] }]);
 		await expect(call()).rejects.toMatchObject({ status: 409 });
-		expect(mocks.startImageRelay).not.toHaveBeenCalled();
+		expect(mocks.runImageRelay).not.toHaveBeenCalled();
 	});
 
 	it('refuses while a comparison is parked whose branches have not persisted yet', async () => {
@@ -366,7 +386,7 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 			{ id: 'e2', parts: [{ type: 'error', message: 'boom' }] },
 		]);
 		await call();
-		expect(mocks.startImageRelay).toHaveBeenCalled();
+		expect(mocks.runImageRelay).toHaveBeenCalled();
 	});
 
 	it('still refuses when one branch failed but another produced a portrait', async () => {
@@ -388,7 +408,7 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 		mocks.getFanoutParent.mockReturnValue('m1');
 		mocks.getSiblingAssistants.mockReturnValue([]);
 		await call();
-		expect(mocks.startImageRelay).toHaveBeenCalled();
+		expect(mocks.runImageRelay).toHaveBeenCalled();
 	});
 
 	it('still draws while a fan-out is parked on a different anchor', async () => {
@@ -399,7 +419,7 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 		// for. A broader guard would refuse it.
 		mocks.getFanoutParent.mockReturnValue('some-other-message');
 		await call();
-		expect(mocks.startImageRelay).toHaveBeenCalled();
+		expect(mocks.runImageRelay).toHaveBeenCalled();
 	});
 
 	it('does not refuse a comparison branch on its own parked anchor', async () => {
@@ -407,7 +427,7 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 		// was parked FOR.
 		mocks.getFanoutParent.mockReturnValue('m1');
 		await call({ fanout: true });
-		expect(mocks.startImageRelay).toHaveBeenCalled();
+		expect(mocks.runImageRelay).toHaveBeenCalled();
 	});
 
 	it('still supersedes at the background key when only one model is drawn', async () => {

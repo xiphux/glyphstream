@@ -8,8 +8,8 @@
  * Why this isn't the normal messages route. That route generates from the USER
  * message it just created and parents the result there; this generates from an
  * assistant message that already exists and parents the result to it. Same
- * relay underneath, different anchor — `startImageRelay` takes the anchor as
- * `userMessage`, and passing the description message is what puts the portrait
+ * durable generation job underneath, different anchor — the job's
+ * `anchorMessageId` is the description message, which is what puts the portrait
  * directly beneath it, where `computeMergeFlags` fuses the two into one bubble.
  *
  * The model is chosen per generation and never written back to the
@@ -18,8 +18,8 @@
  * follows, reached without needing the fan-out machinery.
  *
  * The portrait persists as `displayOnly` — see the flag's note — and becomes the
- * conversation's avatar HERE, via the relay's `onMediaPersisted` hook, in the
- * same breath as the row that holds it.
+ * conversation's avatar server-side, in the same breath as the row that holds
+ * it — the `avatar` job origin does that (see server/generation/jobs.ts).
  *
  * TWO MODES, and the split is the whole design. One model is a side errand: it
  * runs in the background under a stable registry key, the composer stays live
@@ -42,33 +42,25 @@
  * on a shared GPU takes minutes, so putting the phone down during one is the
  * NORMAL way to use this, not an edge case. What the user got was a portrait
  * sitting in the thread, no avatar, and a "Load failed" toast for a generation
- * that had in fact succeeded. The relay already outlives the client connection
- * by design; the apply now does too.
+ * that had in fact succeeded. The generation already outlives the client
+ * connection by design (and, as a durable job, a restart too); the apply now
+ * does as well.
  */
 
 import { error } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
-import {
-	getConversationMeta,
-	getFanoutParent,
-	setConversationAvatar,
-} from '$lib/server/db/queries/conversations';
+import { getConversationMeta, getFanoutParent } from '$lib/server/db/queries/conversations';
 import { getMessage, getSiblingAssistants } from '$lib/server/db/queries/messages';
-import { notifyFanoutCompleteIfLast } from '$lib/server/messages/fanout-notify';
-import { generateId } from '$lib/server/util/id';
 import { getEndpoint } from '$lib/server/endpoints/registry';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import type { ModelEntry } from '$lib/types/api';
-import { startImageRelay } from '$lib/server/streaming/image-relay';
+import { submitGenerationJob } from '$lib/server/generation/jobs';
 import { nearestOffered } from '$lib/aspect-ratio';
 import {
-	AVATAR_BRANCH,
-	clearInFlight,
 	conversationFanoutAtCapacity,
 	conversationTurnEntries,
-	registerInFlight,
 } from '$lib/server/streaming/in-flight';
 import { resolveDisabledFeatures } from '$lib/server/chat/private-seal';
 import { sseResponse } from '$lib/server/streaming/sse-transport';
@@ -289,21 +281,6 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		}
 	}
 
-	const inFlight = registerInFlight(
-		params.id,
-		endpoint,
-		// A comparison's branches must coexist; a background draw supersedes its
-		// predecessor. Both fall out of the key.
-		isFanout ? generateId() : AVATAR_BRANCH,
-		'image',
-		body.modelId,
-		null,
-		// A background draw is not a turn: the recovery poll, the fan-out grid and
-		// the aggregate notification must not count it as one of the conversation's
-		// branches. A comparison's branches ARE turns — they're what the grid is
-		// made of, and the aggregate notify waits on exactly this set.
-		isFanout,
-	);
 	// Narrowed, not just typed: this rides straight into the push notification's
 	// text, and `typeof x === 'number'` admits `1e999` — JSON.parse turns that into
 	// Infinity, and the user gets "Infinity images ready". Bounded by the same cap
@@ -316,103 +293,51 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		body.fanoutSize <= MAX_FANOUT_BRANCHES_PER_CONVERSATION
 			? body.fanoutSize
 			: undefined;
-	const onComplete = () => {
-		clearInFlight(params.id, inFlight);
-		if (isFanout) {
-			notifyFanoutCompleteIfLast({
-				conversationId: params.id,
-				userId: locals.user.id,
-				userMessageId: source.id,
-				conversationTitle: meta.title,
-				modality: 'image',
-				fanoutSize,
-			});
-		}
-	};
 
-	const stream = startImageRelay({
-		conversationId: params.id,
+	// A durable job, like any image generation (see server/generation/jobs.ts).
+	// Its origin carries what this route used to wire up by hand: a comparison's
+	// branches coexist as pinned siblings under this anchor and fold into one
+	// aggregate "N ready"; a background draw supersedes its predecessor (they
+	// share one registry slot, never the default one — so the next chat message
+	// the user types can't kill the drawing), advances the leaf only if the
+	// branch hasn't moved on, and applies the portrait as the conversation's face
+	// server-side, whether or not anyone is still listening. The job registers
+	// itself in flight here, synchronously after the checks above.
+	const stream = submitGenerationJob({
 		userId: locals.user.id,
-		conversationTitle: meta.title,
-		endpoint,
-		// Recorded as this row's `modelUsed`: the portrait was drawn by the image
+		conversationId: params.id,
+		// The anchor: the portrait is appended as this message's child.
+		anchorMessageId: source.id,
+		kind: 'image',
+		origin: isFanout ? 'avatar_fanout' : 'avatar',
+		// Recorded as the row's `modelUsed`: the portrait was drawn by the image
 		// model, not by the conversation's. The row merges into the description's
 		// bubble, so this never surfaces as a mismatched label.
-		storedModelId: body.modelId,
-		upstreamModelId: parsed.upstreamId,
-		prompt,
-		// The anchor: the portrait is appended as this message's child.
-		userMessage: source,
-		dispatchMediaIds: [],
-		sourceMediaId: null,
-		// The description is prose, not a formatted image prompt, so the enhancer
-		// earns its keep here more than anywhere: it restyles into whatever this
-		// model prefers.
-		promptStyle: modelEntry?.promptStyle ?? null,
-		promptHint: modelEntry?.promptHint ?? null,
-		enhancementEnabled,
-		// Pinned square, and deliberately not taken from the composer's selector
-		// (which isn't even rendered for this flow). An avatar renders inside a
-		// circle — `size-8 rounded-full object-cover` — so a widescreen portrait
-		// would be centre-cropped down to the middle sliver of the image. Nearest,
-		// not exact, for a model whose menu has no 1:1: that's the least cropping
-		// available. A model advertising no ratios gets nothing, as everywhere.
-		aspectRatio: nearestOffered('1:1', modelEntry?.aspectRatios ?? [])?.value,
-		displayOnly: true,
-		abortSignal: inFlight.controller.signal,
-		// A comparison leaves the leaf where it parked it: every branch is a
-		// sibling of the others and none of them wins by landing first — the pick
-		// moves the leaf. A background draw advances to its portrait…
-		advanceActiveLeaf: !isFanout,
+		modelId: body.modelId,
 		// Grid position of this branch. Assigned past the highest index already
 		// under the anchor, so a SECOND draw round's portraits sort after the
 		// first round's rather than interleaving with them.
 		fanoutIndex,
-		// …but only if the branch hasn't moved on. A draw takes minutes and the
-		// composer stays live throughout (that's the point of backgrounding it),
-		// so the user may well have sent another turn by the time the portrait
-		// lands. Without this guard the leaf snaps back to the description and
-		// that exchange drops out of the thread. If the guard fails the portrait
-		// still persists as a sibling, reachable by the ‹N/M› arrows.
-		advanceActiveLeafIfCurrent: source.id,
-		// Every branch of a comparison would otherwise buzz on its own; the single
-		// aggregate "N ready" fires from the last one's onComplete instead.
-		suppressNotify: isFanout,
-		// The conversation already has a title by now (it has a description turn
-		// in it), and an avatar is a side errand — not the thing to name the
-		// thread after.
-		suppressTitleTask: true,
-		inFlight,
-		// The whole point of a background draw, and unconditional there. A second
-		// draw started since supersedes this one at the registry (they share
-		// AVATAR_BRANCH) and aborts it, so in the ordinary case a superseded draw
-		// never reaches here at all; if it squeaked past the abort it applies first
-		// and loses to the newer one, which is the order the user pressed the
-		// buttons in either way.
-		//
-		// A comparison applies nothing: three portraits racing to be the face
-		// would repaint the header at each model's finishing time and settle on
-		// whichever GPU was slowest. The pick applies, at ../pick.
-		onMediaPersisted: isFanout
-			? undefined
-			: (mediaId) => {
-					const result = setConversationAvatar(params.id, locals.user.id, mediaId);
-					// Both reasons are unreachable-in-practice races (the conversation
-					// deleted, or the media reaped, between persist and now) — worth a line
-					// in the log, not worth failing a generation that otherwise worked.
-					if (!result.ok) {
-						console.warn(`[avatar] could not apply portrait to ${params.id}: ${result.reason}`);
-					}
-				},
-		// Free the registry slot as soon as the GENERATION settles — the entry
-		// means "a generation is running", and past `done` none is. Deliberately
-		// NOT the same function as `onComplete`: `notifyFanoutCompleteIfLast` infers
-		// "last branch" from the registry going empty, and it has to make that check
-		// at stream close, a microtask after the clear, rather than in the same
-		// breath as it. See fanout-notify.ts for why that gap is what keeps the
-		// aggregate exactly-once.
-		onGenerationSettled: () => clearInFlight(params.id, inFlight),
-		onComplete,
+		params: {
+			prompt,
+			dispatchMediaIds: [],
+			sourceMediaId: null,
+			// Pinned square, and deliberately not taken from the composer's selector
+			// (which isn't even rendered for this flow). An avatar renders inside a
+			// circle — `size-8 rounded-full object-cover` — so a widescreen portrait
+			// would be centre-cropped down to the middle sliver of the image.
+			// Nearest, not exact, for a model whose menu has no 1:1: that's the least
+			// cropping available. A model advertising no ratios gets nothing.
+			aspectRatio: nearestOffered('1:1', modelEntry?.aspectRatios ?? [])?.value,
+			// The description is prose, not a formatted image prompt, so the enhancer
+			// earns its keep here more than anywhere: it restyles into whatever this
+			// model prefers.
+			enhancementEnabled,
+			promptStyle: modelEntry?.promptStyle ?? null,
+			promptHint: modelEntry?.promptHint ?? null,
+			displayOnly: true,
+			fanoutSize,
+		},
 	});
 	return sseResponse(stream);
 };

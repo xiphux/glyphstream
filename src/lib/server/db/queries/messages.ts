@@ -62,6 +62,15 @@ interface AppendInput {
 	 * `fanout_index` column and `getSiblingAssistants`' ordering.
 	 */
 	fanoutIndex?: number | null;
+	/**
+	 * Extra writes that must commit or roll back WITH this append, run inside its
+	 * transaction after the row is inserted. A throw rolls the append back and
+	 * propagates. Used by the generation-job runner to link the produced media
+	 * and consume the job row atomically with the result, so a crash can neither
+	 * strand a result whose job would then be resumed (a duplicate) nor a media
+	 * row nothing references.
+	 */
+	inTransaction?: (tx: Tx, messageId: string) => void;
 }
 
 /**
@@ -163,6 +172,8 @@ export function appendMessage(input: AppendInput): ChatMessage {
 				.where(eq(conversations.id, input.conversationId))
 				.run();
 		}
+
+		input.inTransaction?.(tx, id);
 	});
 
 	return {

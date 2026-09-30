@@ -152,10 +152,23 @@ LLM endpoint holds chat turns, titles and memory work too.
 
 The pause is **saved in the database**, so it survives restarting GlyphStream
 itself: an endpoint paused before a redeploy is still paused when the new
-container starts, and stays that way until you resume it. What does _not_
-survive a GlyphStream restart is the queue — queued requests live in the server
-process, so recreating the GlyphStream container still drops them. Pause, let
-the queue drain, then restart.
+container starts, and stays that way until you resume it.
+
+### Restarting GlyphStream with generations queued
+
+Image and video generations are saved as they're queued, so restarting or
+recreating the GlyphStream container doesn't lose them. When it comes back up,
+everything that was waiting goes back in line in its original order — on the
+first page load, or within about ten seconds if nobody opens the app. A
+generation that was **running** when GlyphStream stopped is started again from
+the beginning (an image comes back with a different seed); if it's interrupted a
+second time it's shown as a failed column instead of being retried forever.
+
+Chat replies aren't resumed: a reply cut off by a restart is lost, as before.
+
+To upgrade the whole stack — GlyphStream and the image backend together —
+pause the image endpoint first, so nothing starts against a backend that's
+going away, then recreate the containers and resume once everything is up.
 
 Editing endpoints from this page is not supported: they live in `config.toml`
 and are read at startup. See [Configuration](configuration.md#endpoints).

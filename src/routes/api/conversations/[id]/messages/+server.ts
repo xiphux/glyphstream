@@ -1,4 +1,3 @@
-import type { Buffer } from 'node:buffer';
 import { error, json } from '@sveltejs/kit';
 import { requireFound, requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
@@ -42,20 +41,14 @@ import {
 } from '$lib/server/chat/synthesize-skill-activation';
 import { logLevel } from '$lib/server/env';
 import { renderMarkdown } from '$lib/server/markdown/render';
-import {
-	loadMediaBytes,
-	MediaNotAvailableError,
-	mediaIdToDataUrl,
-	type LoadedMediaBytes,
-} from '$lib/server/media/data-url';
+import { mediaIdToDataUrl } from '$lib/server/media/data-url';
 import {
 	clearInFlight,
 	conversationFanoutAtCapacity,
 	registerInFlight,
 } from '$lib/server/streaming/in-flight';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
-import { startImageRelay } from '$lib/server/streaming/image-relay';
-import { startVideoRelay } from '$lib/server/streaming/video-relay';
+import { submitGenerationJob } from '$lib/server/generation/jobs';
 import { sseResponse } from '$lib/server/streaming/sse-transport';
 import { raceTitle, startTitleTaskIfFirstExchange } from '$lib/server/tasks/title-task-runner';
 
@@ -276,6 +269,69 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// columns that neither its own settled columns nor the live grid show.
 	const sourceMediaId = isMediaKind(meta.modelKind) ? (dispatchMediaIds[0] ?? null) : null;
 
+	// --- image / video: a durable generation job --------------------------------
+	// Prompt → media, no chat history. Queued as a job the server owns (see
+	// server/generation/jobs.ts), so it survives a restart; the response streams
+	// the job's events — `queued` while waiting on the endpoint's concurrency
+	// slot, `start` on acquire, `done` with the persisted media — exactly as the
+	// relay always has. The job registers itself in flight, so the registration
+	// below is chat-only.
+	if (meta.modelKind === 'image' || meta.modelKind === 'video') {
+		const kind = meta.modelKind;
+		// Resolve the target model's prompt-style metadata (live, cached) so the
+		// relay can rewrite the prompt into the model's preferred format, and its
+		// advertised ratios so a requested one can be resolved. Skip the lookup
+		// only when NEITHER needs it — enhancement being off doesn't suffice on
+		// its own, since `wantsRatio` keeps it alive for `resolveAspectRatio`.
+		// Resolved NOW and stored on the job, so a job resumed after a restart
+		// runs with what was asked for rather than what the catalogue says later.
+		const enhancementEnabled = !disabledFeatures.includes(
+			kind === 'image' ? 'image_prompt_enhancement' : 'video_prompt_enhancement',
+		);
+		const wantsRatio = typeof body.aspectRatio === 'string';
+		let promptStyle: string | null = null;
+		let promptHint: string | null = null;
+		let aspectRatio: string | undefined;
+		if (enhancementEnabled || wantsRatio) {
+			const modelEntry = (await listAllModels()).find((m) => m.id === meta.modelId);
+			if (enhancementEnabled) {
+				promptStyle = modelEntry?.promptStyle ?? null;
+				promptHint = modelEntry?.promptHint ?? null;
+			}
+			aspectRatio = resolveAspectRatio(body.aspectRatio, modelEntry);
+		}
+		if (DEBUG && kind === 'video' && dispatchMediaIds.length > 0) {
+			console.debug(
+				`[messages] i2v from ${dispatchMediaIds[0]} prompt="${promptText.slice(0, 60)}"`,
+			);
+		}
+		// Same admission cap as a chat fan-out (see below), checked AFTER the await
+		// so it stays synchronous with the job's own registration.
+		if (isFanout && conversationFanoutAtCapacity(params.id)) {
+			error(429, 'Too many concurrent generations for this conversation');
+		}
+		const stream = submitGenerationJob({
+			userId: locals.user.id,
+			conversationId: params.id,
+			anchorMessageId: userMessage.id,
+			kind,
+			origin: isFanout ? 'fanout' : 'send',
+			modelId: meta.modelId,
+			fanoutIndex,
+			params: {
+				prompt: promptText,
+				dispatchMediaIds,
+				sourceMediaId,
+				aspectRatio,
+				enhancementEnabled,
+				promptStyle,
+				promptHint,
+				fanoutSize: typeof body.fanoutSize === 'number' ? body.fanoutSize : undefined,
+			},
+		});
+		return sseResponse(stream);
+	}
+
 	// Register this generation so POST /api/conversations/:id/cancel can
 	// reach the upstream call and abort it. We pass the signal down through
 	// every code path that talks to upstream. Fan-out branches each get a
@@ -341,134 +397,6 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	};
 
 	try {
-		// --- image-kind models: prompt → image; no chat history -------------------
-		// Always streamed (SSE) via startImageRelay — single send and fan-out branch
-		// alike (the client requests ?stream=1 for image everywhere). The relay holds
-		// the per-endpoint concurrency slot and emits `queued` while waiting →
-		// `start` on acquire → `done` with the persisted image, so a busy endpoint
-		// surfaces a "Queued…" state + an honest timer instead of a blocking POST.
-		if (meta.modelKind === 'image') {
-			// Resolve the target model's prompt-style metadata (live, cached) so the
-			// relay can rewrite the prompt into the model's preferred format, and its
-			// advertised ratios so a requested one can be resolved. Skip the lookup
-			// only when NEITHER needs it — enhancement being off no longer suffices on
-			// its own, since `wantsRatio` keeps it alive for `resolveAspectRatio`.
-			const enhancementEnabled = !disabledFeatures.includes('image_prompt_enhancement');
-			const wantsRatio = typeof body.aspectRatio === 'string';
-			let promptStyle: string | null = null;
-			let promptHint: string | null = null;
-			let aspectRatio: string | undefined;
-			if (enhancementEnabled || wantsRatio) {
-				const modelEntry = (await listAllModels()).find((m) => m.id === meta.modelId);
-				if (enhancementEnabled) {
-					promptStyle = modelEntry?.promptStyle ?? null;
-					promptHint = modelEntry?.promptHint ?? null;
-				}
-				aspectRatio = resolveAspectRatio(body.aspectRatio, modelEntry);
-			}
-			const stream = startImageRelay({
-				conversationId: params.id,
-				userId: locals.user.id,
-				conversationTitle: meta.title,
-				endpoint,
-				storedModelId: meta.modelId,
-				upstreamModelId: parsed.upstreamId,
-				prompt: promptText,
-				userMessage,
-				dispatchMediaIds,
-				sourceMediaId,
-				promptStyle,
-				promptHint,
-				enhancementEnabled,
-				aspectRatio,
-				abortSignal: inFlight.controller.signal,
-				advanceActiveLeaf: !isFanout,
-				fanoutIndex,
-				suppressTitleTask: isFanout,
-				suppressNotify: isFanout,
-				inFlight,
-				onGenerationSettled,
-				onComplete: onBranchComplete,
-			});
-			return sseResponse(stream);
-		}
-
-		if (meta.modelKind === 'video') {
-			// I2V: pre-load the first attached image's bytes so the relay can
-			// forward them as `input_reference`. Only one ref is honored — the
-			// OpenAI /v1/videos spec is single-reference, and bridge ComfyUI
-			// I2V workflows declare a single `image_inputs` entry.
-			let inputReference: { bytes: Buffer; contentType: string } | undefined;
-			if (dispatchMediaIds.length > 0) {
-				let loaded: LoadedMediaBytes;
-				try {
-					loaded = await loadMediaBytes(dispatchMediaIds[0], locals.user.id);
-				} catch (e) {
-					if (e instanceof MediaNotAvailableError) {
-						error(400, 'The source image was deleted and is no longer available');
-					}
-					throw e;
-				}
-				inputReference = { bytes: loaded.bytes, contentType: loaded.contentType };
-				if (DEBUG) {
-					console.debug(
-						`[messages] i2v with input_reference: ${loaded.contentType}:${loaded.bytes.byteLength}B prompt="${promptText.slice(0, 60)}"`,
-					);
-				}
-			}
-			// Resolve the target model's prompt-style metadata (live, cached) so the
-			// relay can rewrite the prompt into the model's preferred video format,
-			// and its advertised ratios so a requested one can be resolved. Skip the
-			// lookup only when NEITHER needs it. Mirrors the image branch above.
-			const enhancementEnabled = !disabledFeatures.includes('video_prompt_enhancement');
-			const wantsRatio = typeof body.aspectRatio === 'string';
-			let promptStyle: string | null = null;
-			let promptHint: string | null = null;
-			let aspectRatio: string | undefined;
-			if (enhancementEnabled || wantsRatio) {
-				const modelEntry = (await listAllModels()).find((m) => m.id === meta.modelId);
-				if (enhancementEnabled) {
-					promptStyle = modelEntry?.promptStyle ?? null;
-					promptHint = modelEntry?.promptHint ?? null;
-				}
-				aspectRatio = resolveAspectRatio(body.aspectRatio, modelEntry);
-			}
-			const stream = startVideoRelay({
-				conversationId: params.id,
-				userId: locals.user.id,
-				conversationTitle: meta.title,
-				endpoint,
-				storedModelId: meta.modelId,
-				prompt: promptText,
-				userMessage,
-				inputReference,
-				sourceMediaId,
-				promptStyle,
-				promptHint,
-				enhancementEnabled,
-				aspectRatio,
-				abortSignal: inFlight.controller.signal,
-				advanceActiveLeaf: !isFanout,
-				fanoutIndex,
-				suppressTitleTask: isFanout,
-				suppressNotify: isFanout,
-				inFlight,
-				// Stash the bridge job id on our in-flight entry so the cancel
-				// endpoint can DELETE /v1/videos/{id} for this branch.
-				onJobId: (jobId) => {
-					inFlight.videoJobId = jobId;
-				},
-				onGenerationSettled,
-				// Clear the registry slot when the relay's work is done — not
-				// when the response stream cancels. An iOS suspension drops
-				// the client SSE connection minutes before the polling loop
-				// finishes, and the chat page's recovery indicator depends on
-				// the slot staying populated until the generation truly ends.
-				onComplete: onBranchComplete,
-			});
-			return sseResponse(stream);
-		}
-
 		// Resolve the system prompt sent upstream. Precedence:
 		//   1. The conversation's snapshotted prompt (set when a custom-model
 		//      preset or an explicit body.systemPrompt was used at create time).

@@ -525,9 +525,10 @@ function abortError(): Error {
  * taking a slot. Each integration point folds that rejection into whatever
  * cancellation it already does — deliberately not unified, because each
  * medium cancels differently and should stay consistent with its own
- * non-gate Stop path: the chat relay closes the SSE silently, the video
- * relay emits a `Cancelled` error event, and the sync image path throws
- * HTTP 499. A new caller should pick the matching option for its medium.
+ * non-gate Stop path: the chat relay closes the SSE silently, the media
+ * relay (image and video) emits a `Cancelled` error event, and the
+ * non-streaming chat path throws HTTP 499. A new caller should pick the
+ * matching option for its medium.
  */
 export function acquireEndpointSlot(
 	endpoint: LoadedEndpoint,

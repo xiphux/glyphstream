@@ -93,9 +93,10 @@ export function insertMedia(input: MediaInsertInput): { id: string } {
 }
 
 /** Link a media asset to a message and bump ref_count. Idempotent (PK on the join). */
-export function linkMessageMedia(messageId: string, mediaId: string): void {
-	const db = getDb();
-	db.transaction((tx) => {
+export function linkMessageMedia(messageId: string, mediaId: string, outer?: Tx): void {
+	// Joins the caller's transaction when given one — node:sqlite can't nest a
+	// root-level transaction (see `Tx`).
+	const link = (tx: Tx) => {
 		const inserted = tx
 			.insert(messageMedia)
 			.values({ messageId, mediaId })
@@ -110,7 +111,9 @@ export function linkMessageMedia(messageId: string, mediaId: string): void {
 				.where(eq(media.id, mediaId))
 				.run();
 		}
-	});
+	};
+	if (outer) link(outer);
+	else getDb().transaction(link);
 }
 
 /**

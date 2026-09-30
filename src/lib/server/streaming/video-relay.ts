@@ -30,7 +30,14 @@ import { parseModelId } from '../endpoints/model-id';
 import { logLevel } from '../env';
 import { persistGeneratedVideo } from '../media/persister';
 import { runPromptEnhancement } from './media-enhance';
-import { startMediaRelay, type MediaRelayParams } from './media-relay';
+import {
+	runMediaRelay,
+	startMediaRelay,
+	type MediaGenerate,
+	type MediaRelayParams,
+	type MediaRelayScaffoldParams,
+	type MediaRelaySink,
+} from './media-relay';
 import type { StreamErrorEvent, StreamProgressEvent } from '$lib/types/api';
 
 const DEBUG = logLevel() === 'debug';
@@ -86,12 +93,21 @@ export interface VideoRelayParams extends MediaRelayParams {
 }
 
 export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8Array> {
+	return startMediaRelay(...buildVideoRelay(params));
+}
+
+/** Video relay writing to any sink — see `runMediaRelay`. */
+export function runVideoRelay(params: VideoRelayParams, sink: MediaRelaySink): Promise<void> {
+	return runMediaRelay(...buildVideoRelay(params), sink);
+}
+
+function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, MediaGenerate] {
 	// `effectivePrompt` is what actually generates the video (the enhanced prompt
 	// when enhancement changed it, else the verbatim prompt); `originalPrompt`
 	// preserves the user's text only when it changed. Both are populated by the
 	// prepare step below and read by the generate step. Mirrors image-relay.
-	let effectivePrompt = params.prompt;
-	let originalPrompt: string | null = null;
+	let effectivePrompt = params.preparedPrompt?.effectivePrompt ?? params.prompt;
+	let originalPrompt: string | null = params.preparedPrompt?.originalPrompt ?? null;
 
 	// Prompt enhancement runs as the relay's PRE-SLOT prepare step (shared with
 	// the image relay — see `media-enhance.ts`). Text-to-video only: an i2v
@@ -113,6 +129,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 		);
 		effectivePrompt = r.effectivePrompt;
 		originalPrompt = r.originalPrompt;
+		params.onPromptPrepared?.(r);
 	};
 
 	const relayParams = {
@@ -120,10 +137,12 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 		// `enhance` is what the scaffold shows this generation as waiting behind
 		// while the rewrite runs — including when it no-ops (enhancement off, or
 		// an edit send), which settles within the same tick and never surfaces.
-		prepare: { purpose: 'enhance' as const, run: prepareRun },
+		// A resumed generation already has its prompt (see `preparedPrompt`), so
+		// it has no pre-slot step at all.
+		prepare: params.preparedPrompt ? undefined : { purpose: 'enhance' as const, run: prepareRun },
 		modality: 'video' as const,
 	};
-	return startMediaRelay(relayParams, async ({ write, abortSignal }) => {
+	const generate: MediaGenerate = async ({ write, abortSignal }) => {
 		let job: VideoJob;
 		try {
 			const req: VideoCreateRequest = {
@@ -268,7 +287,8 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 			rawResponseJson: JSON.stringify(job),
 			modality: 'video',
 		};
-	});
+	};
+	return [relayParams, generate];
 }
 
 // A progress event's `status` is display text, not a machine value — the
