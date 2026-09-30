@@ -376,6 +376,27 @@ describe('after a restart', () => {
 		});
 	});
 
+	it('tries again when reading the queue fails', () => {
+		const s = seed();
+		leftover(s);
+		setResourceGroupPaused(endpoint(), true);
+		const real = mocks.testDb;
+		mocks.testDb = {
+			select: () => {
+				throw new Error('database is locked');
+			},
+		} as unknown as TestDB;
+		const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+		resumeGenerationJobs();
+		expect(getInFlightEntries(s.conv.id)).toEqual([]);
+		err.mockRestore();
+
+		// A transient failure must not have marked the queue as taken back.
+		mocks.testDb = real;
+		resumeGenerationJobs();
+		expect(getInFlightEntries(s.conv.id)).toHaveLength(1);
+	});
+
 	it('only resumes once per process', async () => {
 		const s = seed();
 		leftover(s);

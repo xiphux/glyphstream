@@ -198,7 +198,6 @@ let resumeTimer: ReturnType<typeof setTimeout> | null = null;
  */
 export function resumeGenerationJobs(): void {
 	if (resumed) return;
-	resumed = true;
 	if (resumeTimer) clearTimeout(resumeTimer);
 	resumeTimer = null;
 
@@ -206,9 +205,16 @@ export function resumeGenerationJobs(): void {
 	try {
 		rows = listGenerationJobs();
 	} catch (e) {
+		// NOT marked resumed: the queue is still in the table and this process
+		// hasn't taken it back. A transient failure (a busy database at boot) must
+		// not strand it until the next restart — the fallback timer retries, as
+		// does the next submit.
 		console.error('[generation-jobs] could not read the queue to resume it:', errorMessage(e));
+		scheduleGenerationJobResume();
 		return;
 	}
+	// Set once the read succeeded, and before anything below can re-enter.
+	resumed = true;
 	if (rows.length > 0) console.log(`[generation-jobs] resuming ${rows.length} generation(s)`);
 
 	// Failed AFTER everything resumable is registered: a grid branch failing here
