@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.42.0
+
 ### Added
 
 - Admins can pause an endpoint's queue from **Settings → Endpoints**: the current
