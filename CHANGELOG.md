@@ -11,6 +11,9 @@ arrived.
 
 ### Changed
 
+- On phones, a **New chat** button now sits at the top right of every
+  conversation, so starting a new chat no longer means opening the menu first.
+  Tapping the GlyphStream title does the same, as it already did on desktop.
 - In-app notifications now appear at the top of the screen instead of the bottom,
   so they no longer cover the message box while you're typing. On touch screens,
   swipe one up to dismiss it.

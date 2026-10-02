@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures/test';
-import { resetData } from './helpers';
+import { resetData, seedConversation } from './helpers';
 
 /**
  * Smoke tests that verify the authenticated app surface renders. The
@@ -130,6 +130,21 @@ test.describe('authenticated app shell', () => {
 			.evaluate((el: HTMLButtonElement) => el.click());
 
 		await expect(galleryLink).toBeInViewport();
+	});
+
+	test('mobile top bar New chat leaves a conversation in one tap', async ({ page, isMobile }) => {
+		test.skip(!isMobile, 'The top-bar button is mobile-only');
+		const id = seedConversation('Top bar new chat');
+		await page.goto(`/chat/${id}`);
+		await page.waitForLoadState('networkidle');
+
+		// Scoped to <main>: the closed drawer's own New chat link is still in
+		// the tree, just translated off-screen.
+		const newChat = page.getByRole('main').getByRole('link', { name: 'New chat', exact: true });
+		await newChat.click();
+		await expect(page).toHaveURL('/');
+		// Pointless on the new-chat screen itself, so it's gone there.
+		await expect(newChat).toBeHidden();
 	});
 
 	test('model picker is populated from the configured endpoint', async ({ page }) => {
