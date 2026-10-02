@@ -1260,8 +1260,8 @@
 					</span>
 				{/if}
 				<!-- New chat in one tap — the sidebar's button sits behind the drawer
-				 on mobile. Hidden on the new-chat screen itself, where it would do
-				 nothing and the private-chat toggle wants the slot. -->
+				 on mobile. Hidden on the new-chat screen itself, where you already
+				 are and the private-chat toggle wants the slot. -->
 				{#if currentPath !== '/'}
 					<a
 						href={resolve('/')}
