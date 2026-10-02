@@ -14,7 +14,6 @@
 	import { askPendingNavigation } from '$lib/sw/pending-navigation';
 	import { notificationBody, notificationTitle } from '$lib/sw/notification-copy';
 	import { syncSurfaceChrome } from '$lib/theme-color';
-	import { captureColdLaunchProbe } from '$lib/status-bar-probe';
 	import type { ActiveConversationReport, SwClientMessage } from '$lib/types/push';
 	import { resolve } from '$app/paths';
 	import { isStandaloneDisplay } from '$lib/app-lock';
@@ -161,8 +160,13 @@
 	// It cannot be taken later: the debug panel that reports it is reached
 	// through the sidebar drawer, whose scrim then covers the point being
 	// sampled. Standalone-only and once per process — see the module.
+	// Imported on demand: only the lazy debug panel ever reads the result, so
+	// the scan has no business in every route's initial load (~0.9 KB gzip).
+	// The import still settles long before anyone can open the drawer, and
+	// the pre-gate keeps browser tabs from fetching the chunk at all.
 	$effect(() => {
-		captureColdLaunchProbe();
+		if (!isStandaloneDisplay()) return;
+		void import('$lib/status-bar-probe').then((m) => m.captureColdLaunchProbe());
 	});
 
 	// When a new SW is waiting, vite-plugin-pwa fires onNeedRefresh and
