@@ -486,8 +486,10 @@
  *   toast            transient notifications, which must stay readable over a
  *                    modal backdrop that is still on screen
  *   update           the new-version prompt: not transient, not dismissible by
- *                    waiting, shares the toast's bottom anchor, and is the one
- *                    control the service-worker update flow exists to reach
+ *                    waiting, and the one control the service-worker update
+ *                    flow exists to reach. (It once shared the toast's bottom
+ *                    anchor; the toast is top-anchored now, so the order is
+ *                    defensive rather than load-bearing.)
  *   app-lock         the app-lock privacy cover — covers everything, the
  *                    update prompt included, because its whole job is that
  *                    nothing underneath is readable

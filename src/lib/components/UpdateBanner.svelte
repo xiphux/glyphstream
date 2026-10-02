@@ -21,11 +21,13 @@
 	stealing focus from whatever the user is doing.
 
 	z-update is the top of the ladder (see app.css), above even z-toast. The two
-	share an anchor — identical `bottom: max(1rem, safe-area + 0.5rem)`, and on
-	mobile they overlap horizontally — and this one is neither transient nor
-	dismissible by waiting. A toast painting over Refresh (and, having pointer
-	events, swallowing the tap) would obstruct exactly the control the service
-	worker's update flow exists to deliver the user to.
+	used to share this bottom anchor and overlap on mobile; the toast is
+	top-anchored now (so it stays off the composer), which makes the ordering
+	defensive rather than load-bearing. It still holds the right priority: this
+	prompt is neither transient nor dismissible by waiting, and a toast painting
+	over Refresh (and, having pointer events, swallowing the tap) would obstruct
+	exactly the control the service worker's update flow exists to deliver the
+	user to.
 -->
 <div
 	role="status"

@@ -250,8 +250,9 @@ Three independent toggles, all per-user:
   checkbox shows unchecked and can't be changed until app lock is turned off.
 - **In-app toast for other threads** — whether a toast pops when a
   thread completes while you're in the app but on a different page.
-  On by default. Turning this off doesn't affect OS notifications when
-  the app is backgrounded.
+  On by default. Turning this off sends a system notification instead,
+  even while the app is open — a completion on the thread you're looking
+  at stays silent either way.
 
 The settings UI saves each toggle individually (no Save button), so
 the trade-off between "side-effecting toggle that needs to be acted on
