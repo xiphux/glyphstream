@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.43.0
+
 ### Changed
 
 - On phones, a **New chat** button now sits at the top right of every
