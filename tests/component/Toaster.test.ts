@@ -222,3 +222,30 @@ describe('Toaster — swipe to dismiss', () => {
 		expect(screen.getByRole('status')).toBeInTheDocument();
 	});
 });
+
+describe('Toaster — swipe interrupted by the toast leaving', () => {
+	it('does not carry a half-finished swipe over to the next toast', async () => {
+		render(Toaster);
+		toast.info('first', { duration: 0 });
+		await tick();
+		const first = screen.getByRole('status');
+		first.dispatchEvent(
+			new PointerEvent('pointerdown', { pointerType: 'touch', clientY: 100, bubbles: true }),
+		);
+		first.dispatchEvent(
+			new PointerEvent('pointermove', { pointerType: 'touch', clientY: 40, bubbles: true }),
+		);
+		await tick();
+
+		// Replaced mid-swipe: the finger's pointerup never reaches the toast.
+		const handler = vi.fn();
+		toast.info('second', { action: { label: 'Open', handler }, duration: 0 });
+		await tick();
+		const second = screen.getByRole('status');
+		expect(second).toHaveTextContent('second');
+		expect(second.style.translate).toBe('');
+
+		await userEvent.click(screen.getByRole('button', { name: 'Open' }));
+		expect(handler).toHaveBeenCalledOnce();
+	});
+});

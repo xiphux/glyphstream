@@ -29,7 +29,18 @@
 	function onPointerDown(e: PointerEvent) {
 		if (e.pointerType === 'mouse') return;
 		swipeStartY = e.clientY;
+		swipeDy = 0;
 	}
+
+	// A toast can leave mid-swipe — its timer fires, or a new one replaces it.
+	// The finger's pointerup then lands on whatever was underneath, never on
+	// onPointerEnd, so without this the next toast would mount already shifted
+	// up, and a plain tap on its Open could read as a dismissing swipe.
+	$effect(() => {
+		void toast.current?.id;
+		swipeStartY = null;
+		swipeDy = 0;
+	});
 
 	function onPointerMove(e: PointerEvent) {
 		if (swipeStartY === null) return;
