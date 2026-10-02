@@ -9,6 +9,17 @@ arrived.
 
 ## Unreleased
 
+### Changed
+
+- In-app notifications now appear at the top of the screen instead of the bottom,
+  so they no longer cover the message box while you're typing. On touch screens,
+  swipe one up to dismiss it.
+
+### Fixed
+
+- The help text for **In-app toast for other threads** now says what turning it
+  off does: you get a system notification instead of an in-app one.
+
 ## v0.42.0
 
 ### Added

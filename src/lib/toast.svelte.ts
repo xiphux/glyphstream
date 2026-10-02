@@ -2,7 +2,7 @@
  * App-wide ephemeral toast notifications.
  *
  * Singleton store: `toast.success() / .info() / .error()` show a brief
- * confirmation message at the bottom of the viewport with optional
+ * confirmation message at the top of the viewport with optional
  * dismiss + action buttons. Used today for archive feedback (with
  * Undo) and surfacing error states; designed to absorb the roadmap's
  * background-generation-complete notifications next.
@@ -11,9 +11,7 @@
  *  - Single-slot: a new toast replaces the existing one. Users in
  *    practice don't fire rapid-enough actions for stacking to matter,
  *    and one-at-a-time keeps the visual surface predictable.
- *  - No swipe-to-dismiss: defaults keep toasts short-lived enough that
- *    they inform without overstaying. The explicit X button covers the
- *    "I want it gone right now" case.
+ *  - Swipe-up dismisses on touch (Toaster.svelte); the X covers mouse.
  *  - No bespoke enter/exit animation: animation across the rest of the
  *    UI is intentionally minimal; isolating motion to one component
  *    would look out of place. A future "animation polish pass" lifts

@@ -16,6 +16,34 @@
 		info: 'text-fg-muted',
 		error: 'text-danger',
 	} as const;
+
+	// Swipe-up to dismiss, touch only. A mouse already has a precise X; a
+	// thumb mid-sentence does not, and flicking the banner away is the gesture
+	// every iOS banner has taught. Implicit touch capture keeps pointermove on
+	// this element without setPointerCapture — explicit capture would retarget
+	// the click away from the Open / Dismiss buttons inside it.
+	const SWIPE_DISMISS_PX = 32;
+	let swipeStartY: number | null = null;
+	let swipeDy = $state(0);
+
+	function onPointerDown(e: PointerEvent) {
+		if (e.pointerType === 'mouse') return;
+		swipeStartY = e.clientY;
+	}
+
+	function onPointerMove(e: PointerEvent) {
+		if (swipeStartY === null) return;
+		// Upward only: the banner leaves the way it came in.
+		swipeDy = Math.min(0, e.clientY - swipeStartY);
+	}
+
+	function onPointerEnd() {
+		if (swipeStartY === null) return;
+		const dismiss = swipeDy <= -SWIPE_DISMISS_PX;
+		swipeStartY = null;
+		swipeDy = 0;
+		if (dismiss) toast.dismiss();
+	}
 </script>
 
 <!--
@@ -23,11 +51,13 @@
 	`toast` store; replaces in place on each new toast (no stacking by
 	design — see store header for rationale).
 
-	Positioning: bottom-center on mobile (full-width with side margins)
-	to leave the message readable on narrow screens, bottom-right on
-	sm+ so it sits out of the way of primary content. The inline
-	`bottom: max(...)` keeps the toast above the iOS safe-area inset
-	when running as an installed PWA — same pattern as UpdateBanner.
+	Positioning: TOP on every form factor — full-width with side margins on
+	mobile, top-right on sm+. Not the bottom: the composer lives there on every
+	route that matters, and a toast raised while you type (another thread
+	finishing, say) landed on the text box on a phone and on the send button on
+	any desktop narrower than ~1950px (sidebar 256 + centred max-w-3xl composer
+	vs. a right-anchored max-w-md toast). The inline `top: max(...)` clears the
+	iOS status bar / notch when running as an installed PWA.
 
 	role=status + aria-live=polite is the right level for transient
 	confirmations: announced to assistive tech but doesn't steal focus.
@@ -44,8 +74,13 @@
 	<div
 		role="status"
 		aria-live="polite"
-		class="gs-pop fixed left-4 right-4 z-toast flex items-center gap-3 rounded-md border border-border surface-glass px-3 py-2.5 text-sm shadow-lg sm:left-auto sm:right-4 sm:max-w-md"
-		style="bottom: max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem))"
+		class="gs-pop fixed left-4 right-4 z-toast flex touch-none items-center gap-3 rounded-md border border-border surface-glass px-3 py-2.5 text-sm shadow-lg sm:left-auto sm:right-4 sm:max-w-md"
+		style="top: max(1rem, calc(env(safe-area-inset-top) + 0.5rem))"
+		style:translate={swipeDy ? `0 ${swipeDy}px` : undefined}
+		onpointerdown={onPointerDown}
+		onpointermove={onPointerMove}
+		onpointerup={onPointerEnd}
+		onpointercancel={onPointerEnd}
 	>
 		<Icon size={16} strokeWidth={2.25} class="shrink-0 {kindIconClass[t.kind]}" />
 		<span class="flex-1">

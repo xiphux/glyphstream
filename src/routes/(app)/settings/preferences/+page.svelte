@@ -845,8 +845,8 @@
 				<span>
 					<span class="font-medium">In-app toast for other threads</span>
 					<span class="text-fg-muted">
-						— pop a toast when a thread completes while you're on a different page. Turn off to only
-						get OS-level notifications when the app is backgrounded.
+						— when a thread finishes while you're on a different page, show a toast inside the app.
+						Turn off to get a system notification instead.
 					</span>
 				</span>
 			</label>

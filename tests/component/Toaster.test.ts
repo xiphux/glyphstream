@@ -174,3 +174,51 @@ describe('Toaster — auto-dismiss', () => {
 		expect(screen.getByRole('status')).toBeInTheDocument();
 	});
 });
+
+describe('Toaster — swipe to dismiss', () => {
+	function swipe(el: HTMLElement, pointerType: string, fromY: number, toY: number) {
+		el.dispatchEvent(
+			new PointerEvent('pointerdown', { pointerType, clientY: fromY, bubbles: true }),
+		);
+		el.dispatchEvent(new PointerEvent('pointermove', { pointerType, clientY: toY, bubbles: true }));
+		el.dispatchEvent(new PointerEvent('pointerup', { pointerType, clientY: toY, bubbles: true }));
+	}
+
+	it('dismisses on an upward touch swipe past the threshold', async () => {
+		render(Toaster);
+		toast.info('Thread finished');
+		await tick();
+		swipe(screen.getByRole('status'), 'touch', 100, 50);
+		await tick();
+		expect(screen.queryByRole('status')).toBeNull();
+	});
+
+	it('stays put on a short swipe, and snaps back', async () => {
+		render(Toaster);
+		toast.info('Thread finished');
+		await tick();
+		const status = screen.getByRole('status');
+		swipe(status, 'touch', 100, 90);
+		await tick();
+		expect(screen.getByRole('status')).toBeInTheDocument();
+		expect(status.style.translate).toBe('');
+	});
+
+	it('ignores a downward swipe', async () => {
+		render(Toaster);
+		toast.info('Thread finished');
+		await tick();
+		swipe(screen.getByRole('status'), 'touch', 100, 200);
+		await tick();
+		expect(screen.getByRole('status')).toBeInTheDocument();
+	});
+
+	it('ignores mouse drags — the X button covers a mouse', async () => {
+		render(Toaster);
+		toast.info('Thread finished');
+		await tick();
+		swipe(screen.getByRole('status'), 'mouse', 100, 0);
+		await tick();
+		expect(screen.getByRole('status')).toBeInTheDocument();
+	});
+});
