@@ -33,9 +33,11 @@
 	}
 
 	// A toast can leave mid-swipe — its timer fires, or a new one replaces it.
-	// The finger's pointerup then lands on whatever was underneath, never on
-	// onPointerEnd, so without this the next toast would mount already shifted
-	// up, and a plain tap on its Open could read as a dismissing swipe.
+	// If it unmounts, the pointerup never reaches onPointerEnd; if it's
+	// replaced, the {#if} block (and this element) is reused, so the rest of the
+	// gesture would be read against the new toast. Either way, abandon the
+	// swipe — otherwise the next toast mounts shifted up, and a plain tap on its
+	// Open can read as a dismissing swipe.
 	$effect(() => {
 		void toast.current?.id;
 		swipeStartY = null;

@@ -237,7 +237,8 @@ describe('Toaster — swipe interrupted by the toast leaving', () => {
 		);
 		await tick();
 
-		// Replaced mid-swipe: the finger's pointerup never reaches the toast.
+		// Replaced mid-swipe: the rest of this gesture must not count against the
+		// new toast.
 		const handler = vi.fn();
 		toast.info('second', { action: { label: 'Open', handler }, duration: 0 });
 		await tick();
