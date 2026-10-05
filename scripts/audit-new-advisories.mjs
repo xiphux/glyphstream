@@ -26,9 +26,19 @@
  * reshuffles the tree around a package already flagged -- eslint-plugin-n
  * 18.4.0 added seven paths to a brace-expansion advisory glyphstream already
  * had -- would fail, which is the blocking this replaced. Every path is still
- * printed. One distinction is kept: an advisory the baseline had only in
- * devDependencies counts as new once HEAD reaches it from production
- * dependencies, so the dev tree cannot vouch for what ships.
+ * printed. Two distinctions are kept, so that an advisory already on the
+ * baseline cannot vouch for more than it covered there:
+ *
+ * - One the baseline had only in devDependencies counts as new once HEAD
+ *   reaches it from production dependencies, so the dev tree cannot vouch for
+ *   what ships.
+ * - One that HEAD has in more copies of a package than the baseline did --
+ *   a second vulnerable version installed alongside the first -- counts as
+ *   new. Copies are counted, not matched by version, so moving the one copy
+ *   to another version that is still vulnerable is not new: that is the
+ *   update a fix arrives through, and failing it would block the fix. npm's
+ *   report does not give versions, so in --npm mode only a package the
+ *   advisory did not reach before counts.
  *
  * Findings already on the baseline are printed as warnings and do not fail
  * the run. They stay visible there, as Dependabot alerts, and as Renovate's
@@ -47,6 +57,14 @@
  *                 yet counts as entirely new.
  *
  * Anything else is passed to both audits, e.g. `--prod` or `--omit=dev`.
+ *
+ * What the audits report is pinned on the command line, ahead of those
+ * arguments, because configuration can narrow it without saying so:
+ * `auditLevel: critical` in pnpm-workspace.yaml empties pnpm's JSON of every
+ * high advisory, `optional: false` there drops optional dependencies from it,
+ * and `omit=optional` in an .npmrc does the same to npm's. Each read as a
+ * clean report. The severity this cares about is filtered here, not by the
+ * tool.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
@@ -65,6 +83,7 @@ for (const arg of process.argv.slice(2)) {
 }
 const tool = options.npm ? 'npm' : 'pnpm';
 const lockfile = options.npm ? 'package-lock.json' : 'pnpm-lock.yaml';
+const pinned = options.npm ? ['--include=optional'] : ['--audit-level=low', '--optional'];
 
 // GIT_LFS_SKIP_SMUDGE: the audit needs the lockfile, not the baseline's LFS
 // files, and checkouts here drop their credentials, so an LFS download
@@ -75,8 +94,11 @@ const git = (...args) =>
 		env: { ...process.env, GIT_LFS_SKIP_SMUDGE: '1' },
 	}).trim();
 
-/** Adds one advisory's paths to `advisories`, keyed by id. */
-function record(advisories, { id, severity, module, title, path: dependencyPath, prod }) {
+/**
+ * Adds one advisory's paths to `advisories`, keyed by id, with the copies of
+ * the package it reaches: `copies` maps a package to its versions.
+ */
+function record(advisories, { id, severity, module, version, title, paths, prod }) {
 	const entry = advisories.get(id) ?? {
 		id,
 		severity,
@@ -84,9 +106,17 @@ function record(advisories, { id, severity, module, title, path: dependencyPath,
 		title,
 		paths: new Set(),
 		prodPaths: new Set(),
+		copies: new Map(),
 	};
-	entry.paths.add(dependencyPath);
-	if (prod) entry.prodPaths.add(dependencyPath);
+	// An advisory reported with no path at all still counts: dropping it would
+	// read as clean.
+	for (const dependencyPath of paths.length ? paths : ['(no path reported)']) {
+		entry.paths.add(dependencyPath);
+		if (prod) entry.prodPaths.add(dependencyPath);
+	}
+	const versions = entry.copies.get(module) ?? new Set();
+	versions.add(version);
+	entry.copies.set(module, versions);
 	advisories.set(id, entry);
 }
 
@@ -99,16 +129,15 @@ function readPnpm(report, advisories) {
 	for (const advisory of Object.values(report.advisories)) {
 		if (!SEVERE.has(advisory.severity)) continue;
 		for (const finding of advisory.findings) {
-			for (const dependencyPath of finding.paths) {
-				record(advisories, {
-					id: advisory.github_advisory_id ?? `npm-${advisory.id}`,
-					severity: advisory.severity,
-					module: advisory.module_name,
-					title: advisory.title,
-					path: dependencyPath,
-					prod: finding.dev !== true,
-				});
-			}
+			record(advisories, {
+				id: advisory.github_advisory_id ?? `npm-${advisory.id}`,
+				severity: advisory.severity,
+				module: advisory.module_name,
+				version: finding.version,
+				title: advisory.title,
+				paths: finding.paths,
+				prod: finding.dev !== true,
+			});
 		}
 	}
 	return true;
@@ -130,16 +159,17 @@ function readNpm(report, advisories) {
 	for (const vulnerability of Object.values(report.vulnerabilities)) {
 		for (const via of vulnerability.via) {
 			if (typeof via === 'string' || !SEVERE.has(via.severity)) continue;
-			for (const dependencyPath of vulnerability.nodes) {
-				record(advisories, {
-					id: via.url?.match(/GHSA-[\w-]+/)?.[0] ?? `npm-${via.source}`,
-					severity: via.severity,
-					module: via.name,
-					title: via.title,
-					path: dependencyPath,
-					prod: true,
-				});
-			}
+			record(advisories, {
+				id: via.url?.match(/GHSA-[\w-]+/)?.[0] ?? `npm-${via.source}`,
+				severity: via.severity,
+				module: via.name,
+				// No versions in npm's report: one copy per package, as far as this
+				// can tell.
+				version: '',
+				title: via.title,
+				paths: vulnerability.nodes,
+				prod: true,
+			});
 		}
 	}
 	return true;
@@ -147,7 +177,7 @@ function readNpm(report, advisories) {
 
 /** High and critical advisories, by id, with the paths that reach them. */
 function audit(cwd) {
-	const result = spawnSync(tool, ['audit', '--json', ...auditArgs], {
+	const result = spawnSync(tool, ['audit', '--json', ...pinned, ...auditArgs], {
 		cwd,
 		encoding: 'utf8',
 		maxBuffer: 64 * 1024 * 1024,
@@ -180,6 +210,13 @@ function baseline() {
 		const base = process.env.AUDIT_BASE.trim();
 		if (base) git('rev-parse', '--verify', '--quiet', `${base}^{commit}`);
 		return base;
+	}
+	// In CI the baseline comes from scripts/audit-baseline.sh, always, even
+	// when it is empty. Unset there means the step lost it -- a rename, a
+	// dropped `env:` -- and the parent is the comparison that let a push of
+	// several commits through, so refuse rather than fall back to it.
+	if (process.env.GITHUB_ACTIONS === 'true') {
+		throw new Error('AUDIT_BASE is not set: in CI it must come from scripts/audit-baseline.sh');
 	}
 	try {
 		return git('rev-parse', '--verify', '--quiet', 'HEAD^1^{commit}');
@@ -232,11 +269,22 @@ try {
 	const existing = [];
 	for (const [id, advisory] of head) {
 		const before = parent.get(id);
+		const moreCopies = [...advisory.copies].filter(
+			([module, versions]) => versions.size > (before?.copies.get(module)?.size ?? 0),
+		);
 		if (!before) added.push([advisory, '']);
 		else if (advisory.prodPaths.size > 0 && before.prodPaths.size === 0) {
 			added.push([
 				advisory,
 				' -- the baseline had it only in devDependencies; it now reaches production dependencies',
+			]);
+		} else if (moreCopies.length > 0) {
+			const now = moreCopies.map(([module, versions]) =>
+				[...versions].map((v) => (v ? `${module}@${v}` : module)).join(', '),
+			);
+			added.push([
+				advisory,
+				` -- it now reaches more copies than the baseline did: ${now.join('; ')}`,
 			]);
 		} else existing.push(advisory);
 	}

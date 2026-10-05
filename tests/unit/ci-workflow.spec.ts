@@ -56,7 +56,18 @@ describe('an inherited pass cannot be faked', () => {
 	// pass. Deciding WHEN that is legitimate belongs to `gate` alone.
 	const GATE_SKIP = "${{ !cancelled() && needs.gate.outputs.passed != 'true' }}";
 
-	const checks = Object.keys(jobs).filter((name) => name !== 'gate');
+	// The one exception runs the other way: the dependency audit never skips,
+	// because its answer changes while the content stands still. It carries no
+	// condition at all, and that is pinned too (see ci.yml).
+	const NEVER_SKIPS = ['audit'];
+
+	const checks = Object.keys(jobs).filter((name) => name !== 'gate' && !NEVER_SKIPS.includes(name));
+
+	it.each(NEVER_SKIPS)('always runs %s', (name) => {
+		expect(jobs[name]).toBeDefined();
+		expect(jobs[name]?.if).toBeUndefined();
+		expect(jobs[name]?.['continue-on-error'] ?? false).toBe(false);
+	});
 
 	it('has check jobs to guard', () => {
 		// Without this the suite passes vacuously if the jobs are renamed or the

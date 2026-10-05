@@ -40,9 +40,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Nothing here writes to the repo or a registry. `gate` and `static` ask for
+# Nothing here writes to the repo or a registry. `gate` and `audit` ask for
 # `actions: read` on their own, to look up earlier runs: `gate` for a pass to
-# inherit, `static` for the dependency audit's baseline. Under
+# inherit, `audit` for the dependency audit's baseline. Under
 # `workflow_call` this also caps what docker.yml's grant can reach in here.
 permissions:
   contents: read
@@ -233,10 +233,9 @@ jobs:
           echo "Inheriting: ${reason}."
           echo "passed=true" >> "${GITHUB_OUTPUT}"
 
-  # Lint, type-check, formatting, the migration check and the dependency
-  # audit share one job rather than several: each takes well under a minute,
-  # and they'd otherwise each pay the ~40s checkout + install to run in
-  # parallel.
+  # Lint, type-check, formatting and the migration check share one job
+  # rather than several: each takes well under a minute, and they'd otherwise
+  # each pay the ~40s checkout + install to run in parallel.
   # `continue-on-error` is NOT set on any of them — all of them gate the PR.
   # (The two uses of it in this file are both on cache bookkeeping, never on
   # a check.)
@@ -246,17 +245,10 @@ jobs:
     if: ${{ !cancelled() && needs.gate.outputs.passed != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    permissions:
-      contents: read
-      # scripts/audit-baseline.sh looks up the last successful run.
-      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # Full history: the audit compares against the last commit CI passed
-          # on this branch, which can be any number of commits back.
-          fetch-depth: 0
 
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
@@ -304,12 +296,43 @@ jobs:
             exit 1
           fi
 
+  # The dependency audit, on its own and on every run: unlike every other
+  # check it does not defer to `gate`. An inherited pass vouches for content,
+  # and the audit's answer changes while the content stands still, as
+  # advisories are published -- a merge, or a tag, inheriting an earlier pass
+  # would ship one published since, and become the audit's next baseline
+  # (scripts/audit-baseline.sh) without ever having been audited itself. A
+  # pull request's run also audited GitHub's merge with main as it was then,
+  # which need not be the tree that merged. It needs no install, so it is
+  # cheap to run every time.
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # scripts/audit-baseline.sh looks up the last successful run.
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Full history: the audit compares against the last commit CI passed
+          # on this branch, which can be any number of commits back.
+          fetch-depth: 0
+
+      # pnpm audit reads the lockfile, not node_modules: no install.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '26'
+
       # What the audit compares against: the last commit CI passed on the
       # target branch -- on a pull request too, not the branch's current tip,
       # which can be a push that failed. See scripts/audit-baseline.sh.
       - name: Find the audit baseline
         id: audit-baseline
-        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
           AUDIT_WORKFLOWS: ci.yml,docker.yml
@@ -325,7 +348,9 @@ jobs:
       # last commit CI passed on the target branch -- on a pull request as
       # well as a push -- so neither a direct push of several commits nor a
       # PR onto a tip that failed can slip one in (scripts/audit-baseline.sh;
-      # hence `fetch-depth: 0` on the checkout).
+      # hence `fetch-depth: 0` on the checkout). An advisory the baseline
+      # already had counts as new once it reaches more copies of a package
+      # than it did there.
       #
       # Not `--prod`: only shiki, sharp and pyodide are runtime dependencies.
       # Svelte, SvelteKit and everything Vite bundles into build/ are
@@ -333,7 +358,6 @@ jobs:
       # found unreachable goes in pnpm-workspace.yaml under
       # auditConfig.ignoreGhsas, with the reason beside it.
       - name: Dependency audit
-        if: ${{ always() && steps.audit-baseline.outcome == 'success' }}
         env:
           AUDIT_BASE: ${{ steps.audit-baseline.outputs.sha }}
         run: node scripts/audit-new-advisories.mjs
