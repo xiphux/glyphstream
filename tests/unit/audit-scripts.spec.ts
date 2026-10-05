@@ -80,11 +80,13 @@ beforeAll(() => {
 	);
 	// <pnpm|npm> audit --json ...: the tree's own report. FAKE_AUDIT_CONFIG
 	// plays a repository whose configuration narrows the report -- auditLevel:
-	// critical, optional: false, omit=optional -- which only the flags the
-	// script pins restore. The arguments are logged to $FAKE_AUDIT_LOG.
+	// critical, optional: false, omit=optional or peer, a registry= line --
+	// which only the flags the script pins restore. The arguments are logged
+	// to $FAKE_AUDIT_LOG.
+	const REGISTRY = '--registry=https://registry.npmjs.org/';
 	for (const [name, pinned] of [
-		['pnpm', '--audit-level=low --optional'],
-		['npm', '--include=optional'],
+		['pnpm', `--audit-level=low --optional ${REGISTRY}`],
+		['npm', `--include=optional --include=peer ${REGISTRY}`],
 	]) {
 		fake(
 			name,
@@ -121,9 +123,12 @@ function makeRepo() {
 	git('config', 'user.email', 'test@example.com');
 	git('config', 'user.name', 'test');
 	git('config', 'commit.gpgsign', 'false');
-	const commit = (report: object, message: string) => {
-		writeFileSync(path.join(dir, 'audit-report.json'), JSON.stringify(report));
-		writeFileSync(path.join(dir, 'pnpm-lock.yaml'), `# ${message}\n`);
+	// Writes a report (and its lockfile) to `at`, the repository root by
+	// default, and commits everything.
+	const commit = (report: object, message: string, at = '.', lockfile = 'pnpm-lock.yaml') => {
+		mkdirSync(path.join(dir, at), { recursive: true });
+		writeFileSync(path.join(dir, at, 'audit-report.json'), JSON.stringify(report));
+		writeFileSync(path.join(dir, at, lockfile), `# ${message}\n`);
 		git('add', '-A');
 		git('commit', '-q', '-m', message);
 		return git('rev-parse', 'HEAD');
@@ -134,35 +139,47 @@ function makeRepo() {
 type Finding = {
 	id: string;
 	severity?: string;
+	module?: string;
+	/**
+	 * The versions of the package it reaches, one finding each; `1.0.0:dev`
+	 * for one reached only through devDependencies.
+	 */
+	versions?: string[];
 	dev?: boolean;
 	path?: string;
-	/** The versions of the package it reaches, one finding each. */
-	versions?: string[];
 	noPaths?: boolean;
 };
-/** A `pnpm audit --json` report. */
+/**
+ * A `pnpm audit --json` report: one advisory object per finding given, so two
+ * with the same id are one GHSA split across objects, as pnpm reports one
+ * that spans several vulnerable ranges.
+ */
 const report = (...findings: Finding[]) => ({
 	advisories: Object.fromEntries(
 		findings.map((f, i) => [
-			String(i),
+			String(1000 + i),
 			{
+				id: 1000 + i,
 				github_advisory_id: f.id,
 				severity: f.severity ?? 'high',
-				module_name: 'pkg',
+				module_name: f.module ?? 'pkg',
 				title: `advisory ${f.id}`,
-				findings: (f.versions ?? ['1.0.0']).map((version) => ({
-					version,
-					dev: f.dev ?? false,
-					paths: f.noPaths ? [] : [f.path ?? `.>pkg@${version}`],
-				})),
+				findings: (f.versions ?? ['1.0.0']).map((entry) => {
+					const [version, scope] = entry.split(':');
+					return {
+						version,
+						dev: scope === 'dev' || (f.dev ?? false),
+						paths: f.noPaths ? [] : [f.path ?? `.>${f.module ?? 'pkg'}@${version}`],
+					};
+				}),
 			},
 		]),
 	),
 });
 const CLEAN = report();
 
-function audit(dir: string, env: Record<string, string | undefined> = {}) {
-	const result = spawnSync('node', [AUDIT], {
+function audit(dir: string, env: Record<string, string | undefined> = {}, args: string[] = []) {
+	const result = spawnSync('node', [AUDIT, ...args], {
 		cwd: dir,
 		encoding: 'utf8',
 		env: cleanEnv(env),
@@ -178,6 +195,15 @@ describe('audit-new-advisories.mjs', () => {
 		const { status, out } = audit(dir);
 		expect(status).toBe(1);
 		expect(out).toContain('::error title=New advisory::GHSA-new');
+	});
+
+	it('fails on a critical advisory the change adds, too', () => {
+		const { dir, commit } = makeRepo();
+		commit(CLEAN, 'base');
+		commit(report({ id: 'GHSA-crit', severity: 'critical' }), 'adds one');
+		const { status, out } = audit(dir);
+		expect(status).toBe(1);
+		expect(out).toContain('::error title=New advisory::GHSA-crit (critical)');
 	});
 
 	it('only warns on an advisory the baseline already had', () => {
@@ -202,19 +228,44 @@ describe('audit-new-advisories.mjs', () => {
 		commit(report({ id: 'GHSA-x', dev: false, path: '.>pkg' }), 'to prod');
 		const { status, out } = audit(dir);
 		expect(status).toBe(1);
-		expect(out).toContain('only in devDependencies');
+		expect(out).toContain('the baseline had pkg only in devDependencies');
 	});
 
-	it('counts an advisory as new once it reaches another copy of the package', () => {
+	it('counts a dev-only advisory as new once production reaches it, with no path reported', () => {
 		const { dir, commit } = makeRepo();
-		commit(report({ id: 'GHSA-x', versions: ['1.0.0'] }), 'base');
+		commit(report({ id: 'GHSA-x', dev: true }), 'base');
+		commit(report({ id: 'GHSA-x', noPaths: true }), 'to prod, pathless');
+		const { status, out } = audit(dir);
+		expect(status).toBe(1);
+		expect(out).toContain('Via (no path reported)');
+	});
+
+	it('counts an advisory as new once it reaches a package it did not', () => {
+		const { dir, commit } = makeRepo();
+		commit(report({ id: 'GHSA-x', module: 'one' }), 'base');
 		commit(
-			report({ id: 'GHSA-x', versions: ['1.0.0', '2.0.0'] }),
-			'a second vulnerable copy alongside the first',
+			report({ id: 'GHSA-x', module: 'one' }, { id: 'GHSA-x', module: 'two' }),
+			'reaches a second package',
 		);
 		const { status, out } = audit(dir);
 		expect(status).toBe(1);
-		expect(out).toContain('more copies than the baseline did: pkg@1.0.0, pkg@2.0.0');
+		expect(out).toContain('it now reaches two, which it did not');
+	});
+
+	it('counts a copy older than any the baseline had as new', () => {
+		// A fixed copy swapped for an older vulnerable one that something new
+		// brought in: the count stays level, but no fix arrives as a downgrade.
+		const { dir, commit } = makeRepo();
+		commit(report({ id: 'GHSA-x', versions: ['1.2.5'] }), 'base');
+		commit(
+			report({ id: 'GHSA-x', versions: ['1.2.8', '0.0.8'] }),
+			'one copy fixed, an older one added',
+		);
+		const { status, out } = audit(dir);
+		expect(status).toBe(1);
+		expect(out).toContain(
+			'it now reaches pkg@0.0.8, older than any copy the baseline had (pkg@1.2.5)',
+		);
 	});
 
 	it('does not count moving the one copy to another vulnerable version as new', () => {
@@ -227,13 +278,54 @@ describe('audit-new-advisories.mjs', () => {
 		expect(out).toContain('::warning title=Existing advisory::GHSA-x');
 	});
 
-	it('counts an advisory reported with no path at all', () => {
+	it('does not count a partial fix, which leaves the old copy for the rest, as new', () => {
+		// pnpm does not dedupe: one dependent moving to a newer, still-affected
+		// version leaves the old one in place for the others.
 		const { dir, commit } = makeRepo();
-		commit(CLEAN, 'base');
-		commit(report({ id: 'GHSA-nopath', noPaths: true }), 'adds one');
+		commit(report({ id: 'GHSA-x', versions: ['2.1.4:dev', '5.0.9:dev'] }), 'base');
+		commit(
+			report({
+				id: 'GHSA-x',
+				versions: ['2.1.4:dev', '5.0.9:dev', '5.0.10:dev'],
+			}),
+			'some dependents move to 5.0.10',
+		);
+		expect(audit(dir).status).toBe(0);
+		// And in the lower line: newer than one baseline copy, older than the
+		// other, which is still not a downgrade.
+		commit(
+			report({
+				id: 'GHSA-x',
+				versions: ['2.1.4:dev', '2.1.5:dev', '5.0.9:dev', '5.0.10:dev'],
+			}),
+			'some dependents move to 2.1.5',
+		);
+		expect(audit(dir).status).toBe(0);
+	});
+
+	it('counts more production copies than the baseline had as new', () => {
+		// A copy the baseline had only in devDependencies does not vouch for a
+		// second one in production.
+		const { dir, commit } = makeRepo();
+		commit(report({ id: 'GHSA-x', versions: ['1.0.0', '2.0.0:dev'] }), 'base');
+		commit(report({ id: 'GHSA-x', versions: ['1.0.0', '3.0.0'] }), 'a second production copy');
 		const { status, out } = audit(dir);
 		expect(status).toBe(1);
-		expect(out).toContain('::error title=New advisory::GHSA-nopath');
+		expect(out).toContain('more production copies of pkg than the baseline did');
+	});
+
+	it('merges one GHSA split across advisory objects, as pnpm reports ranges', () => {
+		// The one copy moves from the advisory object for one vulnerable range
+		// to the object for another: the same GHSA, not a new one.
+		const { dir, commit } = makeRepo();
+		commit(report({ id: 'GHSA-split', versions: ['2.1.4'] }), 'base');
+		commit(
+			report({ id: 'GHSA-split', versions: [] }, { id: 'GHSA-split', versions: ['5.0.9'] }),
+			'the copy moves to the 5.x range',
+		);
+		const { status, out } = audit(dir);
+		expect(status).toBe(0);
+		expect(out).toContain('::warning title=Existing advisory::GHSA-split');
 	});
 
 	it('pins what the audit reports, whatever the repository configures', () => {
@@ -250,9 +342,24 @@ describe('audit-new-advisories.mjs', () => {
 		// Both audits, HEAD's and the baseline's.
 		const calls = readFileSync(log, 'utf8').trim().split('\n');
 		expect(calls).toEqual([
-			'audit --json --audit-level=low --optional',
-			'audit --json --audit-level=low --optional',
+			'audit --json --audit-level=low --optional --registry=https://registry.npmjs.org/',
+			'audit --json --audit-level=low --optional --registry=https://registry.npmjs.org/',
 		]);
+	});
+
+	it.each([
+		'--ignore-registry-errors',
+		'--no-optional',
+		'--audit-level=critical',
+		'--registry=http://127.0.0.1:9/',
+		'--omit=optional',
+	])('refuses %s, which would narrow the report', (flag) => {
+		const { dir, commit } = makeRepo();
+		commit(CLEAN, 'base');
+		commit(CLEAN, 'tip');
+		const { status, out } = audit(dir, {}, [flag]);
+		expect(status).toBe(1);
+		expect(out).toContain(`::error title=Audit failed::refusing ${flag}`);
 	});
 
 	it('compares against $AUDIT_BASE, not the parent, when it is set', () => {
@@ -303,6 +410,125 @@ describe('audit-new-advisories.mjs', () => {
 			expect(status, failure).toBe(1);
 			expect(out, failure).toContain('pnpm audit produced no report');
 		}
+	});
+});
+
+describe('audit-new-advisories.mjs --npm', () => {
+	type NpmFinding = {
+		id: string;
+		name?: string;
+		severity?: string;
+		packageSeverity?: string;
+		alsoVia?: string[];
+	};
+	/** An `npm audit --json` report: each finding a package with one advisory. */
+	const npmReport = (...findings: NpmFinding[]) => ({
+		vulnerabilities: Object.fromEntries(
+			findings.map((f) => [
+				f.name ?? 'pkg',
+				{
+					name: f.name ?? 'pkg',
+					severity: f.packageSeverity ?? f.severity ?? 'high',
+					via: [
+						...(f.alsoVia ?? []),
+						{
+							source: 1000,
+							name: f.name ?? 'pkg',
+							title: `advisory ${f.id}`,
+							url: `https://github.com/advisories/${f.id}`,
+							severity: f.severity ?? 'high',
+						},
+					],
+					nodes: [`node_modules/${f.name ?? 'pkg'}`],
+				},
+			]),
+		),
+	});
+	const args = ['--npm', '--dir=project', '--omit=dev'];
+	const inProject = (
+		commit: ReturnType<typeof makeRepo>['commit'],
+		content: object,
+		message: string,
+	) => commit(content, message, 'project', 'package-lock.json');
+
+	it('fails on an advisory the change adds, keyed by its GHSA id', () => {
+		const { dir, commit } = makeRepo();
+		inProject(commit, npmReport(), 'base');
+		inProject(commit, npmReport({ id: 'GHSA-aaaa-bbbb-cccc' }), 'adds one');
+		const { status, out } = audit(dir, {}, args);
+		expect(status).toBe(1);
+		expect(out).toContain('::error title=New advisory::GHSA-aaaa-bbbb-cccc');
+		expect(out).toMatch(/^project: 1 new/m);
+	});
+
+	it('audits the baseline’s copy of the same project, and only warns on what it had', () => {
+		const { dir, commit } = makeRepo();
+		inProject(commit, npmReport({ id: 'GHSA-aaaa-bbbb-cccc' }), 'base');
+		// A root report with something new must not leak into the project's.
+		commit(report({ id: 'GHSA-root' }), 'root change');
+		const { status, out } = audit(dir, {}, args);
+		expect(status).toBe(0);
+		expect(out).toContain('::warning title=Existing advisory::GHSA-aaaa-bbbb-cccc');
+	});
+
+	it('takes each advisory’s own severity, not the package’s worst', () => {
+		const { dir, commit } = makeRepo();
+		inProject(commit, npmReport(), 'base');
+		inProject(
+			commit,
+			npmReport({
+				id: 'GHSA-mod',
+				severity: 'moderate',
+				packageSeverity: 'high',
+				alsoVia: ['other-pkg'],
+			}),
+			'moderate, reached through another package',
+		);
+		expect(audit(dir, {}, args).status).toBe(0);
+	});
+
+	it('counts an advisory as new once it reaches another package', () => {
+		const { dir, commit } = makeRepo();
+		inProject(commit, npmReport({ id: 'GHSA-aaaa', name: 'one' }), 'base');
+		inProject(
+			commit,
+			npmReport({ id: 'GHSA-aaaa', name: 'one' }, { id: 'GHSA-aaaa', name: 'two' }),
+			'reaches a second package',
+		);
+		const { status, out } = audit(dir, {}, args);
+		expect(status).toBe(1);
+		expect(out).toContain('it now reaches two, which it did not');
+	});
+
+	it('pins what npm reports, whatever an .npmrc says', () => {
+		const { dir, commit } = makeRepo();
+		inProject(commit, npmReport(), 'base');
+		inProject(commit, npmReport({ id: 'GHSA-aaaa' }), 'adds one');
+		const log = path.join(dir, '..', `${path.basename(dir)}.log`);
+		const { status } = audit(dir, { FAKE_AUDIT_CONFIG: '1', FAKE_AUDIT_LOG: log }, args);
+		expect(status).toBe(1);
+		const call =
+			'audit --json --include=optional --include=peer --registry=https://registry.npmjs.org/ --omit=dev';
+		expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual([call, call]);
+	});
+
+	it('counts a project the baseline does not have yet as entirely new', () => {
+		const { dir, commit } = makeRepo();
+		commit(CLEAN, 'no project yet');
+		inProject(commit, npmReport({ id: 'GHSA-aaaa' }), 'adds the project');
+		const { status, out } = audit(dir, {}, args);
+		expect(status).toBe(1);
+		expect(out).toMatch(/project is not in [0-9a-f]{12}: every advisory counts as new/);
+	});
+
+	it('fails closed on a report that is not npm’s', () => {
+		const { dir, commit } = makeRepo();
+		// A pnpm-shaped report read as npm: no `vulnerabilities`, so no report.
+		inProject(commit, report(), 'base');
+		inProject(commit, report({ id: 'GHSA-x' }), 'tip');
+		const { status, out } = audit(dir, {}, args);
+		expect(status).toBe(1);
+		expect(out).toContain('npm audit produced no report');
 	});
 });
 

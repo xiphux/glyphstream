@@ -10,21 +10,29 @@ import { parse } from 'yaml';
  * it -- the last commit CI passed on the target branch -- and needs three
  * things from the workflow to do so: the full history, to reach that commit;
  * `actions: read`, to look up which runs passed; and the workflows whose runs
- * include the audit. The audit then has to be handed what it found. None of
- * those fails anything visibly when it is wrong: a dropped AUDIT_BASE falls
- * back to comparing against HEAD's parent, which let multi-commit pushes
- * through, and a workflow in AUDIT_WORKFLOWS that goes green without
- * auditing makes every commit it passes a baseline. So they are pinned here.
+ * include the audit. The audit then has to be handed what it found. Not all
+ * of those fail visibly when wrong: a workflow in AUDIT_WORKFLOWS that goes
+ * green without auditing makes every commit it passes a baseline, and a
+ * renamed step id hands the audit an empty baseline. So they are pinned here.
  *
  * So is the audit job's independence from `gate`. The other checks may skip
  * when the content already passed; the audit may not, since advisories are
  * published while content stands still, and a merge that inherited a pull
  * request's pass would become a baseline nothing audited.
+ *
+ * And so is the job's name. Branch protection requires the audit by the
+ * check name GitHub reports -- the job's `name:`, or its id without one --
+ * and a required check that is never reported is simply never waited for:
+ * after a rename, auto-merge would stop waiting on the audit and nothing
+ * would go red to say so. Renaming it means updating the required checks
+ * too.
  */
 
 const WORKFLOWS = path.join(process.cwd(), '.github', 'workflows');
 const CI = 'ci.yml';
 const JOB = 'audit';
+/** The check name branch protection requires; undefined for the job id. */
+const JOB_NAME: string | undefined = 'Dependency audit';
 /** Each audit step, by name, and exactly what it runs. */
 const AUDIT_STEPS: Array<{ name: string; run: string }> = [
 	{ name: 'Dependency audit', run: 'node scripts/audit-new-advisories.mjs' },
@@ -41,6 +49,7 @@ type Step = {
 	'continue-on-error'?: boolean | string;
 };
 type Job = {
+	name?: string;
 	if?: string;
 	needs?: string | string[];
 	uses?: string;
@@ -74,6 +83,10 @@ describe('the dependency audit compares against a verified baseline', () => {
 		expect(job).toBeDefined();
 		expect(baseline).toBeDefined();
 		expect(audits).not.toContain(undefined);
+	});
+
+	it('reports under the name branch protection requires', () => {
+		expect(job?.name).toBe(JOB_NAME);
 	});
 
 	it('never skips the audit, and never lets it fail quietly', () => {

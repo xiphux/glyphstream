@@ -305,6 +305,10 @@ jobs:
   # pull request's run also audited GitHub's merge with main as it was then,
   # which need not be the tree that merged. It needs no install, so it is
   # cheap to run every time.
+  #
+  # Branch protection requires it by its name, "Dependency audit". Renaming
+  # it means updating the required checks, or merges stop waiting for it with
+  # nothing going red to say so.
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest

@@ -26,19 +26,26 @@
  * reshuffles the tree around a package already flagged -- eslint-plugin-n
  * 18.4.0 added seven paths to a brace-expansion advisory glyphstream already
  * had -- would fail, which is the blocking this replaced. Every path is still
- * printed. Two distinctions are kept, so that an advisory already on the
- * baseline cannot vouch for more than it covered there:
+ * printed. But an advisory already on the baseline cannot vouch for more
+ * than it covered there, so it still counts as new when HEAD has it:
  *
- * - One the baseline had only in devDependencies counts as new once HEAD
- *   reaches it from production dependencies, so the dev tree cannot vouch for
- *   what ships.
- * - One that HEAD has in more copies of a package than the baseline did --
- *   a second vulnerable version installed alongside the first -- counts as
- *   new. Copies are counted, not matched by version, so moving the one copy
- *   to another version that is still vulnerable is not new: that is the
- *   update a fix arrives through, and failing it would block the fix. npm's
- *   report does not give versions, so in --npm mode only a package the
- *   advisory did not reach before counts.
+ * - in a package it did not reach on the baseline;
+ * - in a version of that package older than every version the baseline had
+ *   -- swapping a fixed copy for an older vulnerable one brought in by
+ *   something else. Fixes move versions up, never down, and pnpm does not
+ *   dedupe: a dependent moving to a newer, still-affected version leaves the
+ *   old one for the rest, and failing that would block the partial fix (as
+ *   it would for an advisory with no fixed version at all). A newer
+ *   vulnerable copy brought in by a new dependency is the case this lets
+ *   through;
+ * - in more production copies of the package than the baseline had --
+ *   including any, when the baseline had it only in devDependencies, so the
+ *   dev tree cannot vouch for what ships. Production is counted strictly, so
+ *   a partial fix that splits a production copy in two fails too; `pnpm
+ *   dedupe`, an override, or an ignore entry with its reason resolves it.
+ *
+ * npm's report gives no versions, so in --npm mode only a package the
+ * advisory did not reach before counts.
  *
  * Findings already on the baseline are printed as warnings and do not fail
  * the run. They stay visible there, as Dependabot alerts, and as Renovate's
@@ -56,15 +63,23 @@
  *                 (default: the root). A project the baseline does not have
  *                 yet counts as entirely new.
  *
- * Anything else is passed to both audits, e.g. `--prod` or `--omit=dev`.
+ * The only other arguments accepted, and passed to both audits, are `--prod`
+ * and `--omit=dev`: each leaves out what does not ship, which the caller can
+ * decide. Anything else is refused, since the rest of what the tools accept
+ * narrows the report or makes a failure read as clean --
+ * `--ignore-registry-errors` turns an unreachable registry into an empty
+ * report, `--audit-level` and `--no-optional` drop findings, `--registry`
+ * moves the question to another server.
  *
  * What the audits report is pinned on the command line, ahead of those
  * arguments, because configuration can narrow it without saying so:
  * `auditLevel: critical` in pnpm-workspace.yaml empties pnpm's JSON of every
  * high advisory, `optional: false` there drops optional dependencies from it,
- * and `omit=optional` in an .npmrc does the same to npm's. Each read as a
- * clean report. The severity this cares about is filtered here, not by the
- * tool.
+ * `omit=optional` or `omit=peer` in an .npmrc does the same to npm's, and a
+ * `registry=` line sends either to a server whose empty answer reads as
+ * clean. The severity this cares about is filtered here, not by the tool.
+ * (Each side runs the pnpm its own `packageManager` names, so a change that
+ * bumps pnpm compares two versions' reports.)
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
@@ -74,16 +89,23 @@ import process from 'node:process';
 
 const SEVERE = new Set(['high', 'critical']);
 
+const REGISTRY = '--registry=https://registry.npmjs.org/';
+const ALLOWED = new Set(['--prod', '--omit=dev']);
+
 const options = { npm: false, dir: '.' };
 const auditArgs = [];
+const refused = [];
 for (const arg of process.argv.slice(2)) {
 	if (arg === '--npm') options.npm = true;
 	else if (arg.startsWith('--dir=')) options.dir = arg.slice('--dir='.length);
-	else auditArgs.push(arg);
+	else if (ALLOWED.has(arg)) auditArgs.push(arg);
+	else refused.push(arg);
 }
 const tool = options.npm ? 'npm' : 'pnpm';
 const lockfile = options.npm ? 'package-lock.json' : 'pnpm-lock.yaml';
-const pinned = options.npm ? ['--include=optional'] : ['--audit-level=low', '--optional'];
+const pinned = options.npm
+	? ['--include=optional', '--include=peer', REGISTRY]
+	: ['--audit-level=low', '--optional', REGISTRY];
 
 // GIT_LFS_SKIP_SMUDGE: the audit needs the lockfile, not the baseline's LFS
 // files, and checkouts here drop their credentials, so an LFS download
@@ -95,8 +117,9 @@ const git = (...args) =>
 	}).trim();
 
 /**
- * Adds one advisory's paths to `advisories`, keyed by id, with the copies of
- * the package it reaches: `copies` maps a package to its versions.
+ * Adds one finding to `advisories`, keyed by advisory id, with the copies of
+ * the package it reaches: `copies` maps a package to its versions, all and
+ * production.
  */
 function record(advisories, { id, severity, module, version, title, paths, prod }) {
 	const entry = advisories.get(id) ?? {
@@ -108,15 +131,18 @@ function record(advisories, { id, severity, module, version, title, paths, prod 
 		prodPaths: new Set(),
 		copies: new Map(),
 	};
-	// An advisory reported with no path at all still counts: dropping it would
-	// read as clean.
+	// A finding reported with no path still has something to print.
 	for (const dependencyPath of paths.length ? paths : ['(no path reported)']) {
 		entry.paths.add(dependencyPath);
 		if (prod) entry.prodPaths.add(dependencyPath);
 	}
-	const versions = entry.copies.get(module) ?? new Set();
-	versions.add(version);
-	entry.copies.set(module, versions);
+	const copies = entry.copies.get(module) ?? {
+		all: new Set(),
+		prod: new Set(),
+	};
+	copies.all.add(version);
+	if (prod) copies.prod.add(version);
+	entry.copies.set(module, copies);
 	advisories.set(id, entry);
 }
 
@@ -204,6 +230,67 @@ function audit(cwd) {
 	return advisories;
 }
 
+/**
+ * Whether version `a` is older than `b`, by semver precedence. One that is not
+ * semver counts as older: it cannot be shown to be the newer copy a fix
+ * arrives as, so it is not given that benefit.
+ */
+function older(a, b) {
+	const parse = (v) => /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+.*)?$/.exec(v);
+	const x = parse(a);
+	const y = parse(b);
+	if (!x || !y) return true;
+	for (let i = 1; i <= 3; i++) {
+		if (Number(x[i]) !== Number(y[i])) return Number(x[i]) < Number(y[i]);
+	}
+	if (!x[4] || !y[4]) return Boolean(x[4]) && !y[4]; // 1.0.0-rc < 1.0.0
+	const xs = x[4].split('.');
+	const ys = y[4].split('.');
+	for (let i = 0; i < Math.max(xs.length, ys.length); i++) {
+		if (xs[i] === undefined) return true;
+		if (ys[i] === undefined) return false;
+		if (xs[i] === ys[i]) continue;
+		const [xn, yn] = [/^\d+$/.test(xs[i]), /^\d+$/.test(ys[i])];
+		if (xn && yn) return Number(xs[i]) < Number(ys[i]);
+		if (xn !== yn) return xn; // numeric identifiers sort first
+		return xs[i] < ys[i];
+	}
+	return false;
+}
+
+/**
+ * Why `advisory`, which the baseline also had as `before`, still counts as
+ * new -- one reason per package -- or nothing, if it does not.
+ */
+function stillNew(advisory, before) {
+	const reasons = [];
+	for (const [module, now] of advisory.copies) {
+		const then = before.copies.get(module);
+		const label = (versions) =>
+			[...versions].map((v) => (v ? `${module}@${v}` : module)).join(', ');
+		if (!then) {
+			reasons.push(`it now reaches ${module}, which it did not on the baseline`);
+			continue;
+		}
+		const downgrades = [...now.all].filter(
+			(v) => !then.all.has(v) && [...then.all].every((t) => older(v, t)),
+		);
+		if (downgrades.length > 0) {
+			reasons.push(
+				`it now reaches ${label(downgrades)}, older than any copy the baseline had (${label(then.all)})`,
+			);
+		}
+		if (now.prod.size > then.prod.size) {
+			reasons.push(
+				then.prod.size === 0
+					? `the baseline had ${module} only in devDependencies; it now reaches production dependencies (${label(now.prod)})`
+					: `it now reaches more production copies of ${module} than the baseline did: ${label(now.prod)}, was ${label(then.prod)}`,
+			);
+		}
+	}
+	return reasons;
+}
+
 /** The commit to compare against: '' for none, or a commit id. */
 function baseline() {
 	if ('AUDIT_BASE' in process.env) {
@@ -252,6 +339,11 @@ const describe = (a) => {
 };
 
 try {
+	if (refused.length > 0) {
+		throw new Error(
+			`refusing ${refused.join(' ')}: only ${[...ALLOWED].join(' and ')} may be passed to the audits`,
+		);
+	}
 	const root = git('rev-parse', '--show-toplevel');
 	const head = audit(path.resolve(root, options.dir));
 	const base = baseline();
@@ -269,23 +361,10 @@ try {
 	const existing = [];
 	for (const [id, advisory] of head) {
 		const before = parent.get(id);
-		const moreCopies = [...advisory.copies].filter(
-			([module, versions]) => versions.size > (before?.copies.get(module)?.size ?? 0),
-		);
+		const reasons = before ? stillNew(advisory, before) : [];
 		if (!before) added.push([advisory, '']);
-		else if (advisory.prodPaths.size > 0 && before.prodPaths.size === 0) {
-			added.push([
-				advisory,
-				' -- the baseline had it only in devDependencies; it now reaches production dependencies',
-			]);
-		} else if (moreCopies.length > 0) {
-			const now = moreCopies.map(([module, versions]) =>
-				[...versions].map((v) => (v ? `${module}@${v}` : module)).join(', '),
-			);
-			added.push([
-				advisory,
-				` -- it now reaches more copies than the baseline did: ${now.join('; ')}`,
-			]);
+		else if (reasons.length > 0) {
+			added.push([advisory, ` -- already on the baseline, but ${reasons.join('; ')}`]);
 		} else existing.push(advisory);
 	}
 
