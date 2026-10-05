@@ -232,9 +232,10 @@ jobs:
           echo "Inheriting: ${reason}."
           echo "passed=true" >> "${GITHUB_OUTPUT}"
 
-  # Lint, type-check, formatting and the migration check share one job
-  # rather than several: each takes well under a minute, and they'd otherwise
-  # each pay the ~40s checkout + install to run in parallel.
+  # Lint, type-check, formatting, the migration check and the dependency
+  # audit share one job rather than several: each takes well under a minute,
+  # and they'd otherwise each pay the ~40s checkout + install to run in
+  # parallel.
   # `continue-on-error` is NOT set on any of them — all of them gate the PR.
   # (The two uses of it in this file are both on cache bookkeeping, never on
   # a check.)
@@ -248,6 +249,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The parent commit too: the dependency audit compares against it.
+          fetch-depth: 2
 
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
@@ -294,6 +297,23 @@ jobs:
             echo "::error::schema.ts and drizzle/ disagree. Run pnpm db:generate and commit the migration it writes."
             exit 1
           fi
+
+      # A high or critical advisory this change ADDS fails the PR, so an
+      # auto-merged update cannot bring one in unnoticed. One already on the
+      # base -- published against something already locked, often before any
+      # fix exists -- is printed as a warning instead, so it cannot hold
+      # unrelated PRs, or deadlock two that each fix one.
+      # scripts/audit-new-advisories.mjs does the comparison, against HEAD's
+      # first parent, hence `fetch-depth: 2` on the checkout.
+      #
+      # Not `--prod`: only shiki, sharp and pyodide are runtime dependencies.
+      # Svelte, SvelteKit and everything Vite bundles into build/ are
+      # devDependencies, and they are what ships. An advisory reviewed and
+      # found unreachable goes in pnpm-workspace.yaml under
+      # auditConfig.ignoreGhsas, with the reason beside it.
+      - name: Dependency audit
+        if: always()
+        run: node scripts/audit-new-advisories.mjs
 
   # Its own job rather than steps in `static`: it needs no pnpm install, so it
   # finishes in seconds and doesn't wait behind one. actionlint catches
