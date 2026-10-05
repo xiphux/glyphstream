@@ -300,10 +300,13 @@ jobs:
   # check it does not defer to `gate`. An inherited pass vouches for content,
   # and the audit's answer changes while the content stands still, as
   # advisories are published -- a merge, or a tag, inheriting an earlier pass
-  # would ship one published since, and become the audit's next baseline
+  # would ship one published since against what the change added, which no
+  # earlier audit could have seen, and become the audit's next baseline
   # (scripts/audit-baseline.sh) without ever having been audited itself. A
   # pull request's run also audited GitHub's merge with main as it was then,
-  # which need not be the tree that merged. It needs no install, so it is
+  # which need not be the tree that merged. (One published against something
+  # locked before that only warns, on a tag as on main: a release is held to
+  # the same standard as the branch.) It needs no install, so it is
   # cheap to run every time.
   #
   # Branch protection requires it by its name, "Dependency audit". Renaming
