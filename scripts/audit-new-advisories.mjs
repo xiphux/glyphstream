@@ -13,13 +13,13 @@
  *
  * It audits HEAD and a baseline commit and fails only on advisories HEAD has
  * that the baseline does not. The baseline is $AUDIT_BASE, which CI sets from
- * scripts/audit-baseline.sh: on a pull request, the merge commit's first
- * parent (the target branch); on a push, the last commit a successful CI run
- * passed on that branch. That last part is what keeps a push of several
- * commits, or a run that failed and was followed by another, from passing an
- * advisory nothing ever compared against a state without it. Unset (a local
- * run), the baseline is HEAD's first parent; set but empty, there is none (a
- * root commit) and every advisory counts as new.
+ * scripts/audit-baseline.sh: the last commit a successful CI run passed on the
+ * target branch, on a pull request as well as a push. That is what keeps a
+ * push of several commits, a run that failed and was followed by another, or a
+ * pull request onto a tip that failed, from passing an advisory nothing ever
+ * compared against a state without it. Unset (a local run), the baseline is
+ * HEAD's first parent; set but empty, there is none and every advisory counts
+ * as new.
  *
  * Advisories are compared by id, not by the dependency paths that reach
  * them. Matching paths too looked stricter and was not: a routine update that

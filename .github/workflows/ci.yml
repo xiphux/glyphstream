@@ -40,9 +40,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Nothing here writes to the repo or a registry. `gate` asks for `actions:
-# read` on its own, to look up earlier runs. Under `workflow_call` this also
-# caps what docker.yml's grant can reach in here.
+# Nothing here writes to the repo or a registry. `gate` and `static` ask for
+# `actions: read` on their own, to look up earlier runs: `gate` for a pass to
+# inherit, `static` for the dependency audit's baseline. Under
+# `workflow_call` this also caps what docker.yml's grant can reach in here.
 permissions:
   contents: read
 
@@ -303,31 +304,28 @@ jobs:
             exit 1
           fi
 
-      # What the audit compares against: on a pull request the target branch,
-      # on a push the last commit CI passed on this branch. See
-      # scripts/audit-baseline.sh.
+      # What the audit compares against: the last commit CI passed on the
+      # target branch -- on a pull request too, not the branch's current tip,
+      # which can be a push that failed. See scripts/audit-baseline.sh.
       - name: Find the audit baseline
         id: audit-baseline
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
           AUDIT_WORKFLOWS: ci.yml,docker.yml
-          AUDIT_BEFORE: ${{ github.event.before }}
           AUDIT_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: |
-          sha=$(scripts/audit-baseline.sh)
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+        run: scripts/audit-baseline.sh
 
       # A high or critical advisory this change ADDS fails the PR, so an
       # auto-merged update cannot bring one in unnoticed. One already on the
       # base -- published against something already locked, often before any
       # fix exists -- is printed as a warning instead, so it cannot hold
       # unrelated PRs, or deadlock two that each fix one.
-      # scripts/audit-new-advisories.mjs does the comparison: against the
-      # target branch on a pull request, and on a push against the last
-      # commit CI passed on that branch, so a direct push of several commits
-      # cannot slip one in (scripts/audit-baseline.sh; hence `fetch-depth: 0`
-      # on the checkout).
+      # scripts/audit-new-advisories.mjs does the comparison, against the
+      # last commit CI passed on the target branch -- on a pull request as
+      # well as a push -- so neither a direct push of several commits nor a
+      # PR onto a tip that failed can slip one in (scripts/audit-baseline.sh;
+      # hence `fetch-depth: 0` on the checkout).
       #
       # Not `--prod`: only shiki, sharp and pyodide are runtime dependencies.
       # Svelte, SvelteKit and everything Vite bundles into build/ are
