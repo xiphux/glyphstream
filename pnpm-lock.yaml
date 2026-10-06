@@ -309,7 +309,7 @@ importers:
         version: 7.1.1(rolldown@1.2.8)(rollup@4.62.4)
       smol-toml:
         specifier: ^1.8.0
-        version: 1.8.0
+        version: 1.9.0
       svelte:
         specifier: ^5.57.0
         version: 5.57.1(@typescript-eslint/types@8.66.0)
@@ -4369,8 +4369,8 @@ packages:
     resolution: {integrity: sha512-RQsvleCbF8cVHEv+xuDGaA4pOizFqJ0GgjtMSRo6oP8pnN7WsigHgVGey6aILRBKv4W2YOMHLqbKdnB6hpB9fw==}
     engines: {node: '>=20.0.0'}
 
-  smol-toml@1.8.0:
-    resolution: {integrity: sha512-kCZr2V3ch9i00x8zXRhjUNVcjG9ijES5dDudkXvUVCT5QlJNQWElSJdZqyPemffHoLNUYwOcou0Fy+ojN0uHSQ==}
+  smol-toml@1.9.0:
+    resolution: {integrity: sha512-hpd+HLON7HdZXqYchMM/+LaTTbdK0AU3NngIJ4KVyWbY9bfQqdL9cD+4yf6dUoU2Ap4VsU0JkQi6FxAI1B2mXQ==}
     engines: {node: '>= 18'}
 
   source-map-js@1.2.1:
@@ -8834,7 +8834,7 @@ snapshots:
 
   smob@1.6.2: {}
 
-  smol-toml@1.8.0: {}
+  smol-toml@1.9.0: {}
 
   source-map-js@1.2.1: {}
 
