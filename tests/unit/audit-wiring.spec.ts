@@ -20,12 +20,10 @@ import { parse } from 'yaml';
  * published while content stands still, and a merge that inherited a pull
  * request's pass would become a baseline nothing audited.
  *
- * And so is the job's name. Branch protection requires the audit by the
- * check name GitHub reports -- the job's `name:`, or its id without one --
- * and a required check that is never reported is simply never waited for:
- * after a rename, auto-merge would stop waiting on the audit and nothing
- * would go red to say so. Renaming it means updating the required checks
- * too.
+ * And so is the job's name. Branch protection has to require the audit by
+ * the check name GitHub reports -- the job's `name:`, or its id without one
+ * -- for a red audit to block a merge, and a rename has to be matched there:
+ * a required check that is never reported blocks every merge until it is.
  */
 
 const WORKFLOWS = path.join(process.cwd(), '.github', 'workflows');

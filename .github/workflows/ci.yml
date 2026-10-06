@@ -309,9 +309,10 @@ jobs:
   # the same standard as the branch.) It needs no install, so it is
   # cheap to run every time.
   #
-  # Branch protection requires it by its name, "Dependency audit". Renaming
-  # it means updating the required checks, or merges stop waiting for it with
-  # nothing going red to say so.
+  # It must be a required status check, by its name, "Dependency audit", for a
+  # red audit to block a merge: as a job of its own, no other required check
+  # covers it. Renaming it means updating the required checks with it, since a
+  # required check that never reports blocks every merge until they are.
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest
@@ -356,8 +357,9 @@ jobs:
       # well as a push -- so neither a direct push of several commits nor a
       # PR onto a tip that failed can slip one in (scripts/audit-baseline.sh;
       # hence `fetch-depth: 0` on the checkout). An advisory the baseline
-      # already had counts as new once it reaches more copies of a package
-      # than it did there.
+      # already had still counts as new when the change brings it to another
+      # package, moves a copy of it down, or adds a production copy (see the
+      # script's header).
       #
       # Not `--prod`: only shiki, sharp and pyodide are runtime dependencies.
       # Svelte, SvelteKit and everything Vite bundles into build/ are

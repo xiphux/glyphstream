@@ -30,22 +30,27 @@
  * than it covered there, so it still counts as new when HEAD has it:
  *
  * - in a package it did not reach on the baseline;
- * - in a version of that package older than every version the baseline had
- *   -- swapping a fixed copy for an older vulnerable one brought in by
- *   something else. Fixes move versions up, never down, and pnpm does not
- *   dedupe: a dependent moving to a newer, still-affected version leaves the
- *   old one for the rest, and failing that would block the partial fix (as
- *   it would for an advisory with no fixed version at all). A newer
- *   vulnerable copy brought in by a new dependency is the case this lets
- *   through;
+ * - at a version lower than the one the baseline had on the same dependency
+ *   path -- an override or a pin that moved a copy down. Fixes move versions
+ *   up, never down;
+ * - in a version of that package older than every version the baseline had,
+ *   or, in production, older than every production version it had --
+ *   swapping a fixed copy for an older vulnerable one that something else
+ *   brought in, which the dev tree cannot vouch for either;
  * - in more production copies of the package than the baseline had --
  *   including any, when the baseline had it only in devDependencies, so the
  *   dev tree cannot vouch for what ships. Production is counted strictly, so
  *   a partial fix that splits a production copy in two fails too; `pnpm
  *   dedupe`, an override, or an ignore entry with its reason resolves it.
  *
- * npm's report gives no versions, so in --npm mode only a package the
- * advisory did not reach before counts.
+ * What these let through: a copy on a new path that is not older than every
+ * copy the baseline had -- a newer one, one between two the baseline had, or
+ * one it already had -- in devDependencies, or in production in place of
+ * one that went away. pnpm does not dedupe: a dependent moving to a newer,
+ * still-affected version leaves the old one for the rest, and failing that
+ * would block the partial fix (as it would for an advisory with no fixed
+ * version at all). npm's copies are read from package-lock.json, by the
+ * same rules.
  *
  * Findings already on the baseline are printed as warnings and do not fail
  * the run. They stay visible there, as Dependabot alerts, and as Renovate's
@@ -63,26 +68,41 @@
  *                 (default: the root). A project the baseline does not have
  *                 yet counts as entirely new.
  *
- * The only other arguments accepted, and passed to both audits, are `--prod`
- * and `--omit=dev`: each leaves out what does not ship, which the caller can
- * decide. Anything else is refused, since the rest of what the tools accept
- * narrows the report or makes a failure read as clean --
- * `--ignore-registry-errors` turns an unreachable registry into an empty
- * report, `--audit-level` and `--no-optional` drop findings, `--registry`
- * moves the question to another server.
+ * The only other argument accepted, and passed to both audits, is the one
+ * that leaves out what does not ship -- `--prod` for pnpm, `--omit=dev` for
+ * npm -- which the caller can decide. Anything else is refused, since the
+ * rest of what the tools accept narrows the report or makes a failure read
+ * as clean: `--ignore-registry-errors` turns an unreachable registry into an
+ * empty report, `--audit-level` and `--no-optional` drop findings,
+ * `--registry` moves the question to another server.
  *
  * What the audits report is pinned on the command line, ahead of those
- * arguments, because configuration can narrow it without saying so:
- * `auditLevel: critical` in pnpm-workspace.yaml empties pnpm's JSON of every
- * high advisory, `optional: false` there drops optional dependencies from it,
- * `omit=optional` or `omit=peer` in an .npmrc does the same to npm's, and a
- * `registry=` line sends either to a server whose empty answer reads as
- * clean. The severity this cares about is filtered here, not by the tool.
- * (Each side runs the pnpm its own `packageManager` names, so a change that
- * bumps pnpm compares two versions' reports.)
+ * arguments, because configuration can narrow it without saying so, and
+ * each reads as a clean report:
+ *
+ * - pnpm: `auditLevel: critical` in pnpm-workspace.yaml empties the JSON of
+ *   every high advisory and `optional: false` drops optional dependencies
+ *   (`--audit-level=low --optional`); a .pnpmfile.cjs `updateConfig` hook
+ *   can rewrite any of it, the registry and the ignore list included
+ *   (`--ignore-pnpmfile`).
+ * - npm: `omit=` in an .npmrc drops dev, optional or peer dependencies
+ *   (`--include=...`, dev unless `--omit=dev` is asked for -- npm's
+ *   `--include` wins over `--omit`), `offline=true` answers with an empty
+ *   report and `legacy-peer-deps=true` drops peers (`--offline=false
+ *   --legacy-peer-deps=false`).
+ * - Both: a `registry=` line sends the audit to a server whose empty answer
+ *   reads as clean (`--registry`), and a proxy with `strict-ssl=false` can
+ *   stand in for the registry (`strict-ssl=true`: a proxy that cannot
+ *   present the registry's certificate fails the audit, which fails here).
+ *
+ * The same settings in the environment -- `npm_config_*`, `pnpm_config_*`,
+ * and NODE_ENV=production, which npm reads as omitting dev -- are dropped
+ * from the audits' environment. The severity this cares about is filtered
+ * here, not by the tool. (Each side runs the pnpm its own `packageManager`
+ * names, so a change that bumps pnpm compares two versions' reports.)
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
@@ -90,22 +110,36 @@ import process from 'node:process';
 const SEVERE = new Set(['high', 'critical']);
 
 const REGISTRY = '--registry=https://registry.npmjs.org/';
-const ALLOWED = new Set(['--prod', '--omit=dev']);
 
 const options = { npm: false, dir: '.' };
-const auditArgs = [];
-const refused = [];
+const args = [];
 for (const arg of process.argv.slice(2)) {
 	if (arg === '--npm') options.npm = true;
 	else if (arg.startsWith('--dir=')) options.dir = arg.slice('--dir='.length);
-	else if (ALLOWED.has(arg)) auditArgs.push(arg);
-	else refused.push(arg);
+	else args.push(arg);
 }
 const tool = options.npm ? 'npm' : 'pnpm';
 const lockfile = options.npm ? 'package-lock.json' : 'pnpm-lock.yaml';
+const allowed = options.npm ? '--omit=dev' : '--prod';
+const auditArgs = args.filter((arg) => arg === allowed);
+const refused = args.filter((arg) => arg !== allowed);
 const pinned = options.npm
-	? ['--include=optional', '--include=peer', REGISTRY]
-	: ['--audit-level=low', '--optional', REGISTRY];
+	? [
+			'--include=optional',
+			'--include=peer',
+			...(auditArgs.includes('--omit=dev') ? [] : ['--include=dev']),
+			REGISTRY,
+			'--offline=false',
+			'--legacy-peer-deps=false',
+			'--strict-ssl=true',
+		]
+	: ['--audit-level=low', '--optional', REGISTRY, '--ignore-pnpmfile', '--config.strict-ssl=true'];
+// The audits' environment, without the settings that would narrow them.
+const auditEnv = Object.fromEntries(
+	Object.entries(process.env).filter(
+		([key]) => !/^(npm_config_|pnpm_config_|node_env$)/i.test(key),
+	),
+);
 
 // GIT_LFS_SKIP_SMUDGE: the audit needs the lockfile, not the baseline's LFS
 // files, and checkouts here drop their credentials, so an LFS download
@@ -119,9 +153,12 @@ const git = (...args) =>
 /**
  * Adds one finding to `advisories`, keyed by advisory id, with the copies of
  * the package it reaches: `copies` maps a package to its versions, all and
- * production.
+ * production, and `at` maps each dependency path to the versions on it.
  */
 function record(advisories, { id, severity, module, version, title, paths, prod }) {
+	if (typeof version !== 'string' || version === '') {
+		throw new Error(`${tool} reported ${id} in ${module} with no version`);
+	}
 	const entry = advisories.get(id) ?? {
 		id,
 		severity,
@@ -132,19 +169,27 @@ function record(advisories, { id, severity, module, version, title, paths, prod 
 		copies: new Map(),
 	};
 	// A finding reported with no path still has something to print.
-	for (const dependencyPath of paths.length ? paths : ['(no path reported)']) {
+	for (const dependencyPath of paths?.length ? paths : ['(no path reported)']) {
 		entry.paths.add(dependencyPath);
 		if (prod) entry.prodPaths.add(dependencyPath);
 	}
 	const copies = entry.copies.get(module) ?? {
 		all: new Set(),
 		prod: new Set(),
+		at: new Map(),
 	};
 	copies.all.add(version);
 	if (prod) copies.prod.add(version);
+	for (const dependencyPath of paths ?? []) {
+		const versions = copies.at.get(dependencyPath) ?? new Set();
+		versions.add(version);
+		copies.at.set(dependencyPath, versions);
+	}
 	entry.copies.set(module, copies);
 	advisories.set(id, entry);
 }
+
+const severe = (severity) => SEVERE.has(String(severity).toLowerCase());
 
 /**
  * `pnpm audit --json`: advisories, each with findings that carry their
@@ -153,7 +198,7 @@ function record(advisories, { id, severity, module, version, title, paths, prod 
 function readPnpm(report, advisories) {
 	if (typeof report.advisories !== 'object' || report.advisories === null) return false;
 	for (const advisory of Object.values(report.advisories)) {
-		if (!SEVERE.has(advisory.severity)) continue;
+		if (!severe(advisory.severity)) continue;
 		for (const finding of advisory.findings) {
 			record(advisories, {
 				id: advisory.github_advisory_id ?? `npm-${advisory.id}`,
@@ -174,28 +219,32 @@ function readPnpm(report, advisories) {
  * make it so under `via`. A package's own severity is the worst of those, so
  * it is each advisory's that counts. `via` also names other packages, by
  * string, when the problem is in a dependency; those are listed again under
- * their own name, so only the advisory objects are read. npm's report does not
- * say which paths are dev-only, so these count as production; with
- * `--omit=dev`, they are.
+ * their own name, so only the advisory objects are read. The report gives
+ * each copy's place in node_modules (`nodes`) but not its version or whether
+ * it is a dev dependency, so both are read from the package-lock.json beside
+ * it; a node it does not list fails the audit.
  */
-function readNpm(report, advisories) {
+function readNpm(report, advisories, cwd) {
 	if (typeof report.vulnerabilities !== 'object' || report.vulnerabilities === null) {
 		return false;
 	}
+	const lock = JSON.parse(readFileSync(path.join(cwd, lockfile), 'utf8'));
 	for (const vulnerability of Object.values(report.vulnerabilities)) {
 		for (const via of vulnerability.via) {
-			if (typeof via === 'string' || !SEVERE.has(via.severity)) continue;
-			record(advisories, {
-				id: via.url?.match(/GHSA-[\w-]+/)?.[0] ?? `npm-${via.source}`,
-				severity: via.severity,
-				module: via.name,
-				// No versions in npm's report: one copy per package, as far as this
-				// can tell.
-				version: '',
-				title: via.title,
-				paths: vulnerability.nodes,
-				prod: true,
-			});
+			if (typeof via === 'string' || !severe(via.severity)) continue;
+			for (const node of vulnerability.nodes) {
+				const locked = lock.packages?.[node];
+				if (!locked) throw new Error(`${node} is not in ${lockfile}`);
+				record(advisories, {
+					id: via.url?.match(/GHSA-[\w-]+/)?.[0] ?? `npm-${via.source}`,
+					severity: via.severity,
+					module: via.name,
+					version: locked.version,
+					title: via.title,
+					paths: [node],
+					prod: locked.dev !== true,
+				});
+			}
 		}
 	}
 	return true;
@@ -206,18 +255,21 @@ function audit(cwd) {
 	const result = spawnSync(tool, ['audit', '--json', ...pinned, ...auditArgs], {
 		cwd,
 		encoding: 'utf8',
+		env: auditEnv,
 		maxBuffer: 64 * 1024 * 1024,
 	});
 	const stdout = result.stdout ?? '';
 	const advisories = new Map();
 	let read = false;
+	let why = '';
 	try {
 		// From the first brace: pnpm prints warnings to stdout ahead of the JSON,
 		// such as an engines mismatch on the Node version.
 		const report = JSON.parse(stdout.slice(stdout.indexOf('{')));
-		read = (options.npm ? readNpm : readPnpm)(report, advisories);
-	} catch {
-		// Fall through: an unparseable report is a failed audit, not a clean one.
+		read = (options.npm ? readNpm : readPnpm)(report, advisories, cwd);
+	} catch (error) {
+		// Fall through: an unreadable report is a failed audit, not a clean one.
+		why = `: ${error.message}`;
 	}
 	// Both exit non-zero whenever any advisory exists, so the exit status says
 	// nothing; only a report that could not be produced at all -- the registry
@@ -225,7 +277,7 @@ function audit(cwd) {
 	// that must fail, not pass.
 	if (!read) {
 		process.stderr.write(`${result.error?.message ?? ''}${result.stderr ?? ''}${stdout}\n`);
-		throw new Error(`${tool} audit produced no report in ${cwd}`);
+		throw new Error(`${tool} audit produced no report in ${cwd}${why}`);
 	}
 	return advisories;
 }
@@ -264,20 +316,35 @@ function older(a, b) {
  */
 function stillNew(advisory, before) {
 	const reasons = [];
+	// Versions in `now` older than every one in `then`, when `then` has any.
+	const below = (now, then) =>
+		then.size === 0
+			? []
+			: [...now].filter((v) => !then.has(v) && [...then].every((t) => older(v, t)));
 	for (const [module, now] of advisory.copies) {
 		const then = before.copies.get(module);
-		const label = (versions) =>
-			[...versions].map((v) => (v ? `${module}@${v}` : module)).join(', ');
+		const label = (versions) => [...versions].map((v) => `${module}@${v}`).join(', ');
 		if (!then) {
 			reasons.push(`it now reaches ${module}, which it did not on the baseline`);
 			continue;
 		}
-		const downgrades = [...now.all].filter(
-			(v) => !then.all.has(v) && [...then.all].every((t) => older(v, t)),
-		);
+		for (const [dependencyPath, versions] of now.at) {
+			const was = then.at.get(dependencyPath);
+			const lower = was ? below(versions, was) : [];
+			if (lower.length > 0) {
+				reasons.push(`${dependencyPath} moved down to ${label(lower)} from ${label(was)}`);
+			}
+		}
+		const downgrades = below(now.all, then.all);
 		if (downgrades.length > 0) {
 			reasons.push(
 				`it now reaches ${label(downgrades)}, older than any copy the baseline had (${label(then.all)})`,
+			);
+		}
+		const prodDowngrades = below(now.prod, then.prod).filter((v) => !downgrades.includes(v));
+		if (prodDowngrades.length > 0) {
+			reasons.push(
+				`it now reaches ${label(prodDowngrades)} in production, older than any production copy the baseline had (${label(then.prod)})`,
 			);
 		}
 		if (now.prod.size > then.prod.size) {
@@ -331,6 +398,10 @@ function auditBaseline(base) {
 	}
 }
 
+/** Text for a workflow command, which would read `%`, CR and LF as its own. */
+const escape = (text) =>
+	String(text).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+
 const describe = (a) => {
 	// A production path first, when there is one: it is the one that ships.
 	const [first, ...rest] = [...a.prodPaths, ...[...a.paths].filter((p) => !a.prodPaths.has(p))];
@@ -341,7 +412,7 @@ const describe = (a) => {
 try {
 	if (refused.length > 0) {
 		throw new Error(
-			`refusing ${refused.join(' ')}: only ${[...ALLOWED].join(' and ')} may be passed to the audits`,
+			`refusing ${refused.join(' ')}: only ${allowed} may be passed to ${tool} audit`,
 		);
 	}
 	const root = git('rev-parse', '--show-toplevel');
@@ -370,17 +441,17 @@ try {
 
 	for (const advisory of existing) {
 		console.log(
-			`::warning title=Existing advisory::${describe(advisory)} -- already on the baseline commit, so not failing this run`,
+			`::warning title=Existing advisory::${escape(describe(advisory))} -- already on the baseline commit, so not failing this run`,
 		);
 	}
 	for (const [advisory, why] of added) {
-		console.log(`::error title=New advisory::${describe(advisory)}${why}`);
+		console.log(`::error title=New advisory::${escape(describe(advisory) + why)}`);
 	}
 	// Every path, for whoever has to trace one. Annotations show only the first.
 	for (const [, advisory] of head) {
 		for (const dependencyPath of [...advisory.paths].sort()) {
 			const scope = advisory.prodPaths.has(dependencyPath) ? '' : ' (dev)';
-			console.log(`  ${advisory.id} ${dependencyPath}${scope}`);
+			console.log(escape(`  ${advisory.id} ${dependencyPath}${scope}`));
 		}
 	}
 	const against = base ? ` against ${base.slice(0, 12)}` : '';
@@ -391,6 +462,6 @@ try {
 } catch (error) {
 	// Every failure here fails the gate: a report that could not be produced
 	// proves nothing about the lockfile.
-	console.log(`::error title=Audit failed::${error.message}`);
+	console.log(`::error title=Audit failed::${escape(error.message)}`);
 	process.exitCode = 1;
 }
