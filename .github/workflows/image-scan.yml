@@ -73,12 +73,21 @@ jobs:
       # called workflow that is the CALLER's event, never `workflow_call`.)
       FAIL_ON: ${{ inputs.tag == '' && 'high' || inputs.fail-on }}
     steps:
+      # Only for .grype.yaml, the findings judged and accepted, each with its
+      # reason. Taken from the commit that triggered this run (main's tip on a
+      # schedule), not the commit the image was built from, so removing an
+      # entry takes effect on the next scan rather than the next publish.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .grype.yaml
+          sparse-checkout-cone-mode: false
+
       # --only-fixed: report what an upgrade can resolve. An unfixed CVE is
       # something to know about, but not something a failing run can act on.
       # Scans linux/amd64; the arm64 image is built from the same Dockerfile and
       # lockfile, so its package set matches.
-      # Writes into the (otherwise empty) workspace: hashFiles() below can only
-      # see files there.
+      # Writes into the workspace: hashFiles() below can only see files there.
       #
       # A called run is report-only in the strict sense: not just no --fail-on,
       # but no failure at all, so a Grype DB download, GHCR pull or SARIF
@@ -90,7 +99,7 @@ jobs:
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE:/out" \
             ghcr.io/anchore/grype:v0.118.0@sha256:8a93fc48da96bd6ec5981279d099b69de11541dc68fdf222fb9161f8ff284af7 \
-            "$IMAGE" --platform linux/amd64 --only-fixed \
+            -c /out/.grype.yaml "$IMAGE" --platform linux/amd64 --only-fixed \
             -o table -o sarif=/out/grype.sarif \
             ${FAIL_ON:+--fail-on "$FAIL_ON"}
 
