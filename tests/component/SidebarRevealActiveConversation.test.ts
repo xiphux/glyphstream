@@ -171,9 +171,8 @@ describe('recents reveal the active conversation', () => {
 
 	it('nudges a half-visible row into view instead of re-centring', () => {
 		const pane = renderAt('http://localhost/chat/c0');
-		// A tap on the row clipped at the bottom edge: c4 spans 160..200, so put
-		// the view at 0..180 by scrolling 20px short of the list's own top.
-		pane.scrollTop = 0;
+		// A tap on the row clipped at the bottom edge: c4 spans 160..200, so
+		// shrink the view to 0..180 to cut 20px off its bottom.
 		vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (
 			this: HTMLElement,
 		) {
