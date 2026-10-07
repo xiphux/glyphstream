@@ -194,6 +194,21 @@ describe('recents reveal the active conversation', () => {
 		expect(pane.scrollTop).toBe(160);
 	});
 
+	it('leaves a row taller than the view alone once it fills it', () => {
+		const pane = renderAt('http://localhost/chat/c0');
+		// A 30px view inside c4 (160..200): aligning either edge would clip the
+		// other, so each reveal would flip between them.
+		vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (
+			this: HTMLElement,
+		) {
+			return isPane(this) ? 30 : 0;
+		});
+		pane.scrollTop = 165;
+		stub().navigate('http://localhost/chat/c4');
+		flushSync();
+		expect(pane.scrollTop).toBe(165);
+	});
+
 	it('follows a navigation that lands on an off-screen row', () => {
 		const pane = renderAt('http://localhost/chat/c0');
 		expect(pane.scrollTop).toBe(0);
