@@ -9,6 +9,11 @@ arrived.
 
 ## Unreleased
 
+### Fixed
+
+- The sidebar's conversation list now scrolls to show the conversation you have
+  open, instead of starting at the top after unlocking the app or reopening it.
+
 ## v0.43.0
 
 ### Changed

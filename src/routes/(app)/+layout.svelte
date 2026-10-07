@@ -2,7 +2,7 @@
 	import type { LayoutData } from './$types';
 	import { browser } from '$app/environment';
 	import { resolve } from '$app/paths';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import { ModelCatalogue, setModelCatalogue } from '$lib/model-catalogue.svelte';
 	import { reconcileSubscription } from '$lib/push-subscribe';
@@ -21,6 +21,7 @@
 	import { toast } from '$lib/toast.svelte';
 	import { searchModal } from '$lib/search-modal.svelte';
 	import ScrollPane from '$lib/components/ScrollPane.svelte';
+	import { revealScrollTop } from '$lib/scroll-reveal';
 	import { ConversationUiActions } from '$lib/conversation-ui-actions.svelte';
 	import { syncSurfaceChrome } from '$lib/theme-color';
 	import { FavoritesDrag } from '$lib/favorites-drag.svelte';
@@ -505,8 +506,13 @@
 	// user creates a new conversation while scrolled down in a long
 	// recents list, scroll back to the top so the new entry — the
 	// thing they just made — is visible.
+	// Counting starts once the deferred payload lands: the cold document's
+	// empty placeholder list filling in is not a new conversation, and reading
+	// it as one would smooth-scroll away from the active row the reveal below
+	// just brought into view.
 	let prevConvCount: number | null = null;
 	$effect(() => {
+		if (!data.deferredLoaded) return;
 		const count = data.conversations.length;
 		if (prevConvCount !== null && count > prevConvCount && recentsScrollEl) {
 			recentsScrollEl.scrollTo({ top: 0, behavior: 'smooth' });
@@ -652,6 +658,31 @@
 		if (openOverflowFor !== null) return;
 		drawerOpen = false;
 	});
+
+	// Keep the open conversation's row in view. The list mounts scrolled to the
+	// top, and it mounts more often than it looks: every trip through an
+	// `(auth)` route rebuilds this layout — an app-lock unlock returns the user
+	// to their thread with a sidebar that has never seen it, so reaching its
+	// overflow menu meant hunting for the row. Also on each navigation (search
+	// and the chat page's own links can land on a row scrolled out of view),
+	// and on un-collapsing, since a `display: none` scroller forgets its offset.
+	// A row already in view is left alone, so a tap in the list never moves it.
+	function revealActiveConversation() {
+		const pane = recentsScrollEl;
+		if (!pane) return;
+		const path = page.url.pathname;
+		const row = Array.from(pane.querySelectorAll<HTMLElement>('[data-conversation-id]')).find(
+			(el) => `/chat/${el.dataset.conversationId}` === path,
+		);
+		if (!row) return;
+		const top = revealScrollTop(pane, row);
+		if (top !== null) pane.scrollTop = top;
+	}
+	$effect(() => {
+		if (!recentsScrollEl || collapsed) return;
+		untrack(revealActiveConversation);
+	});
+	afterNavigate(revealActiveConversation);
 
 	// Global Cmd/Ctrl+K opens the search modal. Convention matches
 	// GitHub / Linear / ChatGPT / Claude. We preventDefault so the
@@ -986,7 +1017,7 @@
 							{@const active = currentPath === href || pendingPath === href}
 							{@const isRenaming = convUi.renamingId === c.id}
 							{@const activity = generationActivity(c.id)}
-							<li class="group relative" animate:flip={flipParams}>
+							<li class="group relative" data-conversation-id={c.id} animate:flip={flipParams}>
 								{#if isRenaming}
 									<!--
 									Inline-edit affordance. We swap the anchor for
