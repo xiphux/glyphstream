@@ -169,6 +169,22 @@ describe('recents reveal the active conversation', () => {
 		expect(pane.scrollTop).toBe(before);
 	});
 
+	it('nudges a half-visible row into view instead of re-centring', () => {
+		const pane = renderAt('http://localhost/chat/c0');
+		// A tap on the row clipped at the bottom edge: c4 spans 160..200, so put
+		// the view at 0..180 by scrolling 20px short of the list's own top.
+		pane.scrollTop = 0;
+		vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (
+			this: HTMLElement,
+		) {
+			return isPane(this) ? 180 : 0;
+		});
+		stub().navigate('http://localhost/chat/c4');
+		flushSync();
+		// Bottom edge aligned (200 - 180), not centred (160 - 70 = 90).
+		expect(pane.scrollTop).toBe(20);
+	});
+
 	it('follows a navigation that lands on an off-screen row', () => {
 		const pane = renderAt('http://localhost/chat/c0');
 		expect(pane.scrollTop).toBe(0);

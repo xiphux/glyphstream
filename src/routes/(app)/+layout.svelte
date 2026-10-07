@@ -666,7 +666,8 @@
 	// overflow menu meant hunting for the row. Also on each navigation (search
 	// and the chat page's own links can land on a row scrolled out of view),
 	// and on un-collapsing, since a `display: none` scroller forgets its offset.
-	// A row already in view is left alone, so a tap in the list never moves it.
+	// A fully visible row is left alone and a half-visible one only nudged into
+	// view (see `revealScrollTop`), so a tap in the list never jumps it.
 	function revealActiveConversation() {
 		const pane = recentsScrollEl;
 		if (!pane) return;
