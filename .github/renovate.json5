@@ -15,9 +15,8 @@
 	//     conflicts. That is what stalled batches under Dependabot: each merge
 	//     left the rest behind, and only a human comment moved them.
 	//
-	// The one workaround it needs is .github/workflows/renovate-nudge.yml: on
-	// this plan jobs run every four hours, and a merge Renovate performs itself
-	// enqueues no job, so nothing would rebase the PRs that merge left behind.
+	// Updates arrive on a weekly timetable rather than as they are released:
+	// see `schedule` below and the groups in packageRules.
 	//
 	// To go back: `git log -- .github/dependabot.yml` has the last version, with
 	// dependabot-automerge.yml and upgrade-check.yml in the history beside it.
@@ -56,12 +55,41 @@
 	// number is a direct saving, so the configs stay comparable. Majors are
 	// what to watch, since one nobody merges holds its slot indefinitely.
 	prConcurrentLimit: 6,
-	// The one number deliberately out of line with the other seven repos, which
-	// leave this at the default of 2. Creation rate is throttled there to keep
-	// CI minutes down; that reason does not apply to a public repository, so
-	// this one drains faster at no cost. Drop it to the default if this ever
-	// goes private.
-	prHourlyLimit: 4,
+
+	// The weekly timetable, and the slot for anything the groups in
+	// packageRules do not claim: Sunday, 00:00-05:59 UTC. Each group has a day
+	// of its own --
+	//
+	//   Mon  lock file maintenance     Thu  test and build
+	//   Tue  aws                       Fri  production dependencies
+	//   Wed  lint and format           Sat  github actions
+	//   Sun  everything else: majors, 0.x packages, pnpm, images
+	//
+	// -- the same days in every repository that has the group. This is where
+	// the CI minutes go: before it, every release that cleared the cooldown
+	// was a pull request of its own, and the AWS SDK, which publishes almost
+	// daily, opened ten to twelve in 19 days in each repository using it.
+	// Replayed against ten days of real updates, this timetable raises about
+	// 60% fewer pull requests, and every one saved is a CI run (and, where
+	// the default branch deploys, a deploy).
+	//
+	// A day per group rather than one weekly slot for all of them, because of
+	// the up-to-date rule in branch protection: open together, every merge
+	// would put the others behind and re-run their CI, so six pull requests
+	// would cost 6+5+4+3+2+1 runs. Spread out, one is usually open at a time.
+	//
+	// Six hours, because Mend's free plan runs Renovate about every four, so a
+	// slot always holds a run. Wider would let more runs fall in it, and each
+	// can open another pull request for releases that aged in the meantime.
+	// Outside its slot a branch is still rebased and updated
+	// (`updateNotScheduled`), so nothing already open waits for next week. To
+	// take something early, tick it under "Awaiting Schedule" on the
+	// dependency dashboard.
+	//
+	// Nothing hurries Renovate between its runs any more. A workflow used to
+	// wake it after every merge so the next pull request rebased in minutes
+	// rather than hours; with one or two open a week, hours are fine.
+	schedule: ['* 0-5 * * 0'],
 
 	// Merge commits, as the auto-merge workflow made them, so history reads the
 	// same across the trial boundary.
@@ -74,9 +102,9 @@
 	// (#58, #56 and #57 all merged without one following). Waiting for
 	// Renovate to merge therefore cost immediacy and bought nothing.
 	//
-	// What actually removes the problem is the grouping below: one PR at a time
-	// means no second PR left behind by a merge, so the 4-hour scheduled
-	// cadence stops mattering.
+	// What removes the problem is the timetable (see `schedule`): with a day per
+	// group, usually one pull request is open at a time, so a merge leaves no
+	// second one behind and the four-hourly cadence stops mattering.
 	platformAutomerge: true,
 
 	// `deps:`/`deps(dev):` for npm and `ci:` for actions, as Dependabot was
@@ -97,12 +125,12 @@
 	// fixed release, until an advisory failed every PR's audit. pnpm's
 	// minimumReleaseAge (pnpm-workspace.yaml) holds what this pulls in to the
 	// same cooldown, which Renovate's own setting does not reach. CI gates it
-	// like any other update, so it merges unattended. Mondays, for a whole day
-	// rather than the default few hours, so a job is sure to land in it.
+	// like any other update, so it merges unattended. Monday's slot in the
+	// timetable (see `schedule`).
 	lockFileMaintenance: {
 		enabled: true,
 		automerge: true,
-		schedule: ['* * * * 1'],
+		schedule: ['* 0-5 * * 1'],
 	},
 
 	packageRules: [
@@ -175,16 +203,122 @@
 			automerge: false,
 		},
 
-		// Packages that must move together, so CI never sees half a family bumped.
-		// Narrow on purpose, and NOT a catch-all: grouping every routine update
-		// into one PR would remove the contention between PRs, but it makes one
-		// failing update hold every other update in the batch -- for as long as
-		// that one takes to fix. Separate PRs keep a stuck update stuck by itself.
-		// The contention is handled by .github/workflows/renovate-nudge.yml
-		// instead, which wakes Renovate after each merge so it rebases the rest.
+		// The groups, each in its slot in the timetable (see `schedule`). Later
+		// rules win, so the ones matching by name take packages out of the two
+		// that match by dependency type. Lists are the same in every repository,
+		// names it does not use included, so a package lands in the same group
+		// wherever it turns up.
+		//
+		// Every group leaves out 0.x packages (the negated matchCurrentVersion).
+		// A 0.x minor does not auto-merge (see above), and a group auto-merges
+		// only if every update in it does, so one would hold its whole group
+		// open; left out, a 0.x package raises its own pull request on Sunday.
+		//
+		// The cost of batching: an update that fails CI holds the rest of its
+		// group until it is fixed, or excluded by a rule of its own. Majors are
+		// never grouped, and a security fix ignores all of this -- Renovate
+		// applies `vulnerabilityAlerts` after these rules, and with `force`.
+		//
+		// These replace narrower groups that existed only for packages that must
+		// move together, so CI never sees half a family bumped: svelte, vite (with
+		// vitest, tailwind and the PWA plugin's workbox peers), lint, shiki and
+		// simplewebauthn. Each still lands in one group below; the two that the
+		// rules above would split are held together by the overrides that follow.
+		//
+		// "Test and build" is broader here than its name: by this repository's
+		// convention (CLAUDE.md), everything bundled into build/ is a
+		// devDependency, so svelte, kit, web-push and the MCP SDK update on
+		// Thursday too. `dependencies` holds only what cannot be bundled.
 		{
-			groupName: 'svelte',
+			groupName: 'production dependencies',
+			// npm and Cargo; pep621.
+			matchDepTypes: ['dependencies', 'project.dependencies'],
 			matchUpdateTypes: ['minor', 'patch'],
+			matchCurrentVersion: '!/^v?0\\./',
+			schedule: ['* 0-5 * * 5'],
+		},
+		{
+			groupName: 'test and build',
+			// npm; Cargo; pep621's [dependency-groups], extras and build backend.
+			matchDepTypes: [
+				'devDependencies',
+				'dev-dependencies',
+				'build-dependencies',
+				'dependency-groups',
+				'project.optional-dependencies',
+				'build-system.requires',
+			],
+			matchUpdateTypes: ['minor', 'patch'],
+			matchCurrentVersion: '!/^v?0\\./',
+			schedule: ['* 0-5 * * 4'],
+		},
+		{
+			groupName: 'lint and format',
+			matchPackageNames: [
+				'eslint',
+				'eslint-*',
+				'@eslint/**',
+				'@*/eslint-*',
+				'typescript-eslint',
+				'@typescript-eslint/**',
+				'globals',
+				'prettier',
+				'prettier-*',
+				'knip',
+				'lint-staged',
+				'husky',
+				'publint',
+				'ruff',
+				'deptry',
+				'pre-commit',
+				'pre-commit/pre-commit-hooks',
+			],
+			matchUpdateTypes: ['minor', 'patch'],
+			matchCurrentVersion: '!/^v?0\\./',
+			schedule: ['* 0-5 * * 3'],
+		},
+		{
+			groupName: 'aws',
+			matchPackageNames: [
+				'@aws-sdk/**',
+				'aws-cdk',
+				'aws-cdk-lib',
+				'cdk-nag',
+				'aws-xray-sdk-core',
+				'@types/aws-lambda',
+				'aws-ses-v2-local',
+				'amazon/dynamodb-local',
+				'boto3',
+				'botocore',
+			],
+			matchUpdateTypes: ['minor', 'patch'],
+			matchCurrentVersion: '!/^v?0\\./',
+			schedule: ['* 0-5 * * 2'],
+		},
+		{
+			groupName: 'github actions',
+			matchManagers: ['github-actions'],
+			matchUpdateTypes: ['minor', 'patch', 'digest'],
+			matchCurrentVersion: '!/^v?0\\./',
+			schedule: ['* 0-5 * * 6'],
+		},
+		{
+			// zizmor-action runs only zizmor versions it knows, and the version it
+			// runs (its `version:` input, tracked as the zizmor image) is in the
+			// group above. The action is 0.x, so the exclusion would send it to
+			// Sunday, a day after a version it may not know yet, so it is kept
+			// with the group.
+			groupName: 'github actions',
+			matchPackageNames: ['zizmorcore/zizmor-action'],
+			matchUpdateTypes: ['minor', 'patch', 'digest'],
+			schedule: ['* 0-5 * * 6'],
+		},
+		{
+			// The svelte family moves as one, as its own group did: the compiler,
+			// kit and svelte-check, and the plugins that parse svelte syntax for
+			// eslint and prettier -- which the lint list above would otherwise take
+			// to Wednesday, a day apart from the compiler they have to understand.
+			groupName: 'test and build',
 			matchPackageNames: [
 				'svelte',
 				'svelte-check',
@@ -194,42 +328,19 @@
 				'@sveltejs/**',
 				'@testing-library/svelte',
 			],
+			matchUpdateTypes: ['minor', 'patch'],
+			matchCurrentVersion: '!/^v?0\\./',
+			schedule: ['* 0-5 * * 4'],
 		},
 		{
-			groupName: 'vite',
+			// With shiki and its other @shikijs packages, which are production
+			// dependencies (shiki ships unbundled); only the types are a
+			// devDependency.
+			groupName: 'production dependencies',
+			matchPackageNames: ['@shikijs/types'],
 			matchUpdateTypes: ['minor', 'patch'],
-			matchPackageNames: [
-				'vite',
-				'vitest',
-				'@vitest/**',
-				'tailwindcss',
-				'@tailwindcss/**',
-				'@vite-pwa/**',
-				'workbox-**',
-			],
-		},
-		{
-			groupName: 'lint',
-			matchUpdateTypes: ['minor', 'patch'],
-			matchPackageNames: [
-				'eslint',
-				'@eslint/**',
-				'eslint-**',
-				'typescript-eslint',
-				'@stylistic/**',
-				'globals',
-				'prettier',
-			],
-		},
-		{
-			groupName: 'shiki',
-			matchUpdateTypes: ['minor', 'patch'],
-			matchPackageNames: ['shiki', '@shikijs/**'],
-		},
-		{
-			groupName: 'simplewebauthn',
-			matchUpdateTypes: ['minor', 'patch'],
-			matchPackageNames: ['@simplewebauthn/**'],
+			matchCurrentVersion: '!/^v?0\\./',
+			schedule: ['* 0-5 * * 5'],
 		},
 
 		{
