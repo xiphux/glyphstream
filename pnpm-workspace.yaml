@@ -74,3 +74,5 @@ minimumReleaseAge: 4320
 minimumReleaseAgeExclude:
   # Renovate security update: smol-toml@1.9.0
   - smol-toml@1.9.0
+  # Renovate security update: sharp@0.35.5
+  - sharp@0.35.5
