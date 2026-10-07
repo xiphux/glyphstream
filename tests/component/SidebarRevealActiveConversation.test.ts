@@ -184,6 +184,16 @@ describe('recents reveal the active conversation', () => {
 		expect(pane.scrollTop).toBe(20);
 	});
 
+	it('nudges a row clipped at the top edge down into view', () => {
+		const pane = renderAt('http://localhost/chat/c0');
+		// c4 spans 160..200; a view of 180..380 cuts 20px off its top.
+		pane.scrollTop = 180;
+		stub().navigate('http://localhost/chat/c4');
+		flushSync();
+		// Top edge aligned, not centred (160 - 80 = 80).
+		expect(pane.scrollTop).toBe(160);
+	});
+
 	it('follows a navigation that lands on an off-screen row', () => {
 		const pane = renderAt('http://localhost/chat/c0');
 		expect(pane.scrollTop).toBe(0);
