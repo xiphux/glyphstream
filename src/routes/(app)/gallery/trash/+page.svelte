@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { ChevronLeft } from '@lucide/svelte';
+	import { ChevronLeft, ZoomIn } from '@lucide/svelte';
+	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import { toast } from '$lib/toast.svelte';
 	import { friendlyModelName } from '$lib/model-ids';
@@ -17,6 +18,13 @@
 	const liveIds = $derived(new Set(data.items.map((i) => i.id)));
 	const selectedIds = $derived([...selected].filter((id) => liveIds.has(id)));
 	const selectedCount = $derived(selectedIds.length);
+
+	// The full-size view. Held as an id and resolved against the current list, so
+	// a reload that drops the item (purged from another tab, expired) closes it
+	// rather than leaving it showing something that's gone.
+	let viewingId = $state<string | null>(null);
+	const viewing = $derived(data.items.find((i) => i.id === viewingId) ?? null);
+	const siblings = $derived(data.items.map(({ id, kind }) => ({ id, kind })));
 
 	function toggle(id: string) {
 		const next = new Set(selected);
@@ -191,11 +199,24 @@
 									</span>
 								{/if}
 								<div
-									class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-2 pt-8 pb-1.5 text-left text-xs text-white"
+									class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-8 pr-11 pb-1.5 pl-2 text-left text-xs text-white"
 								>
 									{timeLeft(m.expiresAt)} left
 								</div>
 							</div>
+						</button>
+						<!-- A tap on the tile selects (this page's whole job is choosing what to
+						     restore), so the full-size view gets its own corner target, the
+						     way Google Photos does it in select mode. A sibling of the tile
+						     button, not a child: buttons don't nest. -->
+						<button
+							type="button"
+							onclick={() => (viewingId = m.id)}
+							aria-label="View {m.kind} full size"
+							title="View full size"
+							class="absolute right-1 bottom-1 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white transition hover:bg-black/70"
+						>
+							<ZoomIn size={16} />
 						</button>
 					</li>
 				{/each}
@@ -203,3 +224,11 @@
 		{/if}
 	</div>
 </div>
+
+<MediaLightbox
+	media={viewing}
+	onClose={() => (viewingId = null)}
+	{siblings}
+	onNavigate={(id: string) => (viewingId = id)}
+	trashed
+/>

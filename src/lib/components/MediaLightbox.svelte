@@ -120,6 +120,15 @@
 		 *  was dropped on the floor with no error and no toast. Disabling everywhere
 		 *  makes the button say what the guard actually does. */
 		favoritingId?: string | null;
+		/**
+		 * Showing an item from Recently deleted. Its bytes are only served with
+		 * `?trash=1` (see `servableForRequest`), and the actions that aren't
+		 * optional props — download/share, regenerate, use as starting image —
+		 * are withheld: the page exists to decide between restore and
+		 * delete-forever, and every one of those would act on something that's
+		 * about to be gone. Restore first.
+		 */
+		trashed?: boolean;
 	}
 
 	let {
@@ -137,7 +146,11 @@
 		settingAvatar = false,
 		onToggleFavorite = undefined,
 		favoritingId = null,
+		trashed = false,
 	}: Props = $props();
+
+	/** Query suffix for every byte URL this component renders. */
+	const bytesQuery = $derived(trashed ? '?trash=1' : '');
 
 	// --- carousel navigation ---------------------------------------------
 	//
@@ -705,20 +718,22 @@
 						<Star size={14} strokeWidth={2.25} fill={m.favorite ? 'currentColor' : 'none'} />
 					</button>
 				{/if}
-				<button
-					type="button"
-					onclick={() => shareOrDownload(m)}
-					disabled={savingId === m.id}
-					title={useShareSheet ? 'Share / Save' : 'Download'}
-					aria-label={useShareSheet ? 'Share or save' : 'Download'}
-					class="flex h-8 w-8 items-center justify-center rounded-md border border-media-border bg-media-surface text-media-fg-secondary transition hover:bg-media-surface-hover disabled:opacity-50"
-				>
-					{#if useShareSheet}
-						<Share size={14} strokeWidth={2.25} />
-					{:else}
-						<Download size={14} strokeWidth={2.25} />
-					{/if}
-				</button>
+				{#if !trashed}
+					<button
+						type="button"
+						onclick={() => shareOrDownload(m)}
+						disabled={savingId === m.id}
+						title={useShareSheet ? 'Share / Save' : 'Download'}
+						aria-label={useShareSheet ? 'Share or save' : 'Download'}
+						class="flex h-8 w-8 items-center justify-center rounded-md border border-media-border bg-media-surface text-media-fg-secondary transition hover:bg-media-surface-hover disabled:opacity-50"
+					>
+						{#if useShareSheet}
+							<Share size={14} strokeWidth={2.25} />
+						{:else}
+							<Download size={14} strokeWidth={2.25} />
+						{/if}
+					</button>
+				{/if}
 				{#if onDelete}
 					<button
 						type="button"
@@ -808,8 +823,8 @@
 									letterbox gap against a black backdrop is worth.
 								-->
 								<video
-									src="/api/media/{s.id}/content"
-									poster="/api/media/{s.id}/thumbnail"
+									src="/api/media/{s.id}/content{bytesQuery}"
+									poster="/api/media/{s.id}/thumbnail{bytesQuery}"
 									controls
 									playsinline
 									preload="none"
@@ -825,7 +840,7 @@
 									element is near the viewport.
 								-->
 								<img
-									src="/api/media/{s.id}/content"
+									src="/api/media/{s.id}/content{bytesQuery}"
 									alt={s.id === m.id ? (m.promptExcerpt ?? 'Generated image') : ''}
 									loading={i === currentIndex ? 'eager' : 'lazy'}
 									fetchpriority={i === currentIndex ? 'high' : 'low'}
@@ -862,14 +877,14 @@
 			<div class="flex flex-1 items-center justify-center overflow-hidden">
 				{#if m.kind === 'image'}
 					<img
-						src="/api/media/{m.id}/content"
+						src="/api/media/{m.id}/content{bytesQuery}"
 						alt={m.promptExcerpt ?? 'Generated image'}
 						class="max-h-full max-w-full rounded-lg object-contain"
 					/>
 				{:else}
 					<!-- svelte-ignore a11y_media_has_caption -->
 					<video
-						src="/api/media/{m.id}/content"
+						src="/api/media/{m.id}/content{bytesQuery}"
 						controls
 						autoplay
 						playsinline
@@ -980,7 +995,7 @@
 				{/if}
 			</div>
 		{/if}
-		{#if hasPrompt || canUseAsStarting}
+		{#if !trashed && (hasPrompt || canUseAsStarting)}
 			<!--
 				Gallery-launch actions: "Regenerate with this prompt" and
 				"Use as starting image" send the user to / pre-loaded with

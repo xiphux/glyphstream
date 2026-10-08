@@ -13,6 +13,7 @@ import type {
 	MediaConversationRef,
 	MediaKind,
 	MediaListItem,
+	TrashedMediaItem,
 } from '$lib/types/api';
 
 export interface MediaInsertInput {
@@ -1147,13 +1148,21 @@ export function bulkTrashMediaForUser(ids: readonly string[], userId: string): s
  * month of bulk deletes, not a page size.
  */
 export function listTrashForUser(userId: string, limit = 1000): TrashedMediaRow[] {
-	return getDb()
+	const rows = getDb()
 		.select({
 			id: media.id,
 			kind: media.kind,
-			promptExcerpt: media.promptExcerpt,
+			contentType: media.contentType,
+			byteSize: media.byteSize,
+			sourceEndpointId: media.sourceEndpointId,
 			sourceModel: media.sourceModel,
+			promptExcerpt: media.promptExcerpt,
+			promptFull: media.promptFull,
+			originalPrompt: media.originalPrompt,
+			aspectRatio: media.aspectRatio,
 			createdAt: media.createdAt,
+			origin: media.origin,
+			favoritedAt: media.favoritedAt,
 			deletedAt: media.deletedAt,
 		})
 		.from(media)
@@ -1168,17 +1177,19 @@ export function listTrashForUser(userId: string, limit = 1000): TrashedMediaRow[
 		)
 		.orderBy(desc(media.deletedAt), desc(media.id))
 		.limit(limit)
-		.all() as TrashedMediaRow[];
+		.all();
+	// The WHERE pins `kind` to image/video and `deletedAt` non-null; the select's
+	// types can't see that. No conversation join: a delete dropped the links.
+	return rows.map((r) => ({
+		...withFavoriteFlag(r),
+		kind: r.kind as 'image' | 'video',
+		deletedAt: r.deletedAt!,
+		conversationId: null,
+		conversationTitle: null,
+	}));
 }
 
-export interface TrashedMediaRow {
-	id: string;
-	kind: 'image' | 'video';
-	promptExcerpt: string | null;
-	sourceModel: string | null;
-	createdAt: number;
-	deletedAt: number;
-}
+export type TrashedMediaRow = Omit<TrashedMediaItem, 'expiresAt'>;
 
 /**
  * Put trashed rows back in the library. Only the caller's own generated rows

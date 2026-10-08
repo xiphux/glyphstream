@@ -85,6 +85,26 @@ test('deleted media waits in Recently deleted, and can be restored or deleted fo
 		expect((await page.request.get(src!)).status()).toBe(200);
 	}
 
+	// The corner magnifier opens the full-size view instead of selecting: the
+	// whole tile is the select target, so a peek needs its own. Same `?trash=1`
+	// rule for the full-size bytes, checked the same way, and none of the
+	// library actions — download, regenerate — that would act on a deleted item.
+	await page
+		.locator('li')
+		.filter({ has: red })
+		.getByRole('button', { name: 'View image full size' })
+		.click();
+	const viewer = page.getByRole('dialog', { name: 'Media preview' });
+	await expect(viewer).toBeVisible();
+	await expect(viewer.getByText('a red kite')).toBeVisible();
+	const full = await viewer.locator('img').first().getAttribute('src');
+	expect((await page.request.get(full!)).status()).toBe(200);
+	await expect(viewer.getByRole('button', { name: /Download|Share/ })).toHaveCount(0);
+	await expect(viewer.getByRole('button', { name: /Regenerate|starting image/ })).toHaveCount(0);
+	await viewer.getByRole('button', { name: 'Close', exact: true }).click();
+	await expect(viewer).toHaveCount(0);
+	await expect(page.getByText(/selected/)).toHaveCount(0);
+
 	// Restore one.
 	await red.click();
 	await page.getByRole('button', { name: 'Restore' }).click();
