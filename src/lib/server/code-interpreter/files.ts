@@ -86,14 +86,12 @@ export async function collectConversationFiles(
 			and(
 				inArray(messageMedia.messageId, messageIds),
 				eq(media.userId, userId),
-				// Don't include hard-deleted rows — the file is gone.
-				// `isNull` on deletedAt would normally do this, but
-				// for round-trip purposes the simpler check works since
-				// hard-deleted rows have null storagePath only after a
-				// later cleanup pass; for in-flight tool calls the row
-				// state is "live until proven otherwise" and we tolerate
-				// the rare "file moved out from under us" by surfacing
-				// the read failure as a per-file skip below.
+				// No `deletedAt` filter, deliberately: a deleted (trashed)
+				// row can't reach this join, because trashing drops its
+				// message_media rows (or the messages go with it). For
+				// in-flight tool calls the row state is "live until proven
+				// otherwise", and the rare "file moved out from under us"
+				// (purged mid-call) surfaces as a per-file skip below.
 			),
 		)
 		.all();
@@ -152,7 +150,7 @@ export async function collectConversationFiles(
 				sha256: createHash('sha256').update(u8).digest('hex'),
 			});
 		} catch {
-			// File missing or unreadable (race with hard-delete / disk
+			// File missing or unreadable (race with a purge / disk
 			// cleanup, transient I/O error). Skip rather than failing the
 			// whole call — the model sees the file as absent in /workspace/
 			// and can adjust.

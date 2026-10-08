@@ -19,7 +19,7 @@ import { getVisionVariant } from './vision-variant';
 
 /**
  * Thrown by `loadMediaBytes` when the media is permanently unavailable:
- * row not found, hard-deleted, wrong kind, or file missing from disk
+ * row not found, deleted (trashed or purged), wrong kind, or file missing from disk
  * (ENOENT). Catchers in the send path use this to degrade gracefully
  * rather than crash the whole request. Transient disk I/O errors
  * (EACCES, EIO, …) still propagate as raw `Error`s — a blanket catch
@@ -39,7 +39,7 @@ export interface LoadedMediaBytes {
 	kind: 'image' | 'video';
 }
 
-/** An inlineable media row: exists, owned by the caller, not hard-deleted, and
+/** An inlineable media row: exists, owned by the caller, not deleted, and
  *  an image or video rather than a document. */
 interface InlineableMedia {
 	storagePath: string;
@@ -93,7 +93,7 @@ async function readBytes(mediaId: string, row: InlineableMedia): Promise<Buffer>
  * keeps every pixel.
  *
  * Throws `MediaNotAvailableError` for permanently-unavailable media
- * (not found, hard-deleted, wrong kind, ENOENT). Transient filesystem
+ * (not found, deleted, wrong kind, ENOENT). Transient filesystem
  * errors (EACCES, EIO, …) propagate as-is — see the class doc for why.
  */
 export async function loadMediaBytes(mediaId: string, userId: string): Promise<LoadedMediaBytes> {

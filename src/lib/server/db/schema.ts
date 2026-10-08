@@ -529,8 +529,8 @@ export const customModels = sqliteTable(
 		// column. Don't propagate the old note to new columns without checking.
 		//
 		// The action is belt-and-braces regardless: media rows are only ever
-		// SOFT deleted (the purger clears bytes and stamps `deleted_at`,
-		// it never DELETEs the row), so in practice the referenced row always
+		// SOFT deleted (a delete stamps `deleted_at`, the purger later clears
+		// the bytes and stamps `purged_at`; nothing DELETEs the row), so in practice the referenced row always
 		// survives and a stale avatar degrades to a 404 the UI hides, not a
 		// dangling id.
 		//
@@ -764,7 +764,7 @@ export const media = sqliteTable(
 		// (migration 0020), so the live FK is NO ACTION, not the `set null`
 		// declared here (drizzle-kit can't emit ON DELETE on ADD COLUMN). In
 		// practice this never bites: media rows are only ever soft-deleted (the
-		// purger clears bytes + sets deleted_at, never DELETEs the row), so
+		// row is stamped deleted_at, then purged_at, never DELETEd), so
 		// the source row a generated asset points at always survives.
 		sourceMediaId: text('source_media_id').references((): AnySQLiteColumn => media.id, {
 			onDelete: 'set null',

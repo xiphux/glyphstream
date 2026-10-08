@@ -68,8 +68,8 @@ sqlite.exec('PRAGMA journal_mode = WAL');
 sqlite.exec('PRAGMA busy_timeout = 5000');
 const db = drizzle({ client: sqlite });
 
-// Not hard-deleted: those rows keep their bytes only until the purger runs, and
-// rewriting a file that is on its way out is pure waste.
+// Not deleted (trashed or purged): skip rows that have left the library. A
+// trashed video restored later just keeps its original layout, which plays.
 //
 // origin = 'generated' scopes this to media GlyphStream produced, matching the
 // write-time path (persistGeneratedVideo is the only caller of makeFaststart in

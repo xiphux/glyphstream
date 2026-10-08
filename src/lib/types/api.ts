@@ -1801,7 +1801,6 @@ export interface GalleryUnitsPage {
 	total: number;
 }
 
-/** A conversation that references a given media row (lightbox reverse lookup). */
 /** One item on the gallery's "Recently deleted" page (`/gallery/trash`).
  *  The full `MediaListItem` shape because the page opens it in the same
  *  lightbox the gallery uses (actions withheld; see its `trashed` prop).
@@ -1815,6 +1814,7 @@ export interface TrashedMediaItem extends MediaListItem {
 	expiresAt: number;
 }
 
+/** A conversation that references a given media row (lightbox reverse lookup). */
 export interface MediaConversationRef {
 	id: string;
 	title: string | null;

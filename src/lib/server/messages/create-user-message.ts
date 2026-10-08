@@ -40,7 +40,7 @@ export interface CreateUserMessageInput {
 
 export function createUserMessage(input: CreateUserMessageInput): ChatMessage {
 	// Validate every attached media id belongs to this user and isn't
-	// hard-deleted before we persist anything — so a tampered request can't
+	// deleted (trashed or purged) before we persist anything — so a tampered request can't
 	// land an unowned-media reference on a real conversation row. Stash the
 	// loaded rows (keyed by id) so the part-building step can route by kind
 	// without a second DB roundtrip.

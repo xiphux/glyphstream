@@ -202,7 +202,7 @@ export function getMediaForUser(
  * the gallery's list query returns). Used by the chat-side lightbox to
  * populate model + prompt metadata that isn't in the message's
  * `content_json` — message parts only carry the media id. Returns null
- * when the row doesn't exist, is hard-deleted, or belongs to a
+ * when the row doesn't exist, is deleted (trashed or purged), or belongs to a
  * different user.
  */
 export function getMediaListItemForUser(mediaId: string, userId: string): MediaListItem | null {
@@ -615,7 +615,7 @@ export function getMediaListItemsByIds(userId: string, ids: string[]): MediaList
  * endpoint down) — same as memory recall. Returns up to {@link MEDIA_SEARCH_CAP}
  * `MediaListItem`s best-match-first, no cursor (a ranked mode, not the browse).
  *
- * Visibility (hard_deleted / origin) + kind/model/favorite compose on both legs —
+ * Visibility (deleted_at / origin) + kind/model/favorite compose on both legs —
  * the dense leg included, or a semantic-only neighbour outside the filter would
  * fuse in past it. A dense
  * neighbour must clear the configurable cosine floor
@@ -1273,14 +1273,14 @@ export interface ConversationOrphanCounts {
  * Given message↔media join rows (already scoped to one user), return the
  * set of media ids that would orphan if those rows' messages were
  * deleted: every reference to the media lives inside the row set, it's
- * generated (not uploaded), and it isn't already hard-deleted.
+ * generated (not uploaded), and it isn't already deleted (trashed or purged).
  *
  * The orphan rule — count how many of a media's references appear in the
  * row set and compare to its total `ref_count`; equal means deleting the
  * set drops ref_count to zero. The same media can appear on multiple
  * rows (linked from several messages via the auto-attach-last-generated
  * flow); those collapse to one orphan. Shared by the delete-conversation
- * pre-flight count and the actual orphan hard-delete so the two cannot
+ * pre-flight count and the actual orphan trash pass so the two cannot
  * disagree on what "orphan" means.
  *
  * Exported (despite being an internal of this module) so its orphan rule
