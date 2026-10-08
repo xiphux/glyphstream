@@ -64,7 +64,7 @@ interface InlineableMedia {
 function requireInlineable(mediaId: string, userId: string): InlineableMedia {
 	const row = getMediaForUser(mediaId, userId);
 	if (!row) throw new MediaNotAvailableError(mediaId, 'not found');
-	if (row.hardDeletedAt !== null) throw new MediaNotAvailableError(mediaId, 'deleted');
+	if (row.deletedAt !== null) throw new MediaNotAvailableError(mediaId, 'deleted');
 	if (row.kind !== 'image' && row.kind !== 'video') {
 		throw new MediaNotAvailableError(mediaId, `kind '${row.kind}' cannot be inlined`);
 	}

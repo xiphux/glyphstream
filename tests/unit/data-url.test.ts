@@ -117,7 +117,7 @@ describe('loadMediaBytes', () => {
 			promptExcerpt: null,
 		});
 		writeMediaFile('aa/bb/zapped.png', Buffer.from('PNG'));
-		mocks.testDb.update(media).set({ hardDeletedAt: Date.now() }).where(eq(media.id, id)).run();
+		mocks.testDb.update(media).set({ deletedAt: Date.now() }).where(eq(media.id, id)).run();
 		await expect(loadMediaBytes(id, u.id)).rejects.toThrow(/deleted/i);
 	});
 

@@ -92,7 +92,7 @@ const videos = db
 		and(
 			eq(schema.media.kind, 'video'),
 			eq(schema.media.origin, 'generated'),
-			isNull(schema.media.hardDeletedAt),
+			isNull(schema.media.deletedAt),
 		),
 	)
 	.all();

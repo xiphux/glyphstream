@@ -2521,14 +2521,15 @@
 	}
 
 	/** Delete the branch rooted at this message — only meaningful when the
-	 * message has siblings. Confirms first because the operation is
-	 * irreversible (subtree messages + any uniquely-referenced generated
-	 * media get hard-deleted via the ref-counted purger path). */
+	 * message has siblings. Confirms first because the messages are gone for
+	 * good; uniquely-referenced generated media goes to the gallery's
+	 * Recently deleted, so it says so. */
 	async function deleteBranch(m: ChatMessage) {
 		if (generating) return;
 		const ok = await confirmDialog.ask({
 			title: 'Delete this branch?',
-			message: 'This deletes the branch and every message on it. It cannot be undone.',
+			message:
+				'This deletes the branch and every message on it. It cannot be undone, but its images and videos stay in Recently deleted for 30 days.',
 		});
 		if (!ok) return;
 		errorMsg = null;

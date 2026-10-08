@@ -29,7 +29,7 @@ vi.mock('$lib/server/env', async (importOriginal) => ({
 import { POST as upload } from '../../src/routes/api/uploads/+server';
 import { GET as content } from '../../src/routes/api/media/[id]/content/+server';
 import { createSession, validateSessionToken } from '$lib/server/auth/session';
-import { hardDeleteMediaForUser, insertMedia } from '$lib/server/db/queries/media';
+import { insertMedia, purgeTrashForUser, trashMediaForUser } from '$lib/server/db/queries/media';
 import { media } from '$lib/server/db/schema';
 import { getMediaStore } from '$lib/server/media/disk-store';
 import { MAX_UPLOAD_BYTES_FILE, MAX_UPLOAD_BYTES_IMAGE } from '$lib/server/uploads/classify';
@@ -81,10 +81,10 @@ async function uploaded(file: File) {
 	};
 }
 
-function getContent(id: string, headers: Record<string, string> = {}) {
+function getContent(id: string, headers: Record<string, string> = {}, query = '') {
 	return call(
 		content as Handler,
-		new Request(`https://chat.example.test/api/media/${id}/content`, { headers }),
+		new Request(`https://chat.example.test/api/media/${id}/content${query}`, { headers }),
 		{ id },
 	);
 }
@@ -240,10 +240,14 @@ describe('GET /api/media/[id]/content', () => {
 		}
 	});
 
-	it('404s a hard-deleted asset', async () => {
+	it('404s a trashed asset on its live URL, and serves it only to the trash view', async () => {
 		const id = await stored('image/png', 'image');
-		hardDeleteMediaForUser(id, user.id);
+		expect((await getContent(id, {}, '?trash=1')).status).toBe(404);
+		trashMediaForUser(id, user.id);
 		expect((await getContent(id)).status).toBe(404);
+		expect((await getContent(id, {}, '?trash=1')).status).toBe(200);
+		purgeTrashForUser([id], user.id);
+		expect((await getContent(id, {}, '?trash=1')).status).toBe(404);
 	});
 
 	it('round-trips an upload byte for byte', async () => {

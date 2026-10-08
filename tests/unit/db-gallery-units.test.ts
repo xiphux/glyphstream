@@ -10,7 +10,8 @@ vi.mock('$lib/server/db/client', () => ({
 }));
 
 import {
-	hardDeleteMediaForUser,
+	restoreMediaForUser,
+	trashMediaForUser,
 	insertMedia,
 	linkMessageMedia,
 	setMediaFavorite,
@@ -320,9 +321,28 @@ describe('gallery units: cache invalidation on mutation', () => {
 		expect(listGalleryUnits(u.id, { ...TZ, offset: 0, limit: 500 }).total).toBe(2);
 
 		// Delete one; the next query must recompute, not serve the cached list of 2.
-		hardDeleteMediaForUser(a, u.id);
+		trashMediaForUser(a, u.id);
 		expect(listGalleryUnits(u.id, { ...TZ, offset: 0, limit: 500 }).total).toBe(1);
 		expect(computeGalleryLayout(u.id, TZ).totalUnits).toBe(1);
+	});
+
+	it('a restore is reflected even when a delete leaves the row counts unchanged', () => {
+		// The fingerprint was `total:live`, which can't tell "A trashed, B restored"
+		// from "nothing happened": both counts land where they started.
+		const u = seedUser();
+		const a = makeGen(u.id, at(2024, 6, 15), { promptFull: 'a', originalPrompt: null });
+		const b = makeGen(u.id, at(2024, 6, 14), { promptFull: 'b', originalPrompt: null });
+		makeGen(u.id, at(2024, 6, 13), { promptFull: 'c', originalPrompt: null });
+		trashMediaForUser(b, u.id);
+
+		const leaders = () =>
+			listGalleryUnits(u.id, { ...TZ, offset: 0, limit: 500 }).units.map((x) => x.leaderId);
+		expect(leaders()).not.toContain(b);
+
+		trashMediaForUser(a, u.id);
+		restoreMediaForUser([b], u.id);
+		expect(leaders()).toContain(b);
+		expect(leaders()).not.toContain(a);
 	});
 
 	it('a favorites-filtered read is never served the unfiltered cached library', () => {

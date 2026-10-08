@@ -39,7 +39,8 @@ vi.mock('$lib/server/env', () => ({
 }));
 
 import { runPurgeSweep } from '$lib/server/media/purger';
-import { insertMedia } from '$lib/server/db/queries/media';
+import { insertMedia, trashMediaForUser } from '$lib/server/db/queries/media';
+import { TRASH_RETENTION_MS } from '$lib/server/media/trash';
 import { media } from '$lib/server/db/schema';
 
 let tmpDirs: string[] = [];
@@ -119,7 +120,9 @@ describe('runPurgeSweep', () => {
 		expect(r.hardDeleted).toBeGreaterThanOrEqual(1);
 		expect(existsSync(abs)).toBe(false);
 		const row = mocks.testDb.select().from(media).where(eq(media.id, id)).get();
-		expect(row?.hardDeletedAt).not.toBeNull();
+		expect(row?.deletedAt).not.toBeNull();
+		// An upload never passes through the trash.
+		expect(row?.purgedAt).not.toBeNull();
 	});
 
 	it('does NOT hard-delete rows still inside the grace window', async () => {
@@ -148,7 +151,7 @@ describe('runPurgeSweep', () => {
 		expect(r.hardDeleted).toBe(0);
 		expect(existsSync(abs)).toBe(true);
 		const row = mocks.testDb.select().from(media).where(eq(media.id, id)).get();
-		expect(row?.hardDeletedAt).toBeNull();
+		expect(row?.deletedAt).toBeNull();
 	});
 
 	it('survives missing files (best-effort delete)', async () => {
@@ -197,6 +200,43 @@ describe('runPurgeSweep', () => {
 		expect(r.hardDeleted).toBe(0);
 		expect(existsSync(abs)).toBe(true);
 		const row = mocks.testDb.select().from(media).where(eq(media.id, id)).get();
-		expect(row?.hardDeletedAt).toBeNull();
+		expect(row?.deletedAt).toBeNull();
+	});
+
+	it('expires the trash: unlinks bytes past the retention, keeps newer ones restorable', async () => {
+		const u = seedUser();
+		const make = (storagePath: string) => {
+			const abs = writeMediaFile(storagePath);
+			const { id } = insertMedia({
+				userId: u.id,
+				storagePath,
+				contentType: 'image/png',
+				byteSize: 10,
+				kind: 'image',
+				sourceEndpointId: 'bridge',
+				sourceModel: 'bridge::x',
+				promptExcerpt: 'a panda',
+			});
+			trashMediaForUser(id, u.id);
+			return { id, abs };
+		};
+		const expired = make('aa/bb/expired.png');
+		const fresh = make('aa/bb/fresh.png');
+		mocks.testDb
+			.update(media)
+			.set({ deletedAt: Date.now() - TRASH_RETENTION_MS - 60_000 })
+			.where(eq(media.id, expired.id))
+			.run();
+
+		const r = await runPurgeSweep();
+		expect(r.trashExpired).toBe(1);
+		expect(existsSync(expired.abs)).toBe(false);
+		expect(existsSync(fresh.abs)).toBe(true);
+		const row = (id: string) => mocks.testDb.select().from(media).where(eq(media.id, id)).get();
+		expect(row(expired.id)?.purgedAt).not.toBeNull();
+		expect(row(fresh.id)?.purgedAt).toBeNull();
+
+		// A second sweep finds nothing left to expire.
+		expect((await runPurgeSweep()).trashExpired).toBe(0);
 	});
 });

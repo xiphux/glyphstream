@@ -133,6 +133,7 @@
 				<span>
 					Also delete <span class="font-medium">{formatMediaCounts(c)}</span>
 					from gallery.
+					<span class="block text-xs text-fg-muted"> Kept in Recently deleted for 30 days. </span>
 				</span>
 			</label>
 		{/if}

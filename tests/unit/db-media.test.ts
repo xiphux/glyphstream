@@ -10,11 +10,16 @@ vi.mock('$lib/server/db/client', () => ({
 }));
 
 import {
-	bulkHardDeleteMediaForUser,
+	bulkTrashMediaForUser,
 	decrementMediaForMessages,
+	findExpiredTrash,
 	findPurgeCandidates,
 	getMediaForUser,
-	hardDeleteMediaForUser,
+	listTrashForUser,
+	markPurged,
+	purgeTrashForUser,
+	restoreMediaForUser,
+	trashMediaForUser,
 	insertMedia,
 	linkMessageMedia,
 	listConversationMediaRefs,
@@ -76,7 +81,7 @@ describe('media: insert + ref counting', () => {
 		const row = getRow(id);
 		expect(row?.refCount).toBe(0);
 		expect(row?.unreferencedSince).toBeNull();
-		expect(row?.hardDeletedAt).toBeNull();
+		expect(row?.deletedAt).toBeNull();
 	});
 
 	it('insertMedia defaults to origin=generated', () => {
@@ -293,7 +298,7 @@ describe('listMediaForUser', () => {
 		const u = seedUser();
 		const m1 = makeMedia(u.id);
 		makeMedia(u.id);
-		hardDeleteMediaForUser(m1.id, u.id);
+		trashMediaForUser(m1.id, u.id);
 		const page = listMediaForUser(u.id);
 		expect(page.items.map((i) => i.id)).not.toContain(m1.id);
 	});
@@ -490,7 +495,7 @@ describe('favorites', () => {
 		expect(getRow(mine.id)?.favoritedAt).toBeNull();
 
 		const gone = makeMedia(owner.id);
-		hardDeleteMediaForUser(gone.id, owner.id);
+		trashMediaForUser(gone.id, owner.id);
 		expect(setMediaFavorite(gone.id, owner.id, true)).toBe(false);
 	});
 
@@ -591,7 +596,7 @@ describe('listMediaMonthPeriodsForUser (quick-jump timeline)', () => {
 		makeMedia(u.id, { kind: 'file', contentType: 'text/csv', sourceModel: 'run_python' });
 		const del = makeMedia(u.id);
 		setCreatedAt(del.id, midMayUtc);
-		hardDeleteMediaForUser(del.id, u.id);
+		trashMediaForUser(del.id, u.id);
 		expect(listMediaMonthPeriodsForUser(u.id, { tzOffsetMinutes: 0 })).toEqual([
 			{ key: '2026-06', count: 1 },
 		]);
@@ -683,7 +688,7 @@ describe('searchMediaForUser (keyword prompt search)', () => {
 		const keep = makeMedia(u.id, { promptFull: 'a castle' });
 		makeMedia(u.id, { origin: 'uploaded', promptFull: 'a castle' });
 		const del = makeMedia(u.id, { promptFull: 'a castle' });
-		hardDeleteMediaForUser(del.id, u.id);
+		trashMediaForUser(del.id, u.id);
 		expect((await searchMediaForUser(u.id, 'castle')).map((h) => h.id)).toEqual([keep.id]);
 	});
 
@@ -728,7 +733,7 @@ describe('listMediaNeedingEmbedding (backfill queue)', () => {
 		const u = seedUser();
 		const keep = makeMedia(u.id, { promptFull: 'a keeper' });
 		const del = makeMedia(u.id, { promptFull: 'a goner' });
-		hardDeleteMediaForUser(del.id, u.id);
+		trashMediaForUser(del.id, u.id);
 		const ids = listMediaNeedingEmbedding('embed-v1', 100).map((r) => r.id);
 		expect(ids).toContain(keep.id);
 		expect(ids).not.toContain(del.id);
@@ -755,7 +760,7 @@ describe('listDistinctSourceModelsForUser (model facet)', () => {
 		makeMedia(u.id, { kind: 'file', contentType: 'text/csv', sourceModel: 'run_python' });
 		makeMedia(u.id, { sourceModel: null });
 		const del = makeMedia(u.id, { sourceModel: 'comfyui/flux' });
-		hardDeleteMediaForUser(del.id, u.id);
+		trashMediaForUser(del.id, u.id);
 		const facets = listDistinctSourceModelsForUser(u.id);
 		expect(facets).toEqual([{ value: 'comfyui/sdxl', count: 1 }]);
 	});
@@ -942,7 +947,7 @@ describe('listMediaForConversation (drill-in stack contents)', () => {
 		linkMessageMedia(msg.id, live.id);
 		linkMessageMedia(msg.id, gone.id);
 		linkMessageMedia(msg.id, upload.id);
-		hardDeleteMediaForUser(gone.id, u.id);
+		trashMediaForUser(gone.id, u.id);
 
 		expect(listMediaForConversation(conv.id, u.id).map((i) => i.id)).toEqual([live.id]);
 	});
@@ -958,31 +963,34 @@ describe('listMediaForConversation (drill-in stack contents)', () => {
 	});
 });
 
-describe('hardDeleteMediaForUser', () => {
-	it('marks the row hard-deleted + returns the storagePath for unlinking', () => {
+describe('trashMediaForUser', () => {
+	it('moves the row to the trash: deleted, refs zeroed, bytes NOT purged', () => {
 		const u = seedUser();
 		const { id } = makeMedia(u.id);
-		const r = hardDeleteMediaForUser(id, u.id);
-		expect(r?.storagePath).toMatch(/\.png$/);
+		expect(trashMediaForUser(id, u.id)).toBe(true);
 		const row = getRow(id);
-		expect(row?.hardDeletedAt).not.toBeNull();
+		expect(row?.deletedAt).not.toBeNull();
+		expect(row?.purgedAt).toBeNull();
 		expect(row?.refCount).toBe(0);
 	});
 
-	it('returns null on cross-user hard-delete attempt', () => {
+	it('returns false on a cross-user attempt', () => {
 		const u1 = seedUser();
 		const u2 = seedUser();
 		const { id } = makeMedia(u1.id);
-		expect(hardDeleteMediaForUser(id, u2.id)).toBeNull();
+		expect(trashMediaForUser(id, u2.id)).toBe(false);
 		// Original owner's row is untouched.
-		expect(getRow(id)?.hardDeletedAt).toBeNull();
+		expect(getRow(id)?.deletedAt).toBeNull();
 	});
 
-	it('returns null on already-deleted (idempotent caller can ignore)', () => {
+	it('returns false on already-deleted (idempotent caller can ignore)', () => {
 		const u = seedUser();
 		const { id } = makeMedia(u.id);
-		hardDeleteMediaForUser(id, u.id);
-		expect(hardDeleteMediaForUser(id, u.id)).toBeNull();
+		trashMediaForUser(id, u.id);
+		const first = getRow(id)?.deletedAt;
+		expect(trashMediaForUser(id, u.id)).toBe(false);
+		// And doesn't restart the retention clock.
+		expect(getRow(id)?.deletedAt).toBe(first);
 	});
 
 	it('drops message_media join rows so messages no longer link to it', () => {
@@ -1001,34 +1009,29 @@ describe('hardDeleteMediaForUser', () => {
 		});
 		const { id } = makeMedia(u.id);
 		linkMessageMedia(msg.id, id);
-		hardDeleteMediaForUser(id, u.id);
-		// Re-linking afterward should not re-bump refCount because it's
-		// already at 0 (we cleared it).
+		trashMediaForUser(id, u.id);
 		expect(getRow(id)?.refCount).toBe(0);
+		expect(listConversationsForMedia(id, u.id)).toEqual([]);
 	});
 });
 
-describe('bulkHardDeleteMediaForUser', () => {
+describe('bulkTrashMediaForUser', () => {
 	it('returns [] for an empty input', () => {
 		const u = seedUser();
-		expect(bulkHardDeleteMediaForUser([], u.id)).toEqual([]);
+		expect(bulkTrashMediaForUser([], u.id)).toEqual([]);
 	});
 
-	it('tombstones every live row in the selection + returns their storagePaths', () => {
+	it('trashes every live row in the selection + returns their ids', () => {
 		const u = seedUser();
 		const a = makeMedia(u.id);
 		const b = makeMedia(u.id);
 		const c = makeMedia(u.id);
-		const result = bulkHardDeleteMediaForUser([a.id, b.id, c.id], u.id);
-		expect(result).toHaveLength(3);
-		const returnedIds = new Set(result.map((r) => r.id));
-		expect(returnedIds).toEqual(new Set([a.id, b.id, c.id]));
-		for (const r of result) {
-			expect(r.storagePath).toMatch(/\.png$/);
-		}
+		const result = bulkTrashMediaForUser([a.id, b.id, c.id], u.id);
+		expect(new Set(result)).toEqual(new Set([a.id, b.id, c.id]));
 		for (const id of [a.id, b.id, c.id]) {
 			const row = getRow(id);
-			expect(row?.hardDeletedAt).not.toBeNull();
+			expect(row?.deletedAt).not.toBeNull();
+			expect(row?.purgedAt).toBeNull();
 			expect(row?.refCount).toBe(0);
 		}
 	});
@@ -1037,11 +1040,9 @@ describe('bulkHardDeleteMediaForUser', () => {
 		const u = seedUser();
 		const a = makeMedia(u.id);
 		const b = makeMedia(u.id);
-		hardDeleteMediaForUser(a.id, u.id);
-		const result = bulkHardDeleteMediaForUser([a.id, b.id], u.id);
-		// Only b should be in the result — a was already a tombstone.
-		expect(result.map((r) => r.id)).toEqual([b.id]);
-		expect(getRow(b.id)?.hardDeletedAt).not.toBeNull();
+		trashMediaForUser(a.id, u.id);
+		expect(bulkTrashMediaForUser([a.id, b.id], u.id)).toEqual([b.id]);
+		expect(getRow(b.id)?.deletedAt).not.toBeNull();
 	});
 
 	it('skips foreign-owned ids — no cross-user delete leak', () => {
@@ -1049,10 +1050,8 @@ describe('bulkHardDeleteMediaForUser', () => {
 		const u2 = seedUser();
 		const own = makeMedia(u1.id);
 		const foreign = makeMedia(u2.id);
-		const result = bulkHardDeleteMediaForUser([own.id, foreign.id], u1.id);
-		expect(result.map((r) => r.id)).toEqual([own.id]);
-		// u2's row is untouched.
-		expect(getRow(foreign.id)?.hardDeletedAt).toBeNull();
+		expect(bulkTrashMediaForUser([own.id, foreign.id], u1.id)).toEqual([own.id]);
+		expect(getRow(foreign.id)?.deletedAt).toBeNull();
 	});
 
 	it('drops message_media join rows for the deleted set', () => {
@@ -1073,11 +1072,116 @@ describe('bulkHardDeleteMediaForUser', () => {
 		const b = makeMedia(u.id);
 		linkMessageMedia(msg.id, a.id);
 		linkMessageMedia(msg.id, b.id);
-		bulkHardDeleteMediaForUser([a.id, b.id], u.id);
-		// Both rows' join entries are gone (the listConversationsForMedia
-		// lookup is empty for each).
+		bulkTrashMediaForUser([a.id, b.id], u.id);
 		expect(listConversationsForMedia(a.id, u.id)).toEqual([]);
 		expect(listConversationsForMedia(b.id, u.id)).toEqual([]);
+	});
+});
+
+describe('trash: list / restore / purge / expiry', () => {
+	function setDeletedAt(mediaId: string, deletedAt: number) {
+		mocks.testDb.update(media).set({ deletedAt }).where(eq(media.id, mediaId)).run();
+	}
+
+	it('lists only the caller’s restorable generated images + videos, newest delete first', () => {
+		const u = seedUser();
+		const other = seedUser();
+		const older = makeMedia(u.id);
+		const newer = makeMedia(u.id, { kind: 'video', contentType: 'video/mp4' });
+		const live = makeMedia(u.id);
+		const file = makeMedia(u.id, { kind: 'file', contentType: 'text/csv' });
+		const upload = makeMedia(u.id, { origin: 'uploaded' });
+		const purged = makeMedia(u.id);
+		const theirs = makeMedia(other.id);
+		bulkTrashMediaForUser([older.id, newer.id, file.id, upload.id, purged.id], u.id);
+		trashMediaForUser(theirs.id, other.id);
+		setDeletedAt(older.id, 1_000);
+		setDeletedAt(newer.id, 2_000);
+		purgeTrashForUser([purged.id], u.id);
+
+		const listed = listTrashForUser(u.id);
+		expect(listed.map((r) => r.id)).toEqual([newer.id, older.id]);
+		expect(listed[0]).toMatchObject({ kind: 'video', deletedAt: 2_000, promptExcerpt: 'a panda' });
+		expect(listed.map((r) => r.id)).not.toContain(live.id);
+	});
+
+	it('restore puts the row back in the gallery, and only from the caller’s own trash', () => {
+		const u = seedUser();
+		const other = seedUser();
+		const a = makeMedia(u.id);
+		const b = makeMedia(u.id);
+		const theirs = makeMedia(other.id);
+		bulkTrashMediaForUser([a.id, b.id], u.id);
+		trashMediaForUser(theirs.id, other.id);
+
+		expect(restoreMediaForUser([a.id, theirs.id], u.id)).toEqual([a.id]);
+		expect(getRow(a.id)?.deletedAt).toBeNull();
+		expect(getRow(theirs.id)?.deletedAt).not.toBeNull();
+		expect(listMediaForUser(u.id).items.map((m) => m.id)).toEqual([a.id]);
+		expect(listTrashForUser(u.id).map((r) => r.id)).toEqual([b.id]);
+	});
+
+	it('cannot restore a purged row, a live row, or an upload', () => {
+		const u = seedUser();
+		const purged = makeMedia(u.id);
+		const live = makeMedia(u.id);
+		const upload = makeMedia(u.id, { origin: 'uploaded' });
+		bulkTrashMediaForUser([purged.id, upload.id], u.id);
+		purgeTrashForUser([purged.id], u.id);
+		expect(restoreMediaForUser([purged.id, live.id, upload.id], u.id)).toEqual([]);
+		expect(getRow(purged.id)?.deletedAt).not.toBeNull();
+	});
+
+	it('purge stamps purged_at and returns storage paths, scoped to the caller', () => {
+		const u = seedUser();
+		const other = seedUser();
+		const a = makeMedia(u.id);
+		const b = makeMedia(u.id);
+		const theirs = makeMedia(other.id);
+		bulkTrashMediaForUser([a.id, b.id], u.id);
+		trashMediaForUser(theirs.id, other.id);
+
+		const out = purgeTrashForUser([a.id, theirs.id], u.id);
+		expect(out).toEqual([{ id: a.id, storagePath: getRow(a.id)!.storagePath }]);
+		expect(getRow(a.id)?.purgedAt).not.toBeNull();
+		expect(getRow(b.id)?.purgedAt).toBeNull();
+		expect(getRow(theirs.id)?.purgedAt).toBeNull();
+		// Purging again is a no-op.
+		expect(purgeTrashForUser([a.id], u.id)).toEqual([]);
+	});
+
+	it('purge "all" empties the whole trash, unlisted kinds included, and never live rows', () => {
+		const u = seedUser();
+		const img = makeMedia(u.id);
+		const file = makeMedia(u.id, { kind: 'file', contentType: 'text/csv' });
+		const live = makeMedia(u.id);
+		bulkTrashMediaForUser([img.id, file.id], u.id);
+		expect(new Set(purgeTrashForUser('all', u.id).map((r) => r.id))).toEqual(
+			new Set([img.id, file.id]),
+		);
+		expect(getRow(live.id)?.purgedAt).toBeNull();
+		expect(getRow(live.id)?.deletedAt).toBeNull();
+	});
+
+	it('findExpiredTrash returns trash past the cutoff across users, oldest first', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const old1 = makeMedia(u1.id);
+		const old2 = makeMedia(u2.id);
+		const fresh = makeMedia(u1.id);
+		const purged = makeMedia(u1.id);
+		trashMediaForUser(old1.id, u1.id);
+		trashMediaForUser(old2.id, u2.id);
+		trashMediaForUser(fresh.id, u1.id);
+		trashMediaForUser(purged.id, u1.id);
+		setDeletedAt(old1.id, 2_000);
+		setDeletedAt(old2.id, 1_000);
+		setDeletedAt(purged.id, 500);
+		purgeTrashForUser([purged.id], u1.id);
+
+		expect(findExpiredTrash(5_000).map((c) => c.id)).toEqual([old2.id, old1.id]);
+		markPurged(old2.id);
+		expect(findExpiredTrash(5_000).map((c) => c.id)).toEqual([old1.id]);
 	});
 });
 
@@ -1114,7 +1218,7 @@ describe('purger sweep queries', () => {
 		const { id } = makeMedia(u.id, { origin: 'uploaded' });
 		mocks.testDb
 			.update(media)
-			.set({ unreferencedSince: 1000, hardDeletedAt: 1500 })
+			.set({ unreferencedSince: 1000, deletedAt: 1500 })
 			.where(eq(media.id, id))
 			.run();
 		expect(findPurgeCandidates(9999)).toEqual([]);
@@ -1432,7 +1536,7 @@ describe('listConversationMediaRefs', () => {
 		const gone = makeMedia(u.id);
 		linkMessageMedia(msg.id, live.id);
 		linkMessageMedia(msg.id, gone.id);
-		hardDeleteMediaForUser(gone.id, u.id);
+		trashMediaForUser(gone.id, u.id);
 
 		expect(listConversationMediaRefs(conv.id, u.id).map((r) => r.id)).toEqual([live.id]);
 	});

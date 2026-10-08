@@ -1,9 +1,17 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
 	import { afterNavigate, goto, invalidate } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { Popover, Switch } from 'bits-ui';
-	import { ChevronLeft, Search, SlidersHorizontal, SquareCheck, Star } from '@lucide/svelte';
+	import {
+		ChevronLeft,
+		Search,
+		SlidersHorizontal,
+		SquareCheck,
+		Star,
+		Trash2,
+	} from '@lucide/svelte';
 	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import GalleryTimelineRail from '$lib/components/GalleryTimelineRail.svelte';
@@ -476,7 +484,7 @@
 		if (deletingId) return;
 		const ok = await confirmDialog.ask({
 			title: 'Delete this media?',
-			message: 'This action cannot be undone.',
+			message: 'It stays in Recently deleted for 30 days.',
 		});
 		if (!ok) return;
 		deletingId = id;
@@ -626,7 +634,7 @@
 		const count = selected.size;
 		const ok = await confirmDialog.ask({
 			title: count === 1 ? 'Delete 1 item?' : `Delete ${count} items?`,
-			message: 'This action cannot be undone.',
+			message: 'They stay in Recently deleted for 30 days.',
 		});
 		if (!ok) return;
 		bulkDeleting = true;
@@ -1127,6 +1135,17 @@
 										</div>
 									</div>
 								{/if}
+								<!-- The trash lives here rather than in the bar: the bar's mobile
+								     width budget is spent (see the search box note), and this is
+								     a destination you go looking for, not a filter you toggle. -->
+								<div class="mt-1 border-t border-border"></div>
+								<a
+									href={resolve('/gallery/trash')}
+									class="flex items-center gap-2 rounded-md p-2 font-medium text-fg transition hover:bg-surface-raised"
+								>
+									<Trash2 size={14} class="text-fg-secondary" />
+									Recently deleted
+								</a>
 							</Popover.Content>
 						</Popover.Portal>
 					</Popover.Root>

@@ -879,8 +879,8 @@ describe('deleteBranch', () => {
 
 		const result = deleteBranch(conv.id, u1.id, user.id);
 
-		// Shared media isn't in toUnlink — branch B still references it.
-		expect(result && 'toUnlink' in result && result.toUnlink).toEqual([]);
+		// Shared media isn't trashed — branch B still references it.
+		expect(result && 'trashedMediaIds' in result && result.trashedMediaIds).toEqual([]);
 
 		// Ref count drops to 1, unreferencedSince stays null, and the
 		// row is NOT hard-deleted.
@@ -888,14 +888,14 @@ describe('deleteBranch', () => {
 			.select({
 				refCount: media.refCount,
 				unreferencedSince: media.unreferencedSince,
-				hardDeletedAt: media.hardDeletedAt,
+				deletedAt: media.deletedAt,
 			})
 			.from(media)
 			.where(eq(media.id, mediaId))
 			.get();
 		expect(after?.refCount).toBe(1);
 		expect(after?.unreferencedSince).toBeNull();
-		expect(after?.hardDeletedAt).toBeNull();
+		expect(after?.deletedAt).toBeNull();
 	});
 
 	it('hard-deletes generated media that exists only on the deleted branch', () => {
@@ -916,24 +916,21 @@ describe('deleteBranch', () => {
 
 		const result = deleteBranch(conv.id, u1.id, user.id);
 
-		// Caller gets the storage path back so it can unlink the file
-		// from disk post-commit.
-		expect(result && 'toUnlink' in result && result.toUnlink).toEqual([
-			{ id: mediaId, storagePath: 'ab/cd/orphan.png' },
-		]);
+		// The branch delete is unconfirmed, so its orphan goes to the trash —
+		// out of the gallery, bytes kept for a restore.
+		expect(result && 'trashedMediaIds' in result && result.trashedMediaIds).toEqual([mediaId]);
 
-		// hardDeletedAt is stamped inside the transaction so the row is
-		// invisible to the gallery immediately, even before the disk
-		// unlink fires.
+		// deletedAt is stamped inside the transaction so the row is
+		// invisible to the gallery immediately.
 		const after = mocks.testDb
 			.select({
 				refCount: media.refCount,
-				hardDeletedAt: media.hardDeletedAt,
+				deletedAt: media.deletedAt,
 			})
 			.from(media)
 			.where(eq(media.id, mediaId))
 			.get();
-		expect(after?.hardDeletedAt).not.toBeNull();
+		expect(after?.deletedAt).not.toBeNull();
 		expect(after?.refCount).toBe(0);
 	});
 
@@ -960,8 +957,8 @@ describe('deleteBranch', () => {
 
 		const result = deleteBranch(conv.id, u1.id, user.id);
 
-		// Uploaded media isn't in toUnlink.
-		expect(result && 'toUnlink' in result && result.toUnlink).toEqual([]);
+		// Uploaded media isn't trashed.
+		expect(result && 'trashedMediaIds' in result && result.trashedMediaIds).toEqual([]);
 
 		// Not hard-deleted. ref_count drops to 0 and unreferencedSince
 		// gets stamped via the normal decrement path; the purger will
@@ -970,14 +967,14 @@ describe('deleteBranch', () => {
 			.select({
 				refCount: media.refCount,
 				unreferencedSince: media.unreferencedSince,
-				hardDeletedAt: media.hardDeletedAt,
+				deletedAt: media.deletedAt,
 			})
 			.from(media)
 			.where(eq(media.id, mediaId))
 			.get();
 		expect(after?.refCount).toBe(0);
 		expect(after?.unreferencedSince).not.toBeNull();
-		expect(after?.hardDeletedAt).toBeNull();
+		expect(after?.deletedAt).toBeNull();
 	});
 
 	it('refuses to delete a branch that has no siblings', () => {
@@ -1157,11 +1154,7 @@ describe('countOrphanMediaInConversation', () => {
 		const { conv, assistantMsg } = setupConvWithAssistant(u.id);
 		const { id: mediaId } = makeGenerated(u.id, 'image');
 		linkMessageMedia(assistantMsg.id, mediaId);
-		mocks.testDb
-			.update(media)
-			.set({ hardDeletedAt: Date.now() })
-			.where(eq(media.id, mediaId))
-			.run();
+		mocks.testDb.update(media).set({ deletedAt: Date.now() }).where(eq(media.id, mediaId)).run();
 		expect(countOrphanMediaInConversation(conv.id, u.id)).toEqual({
 			images: 0,
 			videos: 0,
@@ -1183,7 +1176,7 @@ describe('deleteConversation with the deleteMedia flag', () => {
 		});
 	}
 
-	it('returns empty toUnlink when the conversation has no media', () => {
+	it('returns no trashed media when the conversation has no media', () => {
 		const u = seedUser();
 		const conv = createConversation({
 			userId: u.id,
@@ -1193,12 +1186,12 @@ describe('deleteConversation with the deleteMedia flag', () => {
 		});
 		const result = deleteConversation(conv.id, u.id, { deleteMedia: true });
 		expect(result.ok).toBe(true);
-		expect(result.toUnlink).toEqual([]);
+		expect(result.trashedMediaIds).toEqual([]);
 	});
 
-	it('without the flag: leaves orphan media as a soft orphan (no hard-delete, no toUnlink)', () => {
+	it('without the flag: leaves orphan media as a soft orphan (nothing trashed)', () => {
 		// Default behavior — media stays in the gallery under the
-		// library model. ref_count drops to 0 but `hardDeletedAt`
+		// library model. ref_count drops to 0 but `deletedAt`
 		// stays null.
 		const u = seedUser();
 		const conv = createConversation({
@@ -1218,10 +1211,10 @@ describe('deleteConversation with the deleteMedia flag', () => {
 
 		const result = deleteConversation(conv.id, u.id);
 		expect(result.ok).toBe(true);
-		expect(result.toUnlink).toEqual([]);
+		expect(result.trashedMediaIds).toEqual([]);
 
 		const row = mocks.testDb.select().from(media).where(eq(media.id, mediaId)).get();
-		expect(row?.hardDeletedAt).toBeNull();
+		expect(row?.deletedAt).toBeNull();
 		expect(row?.refCount).toBe(0);
 	});
 
@@ -1244,10 +1237,11 @@ describe('deleteConversation with the deleteMedia flag', () => {
 
 		const result = deleteConversation(conv.id, u.id, { deleteMedia: true });
 		expect(result.ok).toBe(true);
-		expect(result.toUnlink).toEqual([{ id: mediaId, storagePath: 'aa/bb/orphan.png' }]);
+		expect(result.trashedMediaIds).toEqual([mediaId]);
 
 		const row = mocks.testDb.select().from(media).where(eq(media.id, mediaId)).get();
-		expect(row?.hardDeletedAt).not.toBeNull();
+		expect(row?.deletedAt).not.toBeNull();
+		expect(row?.purgedAt).toBeNull();
 	});
 
 	it('with the flag: preserves shared media used by another conversation', () => {
@@ -1286,10 +1280,10 @@ describe('deleteConversation with the deleteMedia flag', () => {
 
 		const result = deleteConversation(convA.id, u.id, { deleteMedia: true });
 		expect(result.ok).toBe(true);
-		expect(result.toUnlink).toEqual([]); // shared, not orphaned
+		expect(result.trashedMediaIds).toEqual([]); // shared, not orphaned
 
 		const row = mocks.testDb.select().from(media).where(eq(media.id, shared)).get();
-		expect(row?.hardDeletedAt).toBeNull();
+		expect(row?.deletedAt).toBeNull();
 		expect(row?.refCount).toBe(1);
 	});
 
@@ -1327,15 +1321,15 @@ describe('deleteConversation with the deleteMedia flag', () => {
 
 		const result = deleteConversation(conv.id, u.id, { deleteMedia: true });
 		expect(result.ok).toBe(true);
-		expect(result.toUnlink).toEqual([]);
+		expect(result.trashedMediaIds).toEqual([]);
 
 		const row = mocks.testDb.select().from(media).where(eq(media.id, uploaded)).get();
-		expect(row?.hardDeletedAt).toBeNull();
+		expect(row?.deletedAt).toBeNull();
 		expect(row?.refCount).toBe(0);
 		expect(row?.unreferencedSince).not.toBeNull();
 	});
 
-	it('returns ok=false with empty toUnlink for a cross-user delete attempt', () => {
+	it('returns ok=false with nothing trashed for a cross-user delete attempt', () => {
 		// Belt-and-suspenders ownership check — the API also
 		// enforces this via locals.user, but the DB-level guard
 		// should hold independently.
@@ -1358,12 +1352,12 @@ describe('deleteConversation with the deleteMedia flag', () => {
 
 		const result = deleteConversation(conv.id, u2.id, { deleteMedia: true });
 		expect(result.ok).toBe(false);
-		expect(result.toUnlink).toEqual([]);
+		expect(result.trashedMediaIds).toEqual([]);
 
 		// Conversation and media both still intact for the real owner.
 		expect(getConversationDetail(conv.id, u1.id)).not.toBeNull();
 		const row = mocks.testDb.select().from(media).where(eq(media.id, mediaId)).get();
-		expect(row?.hardDeletedAt).toBeNull();
+		expect(row?.deletedAt).toBeNull();
 		expect(row?.refCount).toBe(1);
 	});
 });

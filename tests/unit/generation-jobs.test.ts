@@ -781,7 +781,7 @@ describe('a job whose anchor goes away', () => {
 		const events = await drain(stream);
 		expect(events.at(-1)).toMatchObject({ type: 'error', message: 'Cancelled' });
 		const [row] = mocks.testDb.select().from(media).all();
-		expect(row.hardDeletedAt).not.toBeNull();
+		expect(row.deletedAt).not.toBeNull();
 		expect(mocks.unlinkMediaFiles).toHaveBeenCalledWith(
 			[{ id: row.id, storagePath: 'generated/out.png' }],
 			'media-relay.discard',

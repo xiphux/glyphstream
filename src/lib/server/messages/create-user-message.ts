@@ -50,7 +50,7 @@ export function createUserMessage(input: CreateUserMessageInput): ChatMessage {
 	>();
 	for (const mid of input.attachedMediaIds) {
 		const m = getMediaForUser(mid, input.userId);
-		if (!m || m.hardDeletedAt !== null) {
+		if (!m || m.deletedAt !== null) {
 			error(400, `Attached media "${mid}" not found`);
 		}
 		attachedMediaById.set(mid, {

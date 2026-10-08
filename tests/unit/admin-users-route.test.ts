@@ -31,7 +31,7 @@ vi.mock('$lib/server/env', async (importOriginal) => ({
 import { DELETE, PATCH } from '../../src/routes/api/admin/users/[id]/+server';
 import { createSession, validateSessionToken } from '$lib/server/auth/session';
 import { createConversation } from '$lib/server/db/queries/conversations';
-import { hardDeleteMediaForUser, insertMedia } from '$lib/server/db/queries/media';
+import { insertMedia, purgeTrashForUser, trashMediaForUser } from '$lib/server/db/queries/media';
 import { conversations, media, sessions, users } from '$lib/server/db/schema';
 import { getMediaStore } from '$lib/server/media/disk-store';
 import { thumbStoragePath } from '$lib/server/media/thumbnail';
@@ -178,9 +178,16 @@ describe('DELETE', () => {
 		const target = makeUser();
 		createConversation({ userId: target.id, endpointId: 'e', modelId: 'm', modelKind: null });
 		const live = await storeMedia(target.id);
-		const tombstoned = await storeMedia(target.id, false);
-		hardDeleteMediaForUser(tombstoned.id, target.id);
-		rmSync(tombstoned.original); // what the gallery delete already did
+		// In the trash: deleted from the library, bytes still on disk. The cascade
+		// is the last thing that will ever see this row, so it must take them.
+		const trashed = await storeMedia(target.id);
+		trashMediaForUser(trashed.id, target.id);
+		// Already purged: bytes gone, so there's nothing to unlink — and a missing
+		// file must not fail the delete.
+		const purged = await storeMedia(target.id, false);
+		trashMediaForUser(purged.id, target.id);
+		purgeTrashForUser([purged.id], target.id);
+		rmSync(purged.original); // what the purge's caller already did
 
 		const bystander = makeUser();
 		const theirs = await storeMedia(bystander.id);
@@ -198,6 +205,8 @@ describe('DELETE', () => {
 
 		expect(existsSync(live.original)).toBe(false);
 		expect(existsSync(live.thumb)).toBe(false);
+		expect(existsSync(trashed.original)).toBe(false);
+		expect(existsSync(trashed.thumb)).toBe(false);
 
 		// Another user's files are untouched.
 		expect(existsSync(theirs.original)).toBe(true);

@@ -9,6 +9,13 @@ arrived.
 
 ## Unreleased
 
+### Added
+
+- **Recently deleted** in the gallery (under View options). Images and videos
+  you delete — from the gallery, by deleting a branch or a multi-model cell, or
+  along with a conversation — stay there for 30 days before they're gone for
+  good, and can be restored to the gallery or deleted forever.
+
 ### Fixed
 
 - The sidebar's conversation list now scrolls to show the conversation you have

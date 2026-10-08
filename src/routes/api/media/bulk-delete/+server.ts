@@ -1,8 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
-import { bulkHardDeleteMediaForUser } from '$lib/server/db/queries/media';
-import { unlinkMediaFiles } from '$lib/server/media/disk-store';
+import { bulkTrashMediaForUser } from '$lib/server/db/queries/media';
 import type { RequestHandler } from './$types';
 
 /**
@@ -16,7 +15,7 @@ const MAX_BULK_DELETE = 200;
  * Bulk gallery delete. Body shape: `{ ids: string[] }`. Per-row semantics
  * match the single-id DELETE — already-deleted / cross-user / unknown ids
  * are silently dropped from the count rather than failing the whole
- * request. Returns `{ deleted: N }` with the number actually tombstoned;
+ * request. Returns `{ deleted: N }` with the number actually trashed;
  * the client uses this to confirm completion + log a sensible toast.
  *
  * POST rather than DELETE-with-body because some reverse proxies strip
@@ -41,7 +40,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		error(400, `Too many ids in one request (max ${MAX_BULK_DELETE})`);
 	}
 
-	const deleted = bulkHardDeleteMediaForUser(ids, locals.user.id);
-	await unlinkMediaFiles(deleted, 'media.bulk-delete');
+	const deleted = bulkTrashMediaForUser(ids, locals.user.id);
 	return json({ deleted: deleted.length });
 };

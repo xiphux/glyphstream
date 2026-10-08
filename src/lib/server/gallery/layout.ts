@@ -79,7 +79,7 @@ function loadGalleryUnitSource(userId: string, opts: GalleryUnitOpts): UnitSourc
 	const db = getDb();
 	const conditions = [
 		eq(media.userId, userId),
-		isNull(media.hardDeletedAt),
+		isNull(media.deletedAt),
 		eq(media.origin, 'generated'),
 		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
 		opts.model ? eq(media.sourceModel, opts.model) : undefined,
@@ -374,7 +374,17 @@ function galleryUserFingerprint(userId: string): { base: string; fav: string } {
 	const row = getDb()
 		.select({
 			total: sql<number>`count(*)`,
-			live: sql<number>`coalesce(sum(case when ${media.hardDeletedAt} is null then 1 else 0 end), 0)`,
+			live: sql<number>`coalesce(sum(case when ${media.deletedAt} is null then 1 else 0 end), 0)`,
+			// `live` alone stopped being enough once deletes became reversible:
+			// delete A then restore B leaves both counts where they were, over a
+			// different set. Every delete stamps a fresh `deleted_at` and every
+			// restore removes one, so a sum over them moves on either. Reduced
+			// modulo a prime per row only to keep the sum a safe JS integer (30k rows
+			// of raw millisecond timestamps would overflow 2^53); a collision would
+			// need two distinct sets to agree mod 1e9+7, and still only costs one TTL
+			// of staleness. `deleted_at` is in `idx_media_user_gallery`, so this
+			// keeps the query covering.
+			deletedSig: sql<number>`coalesce(sum(${media.deletedAt} % 1000000007), 0)`,
 			favs: sql<number>`coalesce(sum(case when ${media.favoritedAt} is not null then 1 else 0 end), 0)`,
 			favAt: sql<number>`coalesce(max(${media.favoritedAt}), 0)`,
 		})
@@ -382,7 +392,7 @@ function galleryUserFingerprint(userId: string): { base: string; fav: string } {
 		.where(and(eq(media.userId, userId), eq(media.origin, 'generated')))
 		.get();
 	return {
-		base: `${row?.total ?? 0}:${row?.live ?? 0}`,
+		base: `${row?.total ?? 0}:${row?.live ?? 0}:${row?.deletedSig ?? 0}`,
 		fav: `${row?.favs ?? 0}:${row?.favAt ?? 0}`,
 	};
 }

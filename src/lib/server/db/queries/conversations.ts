@@ -15,7 +15,7 @@ import { parseDisabledFeatures, parseMessageParts, parseModelParameters } from '
 import { walkActiveBranch } from './messages';
 import {
 	decrementMediaForMessages,
-	hardDeleteOrphanGeneratedMediaForMessages,
+	trashOrphanGeneratedMediaForMessages,
 	linkAvatarMedia,
 	listMessageIdsForConversation,
 	unlinkAvatarMedia,
@@ -675,18 +675,12 @@ export function getConversationFirstExchange(id: string, userId: string): FirstE
  * purger (or, for generated media, the explicit delete path) wouldn't
  * know to collect them.
  *
- * When `deleteMedia` is true, also hard-deletes generated media that
+ * When `deleteMedia` is true, also moves to the trash generated media that
  * would orphan as a result — i.e. media whose only references are in
  * this conversation. Uploaded media is unaffected regardless (it
  * follows the purger's own auto-sweep schedule under the library
- * model). Returns the list of disk paths the caller should unlink
- * *after* the DB transaction commits; unlinking inside the txn would
- * mean a rolled-back transaction could leave files deleted from disk
- * but still referenced from the DB.
- *
- * Caller is responsible for actually unlinking the returned paths via
- * the MediaStore — see the DELETE handler in
- * src/routes/api/conversations/[id]/+server.ts.
+ * model). Returns the ids trashed; nothing is unlinked here — the
+ * purger expires the trash.
  */
 /**
  * Outcome of `setConversationAvatar`. Mirrors `SetAvatarResult` on the preset
@@ -737,7 +731,7 @@ export function setConversationAvatar(
 						// clients already filter to images; this is the server not taking
 						// their word for it.
 						eq(media.kind, 'image'),
-						isNull(media.hardDeletedAt),
+						isNull(media.deletedAt),
 					),
 				)
 				.get();
@@ -756,7 +750,7 @@ export function deleteConversation(
 	id: string,
 	userId: string,
 	opts: { deleteMedia?: boolean } = {},
-): { ok: boolean; toUnlink: Array<{ id: string; storagePath: string }> } {
+): { ok: boolean; trashedMediaIds: string[] } {
 	const db = getDb();
 	return db.transaction((tx) => {
 		// Ownership check first so we don't decrement on someone else's media.
@@ -771,7 +765,7 @@ export function deleteConversation(
 			.from(conversations)
 			.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
 			.get();
-		if (!owned) return { ok: false, toUnlink: [] };
+		if (!owned) return { ok: false, trashedMediaIds: [] };
 
 		// Release this conversation's avatar reference BEFORE the orphan pass
 		// below, not after. The orphan rule asks whether a media's ENTIRE
@@ -789,8 +783,8 @@ export function deleteConversation(
 		// detection compares ref_count to local link count), then decrement,
 		// then cascade-delete the conversation.
 		const messageIds = listMessageIdsForConversation(id);
-		const toUnlink = opts.deleteMedia
-			? hardDeleteOrphanGeneratedMediaForMessages(tx, messageIds, userId)
+		const trashedMediaIds = opts.deleteMedia
+			? trashOrphanGeneratedMediaForMessages(tx, messageIds, userId)
 			: [];
 		decrementMediaForMessages(tx, messageIds);
 
@@ -798,6 +792,6 @@ export function deleteConversation(
 		// A summarized conversation fed the topic overview — drop its topics from it
 		// (clear if it was the last summarized one, else re-flag for rebuild).
 		if (owned.summary !== null) reconcileOverviewAfterConversationDelete(userId, tx);
-		return { ok: true, toUnlink };
+		return { ok: true, trashedMediaIds };
 	});
 }

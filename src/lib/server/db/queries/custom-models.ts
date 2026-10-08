@@ -187,7 +187,7 @@ export function setCustomModelAvatar(
 		if (mediaId !== null) {
 			// Scoped to the caller AND to a live row, in the same transaction that
 			// takes the reference. The user-scoping is the multi-user isolation
-			// invariant (an avatar id is user-supplied); the `hard_deleted_at`
+			// invariant (an avatar id is user-supplied); the `deleted_at`
 			// check stops a preset adopting a tombstone whose bytes are gone.
 			const row = tx
 				.select({ id: media.id })
@@ -206,7 +206,7 @@ export function setCustomModelAvatar(
 						// clients already filter to images; this is the server not taking
 						// their word for it.
 						eq(media.kind, 'image'),
-						isNull(media.hardDeletedAt),
+						isNull(media.deletedAt),
 					),
 				)
 				.get();

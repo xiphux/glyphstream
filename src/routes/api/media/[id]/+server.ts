@@ -2,11 +2,10 @@ import { error, json } from '@sveltejs/kit';
 import { requireFound, requireUser } from '$lib/server/auth/guard';
 import {
 	getMediaListItemForUser,
-	hardDeleteMediaForUser,
 	setMediaFavorite,
+	trashMediaForUser,
 } from '$lib/server/db/queries/media';
 import { parseJsonBody } from '$lib/server/http';
-import { unlinkMediaFiles } from '$lib/server/media/disk-store';
 import type { RequestHandler } from './$types';
 
 /**
@@ -43,17 +42,13 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 };
 
 /**
- * Manual hard-delete from the gallery. Marks the row hard-deleted
- * immediately and unlinks the bytes from disk; old conversation messages
- * that referenced this media will subsequently 404 on /content (graceful
- * broken-image in the UI). Idempotent: a 404 here means the row was already
- * gone or already hard-deleted.
+ * Gallery delete: moves the row to the trash ("Recently deleted"). Old
+ * conversation messages that referenced this media subsequently 404 on
+ * /content (graceful broken-image in the UI) unless it's restored. Idempotent:
+ * a 404 here means the row was already gone or already deleted.
  */
 export const DELETE: RequestHandler = async ({ locals, params }) => {
 	requireUser(locals);
-	const result = requireFound(hardDeleteMediaForUser(params.id, locals.user.id), 'Media not found');
-	// Unlink the bytes after the row is gone. unlinkMediaFiles swallows a
-	// failed unlink so a leaked file can't turn this delete into a 500.
-	await unlinkMediaFiles([{ id: params.id, storagePath: result.storagePath }], 'media.delete');
+	if (!trashMediaForUser(params.id, locals.user.id)) error(404, 'Media not found');
 	return new Response(null, { status: 204 });
 };

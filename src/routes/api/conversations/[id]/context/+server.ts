@@ -126,7 +126,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 		if (hit) return hit;
 		const pending = (async (): Promise<MediaSize | null> => {
 			const row = getMediaForUser(mediaId, userId);
-			if (!row || row.hardDeletedAt !== null) return null;
+			if (!row || row.deletedAt !== null) return null;
 			if (row.kind !== 'image' && row.kind !== 'video') return null;
 			if (row.kind === 'image') {
 				const variant = await cachedVisionVariantSize(row.storagePath);

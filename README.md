@@ -175,7 +175,10 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   or month) plus a right-edge **timeline rail** to jump to any month. **Star**
   the ones that came out well — from the gallery lightbox or straight from the
   chat you made them in — and filter the gallery down to your favorites, on its
-  own or combined with search and the other filters.
+  own or combined with search and the other filters. Deleted images and videos
+  — from the gallery, a discarded branch or fan-out cell, or a deleted
+  conversation — wait in **Recently deleted** for 30 days, so a mis-tap can be
+  restored.
 - **Permanent media storage** — assets are pulled from the upstream on
   generation, ref-counted, and purged only after a grace period with zero
   references.

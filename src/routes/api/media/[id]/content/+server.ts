@@ -3,6 +3,7 @@ import { requireUser } from '$lib/server/auth/guard';
 import { Readable } from 'node:stream';
 import { getMediaForUser } from '$lib/server/db/queries/media';
 import { getMediaStore } from '$lib/server/media/disk-store';
+import { servableForRequest } from '$lib/server/media/trash';
 import {
 	attachmentDisposition,
 	isNeverInlineType,
@@ -32,11 +33,11 @@ import type { RequestHandler } from './$types';
  * carry a parameter (`image/svg+xml; charset=utf-8`), and an `===` compare
  * against the bare essence missed exactly those — the bypass this guards.
  */
-export const GET: RequestHandler = async ({ locals, params, request }) => {
+export const GET: RequestHandler = async ({ locals, params, request, url }) => {
 	requireUser(locals);
 
 	const row = getMediaForUser(params.id, locals.user.id);
-	if (!row || row.hardDeletedAt !== null) error(404, 'Media not found');
+	if (!row || !servableForRequest(row, url)) error(404, 'Media not found');
 
 	const range = parseRange(request.headers.get('range'), row.byteSize);
 	const store = getMediaStore();

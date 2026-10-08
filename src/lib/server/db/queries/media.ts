@@ -86,7 +86,7 @@ export function insertMedia(input: MediaInsertInput): { id: string } {
 			// will sweep it after the grace period. linkMessageMedia clears
 			// this back to null when the file actually gets attached.
 			unreferencedSince: origin === 'uploaded' ? now : null,
-			hardDeletedAt: null,
+			deletedAt: null,
 		})
 		.run();
 	return { id };
@@ -175,7 +175,8 @@ export function getMediaForUser(
 	byteSize: number;
 	kind: MediaKind;
 	originalFilename: string | null;
-	hardDeletedAt: number | null;
+	deletedAt: number | null;
+	purgedAt: number | null;
 } | null {
 	const db = getDb();
 	const row = db
@@ -186,7 +187,8 @@ export function getMediaForUser(
 			byteSize: media.byteSize,
 			kind: media.kind,
 			originalFilename: media.originalFilename,
-			hardDeletedAt: media.hardDeletedAt,
+			deletedAt: media.deletedAt,
+			purgedAt: media.purgedAt,
 		})
 		.from(media)
 		.where(and(eq(media.id, mediaId), eq(media.userId, userId)))
@@ -222,7 +224,7 @@ export function getMediaListItemForUser(mediaId: string, userId: string): MediaL
 			conversationId: assignedConversationId,
 		})
 		.from(media)
-		.where(and(eq(media.id, mediaId), eq(media.userId, userId), isNull(media.hardDeletedAt)))
+		.where(and(eq(media.id, mediaId), eq(media.userId, userId), isNull(media.deletedAt)))
 		.get();
 	if (!row) return null;
 	return attachConversationTitles(userId, [
@@ -267,7 +269,7 @@ export function listConversationMediaRefs(
 				eq(messages.conversationId, conversationId),
 				eq(conversations.userId, userId),
 				inArray(media.kind, ['image', 'video']),
-				isNull(media.hardDeletedAt),
+				isNull(media.deletedAt),
 			),
 		)
 		.orderBy(asc(media.createdAt), asc(media.id))
@@ -415,7 +417,7 @@ export function listMediaForUser(
 
 	const conditions = [
 		eq(media.userId, userId),
-		isNull(media.hardDeletedAt),
+		isNull(media.deletedAt),
 		// Gallery is "what the AI made" — exclude user-supplied attachments
 		// even though they live in the same table for ref-counting reasons.
 		eq(media.origin, 'generated'),
@@ -535,7 +537,7 @@ function ftsRankMedia(
 		JOIN media ON media.id = f.media_id
 		WHERE f.user_id = ${userId}
 			AND media_prompt_fts MATCH ${match}
-			AND media.hard_deleted_at IS NULL
+			AND media.deleted_at IS NULL
 			AND media.origin = 'generated'
 			${kindCond}
 			${modelCond}
@@ -591,7 +593,7 @@ export function getMediaListItemsByIds(userId: string, ids: string[]): MediaList
 		.where(
 			and(
 				eq(media.userId, userId),
-				isNull(media.hardDeletedAt),
+				isNull(media.deletedAt),
 				eq(media.origin, 'generated'),
 				inArray(media.id, ids),
 			),
@@ -701,14 +703,14 @@ export function listMediaNeedingEmbedding(
 ): Array<{ id: string; promptFull: string }> {
 	const db = getDb();
 	const sel = { id: media.id, promptFull: media.promptFull };
-	// Excludes soft-deleted media (hard_deleted_at set, prompt_full intact) so a
+	// Excludes soft-deleted media (deleted_at set, prompt_full intact) so a
 	// tombstoned-before-embedding row doesn't spend an embed call. Must stay in
 	// lockstep with idx_media_unembedded's WHERE — matching the predicate is what
 	// makes the partial index *usable*, but see the note on the index itself for
 	// what makes it actually get *picked*: verify with EXPLAIN QUERY PLAN rather
 	// than assuming, because a competing index nearly won this one.
 	const embeddable = and(
-		isNull(media.hardDeletedAt),
+		isNull(media.deletedAt),
 		isNotNull(media.promptFull),
 		eq(media.origin, 'generated'),
 	);
@@ -768,7 +770,7 @@ export function listMediaEmbeddingsForUser(
 	const limit = Math.max(1, Math.min(opts.limit ?? DENSE_CORPUS_CAP, 20000));
 	const conditions = [
 		eq(media.userId, userId),
-		isNull(media.hardDeletedAt),
+		isNull(media.deletedAt),
 		eq(media.origin, 'generated'),
 		isNotNull(media.embedding),
 		eq(media.embeddingModel, opts.embeddingModel),
@@ -814,7 +816,7 @@ export function listDistinctSourceModelsForUser(
 	const db = getDb();
 	const conditions = [
 		eq(media.userId, userId),
-		isNull(media.hardDeletedAt),
+		isNull(media.deletedAt),
 		eq(media.origin, 'generated'),
 		isNotNull(media.sourceModel),
 		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
@@ -870,7 +872,7 @@ export function listMediaMonthPeriodsForUser(
 
 	const conditions = [
 		eq(media.userId, userId),
-		isNull(media.hardDeletedAt),
+		isNull(media.deletedAt),
 		eq(media.origin, 'generated'),
 		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
 		opts.model ? eq(media.sourceModel, opts.model) : undefined,
@@ -949,7 +951,7 @@ export function listMediaForConversation(
 		.where(
 			and(
 				eq(media.userId, userId),
-				isNull(media.hardDeletedAt),
+				isNull(media.deletedAt),
 				eq(media.origin, 'generated'),
 				allowedKinds.length === 1
 					? eq(media.kind, allowedKinds[0])
@@ -1054,7 +1056,7 @@ export function setMediaFavorite(mediaId: string, userId: string, favorite: bool
 			and(
 				eq(media.id, mediaId),
 				eq(media.userId, userId),
-				isNull(media.hardDeletedAt),
+				isNull(media.deletedAt),
 				// Generated only, matching the set the gallery actually lists. A star
 				// means "keep this AND let me find it again", and the gallery filters
 				// uploads out everywhere — so starring an upload would be a button
@@ -1068,85 +1070,185 @@ export function setMediaFavorite(mediaId: string, userId: string, favorite: bool
 	return res.changes > 0;
 }
 
-// --- Manual hard-delete (gallery "delete this") --------------------------
+// --- Trash (gallery / branch / conversation delete) ----------------------
+//
+// A user delete moves media to "Recently deleted" rather than unlinking it:
+// `deleted_at` is stamped (so every live-row predicate in the tree stops
+// seeing it, exactly as before the trash existed) but the bytes stay and
+// `purged_at` stays NULL. The purger's trash phase unlinks them once
+// `TRASH_RETENTION_MS` has passed (`findExpiredTrash` + `markPurged`); until
+// then `restoreMediaForUser` puts the row back.
+//
+// What a restore does NOT bring back is the row's message links. The delete
+// drops its `message_media` join rows and zeroes `ref_count`, and the branch or
+// conversation that held it may be gone or have moved on, so a restored asset
+// returns to the library as an orphan — listed in the gallery with no
+// conversation. Generated orphans are never reaped, so that is a stable state.
 
 /**
- * Mark a media row hard-deleted *now*, regardless of refs. Returns the
- * storage path so the caller can unlink the file from disk. Returns null
- * on not-found / ownership mismatch / already-deleted.
+ * Move one media row to the trash *now*, regardless of refs. Returns false on
+ * not-found / ownership mismatch / already-deleted.
  *
- * Old messages that referenced this media will continue to render an `<img>`
- * tag pointing at /api/media/{id}/content; the content endpoint already
- * returns 404 once `hardDeletedAt` is set, so the user sees a broken-image
- * placeholder. Acceptable v1 trade-off — the alternative (rewriting message
+ * Old messages that referenced this media continue to render an `<img>` tag
+ * pointing at /api/media/{id}/content, which 404s once `deletedAt` is set,
+ * so the user sees a broken-image placeholder — and the image again if it is
+ * restored. Acceptable trade-off — the alternative (rewriting message
  * content_json to drop the part) requires walking many rows for each delete.
  */
-export function hardDeleteMediaForUser(
-	mediaId: string,
-	userId: string,
-): { storagePath: string } | null {
-	const db = getDb();
-	const result = db.transaction((tx) => {
-		const row = tx
-			.select({ storagePath: media.storagePath, hardDeletedAt: media.hardDeletedAt })
-			.from(media)
-			.where(and(eq(media.id, mediaId), eq(media.userId, userId)))
-			.get();
-		if (!row || row.hardDeletedAt !== null) return null;
-
-		tx.update(media)
-			.set({ hardDeletedAt: Date.now(), refCount: 0, unreferencedSince: Date.now() })
-			.where(eq(media.id, mediaId))
-			.run();
-		// Drop join rows so the messages no longer carry a stale link in
-		// their per-message media list (cheap; ON DELETE CASCADE on the FK
-		// would do this if the media row were deleted, but we keep the
-		// row as a tombstone for the historical record).
-		tx.delete(messageMedia).where(eq(messageMedia.mediaId, mediaId)).run();
-		return { storagePath: row.storagePath };
-	});
-	return result;
+export function trashMediaForUser(mediaId: string, userId: string): boolean {
+	return bulkTrashMediaForUser([mediaId], userId).length > 0;
 }
 
 /**
- * Bulk variant of hardDeleteMediaForUser — one transaction for the whole
- * selection. Filters to the caller's own rows that aren't already hard-
- * deleted (a single foreign or tombstoned id in the list doesn't poison
- * the rest), then marks them tombstoned and drops their join rows in
- * batched statements. Returns the `{id, storagePath}` pairs the caller
- * should unlink from disk; ids passed in but excluded from the result
- * are silently dropped, matching the single-id endpoint's idempotency
- * shape. Empty input → empty output, no transaction.
+ * Bulk variant of trashMediaForUser — one transaction for the whole selection.
+ * Filters to the caller's own rows that aren't already deleted (a single foreign
+ * or tombstoned id in the list doesn't poison the rest), then stamps them and
+ * drops their join rows in batched statements. Returns the ids actually
+ * trashed; ids passed in but excluded from the result are silently dropped,
+ * matching the single-id endpoint's idempotency shape. Empty input → empty
+ * output, no transaction.
  */
-export function bulkHardDeleteMediaForUser(
-	ids: readonly string[],
-	userId: string,
-): Array<{ id: string; storagePath: string }> {
+export function bulkTrashMediaForUser(ids: readonly string[], userId: string): string[] {
 	if (ids.length === 0) return [];
 	const db = getDb();
-	const result = db.transaction((tx) => {
+	return db.transaction((tx) => {
+		const liveIds = tx
+			.select({ id: media.id })
+			.from(media)
+			.where(
+				and(eq(media.userId, userId), inArray(media.id, ids as string[]), isNull(media.deletedAt)),
+			)
+			.all()
+			.map((r) => r.id);
+		if (liveIds.length === 0) return [];
+		const now = Date.now();
+		tx.update(media)
+			.set({ deletedAt: now, refCount: 0, unreferencedSince: now })
+			.where(inArray(media.id, liveIds))
+			.run();
+		// Drop join rows so the messages no longer carry a stale link in their
+		// per-message media list (ON DELETE CASCADE on the FK would do this if the
+		// media row were deleted, but the row is kept for the trash and then as a
+		// tombstone).
+		tx.delete(messageMedia).where(inArray(messageMedia.mediaId, liveIds)).run();
+		return liveIds;
+	});
+}
+
+/**
+ * The user's "Recently deleted": generated images and videos in the trash,
+ * most recently deleted first. `kind: 'file'` and uploads can sit in the trash
+ * too (a conversation delete takes a generated CSV with it; a direct API call
+ * can trash an upload) but are left out, matching the gallery they'd be
+ * restored into — they simply age out on the same clock.
+ *
+ * Unpaginated: the trash is bounded by the retention window, and the partial
+ * `idx_media_trash` index holds nothing else. The cap is a backstop against a
+ * month of bulk deletes, not a page size.
+ */
+export function listTrashForUser(userId: string, limit = 1000): TrashedMediaRow[] {
+	return getDb()
+		.select({
+			id: media.id,
+			kind: media.kind,
+			promptExcerpt: media.promptExcerpt,
+			sourceModel: media.sourceModel,
+			createdAt: media.createdAt,
+			deletedAt: media.deletedAt,
+		})
+		.from(media)
+		.where(
+			and(
+				eq(media.userId, userId),
+				isNotNull(media.deletedAt),
+				isNull(media.purgedAt),
+				eq(media.origin, 'generated'),
+				inArray(media.kind, ['image', 'video']),
+			),
+		)
+		.orderBy(desc(media.deletedAt), desc(media.id))
+		.limit(limit)
+		.all() as TrashedMediaRow[];
+}
+
+export interface TrashedMediaRow {
+	id: string;
+	kind: 'image' | 'video';
+	promptExcerpt: string | null;
+	sourceModel: string | null;
+	createdAt: number;
+	deletedAt: number;
+}
+
+/**
+ * Put trashed rows back in the library. Only the caller's own generated rows
+ * that are deleted-but-not-purged qualify; anything else in `ids` is silently
+ * dropped. Returns the ids restored.
+ *
+ * `unreferenced_since` and the zeroed `ref_count` are left as the delete set
+ * them: a generated row is never reaped for being unreferenced, so they are
+ * inert, and they're accurate — nothing links to it any more.
+ */
+export function restoreMediaForUser(ids: readonly string[], userId: string): string[] {
+	if (ids.length === 0) return [];
+	return getDb().transaction((tx) => {
+		const restorable = tx
+			.select({ id: media.id })
+			.from(media)
+			.where(
+				and(
+					eq(media.userId, userId),
+					inArray(media.id, ids as string[]),
+					isNotNull(media.deletedAt),
+					isNull(media.purgedAt),
+					eq(media.origin, 'generated'),
+				),
+			)
+			.all()
+			.map((r) => r.id);
+		if (restorable.length === 0) return [];
+		tx.update(media).set({ deletedAt: null }).where(inArray(media.id, restorable)).run();
+		return restorable;
+	});
+}
+
+/**
+ * "Delete forever" from the trash: stamp `purged_at` on the caller's trashed
+ * rows and return their storage paths for the caller to unlink AFTER this
+ * commits (see `unlinkMediaFiles`). `ids: 'all'` empties the whole trash —
+ * including the file/upload rows `listTrashForUser` doesn't show, since "empty"
+ * should leave nothing behind.
+ */
+export function purgeTrashForUser(
+	ids: readonly string[] | 'all',
+	userId: string,
+): Array<{ id: string; storagePath: string }> {
+	if (ids !== 'all' && ids.length === 0) return [];
+	return getDb().transaction((tx) => {
 		const rows = tx
 			.select({ id: media.id, storagePath: media.storagePath })
 			.from(media)
 			.where(
 				and(
 					eq(media.userId, userId),
-					inArray(media.id, ids as string[]),
-					isNull(media.hardDeletedAt),
+					isNotNull(media.deletedAt),
+					isNull(media.purgedAt),
+					ids === 'all' ? undefined : inArray(media.id, ids as string[]),
 				),
 			)
 			.all();
 		if (rows.length === 0) return [];
-		const liveIds = rows.map((r) => r.id);
-		const now = Date.now();
 		tx.update(media)
-			.set({ hardDeletedAt: now, refCount: 0, unreferencedSince: now })
-			.where(inArray(media.id, liveIds))
+			.set({ purgedAt: Date.now() })
+			.where(
+				inArray(
+					media.id,
+					rows.map((r) => r.id),
+				),
+			)
 			.run();
-		tx.delete(messageMedia).where(inArray(messageMedia.mediaId, liveIds)).run();
 		return rows;
 	});
-	return result;
 }
 
 // --- Per-conversation orphan analysis (drives the delete-conversation UI) ---
@@ -1179,13 +1281,13 @@ export function collectOrphanGeneratedMediaIds(
 		mediaId: string;
 		refCount: number;
 		origin: 'generated' | 'uploaded';
-		hardDeletedAt: number | null;
+		deletedAt: number | null;
 	}>,
 ): Set<string> {
 	const localCount = new Map<string, number>();
 	const meta = new Map<
 		string,
-		{ refCount: number; origin: 'generated' | 'uploaded'; hardDeletedAt: number | null }
+		{ refCount: number; origin: 'generated' | 'uploaded'; deletedAt: number | null }
 	>();
 	for (const r of rows) {
 		localCount.set(r.mediaId, (localCount.get(r.mediaId) ?? 0) + 1);
@@ -1193,14 +1295,14 @@ export function collectOrphanGeneratedMediaIds(
 			meta.set(r.mediaId, {
 				refCount: r.refCount,
 				origin: r.origin,
-				hardDeletedAt: r.hardDeletedAt,
+				deletedAt: r.deletedAt,
 			});
 		}
 	}
 	const orphans = new Set<string>();
 	for (const [mediaId, count] of localCount) {
 		const m = meta.get(mediaId)!;
-		if (m.hardDeletedAt !== null) continue;
+		if (m.deletedAt !== null) continue;
 		if (m.origin !== 'generated') continue;
 		if (m.refCount !== count) continue;
 		orphans.add(mediaId);
@@ -1230,7 +1332,7 @@ export function countOrphanMediaInConversation(
 			kind: media.kind,
 			refCount: media.refCount,
 			origin: media.origin,
-			hardDeletedAt: media.hardDeletedAt,
+			deletedAt: media.deletedAt,
 		})
 		.from(messageMedia)
 		.innerJoin(messages, eq(messages.id, messageMedia.messageId))
@@ -1281,23 +1383,24 @@ export function countOrphanMediaInConversation(
 }
 
 /**
- * Identify generated media that would orphan as a result of deleting
- * the given set of messages, and immediately mark them hard-deleted.
- * Returns the storage paths so the caller can unlink the files from
- * disk outside the DB transaction.
+ * Identify generated media that would orphan as a result of deleting the given
+ * set of messages, and move them to the trash (see the trash section above).
+ * Returns the ids trashed.
  *
  * Callers:
  *   - `deleteConversation` (with the full set of message ids for the
  *     conversation, gated by the user's "Also delete media" checkbox).
  *   - `deleteBranch` (with the BFS-collected subtree being removed —
  *     no user gate; branch-delete is always "I rejected this variant"
- *     so its uniquely-attached media should always go).
+ *     so its uniquely-attached media should always go). That ungated,
+ *     unconfirmed delete is the main reason the trash exists.
  *
  * Must be called BEFORE `decrementMediaForMessages` so the `refCount`
  * comparison reflects the pre-decrement state. After this returns,
  * the regular decrement path takes over for the remaining (still-
  * referenced) media — that's the only path through which non-orphan
- * rows get their ref_count adjusted.
+ * rows get their ref_count adjusted. The trashed rows' own join rows are
+ * left for that decrement and the message cascade to clear, as before.
  *
  * Scope: generated media only — uploaded media follows the purger's
  * own auto-sweep path and is not affected by user-driven "also
@@ -1308,40 +1411,29 @@ export function countOrphanMediaInConversation(
  * unit. (node:sqlite, unlike better-sqlite3, won't auto-promote a nested
  * root-level `db.transaction()` to a SAVEPOINT.)
  */
-export function hardDeleteOrphanGeneratedMediaForMessages(
+export function trashOrphanGeneratedMediaForMessages(
 	tx: Tx,
 	messageIds: string[],
 	userId: string,
-): Array<{ id: string; storagePath: string }> {
+): string[] {
 	if (messageIds.length === 0) return [];
 
 	const rows = tx
 		.select({
 			mediaId: messageMedia.mediaId,
-			storagePath: media.storagePath,
 			refCount: media.refCount,
 			origin: media.origin,
-			hardDeletedAt: media.hardDeletedAt,
+			deletedAt: media.deletedAt,
 		})
 		.from(messageMedia)
 		.innerJoin(media, eq(media.id, messageMedia.mediaId))
 		.where(and(inArray(messageMedia.messageId, messageIds), eq(media.userId, userId)))
 		.all();
 
-	const orphans = collectOrphanGeneratedMediaIds(rows);
-
-	// First-seen storage path per media, for the unlink list.
-	const pathOf = new Map<string, string>();
-	for (const r of rows) {
-		if (!pathOf.has(r.mediaId)) pathOf.set(r.mediaId, r.storagePath);
-	}
-	const now = Date.now();
-	const toUnlink: Array<{ id: string; storagePath: string }> = [];
-	for (const mediaId of orphans) {
-		tx.update(media).set({ hardDeletedAt: now }).where(eq(media.id, mediaId)).run();
-		toUnlink.push({ id: mediaId, storagePath: pathOf.get(mediaId)! });
-	}
-	return toUnlink;
+	const orphans = [...collectOrphanGeneratedMediaIds(rows)];
+	if (orphans.length === 0) return [];
+	tx.update(media).set({ deletedAt: Date.now() }).where(inArray(media.id, orphans)).run();
+	return orphans;
 }
 
 // --- Cascade-delete cleanup ----------------------------------------------
@@ -1359,7 +1451,7 @@ export function hardDeleteOrphanGeneratedMediaForMessages(
  * express in a single SQL statement on SQLite.
  *
  * Runs on the caller's transaction (`tx`) — see the note on
- * `hardDeleteOrphanGeneratedMediaForMessages`.
+ * `trashOrphanGeneratedMediaForMessages`.
  */
 export function decrementMediaForMessages(tx: Tx, messageIds: string[]): void {
 	if (messageIds.length === 0) return;
@@ -1416,9 +1508,9 @@ export interface PurgeCandidate {
  * Scope note: generated media (origin='generated') is never returned by
  * this query. Under the library model it persists indefinitely once
  * produced — only explicit user actions (gallery delete, conversation-
- * delete "also delete media" checkbox, branch-delete) hard-delete it.
- * The purger's sole remaining job is reaping uploads the user picked
- * but never sent.
+ * delete "also delete media" checkbox, branch-delete) delete it, and those
+ * go through the trash, which the purger expires via `findExpiredTrash`.
+ * This query's job is reaping uploads the user picked but never sent.
  *
  * Deliberately NOT user-scoped: this (and `markHardDeleted` /
  * `stampOrphanedZeroRefRows`) are trusted background-maintenance queries
@@ -1432,7 +1524,7 @@ export function findPurgeCandidates(olderThanMs: number, limit = 500): PurgeCand
 		.from(media)
 		.where(
 			and(
-				isNull(media.hardDeletedAt),
+				isNull(media.deletedAt),
 				isNotNull(media.unreferencedSince),
 				lte(media.unreferencedSince, olderThanMs),
 				eq(media.origin, 'uploaded'),
@@ -1450,10 +1542,35 @@ export function findPurgeCandidates(olderThanMs: number, limit = 500): PurgeCand
 		.all();
 }
 
-/** Mark a media row hard-deleted (post file unlink). */
+/** Mark an abandoned upload deleted AND purged (post file unlink) — an upload
+ *  never passes through the trash. */
 export function markHardDeleted(mediaId: string): void {
 	const db = getDb();
-	db.update(media).set({ hardDeletedAt: Date.now() }).where(eq(media.id, mediaId)).run();
+	const now = Date.now();
+	db.update(media).set({ deletedAt: now, purgedAt: now }).where(eq(media.id, mediaId)).run();
+}
+
+/**
+ * Trashed rows whose retention has run out (`deleted_at <= olderThanMs`),
+ * oldest first. Every user, every origin and kind — same trusted-maintenance
+ * scoping as `findPurgeCandidates`. Served by the partial `idx_media_trash`,
+ * which holds only the trash.
+ */
+export function findExpiredTrash(olderThanMs: number, limit = 500): PurgeCandidate[] {
+	return getDb()
+		.select({ id: media.id, storagePath: media.storagePath })
+		.from(media)
+		.where(
+			and(isNotNull(media.deletedAt), isNull(media.purgedAt), lte(media.deletedAt, olderThanMs)),
+		)
+		.orderBy(asc(media.deletedAt))
+		.limit(limit)
+		.all();
+}
+
+/** Stamp a trashed row purged (post file unlink). */
+export function markPurged(mediaId: string): void {
+	getDb().update(media).set({ purgedAt: Date.now() }).where(eq(media.id, mediaId)).run();
 }
 
 /**
@@ -1473,7 +1590,7 @@ export function stampOrphanedZeroRefRows(): number {
 		.set({ unreferencedSince: Date.now() })
 		.where(
 			and(
-				isNull(media.hardDeletedAt),
+				isNull(media.deletedAt),
 				isNull(media.unreferencedSince),
 				eq(media.refCount, 0),
 				eq(media.origin, 'uploaded'),

@@ -529,7 +529,7 @@ export const customModels = sqliteTable(
 		// column. Don't propagate the old note to new columns without checking.
 		//
 		// The action is belt-and-braces regardless: media rows are only ever
-		// SOFT deleted (the purger clears bytes and stamps `hard_deleted_at`,
+		// SOFT deleted (the purger clears bytes and stamps `deleted_at`,
 		// it never DELETEs the row), so in practice the referenced row always
 		// survives and a stale avatar degrades to a 404 the UI hides, not a
 		// dangling id.
@@ -764,7 +764,7 @@ export const media = sqliteTable(
 		// (migration 0020), so the live FK is NO ACTION, not the `set null`
 		// declared here (drizzle-kit can't emit ON DELETE on ADD COLUMN). In
 		// practice this never bites: media rows are only ever soft-deleted (the
-		// purger clears bytes + sets hard_deleted_at, never DELETEs the row), so
+		// purger clears bytes + sets deleted_at, never DELETEs the row), so
 		// the source row a generated asset points at always survives.
 		sourceMediaId: text('source_media_id').references((): AnySQLiteColumn => media.id, {
 			onDelete: 'set null',
@@ -817,7 +817,7 @@ export const media = sqliteTable(
 		// When the user starred this asset in the gallery / lightbox; NULL = not a
 		// favorite. A nullable timestamp rather than a boolean because that's this
 		// table's convention for every other flag (`unreferenced_since`,
-		// `hard_deleted_at`) and it costs the same, while keeping *when* a star
+		// `deleted_at`) and it costs the same, while keeping *when* a star
 		// happened recoverable — which the cache fingerprint relies on (see
 		// `galleryUserFingerprint`: a star/unstar pair leaves the favorite COUNT
 		// unchanged, so `max(favorited_at)` is what makes the toggle observable).
@@ -837,8 +837,20 @@ export const media = sqliteTable(
 		favoritedAt: integer('favorited_at'),
 		// Set when ref_count drops to 0; used to compute grace-period expiry.
 		unreferencedSince: integer('unreferenced_since'),
-		// Set after grace period; bytes removed from disk, row preserved.
-		hardDeletedAt: integer('hard_deleted_at'),
+		// When the row left the library: a user delete (gallery, branch, or
+		// conversation-with-media), or the purger reaping an abandoned upload. Every
+		// "is this live?" predicate in the tree reads this column, which is why a
+		// delete still stamps it even though the bytes may survive — see
+		// `purgedAt`. The row itself is never DELETEd.
+		deletedAt: integer('deleted_at'),
+		// When the bytes were actually removed from disk. Lags `deletedAt` by
+		// the trash retention for a user delete of generated media (the gap is
+		// "Recently deleted", and a restore clears `deletedAt` inside it);
+		// equal to it for a purged upload. `deleted_at IS NOT NULL AND
+		// purged_at IS NULL` is therefore exactly "in the trash", bytes on disk.
+		// Anything that needs the bytes to EXIST (deleting a user's files) reads
+		// this column, not `deletedAt`.
+		purgedAt: integer('purged_at'),
 		// Semantic prompt search: embedding of `prompt_full` (the same memories
 		// pattern). NULL = "not yet embedded"; the backfill sweep fills it.
 		// `embedding_model` records which model produced the vector (different
@@ -853,9 +865,9 @@ export const media = sqliteTable(
 		index('idx_media_user_created').on(t.userId, t.createdAt),
 		// The gallery's predicate shape: one user's live generated media in
 		// created_at order. Exists because `idx_media_unreferenced` below leads
-		// with two equality columns (origin, hard_deleted_at) and therefore wins
+		// with two equality columns (origin, deleted_at) and therefore wins
 		// the planner's default costing for these queries — even though
-		// `origin = 'generated' AND hard_deleted_at IS NULL` matches essentially
+		// `origin = 'generated' AND deleted_at IS NULL` matches essentially
 		// the whole table while `user_id` is the most selective predicate
 		// available. The result was that the gallery's hot reads (the units
 		// fingerprint, the model + month facet lists, the unit source load) each
@@ -878,13 +890,7 @@ export const media = sqliteTable(
 		// favorites-FILTERED read 4-5x faster, since `favorited_at` became a residual
 		// testable from the index rather than from the table: the month rail and the
 		// model facets each went 7.1ms -> 1.4ms at 30k media.
-		index('idx_media_user_gallery').on(
-			t.userId,
-			t.origin,
-			t.hardDeletedAt,
-			t.createdAt,
-			t.favoritedAt,
-		),
+		index('idx_media_user_gallery').on(t.userId, t.origin, t.deletedAt, t.createdAt, t.favoritedAt),
 		// No *partial* index for `favorited_at is not null`, deliberately — separate
 		// question from the projection above. The favorites filter narrows the same
 		// predicate this index already serves, so it seeks identically and tests
@@ -895,10 +901,10 @@ export const media = sqliteTable(
 		// unmeasured guess — and per the idx_media_unembedded note below, one SQLite
 		// might not even pick. Add it if a large library ever measures otherwise.
 		// Covers the purger's WHERE — unreferenced_since <= cutoff AND
-		// hard_deleted_at IS NULL AND origin = 'uploaded'. Putting the
+		// deleted_at IS NULL AND origin = 'uploaded'. Putting the
 		// range column last lets SQLite use index-only equality probes on
-		// origin + hardDeletedAt before walking unreferenced_since rows.
-		index('idx_media_unreferenced').on(t.origin, t.hardDeletedAt, t.unreferencedSince),
+		// origin + deletedAt before walking unreferenced_since rows.
+		index('idx_media_unreferenced').on(t.origin, t.deletedAt, t.unreferencedSince),
 		// Backfill work queue: only embeddable rows that still need a vector
 		// (generated, with a prompt, not soft-deleted, not yet embedded). Scoping
 		// the partial index this tightly keeps uploads / null-prompt / tombstoned
@@ -906,7 +912,7 @@ export const media = sqliteTable(
 		// must match listMediaNeedingEmbedding's predicate so it serves the query.
 		// Mirrors idx_memories_unembedded.
 		//
-		// The key columns look redundant — `origin` and `hard_deleted_at` are
+		// The key columns look redundant — `origin` and `deleted_at` are
 		// constant inside the partial predicate, and `prompt_full` isn't filtered
 		// on — but they're what actually gets this index *chosen*. Keyed on `id`
 		// alone it could only be scanned, and SQLite costed that above an equality
@@ -915,10 +921,25 @@ export const media = sqliteTable(
 		// 30k media, and it grew with the library). Leading with the same two
 		// equality columns lets it compete as a seek; trailing `prompt_full` makes
 		// it covering. Constant columns cost almost nothing to store.
+		// The trash: rows deleted from the library whose bytes haven't been purged
+		// yet. Partial, so it holds only what is currently restorable — every
+		// historical tombstone (the overwhelming majority of deleted rows) stays
+		// out of it. Serves both reads: the per-user "Recently deleted" list seeks
+		// it, and the cross-user expiry sweep scans an index that is, by
+		// construction, at most 30 days of deletes.
+		//
+		// `origin` sits second because the list filters on it, and without it
+		// `idx_media_user_gallery` (user_id, origin, deleted_at, …) out-ranks this
+		// one on equality columns — so the list walked every tombstone the user had
+		// ever made, then sorted. With it, the list's seek and its
+		// `ORDER BY deleted_at DESC, id DESC` are both served here (no temp b-tree).
+		index('idx_media_trash')
+			.on(t.userId, t.origin, t.deletedAt, t.id)
+			.where(sql`${t.deletedAt} is not null and ${t.purgedAt} is null`),
 		index('idx_media_unembedded')
-			.on(t.origin, t.hardDeletedAt, t.id, t.promptFull)
+			.on(t.origin, t.deletedAt, t.id, t.promptFull)
 			.where(
-				sql`${t.embedding} is null and ${t.promptFull} is not null and ${t.origin} = 'generated' and ${t.hardDeletedAt} is null`,
+				sql`${t.embedding} is null and ${t.promptFull} is not null and ${t.origin} = 'generated' and ${t.deletedAt} is null`,
 			),
 	],
 );

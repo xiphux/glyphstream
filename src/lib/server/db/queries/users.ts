@@ -315,7 +315,8 @@ export function setUserDisabled(userId: string, disabled: boolean): boolean {
  * On success, returns the media files the cascade orphaned, for the caller to
  * unlink AFTER this commits (see `unlinkMediaFiles`). The cascade deletes the
  * media rows outright rather than tombstoning them, so nothing else can find
- * those bytes again: the purger only walks rows, and only uploaded ones.
+ * those bytes again — the purger only walks rows. That includes trashed rows,
+ * whose bytes are still on disk until the trash expires.
  * Also returns every conversation id the user had (archived included), so the
  * caller can stop generations still streaming into them. Both are read in the
  * same transaction as the delete so a row written between the two can't slip
@@ -329,7 +330,9 @@ export function deleteUser(userId: string): {
 		const files = tx
 			.select({ id: media.id, storagePath: media.storagePath })
 			.from(media)
-			.where(and(eq(media.userId, userId), isNull(media.hardDeletedAt)))
+			// `purgedAt`, not `deletedAt`: trashed media still has its bytes,
+			// and once the cascade takes the row nothing will ever purge them.
+			.where(and(eq(media.userId, userId), isNull(media.purgedAt)))
 			.all();
 		const conversationIds = tx
 			.select({ id: conversations.id })

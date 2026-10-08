@@ -199,7 +199,7 @@ describe('custom-model avatars — ownership', () => {
 		const u = seedUser();
 		const cm = makePreset(u.id);
 		const m = makeUpload(u.id);
-		mocks.testDb.update(media).set({ hardDeletedAt: Date.now() }).where(eq(media.id, m)).run();
+		mocks.testDb.update(media).set({ deletedAt: Date.now() }).where(eq(media.id, m)).run();
 
 		expect(setCustomModelAvatar(cm.id, u.id, m)).toEqual({
 			ok: false,
@@ -341,11 +341,11 @@ describe('conversation avatars', () => {
 		setConversationAvatar(conv.id, u.id, portrait);
 		expect(mediaRow(portrait)?.refCount).toBe(2);
 
-		const { ok, toUnlink } = deleteConversation(conv.id, u.id, { deleteMedia: true });
+		const { ok, trashedMediaIds } = deleteConversation(conv.id, u.id, { deleteMedia: true });
 
 		expect(ok).toBe(true);
-		expect(toUnlink.map((r) => r.id)).toContain(portrait);
-		expect(mediaRow(portrait)?.hardDeletedAt).not.toBeNull();
+		expect(trashedMediaIds).toContain(portrait);
+		expect(mediaRow(portrait)?.deletedAt).not.toBeNull();
 	});
 
 	it('releases the reference when the conversation is deleted without its media', () => {
@@ -422,10 +422,10 @@ describe('conversation avatars — the delete dialog counts what delete removes'
 		setConversationAvatar(conv.id, u.id, ids[0]);
 
 		const promised = countOrphanMediaInConversation(conv.id, u.id);
-		const { toUnlink } = deleteConversation(conv.id, u.id, { deleteMedia: true });
+		const { trashedMediaIds } = deleteConversation(conv.id, u.id, { deleteMedia: true });
 
 		expect(promised).toEqual({ images: 2, videos: 0 });
-		expect(toUnlink).toHaveLength(promised.images + promised.videos);
+		expect(trashedMediaIds).toHaveLength(promised.images + promised.videos);
 	});
 
 	it('leaves an avatar drawn in ANOTHER conversation alone', () => {
@@ -443,7 +443,7 @@ describe('conversation avatars — the delete dialog counts what delete removes'
 
 		expect(countOrphanMediaInConversation(conv.id, u.id)).toEqual({ images: 0, videos: 0 });
 		deleteConversation(conv.id, u.id, { deleteMedia: true });
-		expect(mediaRow(ids[0])?.hardDeletedAt).toBeNull();
+		expect(mediaRow(ids[0])?.deletedAt).toBeNull();
 		expect(countOrphanMediaInConversation(other.id, u.id)).toEqual({ images: 1, videos: 0 });
 	});
 });

@@ -6,7 +6,7 @@ import { isReactionTool } from '$lib/chat-render';
 import { parseDispatchedModels, parseMessageParts } from './json-columns';
 import { getDb, type DB, type Tx } from '../client';
 import { conversations, media, messages } from '../schema';
-import { decrementMediaForMessages, hardDeleteOrphanGeneratedMediaForMessages } from './media';
+import { decrementMediaForMessages, trashOrphanGeneratedMediaForMessages } from './media';
 
 interface AppendInput {
 	conversationId: string;
@@ -876,9 +876,8 @@ export function deleteBranch(
 			 *  pinned at the fan-out's anchor message. */
 			newActiveLeaf: string | null;
 			/** Generated media whose only references were in the deleted
-			 *  subtree. Caller unlinks the files post-commit; the rows
-			 *  are already `hardDeletedAt`-stamped in the DB. */
-			toUnlink: Array<{ id: string; storagePath: string }>;
+			 *  subtree, now in the trash (bytes kept, restorable). */
+			trashedMediaIds: string[];
 	  }
 	| { refusedReason: 'no-siblings' }
 	| null {
@@ -967,7 +966,7 @@ export function deleteBranch(
 		//      position. Move it to a valid replacement first instead of letting
 		//      it go null. (The fanout-marker clear above is the NO-ACTION case —
 		//      that FK was added by ALTER and the app must null it explicitly.)
-		//   2. orphan-media hard-delete (must run BEFORE decrement; it
+		//   2. orphan-media trash (must run BEFORE decrement; it
 		//      compares each media's ref_count to its local link count
 		//      inside the deletion set, and that comparison is only
 		//      meaningful pre-decrement)
@@ -993,14 +992,14 @@ export function deleteBranch(
 			.run();
 
 		const deletedIds = [...toDelete];
-		const toUnlink = hardDeleteOrphanGeneratedMediaForMessages(tx, deletedIds, userId);
+		const trashedMediaIds = trashOrphanGeneratedMediaForMessages(tx, deletedIds, userId);
 		decrementMediaForMessages(tx, deletedIds);
 
 		tx.delete(messages)
 			.where(and(eq(messages.conversationId, conversationId), inArray(messages.id, deletedIds)))
 			.run();
 
-		return { deletedIds, newActiveLeaf: cursor, toUnlink };
+		return { deletedIds, newActiveLeaf: cursor, trashedMediaIds };
 	});
 }
 

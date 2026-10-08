@@ -4,6 +4,7 @@ import { createReadStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { getMediaForUser } from '$lib/server/db/queries/media';
 import { getMediaStore } from '$lib/server/media/disk-store';
+import { servableForRequest } from '$lib/server/media/trash';
 import { getOrCreateThumbnail } from '$lib/server/media/thumbnail';
 import {
 	attachmentDisposition,
@@ -50,11 +51,11 @@ import type { RequestHandler } from './$types';
  * finding the index before it could even try. The visible result was
  * blank tiles. A cached 30 KB JPEG costs one request and always works.
  */
-export const GET: RequestHandler = async ({ locals, params }) => {
+export const GET: RequestHandler = async ({ locals, params, url }) => {
 	requireUser(locals);
 
 	const row = getMediaForUser(params.id, locals.user.id);
-	if (!row || row.hardDeletedAt !== null) error(404, 'Media not found');
+	if (!row || !servableForRequest(row, url)) error(404, 'Media not found');
 
 	// `file` kind only — a spreadsheet has no frame to show. Images and videos
 	// both do, and both take the same path from here.

@@ -14,21 +14,18 @@
  *
  * The DB query (`deleteBranch`) handles the order-sensitive bookkeeping:
  * reassign active_leaf to a sibling's deepest descendant (only when the leaf
- * was inside the deleted subtree), hard-delete
- * generated media that exists only inside the deleted subtree, decrement
- * media refs for the remaining (still-referenced) media, then delete the
- * messages. This endpoint is responsible for unlinking the orphan-media
- * bytes from disk after the DB transaction commits — that step has to
- * happen outside the txn (file unlinks aren't transactional, so doing
- * them inside would mean a rolled-back transaction could leave files
- * deleted from disk but still referenced from the DB).
+ * was inside the deleted subtree), move generated media that exists only
+ * inside the deleted subtree to the trash ("Recently deleted" in the
+ * gallery — this delete is unconfirmed, so its media must be recoverable),
+ * decrement media refs for the remaining (still-referenced) media, then
+ * delete the messages. Nothing is unlinked here; the purger expires the
+ * trash.
  */
 
 import { error } from '@sveltejs/kit';
 import { requireFound, requireUser } from '$lib/server/auth/guard';
 import { getConversationMeta } from '$lib/server/db/queries/conversations';
 import { deleteBranch } from '$lib/server/db/queries/messages';
-import { unlinkMediaFiles } from '$lib/server/media/disk-store';
 import type { RequestHandler } from './$types';
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
@@ -43,10 +40,6 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 	if ('refusedReason' in result) {
 		error(400, 'Cannot delete a branch that has no siblings');
 	}
-
-	// Unlink orphaned media bytes after the txn commits (see the file
-	// header and unlinkMediaFiles for the ordering rationale).
-	await unlinkMediaFiles(result.toUnlink, 'branch.delete');
 
 	return new Response(null, { status: 204 });
 };

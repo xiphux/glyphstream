@@ -87,7 +87,7 @@ export async function collectConversationFiles(
 				inArray(messageMedia.messageId, messageIds),
 				eq(media.userId, userId),
 				// Don't include hard-deleted rows — the file is gone.
-				// `isNull` on hardDeletedAt would normally do this, but
+				// `isNull` on deletedAt would normally do this, but
 				// for round-trip purposes the simpler check works since
 				// hard-deleted rows have null storagePath only after a
 				// later cleanup pass; for in-flight tool calls the row

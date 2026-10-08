@@ -23,7 +23,7 @@
  * and the recovery flow picks it up.
  */
 
-import { hardDeleteMediaForUser, linkMessageMedia } from '../db/queries/media';
+import { linkMessageMedia, purgeTrashForUser, trashMediaForUser } from '../db/queries/media';
 import { unlinkMediaFiles } from '../media/disk-store';
 import { appendMessage } from '../db/queries/messages';
 import {
@@ -460,10 +460,11 @@ export async function runMediaRelay(
 				// Best-effort: a failed cleanup leaves the orphan this exists to
 				// prevent, but must not turn a cancellation into a relay that throws.
 				try {
-					const deleted = hardDeleteMediaForUser(produced.mediaId, params.userId);
-					if (deleted) {
+					// Straight past the trash: the user never saw this result, so
+					// there's nothing for "Recently deleted" to rescue.
+					if (trashMediaForUser(produced.mediaId, params.userId)) {
 						await unlinkMediaFiles(
-							[{ id: produced.mediaId, storagePath: deleted.storagePath }],
+							purgeTrashForUser([produced.mediaId], params.userId),
 							'media-relay.discard',
 						);
 					}

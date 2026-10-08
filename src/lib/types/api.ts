@@ -1802,6 +1802,21 @@ export interface GalleryUnitsPage {
 }
 
 /** A conversation that references a given media row (lightbox reverse lookup). */
+/** One item on the gallery's "Recently deleted" page (`/gallery/trash`).
+ *  Deliberately thinner than `MediaListItem`: the page offers restore and
+ *  delete-forever, not the lightbox's regenerate / favorite / avatar actions. */
+export interface TrashedMediaItem {
+	id: string;
+	kind: 'image' | 'video';
+	promptExcerpt: string | null;
+	sourceModel: string | null;
+	createdAt: number;
+	deletedAt: number;
+	/** When the purger will unlink it for good — `deletedAt` + the retention.
+	 *  Computed server-side so the client never carries its own copy of it. */
+	expiresAt: number;
+}
+
 export interface MediaConversationRef {
 	id: string;
 	title: string | null;

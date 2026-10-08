@@ -11,7 +11,6 @@ import {
 	setDisabledFeatures,
 	unarchiveConversation,
 } from '$lib/server/db/queries/conversations';
-import { unlinkMediaFiles } from '$lib/server/media/disk-store';
 import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
 import {
 	getAvatarDrawSince,
@@ -147,7 +146,7 @@ export const DELETE: RequestHandler = async ({ locals, params, url }) => {
 	// SvelteKit's fetch boundaries, so we use a flag here. Default false
 	// (library model: media is preserved unless the user explicitly opts in).
 	const deleteMedia = url.searchParams.get('deleteMedia') === 'true';
-	const { ok, toUnlink } = deleteConversation(params.id, locals.user.id, {
+	const { ok } = deleteConversation(params.id, locals.user.id, {
 		deleteMedia,
 	});
 	if (!ok) error(404, 'Conversation not found');
@@ -162,11 +161,6 @@ export const DELETE: RequestHandler = async ({ locals, params, url }) => {
 	void cancelInFlightGenerations(params.id).catch((e: unknown) => {
 		console.warn('[conversations.delete] cancelling in-flight generation failed:', e);
 	});
-
-	// File unlinks happen *after* the DB transaction commits — doing them
-	// inside the txn would let a rollback strand files deleted from disk
-	// but still referenced from the DB. See unlinkMediaFiles.
-	await unlinkMediaFiles(toUnlink, 'conversations.delete');
 
 	return new Response(null, { status: 204 });
 };
