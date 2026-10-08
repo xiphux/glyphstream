@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { invalidate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { ChevronLeft, ZoomIn } from '@lucide/svelte';
 	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
@@ -64,7 +64,7 @@
 			const { restored } = await post('/api/media/trash/restore', { ids });
 			after();
 			toast.success(`Restored ${plural(restored)} to the gallery`);
-			await invalidateAll();
+			await invalidate('app:trash');
 		} catch (e) {
 			toast.error(`Couldn't restore: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
@@ -105,7 +105,7 @@
 				all ? { deletedUpTo: data.items[0].deletedAt } : { ids: selectedIds },
 			);
 			selected = new Set();
-			await invalidateAll();
+			await invalidate('app:trash');
 		} catch (e) {
 			toast.error(`Couldn't delete: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {

@@ -1805,7 +1805,8 @@ export interface GalleryUnitsPage {
  *  The full `MediaListItem` shape because the page opens it in the same
  *  lightbox the gallery uses (actions withheld; see its `trashed` prop).
  *  `conversationId` / `conversationTitle` are always null: a delete drops the
- *  message links they're derived from. */
+ *  message links they're derived from. `promptFull` is null too — not sent,
+ *  since nothing a trashed item offers reads it (see `listTrashForUser`). */
 export interface TrashedMediaItem extends MediaListItem {
 	kind: 'image' | 'video';
 	deletedAt: number;

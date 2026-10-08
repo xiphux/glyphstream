@@ -1157,7 +1157,6 @@ export function listTrashForUser(userId: string, limit = 1000): TrashedMediaRow[
 			sourceEndpointId: media.sourceEndpointId,
 			sourceModel: media.sourceModel,
 			promptExcerpt: media.promptExcerpt,
-			promptFull: media.promptFull,
 			originalPrompt: media.originalPrompt,
 			aspectRatio: media.aspectRatio,
 			createdAt: media.createdAt,
@@ -1180,10 +1179,15 @@ export function listTrashForUser(userId: string, limit = 1000): TrashedMediaRow[
 		.all();
 	// The WHERE pins `kind` to image/video and `deletedAt` non-null; the select's
 	// types can't see that. No conversation join: a delete dropped the links.
+	// `promptFull` isn't selected: it runs to thousands of characters, and the
+	// only things that read it (regenerate, use as starting image) are withheld
+	// on a trashed item — the viewer shows the excerpt. Restore puts it back
+	// within reach.
 	return rows.map((r) => ({
 		...withFavoriteFlag(r),
 		kind: r.kind as 'image' | 'video',
 		deletedAt: r.deletedAt!,
+		promptFull: null,
 		conversationId: null,
 		conversationTitle: null,
 	}));
