@@ -45,6 +45,7 @@ const ROUTES: Record<string, RouteCase> = {
 		refused: ['user'],
 	},
 	'/(app)/gallery': { path: () => '/gallery', renders: ['admin', 'user'] },
+	'/(app)/gallery/trash': { path: () => '/gallery/trash', renders: ['admin', 'user'] },
 	'/(app)/settings/endpoints': {
 		path: () => '/settings/endpoints',
 		renders: ['admin'],
