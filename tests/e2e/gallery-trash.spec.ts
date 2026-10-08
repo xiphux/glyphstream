@@ -97,17 +97,21 @@ test('deleted media waits in Recently deleted, and can be restored or deleted fo
 	const viewer = page.getByRole('dialog', { name: 'Media preview' });
 	await expect(viewer).toBeVisible();
 	await expect(viewer.getByText('a red kite')).toBeVisible();
-	const full = await viewer.locator('img').first().getAttribute('src');
+	// By alt text, not position: the viewer is a carousel over the whole trash,
+	// so the first <img> in it is the first SLIDE, not necessarily this one.
+	const full = await viewer.getByRole('img', { name: 'a red kite' }).getAttribute('src');
 	expect((await page.request.get(full!)).status()).toBe(200);
 	await expect(viewer.getByRole('button', { name: /Download|Share/ })).toHaveCount(0);
 	await expect(viewer.getByRole('button', { name: /Regenerate|starting image/ })).toHaveCount(0);
-	await viewer.getByRole('button', { name: 'Close', exact: true }).click();
-	await expect(viewer).toHaveCount(0);
+	// Opening it selected nothing.
 	await expect(page.getByText(/selected/)).toHaveCount(0);
 
-	// Restore one.
-	await red.click();
-	await page.getByRole('button', { name: 'Restore' }).click();
+	// Restore from the viewer: it steps to the remaining item rather than
+	// closing, so a review pass can carry on.
+	await viewer.getByRole('button', { name: 'Restore', exact: true }).click();
+	await expect(viewer.getByRole('img', { name: 'a blue boat' })).toBeVisible();
+	await viewer.getByRole('button', { name: 'Close', exact: true }).click();
+	await expect(viewer).toHaveCount(0);
 	await expect(red).toHaveCount(0);
 	await expect(blue).toBeVisible();
 

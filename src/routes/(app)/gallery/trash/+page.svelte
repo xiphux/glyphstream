@@ -54,12 +54,15 @@
 		return (await res.json()) as Record<string, number>;
 	}
 
-	async function restoreSelected() {
-		if (busy || selectedCount === 0) return;
+	/** Restore `ids`; `after` runs once the server has them back, before the
+	 *  list reloads. Shared by the toolbar (the selection) and the viewer (the
+	 *  one item on screen). */
+	async function restore(ids: string[], after: () => void) {
+		if (busy || ids.length === 0) return;
 		busy = true;
 		try {
-			const { restored } = await post('/api/media/trash/restore', { ids: selectedIds });
-			selected = new Set();
+			const { restored } = await post('/api/media/trash/restore', { ids });
+			after();
 			toast.success(`Restored ${plural(restored)} to the gallery`);
 			await invalidateAll();
 		} catch (e) {
@@ -67,6 +70,19 @@
 		} finally {
 			busy = false;
 		}
+	}
+
+	function restoreSelected() {
+		return restore(selectedIds, () => (selected = new Set()));
+	}
+
+	/** From the viewer: step to a neighbour (next, else previous) so a review
+	 *  pass can carry on; the restored item drops out of the list on reload,
+	 *  and with nothing left the viewer closes itself (`viewing` goes null). */
+	function restoreViewing(id: string) {
+		const i = data.items.findIndex((m) => m.id === id);
+		const neighbour = data.items[i + 1] ?? data.items[i - 1] ?? null;
+		return restore([id], () => (viewingId = neighbour?.id ?? null));
 	}
 
 	async function purge(all: boolean) {
@@ -230,5 +246,7 @@
 	onClose={() => (viewingId = null)}
 	{siblings}
 	onNavigate={(id: string) => (viewingId = id)}
+	onRestore={restoreViewing}
+	restoringId={busy ? viewingId : null}
 	trashed
 />

@@ -13,6 +13,7 @@
 		Share,
 		Star,
 		Trash2,
+		Undo2,
 		UserRound,
 		X,
 	} from '@lucide/svelte';
@@ -36,6 +37,14 @@
 		onDelete?: (id: string) => void | Promise<void>;
 		/** Media id currently being deleted, used to disable the delete button. */
 		deletingId?: string | null;
+		/**
+		 * Optional Restore action — the trash's counterpart to `onDelete`, wired
+		 * only by Recently deleted (alongside `trashed`). Same division of labour:
+		 * the caller owns the request and decides what's shown next.
+		 */
+		onRestore?: (id: string) => void | Promise<void>;
+		/** Media id currently being restored, used to disable the restore button. */
+		restoringId?: string | null;
 		/**
 		 * Optional "conversations referencing this media" section.
 		 *  - `undefined`: don't render the section at all (chat-side use case).
@@ -136,6 +145,8 @@
 		onClose,
 		onDelete,
 		deletingId = null,
+		onRestore = undefined,
+		restoringId = null,
 		conversationsUsingThis = undefined,
 		conversationsError = null,
 		inConversation = false,
@@ -732,6 +743,18 @@
 						{:else}
 							<Download size={14} strokeWidth={2.25} />
 						{/if}
+					</button>
+				{/if}
+				{#if onRestore}
+					<button
+						type="button"
+						onclick={() => onRestore?.(m.id)}
+						disabled={restoringId === m.id}
+						title={restoringId === m.id ? 'Restoring…' : 'Restore'}
+						aria-label="Restore"
+						class="flex h-8 w-8 items-center justify-center rounded-md border border-media-border bg-media-surface text-media-fg-secondary transition hover:bg-media-surface-hover disabled:opacity-50"
+					>
+						<Undo2 size={14} strokeWidth={2.25} />
 					</button>
 				{/if}
 				{#if onDelete}
