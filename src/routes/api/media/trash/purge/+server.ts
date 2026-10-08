@@ -8,7 +8,9 @@ import type { RequestHandler } from './$types';
 
 /**
  * "Delete forever" from the trash. Body `{ ids: string[] }` for a selection, or
- * `{ all: true }` to empty it. Returns `{ purged: N }`.
+ * `{ deletedUpTo: number }` to empty it — the newest `deletedAt` the page
+ * showed, so a delete that landed after the page loaded survives (see
+ * purgeTrashForUser). Returns `{ purged: N }`.
  *
  * Bytes are unlinked after the rows commit — doing it inside the transaction
  * would let a rollback strand rows pointing at deleted files. See
@@ -17,9 +19,17 @@ import type { RequestHandler } from './$types';
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
 	requireUser(locals);
-	const body = await parseJsonBody<{ ids?: unknown; all?: unknown }>(request);
-	if (body.all !== undefined && body.all !== true) error(400, "'all' must be true when present");
-	const purged = purgeTrashForUser(body.all === true ? 'all' : parseTrashIds(body), locals.user.id);
+	const body = await parseJsonBody<{ ids?: unknown; deletedUpTo?: unknown }>(request);
+	let which: string[] | { deletedUpTo: number };
+	if (body.deletedUpTo !== undefined) {
+		if (typeof body.deletedUpTo !== 'number' || !Number.isFinite(body.deletedUpTo)) {
+			error(400, "'deletedUpTo' must be a timestamp");
+		}
+		which = { deletedUpTo: body.deletedUpTo };
+	} else {
+		which = parseTrashIds(body);
+	}
+	const purged = purgeTrashForUser(which, locals.user.id);
 	await unlinkMediaFiles(purged, 'media.trash.purge');
 	return json({ purged: purged.length });
 };

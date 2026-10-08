@@ -1149,15 +1149,22 @@ describe('trash: list / restore / purge / expiry', () => {
 		expect(purgeTrashForUser([a.id], u.id)).toEqual([]);
 	});
 
-	it('purge "all" empties the whole trash, unlisted kinds included, and never live rows', () => {
+	it('Empty purges what was deleted up to the cutoff, unlisted kinds included, and nothing newer', () => {
 		const u = seedUser();
 		const img = makeMedia(u.id);
 		const file = makeMedia(u.id, { kind: 'file', contentType: 'text/csv' });
+		const newer = makeMedia(u.id);
 		const live = makeMedia(u.id);
-		bulkTrashMediaForUser([img.id, file.id], u.id);
-		expect(new Set(purgeTrashForUser('all', u.id).map((r) => r.id))).toEqual(
+		bulkTrashMediaForUser([img.id, file.id, newer.id], u.id);
+		setDeletedAt(img.id, 1_000);
+		setDeletedAt(file.id, 900);
+		// Deleted in another tab after the page loaded: not on screen, so it stays.
+		setDeletedAt(newer.id, 2_000);
+
+		expect(new Set(purgeTrashForUser({ deletedUpTo: 1_000 }, u.id).map((r) => r.id))).toEqual(
 			new Set([img.id, file.id]),
 		);
+		expect(getRow(newer.id)?.purgedAt).toBeNull();
 		expect(getRow(live.id)?.purgedAt).toBeNull();
 		expect(getRow(live.id)?.deletedAt).toBeNull();
 	});

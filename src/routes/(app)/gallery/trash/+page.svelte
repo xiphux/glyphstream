@@ -97,7 +97,13 @@
 		if (!ok) return;
 		busy = true;
 		try {
-			await post('/api/media/trash/purge', all ? { all: true } : { ids: selectedIds });
+			// Empty sends the newest deletion on screen (the list is newest-first)
+			// rather than "everything", so nothing deleted since the page loaded
+			// goes with it unseen.
+			await post(
+				'/api/media/trash/purge',
+				all ? { deletedUpTo: data.items[0].deletedAt } : { ids: selectedIds },
+			);
 			selected = new Set();
 			await invalidateAll();
 		} catch (e) {

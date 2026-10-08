@@ -1226,40 +1226,31 @@ export function restoreMediaForUser(ids: readonly string[], userId: string): str
 /**
  * "Delete forever" from the trash: stamp `purged_at` on the caller's trashed
  * rows and return their storage paths for the caller to unlink AFTER this
- * commits (see `unlinkMediaFiles`). `ids: 'all'` empties the whole trash —
- * including the file/upload rows `listTrashForUser` doesn't show, since "empty"
- * should leave nothing behind.
+ * commits (see `unlinkMediaFiles`). One `UPDATE … RETURNING`, so the rows
+ * stamped are exactly the rows returned.
+ *
+ * `{ deletedUpTo }` is "Empty": everything deleted at or before that moment —
+ * the newest deletion the page was showing. Not "everything in the trash right
+ * now": a branch or fan-out delete in another tab can land while the page sits
+ * open, and an unconfirmed delete is the case the trash exists for, so Empty
+ * must not take something the user never saw. It does take the file/upload
+ * rows `listTrashForUser` doesn't list, and anything past its cap, both of
+ * which are older than what was shown.
  */
 export function purgeTrashForUser(
-	ids: readonly string[] | 'all',
+	which: readonly string[] | { deletedUpTo: number },
 	userId: string,
 ): Array<{ id: string; storagePath: string }> {
-	if (ids !== 'all' && ids.length === 0) return [];
-	return getDb().transaction((tx) => {
-		const rows = tx
-			.select({ id: media.id, storagePath: media.storagePath })
-			.from(media)
-			.where(
-				and(
-					eq(media.userId, userId),
-					isNotNull(media.deletedAt),
-					isNull(media.purgedAt),
-					ids === 'all' ? undefined : inArray(media.id, ids as string[]),
-				),
-			)
-			.all();
-		if (rows.length === 0) return [];
-		tx.update(media)
-			.set({ purgedAt: Date.now() })
-			.where(
-				inArray(
-					media.id,
-					rows.map((r) => r.id),
-				),
-			)
-			.run();
-		return rows;
-	});
+	let scope;
+	if ('deletedUpTo' in which) scope = lte(media.deletedAt, which.deletedUpTo);
+	else if (which.length > 0) scope = inArray(media.id, [...which]);
+	else return [];
+	return getDb()
+		.update(media)
+		.set({ purgedAt: Date.now() })
+		.where(and(eq(media.userId, userId), isNotNull(media.deletedAt), isNull(media.purgedAt), scope))
+		.returning({ id: media.id, storagePath: media.storagePath })
+		.all();
 }
 
 // --- Per-conversation orphan analysis (drives the delete-conversation UI) ---
