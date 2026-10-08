@@ -33,8 +33,8 @@
  *       2. Find uploaded rows where `unreferenced_since < now - graceMs`
  *          AND `deleted_at IS NULL`, unlink the file from disk
  *          via MediaStore, and stamp `deleted_at` + `purged_at`.
- *       3. Find trashed rows where `deleted_at < now - retention`
- *          AND `purged_at IS NULL`, unlink, and stamp `purged_at`.
+ *       3. Claim trashed rows where `deleted_at < now - retention`
+ *          AND `purged_at IS NULL` (stamp `purged_at`), then unlink.
  *   - We bound batch size per phase (500) so a backlog after a long
  *     downtime can't lock up the DB or blow the event loop with a single
  *     huge transaction. The next tick picks up where this one left off.
@@ -46,10 +46,9 @@
  */
 
 import {
-	findExpiredTrash,
+	claimExpiredTrash,
 	findPurgeCandidates,
 	markHardDeleted,
-	markPurged,
 	stampOrphanedZeroRefRows,
 	type PurgeCandidate,
 } from '../db/queries/media';
@@ -70,7 +69,8 @@ let running = false;
 
 /**
  * Unlink each candidate's bytes, then `mark` the row — only rows whose bytes
- * actually went are marked, so a failed unlink is retried next tick.
+ * actually went are marked, so a failed unlink is retried next tick (for a
+ * caller whose `mark` is what takes the row out of its candidate query).
  *
  * Concurrent rather than one candidate at a time. Each delete is three unlinks
  * (original + .thumb.jpg + .vision.jpg), so a full 500-row batch was up to 1500
@@ -129,10 +129,13 @@ export async function runPurgeSweep(): Promise<{
 			findPurgeCandidates(now - GRACE_PERIOD_MS, BATCH_SIZE),
 			markHardDeleted,
 		);
-		const trashExpired = await unlinkAndMark(
-			findExpiredTrash(now - TRASH_RETENTION_MS, BATCH_SIZE),
-			markPurged,
-		);
+		// Already stamped purged by the claim (see `claimExpiredTrash` for why
+		// it can't mark after the unlink like the upload phase does), so there's
+		// nothing to mark; this only borrows the bounded-concurrency unlink. A
+		// failed unlink is logged and leaks the file.
+		const claimed = claimExpiredTrash(now - TRASH_RETENTION_MS, BATCH_SIZE);
+		await unlinkAndMark(claimed, () => {});
+		const trashExpired = claimed.length;
 
 		if (stamped > 0 || hardDeleted > 0 || trashExpired > 0) {
 			console.log(

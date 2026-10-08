@@ -1562,26 +1562,44 @@ export function markHardDeleted(mediaId: string): void {
 }
 
 /**
- * Trashed rows whose retention has run out (`deleted_at <= olderThanMs`),
- * oldest first. Every user, every origin and kind — same trusted-maintenance
- * scoping as `findPurgeCandidates`. Served by the partial `idx_media_trash`,
- * which holds only the trash.
+ * Claim trashed rows whose retention has run out (`deleted_at <= olderThanMs`),
+ * oldest first: stamp `purged_at` and return their storage paths for the caller
+ * to unlink AFTER this commits. Every user, every origin and kind — same
+ * trusted-maintenance scoping as `findPurgeCandidates`. Served by the partial
+ * `idx_media_trash`, which holds only the trash.
+ *
+ * Claim-then-unlink, not unlink-then-mark like the upload phase, because a
+ * trashed row can be RESTORED. Marking after an awaited unlink left a window
+ * in which a restore cleared `deleted_at`, the unlink took the bytes anyway,
+ * and the row came back to the gallery as a permanently broken tile. Here the
+ * select and the stamp are one synchronous transaction, so a restore lands
+ * either before (the row no longer matches and is skipped) or after (it sees
+ * `purged_at` and refuses). The cost is the same as `purgeTrashForUser`'s: a
+ * failed unlink leaks the file rather than being retried.
  */
-export function findExpiredTrash(olderThanMs: number, limit = 500): PurgeCandidate[] {
-	return getDb()
-		.select({ id: media.id, storagePath: media.storagePath })
-		.from(media)
-		.where(
-			and(isNotNull(media.deletedAt), isNull(media.purgedAt), lte(media.deletedAt, olderThanMs)),
-		)
-		.orderBy(asc(media.deletedAt))
-		.limit(limit)
-		.all();
-}
-
-/** Stamp a trashed row purged (post file unlink). */
-export function markPurged(mediaId: string): void {
-	getDb().update(media).set({ purgedAt: Date.now() }).where(eq(media.id, mediaId)).run();
+export function claimExpiredTrash(olderThanMs: number, limit = 500): PurgeCandidate[] {
+	return getDb().transaction((tx) => {
+		const rows = tx
+			.select({ id: media.id, storagePath: media.storagePath })
+			.from(media)
+			.where(
+				and(isNotNull(media.deletedAt), isNull(media.purgedAt), lte(media.deletedAt, olderThanMs)),
+			)
+			.orderBy(asc(media.deletedAt))
+			.limit(limit)
+			.all();
+		if (rows.length === 0) return [];
+		tx.update(media)
+			.set({ purgedAt: Date.now() })
+			.where(
+				inArray(
+					media.id,
+					rows.map((r) => r.id),
+				),
+			)
+			.run();
+		return rows;
+	});
 }
 
 /**

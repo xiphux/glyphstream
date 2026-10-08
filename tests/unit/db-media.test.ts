@@ -12,11 +12,10 @@ vi.mock('$lib/server/db/client', () => ({
 import {
 	bulkTrashMediaForUser,
 	decrementMediaForMessages,
-	findExpiredTrash,
+	claimExpiredTrash,
 	findPurgeCandidates,
 	getMediaForUser,
 	listTrashForUser,
-	markPurged,
 	purgeTrashForUser,
 	restoreMediaForUser,
 	trashMediaForUser,
@@ -1163,7 +1162,7 @@ describe('trash: list / restore / purge / expiry', () => {
 		expect(getRow(live.id)?.deletedAt).toBeNull();
 	});
 
-	it('findExpiredTrash returns trash past the cutoff across users, oldest first', () => {
+	it('claimExpiredTrash claims trash past the cutoff across users, oldest first', () => {
 		const u1 = seedUser();
 		const u2 = seedUser();
 		const old1 = makeMedia(u1.id);
@@ -1179,9 +1178,29 @@ describe('trash: list / restore / purge / expiry', () => {
 		setDeletedAt(purged.id, 500);
 		purgeTrashForUser([purged.id], u1.id);
 
-		expect(findExpiredTrash(5_000).map((c) => c.id)).toEqual([old2.id, old1.id]);
-		markPurged(old2.id);
-		expect(findExpiredTrash(5_000).map((c) => c.id)).toEqual([old1.id]);
+		expect(claimExpiredTrash(5_000, 1).map((c) => c.id)).toEqual([old2.id]);
+		expect(getRow(old2.id)?.purgedAt).not.toBeNull();
+		expect(claimExpiredTrash(5_000).map((c) => c.id)).toEqual([old1.id]);
+		expect(claimExpiredTrash(5_000)).toEqual([]);
+		expect(getRow(fresh.id)?.purgedAt).toBeNull();
+	});
+
+	it('a claimed row can no longer be restored, and a restored row is never claimed', () => {
+		const u = seedUser();
+		const claimed = makeMedia(u.id);
+		const restored = makeMedia(u.id);
+		bulkTrashMediaForUser([claimed.id, restored.id], u.id);
+		setDeletedAt(claimed.id, 1_000);
+		setDeletedAt(restored.id, 1_000);
+
+		// Restored first: it leaves the trash, so the claim passes it over.
+		expect(restoreMediaForUser([restored.id], u.id)).toEqual([restored.id]);
+		expect(claimExpiredTrash(5_000).map((c) => c.id)).toEqual([claimed.id]);
+		// Claimed first: its bytes are about to go, so a restore is refused
+		// rather than putting a broken tile back in the gallery.
+		expect(restoreMediaForUser([claimed.id], u.id)).toEqual([]);
+		expect(getRow(restored.id)?.purgedAt).toBeNull();
+		expect(getRow(restored.id)?.deletedAt).toBeNull();
 	});
 });
 
