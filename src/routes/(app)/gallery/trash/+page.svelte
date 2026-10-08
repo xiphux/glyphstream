@@ -139,8 +139,8 @@
 
 	<div class="flex-1 overflow-y-auto px-4 pb-4">
 		<p class="pb-3 text-xs text-fg-muted">
-			Deleted images and videos stay here for 30 days, then are removed for good. Tap to select.
-			Restored items return to the gallery, but not to the conversation they came from.
+			Deleted images and videos stay here for 30 days, then are removed for good. Restored items
+			return to the gallery, but not to the conversation they came from.
 		</p>
 		{#if data.items.length === 0}
 			<p class="px-2 py-12 text-center text-sm text-fg-muted">Nothing here.</p>
