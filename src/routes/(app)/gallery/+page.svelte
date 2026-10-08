@@ -994,7 +994,8 @@
 				{#if !drillUnit}
 					{#if searchExpanded}
 						<!-- w-32 on mobile is a width budget: title + open box + Favorites +
-						     View options + Select must fit one row at 360px (w-40 wrapped). -->
+						     View options + Select must fit one row at 360px (w-40 wrapped).
+						     Recently deleted hides while this is open; it didn't fit too. -->
 						<div class="relative">
 							<input
 								type="search"
@@ -1039,6 +1040,22 @@
 						{@render favoriteFacet(false)}
 						{@render modelFacet()}
 					</div>
+					<!-- A link, not a toggle: unlike everything around it, this leaves the
+					     list for a different one, so it doesn't belong in View options
+					     with the settings for this one. Kept away from Select, where a
+					     trash can would read as "delete the selection". Hidden on mobile
+					     while searching — the one state the 360px bar can't fit it — and
+					     shown with an empty library, which is exactly when you'd look. -->
+					<a
+						href={resolve('/gallery/trash')}
+						aria-label="Recently deleted"
+						title="Recently deleted"
+						class="{searchExpanded
+							? 'hidden sm:flex'
+							: 'flex'} items-center justify-center rounded-md border border-border-strong bg-surface-panel p-1.5 text-fg-secondary transition hover:bg-surface-raised"
+					>
+						<Trash2 size={16} />
+					</a>
 					<Popover.Root>
 						<Popover.Trigger
 							aria-label="View options"
@@ -1135,17 +1152,6 @@
 										</div>
 									</div>
 								{/if}
-								<!-- The trash lives here rather than in the bar: the bar's mobile
-								     width budget is spent (see the search box note), and this is
-								     a destination you go looking for, not a filter you toggle. -->
-								<div class="mt-1 border-t border-border"></div>
-								<a
-									href={resolve('/gallery/trash')}
-									class="flex items-center gap-2 rounded-md p-2 font-medium text-fg transition hover:bg-surface-raised"
-								>
-									<Trash2 size={14} class="text-fg-secondary" />
-									Recently deleted
-								</a>
 							</Popover.Content>
 						</Popover.Portal>
 					</Popover.Root>

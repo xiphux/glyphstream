@@ -65,8 +65,7 @@ test('deleted media waits in Recently deleted, and can be restored or deleted fo
 	await page.getByRole('button', { name: 'Delete', exact: true }).last().click();
 	await expect(page.locator(TILE)).toHaveCount(3);
 
-	// The trash is reached from View options, at every width.
-	await page.getByRole('button', { name: 'View options' }).click();
+	// The trash is a toolbar link at every width.
 	await page.getByRole('link', { name: 'Recently deleted' }).click();
 	await expect(page).toHaveURL(/\/gallery\/trash$/);
 
