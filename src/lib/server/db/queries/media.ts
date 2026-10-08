@@ -1077,7 +1077,7 @@ export function setMediaFavorite(mediaId: string, userId: string, favorite: bool
 // `deleted_at` is stamped (so every live-row predicate in the tree stops
 // seeing it, exactly as before the trash existed) but the bytes stay and
 // `purged_at` stays NULL. The purger's trash phase unlinks them once
-// `TRASH_RETENTION_MS` has passed (`findExpiredTrash` + `markPurged`); until
+// `TRASH_RETENTION_MS` has passed (`claimExpiredTrash`); until
 // then `restoreMediaForUser` puts the row back.
 //
 // What a restore does NOT bring back is the row's message links. The delete
@@ -1237,9 +1237,11 @@ export function restoreMediaForUser(ids: readonly string[], userId: string): str
  * the newest deletion the page was showing. Not "everything in the trash right
  * now": a branch or fan-out delete in another tab can land while the page sits
  * open, and an unconfirmed delete is the case the trash exists for, so Empty
- * must not take something the user never saw. It does take the file/upload
- * rows `listTrashForUser` doesn't list, and anything past its cap, both of
- * which are older than what was shown.
+ * must not take something the user never saw. It does take anything past the
+ * list's cap (older than what was shown), and the file/upload rows
+ * `listTrashForUser` doesn't list that were deleted by then — one deleted
+ * after the newest item shown (say, a CSV-only conversation) stays and simply
+ * ages out with the rest.
  */
 export function purgeTrashForUser(
 	which: readonly string[] | { deletedUpTo: number },
@@ -1515,7 +1517,7 @@ export interface PurgeCandidate {
  * this query. Under the library model it persists indefinitely once
  * produced — only explicit user actions (gallery delete, conversation-
  * delete "also delete media" checkbox, branch-delete) delete it, and those
- * go through the trash, which the purger expires via `findExpiredTrash`.
+ * go through the trash, which the purger expires via `claimExpiredTrash`.
  * This query's job is reaping uploads the user picked but never sent.
  *
  * Deliberately NOT user-scoped: this (and `markHardDeleted` /
