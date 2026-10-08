@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.44.0
+
 ### Added
 
 - **Recently deleted** in the gallery's toolbar. Images and videos
