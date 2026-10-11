@@ -26,6 +26,20 @@ export const sveltekitOptions: Parameters<typeof sveltekit>[0] = {
 	// update-prompt wiring, so left on it would race ours for the same URL.
 	serviceWorker: { register: false },
 
+	// SvelteKit's own CSRF origin check is off; the app's gate in
+	// hooks.server.ts is the one that runs. Since SvelteKit 3 Kit's check also
+	// refuses BODY-LESS mutations (a DELETE, an empty POST) whose Origin differs
+	// from the origin Kit infers for itself — and adapter-node infers `https` +
+	// the Host header. That is wrong over plain http (local and LAN installs, the
+	// e2e server) and behind any proxy that doesn't forward Host (nginx's default
+	// proxy_pass), so every delete in the app 403'd there. The app's gate keys
+	// off the browser-set Sec-Fetch-Site precisely to be immune to that, and
+	// covers more: every mutating /api request, JSON included, which Kit's check
+	// never inspected. It reaches only /api/*, so
+	// tests/unit/csrf-gate-coverage.test.ts fails if a mutating route — or a form
+	// action — ever appears anywhere else.
+	csrf: { trustedOrigins: ['*'] },
+
 	// Content-Security-Policy — defense in depth against any XSS that
 	// slips past our explicit sinks (markdown-it runs with `html: false`
 	// and the three `{@html}` sites all hold server-controlled HTML,
