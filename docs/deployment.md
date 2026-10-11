@@ -223,7 +223,7 @@ unchanged. Tested with:
 
 > **Don't compress at the proxy for static assets.** adapter-node builds
 > with `precompress: true`, so static assets ship as `.br` + `.gz` on disk
-> and sirv negotiates via `Accept-Encoding`. Re-compressing at the proxy
+> and adapter-node negotiates via `Accept-Encoding`. Re-compressing at the proxy
 > double-compresses.
 
 ## Client IP + auth rate limiting (`ADDRESS_HEADER`)

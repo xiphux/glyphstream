@@ -435,7 +435,7 @@ exact-match `apple-touch-startup-image` media query.
   path — it costs 50–200 KB raw per grammar and the marginal value
   past Python tails off fast.
 - **Don't compress _static assets_ at the reverse proxy.** adapter-node has
-  `precompress: true`, so they ship as `.br` + `.gz` on disk and sirv
+  `precompress: true`, so they ship as `.br` + `.gz` on disk and adapter-node
   negotiates via `Accept-Encoding`. Re-compressing at the proxy
   double-compresses. **This does not extend to dynamic responses** — SSR HTML
   and `__data.json` are generated per request and are never precompressed, and

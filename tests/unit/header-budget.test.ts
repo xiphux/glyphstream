@@ -4,8 +4,9 @@
  * Worth testing precisely because both failure directions are silent and remote:
  * over budget, nginx swaps the response for its own 502 while this server logs a
  * clean 200; over-trimmed, the page still renders and simply stops hydrating
- * promptly, because in this app the modulepreload hints exist only in that
- * header.
+ * promptly, wherever the modulepreload hints live only in that header. (Since
+ * SvelteKit 3 they don't here — they're `<link>` tags in the head — and the
+ * trimmer is dormant; see header-budget.ts.)
  */
 import { describe, expect, it } from 'vitest';
 import {

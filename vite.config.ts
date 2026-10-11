@@ -8,7 +8,7 @@ import { defineConfig, type PluginOption } from 'vite';
 import { visualizer } from 'rollup-plugin-visualizer';
 import { WEB_MANIFEST_JSON } from './src/lib/web-manifest.ts';
 
-// Load .env into process.env, where $lib/server/env.ts reads everything (see
+// Load .env into process.env, where #lib/server/env.ts reads everything (see
 // the note at its top for why not a Kit env module). Vite reads .env only for
 // its own `import.meta.env`, so without this `pnpm dev` would start with none
 // of it. Variables already set win, as they did under Kit. A missing file is

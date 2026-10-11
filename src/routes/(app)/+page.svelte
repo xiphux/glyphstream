@@ -185,6 +185,7 @@
 	// it used to win outright. Benign — every `modelId` consumer is idempotent —
 	// but it is why the selection can flip once on arrival.
 	afterNavigate(({ shallow, type }) => {
+		// Skip shallow updates — see the note at the (app) layout's afterNavigate.
 		if (shallow && type === 'goto') return;
 
 		const urlModel = page.url.searchParams.get('model');
@@ -582,6 +583,7 @@
 	// it also catches client-side navs back to this page) and only fills an
 	// empty box, so it never clobbers a gallery-launch regenerate prompt.
 	afterNavigate(({ shallow, type }) => {
+		// Skip shallow updates — see the note at the (app) layout's afterNavigate.
 		if (shallow && type === 'goto') return;
 
 		const hash = window.location.hash;
@@ -596,13 +598,13 @@
 		// microtask it's safe. Best-effort — a lingering fragment is harmless.
 		//
 		// A SHALLOW update (SvelteKit 3's replacement for `replaceState`), not a
-		// navigation like the `?notice=` strip below, and the difference is this
-		// handler's FIRST line. A shallow update records the page's pre-strip
-		// URL in the history entry, so a later Back
-		// onto it restores `page.url` with the fragment still attached while the
-		// address bar stays clean — and what this reads is the address bar. A
-		// navigation would buy nothing and cost a focus reset on every
-		// share-sheet entry. (Nothing here may start reading `page.url.hash`
+		// navigation like the `?notice=` strip below, and the difference is the
+		// `window.location.hash` read at the top of this handler. A shallow
+		// update records the page's pre-strip URL in the history entry, so a
+		// later Back onto it restores `page.url` with the fragment still
+		// attached while the address bar stays clean — and what this reads is
+		// the address bar. A navigation would buy nothing and cost a focus reset
+		// on every share-sheet entry. (Nothing here may start reading `page.url.hash`
 		// without revisiting that.)
 		queueMicrotask(() => {
 			// `.catch`, not try/catch: `goto` reports failure by rejecting, where
@@ -622,9 +624,10 @@
 	// gone. Strip the param afterwards so nothing replays the toast; other
 	// params (`?model=`) are preserved.
 	//
-	// A replacing `goto`, where the fragment handler above correctly uses
-	// `replaceState`, because this one reads `page.url` and that one reads the
-	// address bar. Kit's `replaceState` is the shallow-routing API: it rewrites
+	// A replacing `goto`, where the fragment handler above correctly uses a
+	// shallow update, because this one reads `page.url` and that one reads the
+	// address bar. A shallow update (`goto(…, { shallow: true })`, formerly
+	// Kit's `replaceState`) is the shallow-routing API: it rewrites
 	// the bar while recording the page's REAL url — `?notice=` included — in the
 	// entry's `PAGE_URL_KEY`, and never updates `page.url`. So a Back onto that
 	// entry once another navigation has moved the navigation index takes Kit's
@@ -644,6 +647,7 @@
 	// above has stripped the fragment from the bar, and re-injecting it would
 	// re-trigger that handler for nothing.
 	afterNavigate(({ shallow, type }) => {
+		// Skip shallow updates — see the note at the (app) layout's afterNavigate.
 		if (shallow && type === 'goto') return;
 
 		const message = noticeMessage(page.url.searchParams.get('notice'));

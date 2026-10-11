@@ -21,7 +21,7 @@ export const sveltekitOptions: Parameters<typeof sveltekit>[0] = {
 	adapter: adapter({ precompress: true }),
 
 	// SvelteKit builds src/service-worker.ts, but registration is ours:
-	// $lib/sw/register.ts, from the root layout. Kit's own registration is
+	// #lib/sw/register.ts, from the root layout. Kit's own registration is
 	// a bare `register()` in every page's inline script, with none of the
 	// update-prompt wiring, so left on it would race ours for the same URL.
 	serviceWorker: { register: false },

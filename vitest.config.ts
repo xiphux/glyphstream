@@ -69,7 +69,7 @@ export default defineConfig({
 		// behave differently on a dev machine (real config present) than in CI
 		// (no config.toml). The loaders degrade to their documented defaults on
 		// ENOENT, so "config absent" is the deterministic, isolated baseline.
-		// Lands because $lib/server/env.ts reads process.env, which this sets.
+		// Lands because #lib/server/env.ts reads process.env, which this sets.
 		// (It didn't while env.ts read Kit's `$env/dynamic/private`, empty under
 		// vitest; config-isolation.test.ts guards against that coming back.)
 		env: { CONFIG_PATH: '/glyphstream-test-no-such-config.toml' },

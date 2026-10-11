@@ -202,8 +202,8 @@ const AUTH_RATE_LIMIT_PATH_PREFIX = '/api/auth/';
  * measured from the last activity — not from process start, which `proc` already
  * reports and which the readings have already ruled out.
  *
- * Two things do NOT reset it: static assets, which sirv serves ahead of the SSR
- * handler and which therefore never reach this hook, and the container's health
+ * Two things do NOT reset it: static assets, which adapter-node serves ahead of
+ * the SSR handler and which therefore never reach this hook, and the container's health
  * probe (see HEALTH_PROBE_PATH). Enumerating only the first of those is what
  * shipped this field capped at 30 seconds — if another unattended poller is ever
  * added, it belongs on that list too.
@@ -290,9 +290,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// reports `idleMs` in the first place.
 	if (path !== HEALTH_PROBE_PATH) lastRequestAt = Date.now();
 
-	// CSRF gate for /api/* state-mutating requests. SvelteKit's built-in
-	// csrf.checkOrigin only fires on form-encoded submissions, not the
-	// JSON POST/PATCH/DELETE traffic our API actually uses. SameSite=Lax
+	// CSRF gate for /api/* state-mutating requests — the ONLY CSRF check:
+	// SvelteKit's own origin check is off (`csrf.trustedOrigins: ['*']` in
+	// sveltekit.config.ts, which says why), and it never looked at the JSON
+	// POST/PATCH/DELETE traffic our API actually uses anyway. It reaches /api/*
+	// only, so tests/unit/csrf-gate-coverage.test.ts fails if a mutating route
+	// or form action appears anywhere else. SameSite=Lax
 	// on the session cookie blocks the cookie from being sent on cross-
 	// origin POSTs already, but that's a property of the cookie, not
 	// the route — a single explicit check here makes the same guarantee

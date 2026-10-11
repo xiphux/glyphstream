@@ -49,8 +49,9 @@
 	// The strip is a replacing `goto`, and neither shortcut works. A raw
 	// `history.replaceState` swaps the entry's state object wholesale, dropping
 	// the router's own history keys, so a later popstate onto that entry misses
-	// its scroll and snapshot restore. Kit's `replaceState` is the SHALLOW-
-	// routing API: it rewrites the address bar while recording the page's real
+	// its scroll and snapshot restore. Kit's shallow update (`goto(…, { shallow:
+	// true })`, formerly `replaceState`) is the SHALLOW-routing API: it rewrites
+	// the address bar while recording the page's real
 	// URL — `?link=` and all — in the entry's `PAGE_URL_KEY`, which a Back onto
 	// that entry then navigates to, announcing the link a second time. (Only
 	// once another navigation has moved the navigation index; a Back Kit still
@@ -64,11 +65,12 @@
 	// URL swap.
 	//
 	// The microtask is load-bearing, and for a sharper reason than the two
-	// deferred `replaceState`s on the new-chat page: `goto` has no not-started
+	// deferred updates on the new-chat page: `goto` has no not-started
 	// guard at all, so calling it before `initialize()` sets `started` re-enters
 	// that function and mounts a SECOND app root — silently, in production, not
 	// only in dev. By the next microtask `started` is true.
 	afterNavigate(({ shallow, type }) => {
+		// Skip shallow updates — see the note at the (app) layout's afterNavigate.
 		if (shallow && type === 'goto') return;
 
 		const result = page.url.searchParams.get('link');

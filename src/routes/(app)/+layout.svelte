@@ -651,6 +651,9 @@
 	// completed navigation, same-URL ones included, plus once on enter — and
 	// `_invalidate()` never dispatches it.
 	afterNavigate(({ shallow, type }) => {
+		// Not a navigation. Since SvelteKit 3 a shallow `goto` (a page stripping
+		// its own URL fragment, say) dispatches afterNavigate too; every handler
+		// here exists for real navigations, so each one skips it.
 		if (shallow && type === 'goto') return;
 
 		// Held open while a conversation's overflow menu is showing: the menu

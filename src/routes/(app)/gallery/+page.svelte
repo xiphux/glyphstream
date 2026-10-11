@@ -256,6 +256,7 @@
 	const searchExpanded = $derived(searchOpen || !!data.q);
 
 	afterNavigate(({ to, shallow, type }) => {
+		// Skip shallow updates — see the note at the (app) layout's afterNavigate.
 		if (shallow && type === 'goto') return;
 
 		const q = to?.url.searchParams.get('q')?.trim() ?? '';
