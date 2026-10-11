@@ -14,7 +14,7 @@
  * passkey-only account (the normal result of the passkey invite flow) must not
  * be allowed to delete its sole credential. Mirrors the OAuth-unlink sibling.
  */
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { getAppLockTimeout } from '#lib/server/auth/app-lock.js';
 import {
@@ -76,5 +76,5 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	const name = body.name === null ? null : sanitizeName(body.name);
 	const matched = renameCredential(locals.user.id, params.id, name);
 	if (!matched) error(404, 'Passkey not found');
-	return json({ ok: true, name });
+	return Response.json({ ok: true, name });
 };

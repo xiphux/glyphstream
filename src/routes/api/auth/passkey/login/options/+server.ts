@@ -7,7 +7,7 @@
  * Stashes the challenge in a short-lived httpOnly cookie that
  * `login/verify` reads back.
  */
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import {
 	generateAuthenticationOptionsAny,
 	setLoginChallengeCookie,
@@ -19,5 +19,5 @@ export const POST: RequestHandler = async ({ cookies }) => {
 	if (!passkeyLoginEnabled()) error(403, 'Passkey login is disabled');
 	const options = await generateAuthenticationOptionsAny();
 	setLoginChallengeCookie(cookies, options.challenge);
-	return json(options);
+	return Response.json(options);
 };

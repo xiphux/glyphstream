@@ -10,7 +10,7 @@
  * sync its state without a follow-up GET.
  */
 
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import { getUserPreferences, setUserPreferences } from '#lib/server/db/queries/user-preferences.js';
@@ -25,7 +25,7 @@ export const GET: RequestHandler = ({ locals }) => {
 	requireUser(locals);
 	const prefs = getUserPreferences(locals.user.id);
 	if (!prefs) error(404, 'User not found');
-	return json(prefs);
+	return Response.json(prefs);
 };
 
 export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
@@ -176,5 +176,5 @@ export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 		httpOnly: false,
 		sameSite: 'lax',
 	});
-	return json(next);
+	return Response.json(next);
 };

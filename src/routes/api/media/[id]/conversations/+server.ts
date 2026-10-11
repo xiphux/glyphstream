@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { listConversationsForMedia } from '#lib/server/db/queries/media.js';
 import type { RequestHandler } from './$types';
@@ -17,5 +16,5 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = ({ locals, params }) => {
 	requireUser(locals);
 	const conversations = listConversationsForMedia(params.id, locals.user.id);
-	return json({ conversations });
+	return Response.json({ conversations });
 };

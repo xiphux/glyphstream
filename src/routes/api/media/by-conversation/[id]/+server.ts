@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { listMediaForConversation } from '#lib/server/db/queries/media.js';
 import type { RequestHandler } from './$types';
@@ -24,5 +23,5 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 	const kind = kindParam === 'image' || kindParam === 'video' ? kindParam : undefined;
 	const model = url.searchParams.get('model') ?? undefined;
 	const items = listMediaForConversation(params.id, locals.user.id, { kind, model });
-	return json({ items });
+	return Response.json({ items });
 };

@@ -7,7 +7,7 @@
  * tools, not a POST/PATCH — locked-in scope for the MVP is view + delete
  * only, no manual add/edit from the UI.
  */
-import { json } from '@sveltejs/kit';
+
 import { requireUser } from '#lib/server/auth/guard.js';
 import { listMemoriesForUser } from '#lib/server/db/queries/memories.js';
 import type { RequestHandler } from './$types';
@@ -15,5 +15,5 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = ({ locals }) => {
 	requireUser(locals);
 	const memories = listMemoriesForUser(locals.user.id);
-	return json({ memories });
+	return Response.json({ memories });
 };

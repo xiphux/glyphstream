@@ -1,4 +1,4 @@
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { MAX_MODEL_IDS_PER_REQUEST } from '#lib/model-ids.js';
 import { parseModelId } from '#lib/server/endpoints/model-id.js';
 import { requireUser } from '#lib/server/auth/guard.js';
@@ -74,7 +74,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		const wantedEndpoints = new Set(
 			[...wanted].map((id) => parseModelId(id)?.endpointId).filter((e) => e !== undefined),
 		);
-		return json({
+		return Response.json({
 			object: 'list',
 			data: allModels.filter((m) => wanted.has(m.id)),
 			endpoint_errors: results
@@ -86,7 +86,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		.filter((r) => r.error)
 		.map((r) => ({ endpointId: r.endpointId, error: r.error }));
 
-	return json({
+	return Response.json({
 		object: 'list',
 		data: allModels,
 		// Per-endpoint errors surface here so a single broken upstream

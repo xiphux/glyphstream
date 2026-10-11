@@ -11,7 +11,7 @@
  * ending at the external IdP. Top-level navigations (anchor clicks,
  * `window.location.href` assignment) aren't policed the same way.
  */
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { getEnabledProvider } from '#lib/server/auth/oauth/registry.js';
 import {
 	CODE_VERIFIER_COOKIE,
@@ -47,5 +47,5 @@ export const POST: RequestHandler = async ({ request, cookies, url, params }) =>
 	const carry = sign({ displayName, email }, CARRY_TTL_MS);
 	setCarryCookie(cookies, SETUP_OAUTH_CARRY_COOKIE, carry, STATE_TTL_SECONDS);
 
-	return json({ url: oauthUrl.toString() });
+	return Response.json({ url: oauthUrl.toString() });
 };

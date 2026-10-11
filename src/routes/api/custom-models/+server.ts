@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import {
@@ -11,7 +10,7 @@ import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals }) => {
 	requireUser(locals);
-	return json({ customModels: listCustomModelsForUser(locals.user.id) });
+	return Response.json({ customModels: listCustomModelsForUser(locals.user.id) });
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -30,5 +29,5 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		parameters: validated.parameters,
 		defaultDisabledFeatures: validated.defaultDisabledFeatures,
 	});
-	return json({ customModel: model }, { status: 201 });
+	return Response.json({ customModel: model }, { status: 201 });
 };

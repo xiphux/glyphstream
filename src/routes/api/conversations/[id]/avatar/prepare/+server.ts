@@ -29,7 +29,7 @@
  * only the single-model background draw.
  */
 
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireFound, requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import { getConversationMeta, setFanoutParent } from '#lib/server/db/queries/conversations.js';
@@ -134,5 +134,5 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		// round's portrait re-sends what drew IT, not this round's prompt.
 		siblings: getSiblingAssistants(params.id, source.id, { avatarPrompts: true }),
 	};
-	return json(response);
+	return Response.json(response);
 };

@@ -15,7 +15,7 @@
  * stops being a candidate.
  */
 
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import { setCustomModelAvatar } from '#lib/server/db/queries/custom-models.js';
@@ -43,12 +43,12 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 		if (result.reason === 'not_found') error(404, 'Custom model not found');
 		error(400, 'Media not found');
 	}
-	return json({ customModel: result.model });
+	return Response.json({ customModel: result.model });
 };
 
 export const DELETE: RequestHandler = ({ locals, params }) => {
 	requireUser(locals);
 	const result = setCustomModelAvatar(params.id, locals.user.id, null);
 	if (!result.ok) error(404, 'Custom model not found');
-	return json({ customModel: result.model });
+	return Response.json({ customModel: result.model });
 };

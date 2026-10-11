@@ -1,4 +1,4 @@
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireAdmin } from '#lib/server/auth/guard.js';
 import { ConfigError, type LoadedEndpoint } from '#lib/server/endpoints/config.js';
 import { pauseResourceGroup } from '#lib/server/endpoints/pause.js';
@@ -23,14 +23,14 @@ export const PUT: RequestHandler = ({ locals, params, setHeaders }) => {
 	requireAdmin(locals);
 	setHeaders({ 'cache-control': 'no-store' });
 	pauseResourceGroup(findEndpoint(params.id), true);
-	return json(getEndpointsStatus());
+	return Response.json(getEndpointsStatus());
 };
 
 export const DELETE: RequestHandler = ({ locals, params, setHeaders }) => {
 	requireAdmin(locals);
 	setHeaders({ 'cache-control': 'no-store' });
 	pauseResourceGroup(findEndpoint(params.id), false);
-	return json(getEndpointsStatus());
+	return Response.json(getEndpointsStatus());
 };
 
 function findEndpoint(id: string): LoadedEndpoint {

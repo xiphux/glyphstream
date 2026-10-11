@@ -27,7 +27,6 @@
  * there is genuinely nothing to promote instead.
  */
 
-import { json } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { clearFanoutParent } from '#lib/server/db/queries/conversations.js';
 import type { RequestHandler } from './$types';
@@ -39,5 +38,5 @@ export const DELETE: RequestHandler = ({ locals, params }) => {
 	// idempotent by nature — "no parked fan-out here" is the state it exists to
 	// reach, and reporting that as an error would only invite a retry loop.
 	clearFanoutParent(params.id, locals.user.id);
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

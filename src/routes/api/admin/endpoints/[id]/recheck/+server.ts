@@ -1,4 +1,4 @@
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireAdmin } from '#lib/server/auth/guard.js';
 import { recheckEndpoint } from '#lib/server/endpoints/list-models.js';
 import { getEndpointsStatus } from '#lib/server/endpoints/status.js';
@@ -20,5 +20,5 @@ export const POST: RequestHandler = async ({ locals, params, setHeaders }) => {
 	requireAdmin(locals);
 	setHeaders({ 'cache-control': 'no-store' });
 	if (!(await recheckEndpoint(params.id))) error(404, 'No such endpoint');
-	return json(getEndpointsStatus());
+	return Response.json(getEndpointsStatus());
 };

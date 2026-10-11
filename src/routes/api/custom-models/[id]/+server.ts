@@ -1,4 +1,4 @@
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireFound, requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import {
@@ -20,7 +20,7 @@ export const GET: RequestHandler = ({ locals, params }) => {
 		getCustomModelForUser(params.id, locals.user.id),
 		'Custom model not found',
 	);
-	return json({ customModel: m });
+	return Response.json({ customModel: m });
 };
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
@@ -66,7 +66,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 
 	const updated = updateCustomModel(params.id, locals.user.id, patch);
 	if (!updated) error(404, 'Custom model not found');
-	return json({ customModel: updated });
+	return Response.json({ customModel: updated });
 };
 
 export const DELETE: RequestHandler = ({ locals, params }) => {

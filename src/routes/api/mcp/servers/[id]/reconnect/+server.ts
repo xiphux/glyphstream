@@ -6,7 +6,7 @@
  * can see them this conversation.
  */
 
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { getMcpServerCfg, retryMcpServer } from '#lib/server/mcp/registry.js';
 import { registerMcpServerTools } from '#lib/server/mcp/tool-bridge.js';
@@ -51,5 +51,5 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 	// server looking at their own credential. Non-admins never see a global
 	// server's error because the 403 above returns first; redacting here too
 	// would be dead code dressed up as a second layer.
-	return json({ state: result.state, error: result.error });
+	return Response.json({ state: result.state, error: result.error });
 };

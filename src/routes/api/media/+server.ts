@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { listMediaForUser } from '#lib/server/db/queries/media.js';
 import type { RequestHandler } from './$types';
@@ -35,5 +34,5 @@ export const GET: RequestHandler = ({ locals, url }) => {
 		cursor,
 		limit: Number.isFinite(limit) ? limit : undefined,
 	});
-	return json(page);
+	return Response.json(page);
 };

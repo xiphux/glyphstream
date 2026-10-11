@@ -40,7 +40,6 @@
  * be seeing on /settings/mcp.
  */
 
-import { json } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { awaitMcpReady, isMcpReady } from '#lib/server/mcp/bootstrap.js';
 import { healthyBootstrapBudgetMs, withSoftDeadline } from '#lib/server/mcp/registry.js';
@@ -61,5 +60,5 @@ export const GET: RequestHandler = async ({ locals }) => {
 	await withSoftDeadline(awaitMcpReady(), Math.min(healthyBootstrapBudgetMs(), HARD_CAP_MS));
 	// Distinguishes "settled, go re-read" from "gave up waiting" — the client
 	// only re-pulls the layout data for the former.
-	return json({ ready: isMcpReady() });
+	return Response.json({ ready: isMcpReady() });
 };

@@ -23,7 +23,7 @@
  */
 
 import { Buffer } from 'node:buffer';
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { insertMedia } from '#lib/server/db/queries/media.js';
 import { getMediaStore } from '#lib/server/media/disk-store.js';
@@ -121,7 +121,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		originalFilename,
 	});
 
-	return json({
+	return Response.json({
 		id,
 		contentType: ref.contentType,
 		byteSize: ref.byteSize,

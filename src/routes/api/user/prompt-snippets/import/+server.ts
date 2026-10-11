@@ -6,7 +6,7 @@
  * two-content-type shape as skill import. The parse + write logic lives in
  * `import-snippets.ts`; this handler only marshals and maps the result.
  */
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import { importSnippets } from '#lib/server/prompt-snippets/import-snippets.js';
@@ -52,7 +52,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
 	const result = importSnippets({ userId: locals.user.id, content, overwrite });
 	if (!result.ok) error(result.status, result.error);
-	return json({
+	return Response.json({
 		imported: result.imported,
 		updated: result.updated,
 		skipped: result.skipped,

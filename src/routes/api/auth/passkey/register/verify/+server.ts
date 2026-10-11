@@ -9,7 +9,7 @@
  * prompt doesn't carry it) and is trimmed + length-capped server-side
  * so a stray client-only check can't bypass it.
  */
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { verifyRegistrationCeremony } from '#lib/server/auth/passkey.js';
 import { type PasskeySummary, insertCredential } from '#lib/server/db/queries/passkey.js';
@@ -70,5 +70,5 @@ export const POST: RequestHandler = async ({ locals, cookies, request }) => {
 		createdAt: Date.now(),
 		lastUsedAt: null,
 	};
-	return json(summary, { status: 201 });
+	return Response.json(summary, { status: 201 });
 };

@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { requireAdmin } from '#lib/server/auth/guard.js';
 import { getEndpointsStatus } from '#lib/server/endpoints/status.js';
 import type { RequestHandler } from './$types';
@@ -17,5 +16,5 @@ export const GET: RequestHandler = ({ locals, setHeaders }) => {
 	requireAdmin(locals);
 	// A poll response that a browser or proxy may reuse is worse than no poll.
 	setHeaders({ 'cache-control': 'no-store' });
-	return json(getEndpointsStatus());
+	return Response.json(getEndpointsStatus());
 };

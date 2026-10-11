@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { listGalleryUnitMembers } from '#lib/server/gallery/layout.js';
 import type { RequestHandler } from './$types';
@@ -14,11 +13,11 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = ({ locals, url }) => {
 	requireUser(locals);
 	const key = url.searchParams.get('key');
-	if (!key) return json({ items: [] });
+	if (!key) return Response.json({ items: [] });
 	const kindParam = url.searchParams.get('kind');
 	const kind = kindParam === 'image' || kindParam === 'video' ? kindParam : undefined;
 	const model = url.searchParams.get('model') ?? undefined;
 	const favorite = url.searchParams.get('fav') === '1';
 	const items = listGalleryUnitMembers(locals.user.id, key, { kind, model, favorite });
-	return json({ items });
+	return Response.json({ items });
 };

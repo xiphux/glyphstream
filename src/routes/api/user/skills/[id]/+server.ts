@@ -7,7 +7,7 @@
  * user's row. Editing a skill is delete + re-import (the SKILL.md frontmatter
  * is the source of truth for name/description), so there is no body-edit PATCH.
  */
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import { deleteSkill, setSkillEnabled } from '#lib/server/db/queries/skills.js';
@@ -22,7 +22,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	}
 	const matched = setSkillEnabled(locals.user.id, params.id, body.enabled);
 	if (!matched) error(404, 'Skill not found');
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {

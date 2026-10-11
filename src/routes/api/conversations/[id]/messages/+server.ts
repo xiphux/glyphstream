@@ -1,4 +1,4 @@
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireFound, requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import {
@@ -761,7 +761,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				assistantMessage,
 				...(syncTitle ? { title: syncTitle } : {}),
 			};
-			return json(response);
+			return Response.json(response);
 		} finally {
 			syncSlot.release();
 		}

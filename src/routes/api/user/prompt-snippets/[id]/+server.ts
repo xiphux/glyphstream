@@ -8,7 +8,7 @@
  * inserted into — an inserted snippet is plain text with no back-link, the
  * same "materialized at use time" contract custom models have.
  */
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import {
@@ -37,7 +37,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 
 	const promptSnippet = updatePromptSnippet(params.id, locals.user.id, patch);
 	if (!promptSnippet) error(404, 'Snippet not found');
-	return json({ promptSnippet });
+	return Response.json({ promptSnippet });
 };
 
 export const DELETE: RequestHandler = ({ locals, params }) => {

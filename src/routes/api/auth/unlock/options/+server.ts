@@ -4,7 +4,7 @@
  * lock on (`PUT /api/auth/app-lock`). Offers ONLY this account's credentials;
  * see `generateAuthenticationOptionsForUser`.
  */
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import {
 	generateAuthenticationOptionsForUser,
 	setUnlockChallengeCookie,
@@ -22,5 +22,5 @@ export const POST: RequestHandler = async ({ locals, cookies }) => {
 	if (credentials.length === 0) error(409, 'This account has no passkeys');
 	const options = await generateAuthenticationOptionsForUser(credentials);
 	setUnlockChallengeCookie(cookies, options.challenge);
-	return json(options);
+	return Response.json(options);
 };

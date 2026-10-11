@@ -8,7 +8,7 @@
  * the page load, and adding a GET would be a second way to read the same
  * rows. Revocation is the only thing that needs an endpoint.
  */
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { revokeOtherSessionsForUser } from '#lib/server/auth/session.js';
 import type { RequestHandler } from './$types';
@@ -21,5 +21,5 @@ export const DELETE: RequestHandler = ({ locals }) => {
 	// and sign the caller out of their own session too.
 	if (!locals.sessionId) error(401, 'Authentication required');
 	const revoked = revokeOtherSessionsForUser(locals.user.id, locals.sessionId);
-	return json({ revoked });
+	return Response.json({ revoked });
 };

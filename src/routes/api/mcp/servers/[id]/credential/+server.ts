@@ -8,7 +8,7 @@
  * reconnects with the new token; PUT then re-handshakes so the page can show
  * whether the token actually works and (on success) register the user's tools.
  */
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import { dropUserConnection, getMcpServerCfg, retryMcpServer } from '#lib/server/mcp/registry.js';
@@ -36,7 +36,7 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 	// Drop any stale connection so the re-handshake uses the new token.
 	await dropUserConnection(id, locals.user.id);
 	const result = await retryMcpServer(id, locals.user.id);
-	return json({ state: result.state, error: result.error });
+	return Response.json({ state: result.state, error: result.error });
 };
 
 export const DELETE: RequestHandler = async ({ params, locals }) => {
@@ -46,5 +46,5 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 
 	const existed = deleteMcpCredential(locals.user.id, id);
 	await dropUserConnection(id, locals.user.id);
-	return json({ ok: true, existed });
+	return Response.json({ ok: true, existed });
 };

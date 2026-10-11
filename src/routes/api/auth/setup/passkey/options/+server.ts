@@ -10,7 +10,7 @@
  * atomically only after the verify endpoint sees a valid registration
  * response — abandoning the ceremony leaves no orphans.
  */
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { RP_NAME, getRpId, setRegistrationChallengeCookie } from '#lib/server/auth/passkey.js';
 import { generateRegistrationOptions } from '@simplewebauthn/server';
 import { SETUP_PASSKEY_CARRY_COOKIE, setupGate } from '#lib/server/auth/setup.js';
@@ -57,5 +57,5 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 		CARRY_TTL_MS / 1000,
 	);
 
-	return json(options);
+	return Response.json(options);
 };

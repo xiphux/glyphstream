@@ -6,7 +6,7 @@
  * authenticator already recorded as the userHandle) and the credential
  * row. Signs the operator in.
  */
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { verifyRegistrationCeremony } from '#lib/server/auth/passkey.js';
 import { SETUP_PASSKEY_CARRY_COOKIE, setupGate } from '#lib/server/auth/setup.js';
 import { verify } from '#lib/server/auth/signed-cookies.js';
@@ -62,5 +62,5 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 	const { token, expiresAt } = createSession(userId, request.headers.get('user-agent'));
 	setSessionCookie(cookies, token, expiresAt);
 
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

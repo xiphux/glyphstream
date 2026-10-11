@@ -19,7 +19,7 @@
  * A comparison can't: there is no winner until someone says so.
  */
 
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import {
@@ -84,5 +84,5 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	const selected = selectBranch(params.id, body.messageId);
 	if (!selected) error(404, 'Message not found');
 
-	return json({ ok: true, newActiveLeaf: selected.newActiveLeaf });
+	return Response.json({ ok: true, newActiveLeaf: selected.newActiveLeaf });
 };

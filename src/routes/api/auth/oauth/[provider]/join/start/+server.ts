@@ -10,7 +10,7 @@
  * setup endpoint (form-action 'self' would reject a POST ending at the
  * external IdP; a client-driven navigation isn't policed the same way).
  */
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { getEnabledProvider } from '#lib/server/auth/oauth/registry.js';
 import {
 	CODE_VERIFIER_COOKIE,
@@ -53,5 +53,5 @@ export const POST: RequestHandler = async ({ request, cookies, params }) => {
 	const carry = sign({ displayName, email, inviteToken }, CARRY_TTL_MS);
 	setCarryCookie(cookies, JOIN_OAUTH_CARRY_COOKIE, carry, STATE_TTL_SECONDS);
 
-	return json({ url: oauthUrl.toString() });
+	return Response.json({ url: oauthUrl.toString() });
 };

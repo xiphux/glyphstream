@@ -1,4 +1,4 @@
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import {
@@ -39,10 +39,10 @@ export const GET: RequestHandler = ({ locals, url }) => {
 	if (url.searchParams.get('generating') === '1') {
 		const ids = filterInFlight(listConversationIds(locals.user.id));
 		const body: GeneratingConversationsResponse = { ids, queuedIds: filterFullyQueued(ids) };
-		return json(body);
+		return Response.json(body);
 	}
 
-	return json({ conversations: listConversations(locals.user.id) });
+	return Response.json({ conversations: listConversations(locals.user.id) });
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -131,5 +131,5 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		// "Private chat" content seal — create-time only, never mutable via PATCH.
 		private: body.private ?? false,
 	});
-	return json({ conversation: conv }, { status: 201 });
+	return Response.json({ conversation: conv }, { status: 201 });
 };

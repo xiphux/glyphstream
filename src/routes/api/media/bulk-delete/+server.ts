@@ -1,4 +1,4 @@
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import { bulkTrashMediaForUser } from '#lib/server/db/queries/media.js';
@@ -41,5 +41,5 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	}
 
 	const deleted = bulkTrashMediaForUser(ids, locals.user.id);
-	return json({ deleted: deleted.length });
+	return Response.json({ deleted: deleted.length });
 };

@@ -6,7 +6,7 @@
  * prospective id the authenticator recorded as the userHandle), inserts the
  * credential, and consumes the invite — all in one transaction. Signs in.
  */
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { verifyRegistrationCeremony } from '#lib/server/auth/passkey.js';
 import {
 	JOIN_PASSKEY_CARRY_COOKIE,
@@ -76,5 +76,5 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	const { token, expiresAt } = createSession(userId, request.headers.get('user-agent'));
 	setSessionCookie(cookies, token, expiresAt);
 
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

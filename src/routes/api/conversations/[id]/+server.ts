@@ -1,4 +1,4 @@
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireFound, requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import {
@@ -45,7 +45,7 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 			getConversationMeta(params.id, locals.user.id),
 			'Conversation not found',
 		);
-		return json({
+		return Response.json({
 			inFlightSince: getInFlightSince(params.id),
 			inFlightGeneratingSince: getInFlightGeneratingSince(params.id),
 			avatarDrawSince: getAvatarDrawSince(params.id),
@@ -64,7 +64,7 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 	const inFlightGeneratingSince = getInFlightGeneratingSince(params.id);
 	const avatarDrawSince = getAvatarDrawSince(params.id);
 	const fanout = getFanoutRecoveryState(params.id, locals.user.id, conv.activeLeafMessageId);
-	return json({
+	return Response.json({
 		conversation: conv,
 		inFlightSince,
 		inFlightGeneratingSince,

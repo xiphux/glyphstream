@@ -13,7 +13,7 @@
  * opening the panel on a thread full of screenshots costs a few row reads rather
  * than tens of megabytes of encoding.
  */
-import { json } from '@sveltejs/kit';
+
 import { requireFound, requireUser } from '#lib/server/auth/guard.js';
 import { getConversationMeta } from '#lib/server/db/queries/conversations.js';
 import { walkActiveBranch } from '#lib/server/db/queries/messages.js';
@@ -152,5 +152,5 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 		contextWindow: modelEntry?.contextWindow ?? null,
 	});
 
-	return json(breakdown);
+	return Response.json(breakdown);
 };

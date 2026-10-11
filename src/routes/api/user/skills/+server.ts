@@ -9,7 +9,7 @@
  * these endpoints. Import parses + validates the SKILL.md frontmatter and
  * stores the bundle on disk; a duplicate name is a 409.
  */
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import { listSkillsForUser } from '#lib/server/db/queries/skills.js';
@@ -19,7 +19,7 @@ import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals }) => {
 	requireUser(locals);
-	return json({ skills: listSkillsForUser(locals.user.id) });
+	return Response.json({ skills: listSkillsForUser(locals.user.id) });
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -62,5 +62,5 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
 	const result = await importSkillBundle(locals.user.id, files);
 	if (!result.ok) error(result.status, result.error);
-	return json({ skill: result.skill }, { status: 201 });
+	return Response.json({ skill: result.skill }, { status: 201 });
 };

@@ -1,4 +1,3 @@
-import { json } from '@sveltejs/kit';
 import { requireFound, requireUser } from '#lib/server/auth/guard.js';
 import { getConversationMeta } from '#lib/server/db/queries/conversations.js';
 import { cancelInFlightGenerations } from '#lib/server/streaming/cancel.js';
@@ -20,5 +19,5 @@ export const POST: RequestHandler = async ({ locals, params }) => {
 
 	// Nothing in flight is not an error — succeed silently so the client UI can
 	// stay simple.
-	return json({ cancelled: await cancelInFlightGenerations(params.id) });
+	return Response.json({ cancelled: await cancelInFlightGenerations(params.id) });
 };

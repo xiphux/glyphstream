@@ -22,7 +22,7 @@
  * the reuse-prompt action. The branch requests each know only their own model.
  */
 
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { requireFound, requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import { getConversationMeta, setFanoutParent } from '#lib/server/db/queries/conversations.js';
@@ -106,5 +106,5 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	void startTitleTaskIfFirstExchange(params.id, locals.user.id);
 
 	const response: PrepareFanoutResponse = { userMessage };
-	return json(response);
+	return Response.json(response);
 };

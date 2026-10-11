@@ -4,7 +4,7 @@
  * verifies the signed assertion (userHandle cross-check + counter-clone
  * guard live in `verifyStoredCredentialAssertion`), and creates a session.
  */
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { AuthenticationResponseJSON } from '@simplewebauthn/server';
 import {
 	clearLoginChallengeCookie,
@@ -62,5 +62,5 @@ export const POST: RequestHandler = async ({ cookies, request }) => {
 	);
 	setSessionCookie(cookies, token, expiresAt);
 
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };
