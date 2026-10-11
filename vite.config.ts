@@ -106,13 +106,19 @@ export default defineConfig({
 		tailwindcss(),
 		sveltekit(sveltekitOptions),
 
+		// Client build only. SvelteKit 3 builds client, server and service worker
+		// as separate Vite environments, and each wrote this same report — so the
+		// last one, the service worker, was all it ever showed.
 		analyze &&
-			(visualizer({
-				filename: 'bundle-stats.html',
-				template: 'treemap',
-				gzipSize: true,
-				brotliSize: true,
-				open: false,
-			}) as PluginOption),
+			({
+				...visualizer({
+					filename: 'bundle-stats.html',
+					template: 'treemap',
+					gzipSize: true,
+					brotliSize: true,
+					open: false,
+				}),
+				applyToEnvironment: (environment) => environment.name === 'client',
+			} as PluginOption),
 	].filter(Boolean),
 });
