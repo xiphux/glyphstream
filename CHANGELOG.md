@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.44.1
+
 ### Fixed
 
 - **Refresh** on the "A new version is available" banner now always reloads

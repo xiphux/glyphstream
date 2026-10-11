@@ -134,9 +134,24 @@ test.describe('flow: theme switcher', () => {
 		// Default theme carries no data-theme attribute.
 		await expect(html).not.toHaveAttribute('data-theme', /.+/);
 
+		// Both theme clicks retry until they take effect. `goto` and `reload` resolve
+		// at `load`, but SvelteKit boots from a dynamic import that `load` doesn't
+		// wait for — so a click can land on the server-rendered button before
+		// hydration attaches its handler, and does nothing. CI caught exactly that
+		// on the click after the reload: no PATCH went out, and the page's own
+		// on-mount fetch arrived 50ms after the click. Selecting a theme is
+		// idempotent, so a repeated click is harmless.
+		const selectTheme = async (name: string | RegExp, applied: () => Promise<void>) => {
+			await expect(async () => {
+				await page.getByRole('button', { name }).click();
+				await applied();
+			}).toPass({ timeout: 10_000 });
+		};
+
 		// Pick Claude — the switcher flips the attribute live (no reload).
-		await page.getByRole('button', { name: /^Claude/ }).click();
-		await expect(html).toHaveAttribute('data-theme', 'claude');
+		await selectTheme(/^Claude/, () =>
+			expect(html).toHaveAttribute('data-theme', 'claude', { timeout: 1_000 }),
+		);
 
 		// theme-color meta tracks the active surface (browser-chrome tint).
 		// Compared as resolved COLOURS, not as strings: the meta is deliberately
@@ -174,8 +189,9 @@ test.describe('flow: theme switcher', () => {
 		// so a prefix match is one product-named control away from a
 		// strict-mode violation — and when this step fails, the DB pref stays
 		// dirty for every later test.
-		await page.getByRole('button', { name: 'GlyphStream Signature frosted glass' }).click();
-		await expect(html).not.toHaveAttribute('data-theme', /.+/);
+		await selectTheme('GlyphStream Signature frosted glass', () =>
+			expect(html).not.toHaveAttribute('data-theme', /.+/, { timeout: 1_000 }),
+		);
 	});
 
 	test('the theme-color meta lands as rgb(), not the raw oklch token', async ({ page }) => {
