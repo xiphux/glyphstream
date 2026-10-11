@@ -172,6 +172,8 @@ process.on('sveltekit:shutdown', async () => {
 // service worker (or manifest) and mask new versions from clients long
 // after a deploy. Explicit `no-cache` lets the bytes still be cached and
 // served on 304s after ETag revalidation, but forces the revalidation.
+// (The manifest is a route now, not a static file, so it has no ETag and a
+// revalidation re-sends its ~1 KB in full — cheap enough not to matter.)
 //
 // Note: SvelteKit's adapter-node already correctly tags `/_app/immutable/*`
 // with `cache-control: public, max-age=31536000, immutable` (1 year),
