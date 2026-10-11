@@ -30,10 +30,22 @@ import { Worker } from 'node:worker_threads';
 // Chunks whose evaluation IS the app, so importing them here would start a
 // second instance inside the running container, on the same DB: adapter-node's
 // handler calls `server.init`, which runs hooks.server's startup (sweepers, MCP
-// bootstrap, model listing). The code interpreter's worker refuses to load off
-// a worker thread. All three are still proven by run.sh, whose server can't
+// bootstrap, model listing), and its entry listens on the port the container's
+// server already holds. The code interpreter's worker refuses to load off a
+// worker thread. All of them are still proven by run.sh, whose server can't
 // boot and answer /api/health unless they load.
-const SKIP = [/\/handler-[^/]*\.js$/, /\/hooks\.server\.js-[^/]*\.js$/, /\/worker\.js$/];
+//
+// adapter-node 6 moved its own server code into build/server (it used to sit
+// beside it), under fixed names — and hooks.server went from a hashed chunk to
+// entries/. A name this list misses gets imported: the last time, that was the
+// listener (EADDRINUSE on :3000) and a second set of sweepers on the live DB.
+const SKIP = [
+	/\/server\/adapter-index\.js$/, // listens on PORT, installs signal handlers
+	/\/server\/adapter-node-handler\.js$/, // calls server.init
+	/\/server\/handler\.js$/, // re-exports the handler above
+	/\/hooks\.server(\.js-[^/]*)?\.js$/, // entries/hooks.server.js (kit 3)
+	/\/worker\.js$/,
+];
 
 const checks = {
 	async bundle() {
