@@ -1,10 +1,11 @@
 import process from 'node:process';
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { readdirSync, readFileSync } from 'node:fs';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
-import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 import { defineConfig, type PluginOption } from 'vite';
 import { visualizer } from 'rollup-plugin-visualizer';
+import { WEB_MANIFEST_JSON } from './src/lib/web-manifest.ts';
 
 // Enable bundle analysis with `ANALYZE=1 pnpm build`. Generates a
 // gzip + brotli treemap at bundle-stats.html in the project root —
@@ -22,9 +23,63 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 	version: string;
 };
 
+// The service worker's precache list, handed to src/service-worker.ts as
+// `__PRECACHE_MANIFEST__`. SvelteKit builds the worker in its own Vite pass but
+// passes this config's `define` through to it, the same way `__APP_VERSION__`
+// arrives there.
+//
+// Precache ONLY the root-level, non-hashed assets in static/ — the icons the SW
+// itself renders into notifications, plus the manifest. The hashed
+// chunks are cached too, but by a runtime route rather than from this
+// list — see the note at the end of this block. Between them those are
+// the only two routes the SW registers, so /api/*, SSE streams and
+// SSR'd HTML pass straight through to the network.
+//
+// Deliberately NOT `client/**` over js/css. That swept in every hashed
+// chunk — ~380 KB gzip across ~89 entries, including the markdown-it
+// and shiki chunks the route-lazy design exists to defer, and the
+// settings/gallery/admin chunks a given user may never open. Vite's
+// chunk hashes cascade through the import graph, so one shared-module
+// change rehashed many chunks and a large fraction of that re-installed
+// on every deploy, competing with foreground traffic
+// (registration starts right after page load).
+//
+// And there's no navigation fallback here by design — an offline
+// navigation needs SSR HTML that isn't precached either way — so
+// precached JS couldn't make a cold offline load work regardless.
+//
+// This block used to close by saying it bought very little, because
+// `/_app/immutable/*` is content-hashed and already served
+// `max-age=31536000, immutable`, so the browser's own HTTP cache would
+// cover repeat loads. That last part is false on the platform this app
+// is built for: the debug panel reported 41 of 41 chunks coming from
+// the network on three consecutive cold launches of an unchanged build,
+// hours apart, because WebKit does not reliably keep a standalone web
+// app's disk cache across termination. The chunks ARE cached now — by a
+// cache-first RUNTIME route in src/service-worker.ts, which stores only
+// what the app actually fetched and so avoids every cost catalogued
+// above. Precaching is still the wrong tool; caching was not.
+//
+// Revisions are content hashes, so the list — and with it the worker's bytes —
+// changes only when an icon or the manifest does. (Something else has to make
+// the worker differ between releases; see the build stamp in the worker.)
+const revision = (bytes: string | Buffer) =>
+	createHash('sha256').update(bytes).digest('hex').slice(0, 16);
+const staticDir = new URL('./static/', import.meta.url);
+const precacheManifest = [
+	...readdirSync(staticDir, { withFileTypes: true })
+		.filter((f) => f.isFile() && /\.(ico|png|svg)$/.test(f.name))
+		.map((f) => ({
+			url: `/${f.name}`,
+			revision: revision(readFileSync(new URL(f.name, staticDir))),
+		})),
+	{ url: '/manifest.webmanifest', revision: revision(WEB_MANIFEST_JSON) },
+];
+
 export default defineConfig({
 	define: {
 		__APP_VERSION__: JSON.stringify(pkg.version),
+		__PRECACHE_MANIFEST__: JSON.stringify(precacheManifest),
 	},
 	// Foundry allocates a unique port per worktree and exposes it as
 	// $VITE_PORT so parallel dev servers don't collide. When it's set we
@@ -39,130 +94,6 @@ export default defineConfig({
 	plugins: [
 		tailwindcss(),
 		sveltekit(),
-		SvelteKitPWA({
-			// 'injectManifest' lets us own the SW code (src/service-worker.ts)
-			// rather than letting Workbox auto-generate it. Required for the
-			// push + notificationclick handlers — generateSW can't take
-			// custom event listeners. We still get workbox-precaching for
-			// the static shell; the plugin injects __WB_MANIFEST into our
-			// SW source at build time.
-			strategies: 'injectManifest',
-			srcDir: 'src',
-			filename: 'service-worker.ts',
-			// Enable in dev so /manifest.webmanifest resolves and the icon
-			// renders the same as in prod. The actual SW registration is
-			// still gated by `import.meta.env.PROD` in src/routes/+layout.svelte,
-			// so the SW only runs in production builds — only the manifest
-			// + assets-served-from-the-plugin path is exercised in dev.
-			devOptions: { enabled: true, type: 'module' },
-			// 'prompt': new SW downloads in the background and waits to
-			// activate until the user opts in via the UpdateBanner that
-			// renders from +layout.svelte's onNeedRefresh callback.
-			// 'autoUpdate' would silently swap the SW on next nav, which
-			// can yank an in-flight stream or message-edit out from under
-			// the user with no warning. User-driven update means the
-			// refresh happens at a moment of their choosing.
-			registerType: 'prompt',
-			// We register the SW manually from src/routes/+layout.svelte via
-			// the virtual:pwa-register module. 'false' here keeps the plugin
-			// from also trying to inject a registration script (which needs
-			// extra SvelteKit hook glue to work).
-			injectRegister: false,
-			manifest: {
-				name: 'GlyphStream',
-				short_name: 'GlyphStream',
-				description: 'Lightweight chat over multiple OpenAI-compatible backends.',
-				// theme_color tints Android's browser/toolbar chrome before the
-				// page loads; syncSurfaceChrome() takes over from there. Same
-				// value and same reasoning as background_color below: it was
-				// `#0f172a`, the brand navy off icon.svg's tile, which is Tailwind
-				// slate-900 and nowhere on the Signature ramp — ΔE2000 9.5 from the
-				// surface the app actually paints. That fix landed on
-				// background_color and missed this field, leaving the manifest
-				// stating one pre-load color and app.html's <meta name="theme-color">
-				// stating another.
-				theme_color: '#080b10',
-				// background_color is Chrome's synthesised launch screen — the
-				// Android counterpart of the apple-touch-startup-image set, so it
-				// gets the same treatment: the dark `--color-surface` the app
-				// actually paints (see scripts/generate-pwa-splash.ts), not the
-				// brand navy, which measured ΔE2000 9.5 away from it and flashed.
-				// The manifest has no scheme variants, so one value has to serve
-				// both; dark is the one that can match exactly, and a light-scheme
-				// user's launch is no worse than it already was. The icon's own
-				// navy tile now reads as a faint square against this — accepted,
-				// it's far below the flash it replaces.
-				background_color: '#080b10',
-				display: 'standalone',
-				start_url: '/',
-				scope: '/',
-				icons: [
-					// SVG is the "any" form — Android/Chrome honor it and it
-					// stays crisp at any size. (iOS ignores manifest icons
-					// entirely: its home-screen icon comes from the
-					// apple-touch-icon PNG in app.html, and its launch image
-					// from the apple-touch-startup-image block there — iOS
-					// synthesises no splash from `background_color` the way
-					// Chrome does, so these icons never feed one.)
-					{
-						src: '/icon.svg',
-						sizes: 'any',
-						type: 'image/svg+xml',
-						purpose: 'any',
-					},
-					// Maskable PNGs are full-bleed (no rounded corners) so the
-					// Android adaptive-icon mask crops them cleanly. The old
-					// setup marked the rounded SVG 'any maskable', which let the
-					// OS mask clip its corners.
-					{
-						src: '/icon-192.png',
-						sizes: '192x192',
-						type: 'image/png',
-						purpose: 'maskable',
-					},
-					{
-						src: '/icon-512.png',
-						sizes: '512x512',
-						type: 'image/png',
-						purpose: 'maskable',
-					},
-				],
-			},
-			injectManifest: {
-				// Precache ONLY the root-level, non-hashed assets — the icons the SW
-				// itself renders into notifications, plus the manifest. The hashed
-				// chunks are cached too, but by a runtime route rather than from this
-				// list — see the note at the end of this block. Between them those are
-				// the only two routes the SW registers, so /api/*, SSE streams and
-				// SSR'd HTML pass straight through to the network.
-				//
-				// Deliberately NOT `client/**` over js/css. That swept in every hashed
-				// chunk — ~380 KB gzip across ~89 entries, including the markdown-it
-				// and shiki chunks the route-lazy design exists to defer, and the
-				// settings/gallery/admin chunks a given user may never open. Vite's
-				// chunk hashes cascade through the import graph, so one shared-module
-				// change rehashed many chunks and a large fraction of that re-installed
-				// on every deploy, competing with foreground traffic
-				// (`registerSW({ immediate: true })` starts right after page load).
-				//
-				// And there's no navigation fallback here by design — an offline
-				// navigation needs SSR HTML that isn't precached either way — so
-				// precached JS couldn't make a cold offline load work regardless.
-				//
-				// This block used to close by saying it bought very little, because
-				// `/_app/immutable/*` is content-hashed and already served
-				// `max-age=31536000, immutable`, so the browser's own HTTP cache would
-				// cover repeat loads. That last part is false on the platform this app
-				// is built for: the debug panel reported 41 of 41 chunks coming from
-				// the network on three consecutive cold launches of an unchanged build,
-				// hours apart, because WebKit does not reliably keep a standalone web
-				// app's disk cache across termination. The chunks ARE cached now — by a
-				// cache-first RUNTIME route in src/service-worker.ts, which stores only
-				// what the app actually fetched and so avoids every cost catalogued
-				// above. Precaching is still the wrong tool; caching was not.
-				globPatterns: ['client/*.{ico,png,svg,webmanifest}'],
-			},
-		}),
 		analyze &&
 			(visualizer({
 				filename: 'bundle-stats.html',

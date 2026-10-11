@@ -9,6 +9,13 @@ arrived.
 
 ## Unreleased
 
+### Fixed
+
+- **Refresh** on the "A new version is available" banner now always reloads
+  onto the new version. In a session where the app was first opened before it
+  had finished installing offline support, it used to dismiss the banner and
+  leave the old version running.
+
 ## v0.44.0
 
 ### Added

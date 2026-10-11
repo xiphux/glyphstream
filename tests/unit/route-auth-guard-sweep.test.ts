@@ -28,6 +28,8 @@ const ROUTES = join(__dirname, '../../src/routes');
 /** Handlers reachable signed out, by design. Keyed `<route dir> <METHOD>`. */
 const PUBLIC: Record<string, string> = {
 	'/api/health GET': 'container HEALTHCHECK',
+	'/manifest.webmanifest GET':
+		'the web app manifest; browsers fetch it without credentials, and it holds nothing per-user',
 	'/api/auth/logout POST': 'clears whatever session cookie is present; harmless without one',
 	'/api/auth/github/callback GET': 'OAuth callback, protected by its signed state cookie',
 	'/api/auth/oauth/[provider]/callback GET': 'OAuth callback, protected by its signed state cookie',

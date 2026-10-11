@@ -169,11 +169,11 @@
 		void import('$lib/status-bar-probe').then((m) => m.captureColdLaunchProbe());
 	});
 
-	// When a new SW is waiting, vite-plugin-pwa fires onNeedRefresh and
-	// returns an updateSW() we can call when the user opts in. We surface
-	// the prompt via UpdateBanner rather than silently reloading the page
-	// (registerType='prompt' in vite.config.ts) — silent reloads can yank
-	// in-flight streams or unsaved drafts out from under the user.
+	// When a new SW is waiting, $lib/sw/register.ts fires onNeedRefresh and
+	// returns an activate() we can call when the user opts in. We surface
+	// the prompt via UpdateBanner rather than silently reloading the page —
+	// silent reloads can yank in-flight streams or unsaved drafts out from
+	// under the user.
 	let updateAvailable = $state(false);
 	let triggerUpdate: (() => void) | null = $state(null);
 
@@ -210,30 +210,26 @@
 		// rather than clearing it.
 		void syncAppBadgeFromWindow();
 
-		// Register the service worker (production builds only — the dev
-		// build of the PWA plugin is disabled in vite.config.ts). Dynamic
-		// import keeps this out of the SSR bundle; the virtual module
-		// resolves at client build time via vite-plugin-pwa.
+		// Register the service worker (production builds only — in dev, Kit
+		// serves the worker as an unbundled module and an installed copy would
+		// cache a dev server's chunks). Dynamic import keeps workbox-window out
+		// of the initial load.
 		if ('serviceWorker' in navigator && import.meta.env.PROD) {
-			const { registerSW } = await import('virtual:pwa-register');
-			const updateSW = registerSW({
-				immediate: true,
+			const { registerServiceWorker } = await import('$lib/sw/register');
+			const activate = registerServiceWorker({
 				onNeedRefresh() {
 					void waitingWorkerNeedsPrompt().then((needsPrompt) => {
 						if (needsPrompt) updateAvailable = true;
 					});
 				},
-				// onOfflineReady intentionally omitted — we don't want a
-				// "ready offline" toast on the very first SW install; the
-				// app already works fine before then.
-				onRegisteredSW(_swUrl: string, registration: ServiceWorkerRegistration | undefined) {
-					// `immediate: true` only checks for a new SW once, at
-					// registration. After that the browser re-checks on a
-					// full in-scope navigation — which never happens in an
-					// SPA — or its own ~24h timer. On an iOS standalone PWA
-					// the process is suspended in the background, so neither
-					// fires during normal use: the only update check is a
-					// cold launch, i.e. force-quit + reopen. We add our own.
+				onRegistered(registration) {
+					// Registration only checks for a new SW once. After that
+					// the browser re-checks on a full in-scope navigation —
+					// which never happens in an SPA — or its own ~24h timer.
+					// On an iOS standalone PWA the process is suspended in the
+					// background, so neither fires during normal use: the only
+					// update check is a cold launch, i.e. force-quit + reopen.
+					// We add our own.
 					if (!registration) return;
 
 					const checkForUpdate = () => {
@@ -255,9 +251,10 @@
 					setInterval(checkForUpdate, 60 * 60 * 1000); // hourly
 				},
 			});
-			// updateSW(true) activates the waiting SW and reloads. We pin
-			// it to a state slot so the banner's click handler can call it.
-			triggerUpdate = () => updateSW(true);
+			// activate() hands control to the waiting SW, and the page reloads
+			// once it takes over. We pin it to a state slot so the banner's
+			// click handler can call it.
+			triggerUpdate = activate;
 		}
 
 		// SW -> client messages: the push handler posts these when a
@@ -332,7 +329,7 @@
 	 *
 	 * `getRegistration()`, not `ready` — the same choice `$lib/sw/badge.ts`
 	 * documents, and for the same reason: `ready` never settles when no service
-	 * worker is registered (dev builds, where the PWA plugin is off), so it would
+	 * worker is registered (dev builds, where registration is skipped), so it would
 	 * park a promise per page load instead of resolving null and being done.
 	 *
 	 * Named apart from `claimPendingNavigation` in $lib/sw/pending-navigation.ts,

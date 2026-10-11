@@ -12,6 +12,12 @@ const config = {
 		// can also pick up the .gz/.br variants directly via try_files.
 		adapter: adapter({ precompress: true }),
 
+		// SvelteKit builds src/service-worker.ts, but registration is ours:
+		// $lib/sw/register.ts, from the root layout. Kit's own registration is
+		// a bare `register()` in every page's inline script, with none of the
+		// update-prompt wiring, so left on it would race ours for the same URL.
+		serviceWorker: { register: false },
+
 		// Content-Security-Policy — defense in depth against any XSS that
 		// slips past our explicit sinks (markdown-it runs with `html: false`
 		// and the three `{@html}` sites all hold server-controlled HTML,

@@ -1,5 +1,4 @@
 /// <reference lib="webworker" />
-/// <reference types="vite-plugin-pwa/client" />
 
 /**
  * GlyphStream service worker.
@@ -7,8 +6,8 @@
  * Three responsibilities:
  *
  * 1. Serve the static bundle from Cache Storage. Two mechanisms, and the
- *    difference is load-bearing: the root-level shell (`self.__WB_MANIFEST`,
- *    injected by @vite-pwa/sveltekit) is PRECACHED at install, while the hashed
+ *    difference is load-bearing: the root-level shell (`__PRECACHE_MANIFEST__`,
+ *    listed by vite.config.ts) is PRECACHED at install, while the hashed
  *    `/_app/immutable/*` chunks are cached at RUNTIME as they're fetched (see
  *    $lib/sw/asset-route for why that split, and why precaching the chunks was
  *    the wrong tool). Those two routes are the whole interception surface:
@@ -52,19 +51,21 @@ import type { ActiveConversationReport, NotifyPushPayload } from '$lib/types/pus
 // SW context: redeclare `self` with the correct worker-scope type so
 // addEventListener and clients/registration narrow correctly.
 declare const self: ServiceWorkerGlobalScope & {
-	__WB_MANIFEST: Array<{ url: string; revision: string | null }>;
 	__GLYPHSTREAM_BUILD__: string;
 };
 
 // Declared here rather than taken from app.d.ts's `declare global`: SvelteKit
 // excludes this file from the app's TS program (different globals/lib — see
 // the allowDefaultProject list in eslint.config.js), so that global does not
-// reach it and the constant lands as an error type. The value still arrives —
-// vite-plugin-pwa builds the worker in its own Vite pass, which inherits the
-// root config's `define`.
+// reach it and the constants land as error types. The values still arrive —
+// SvelteKit builds the worker in its own Vite pass, which inherits the root
+// config's `define`.
 declare const __APP_VERSION__: string;
+// The root-level icons and the manifest, content-hashed — see vite.config.ts
+// for why only those.
+declare const __PRECACHE_MANIFEST__: Array<{ url: string; revision: string }>;
 
-precacheAndRoute(self.__WB_MANIFEST);
+precacheAndRoute(__PRECACHE_MANIFEST__);
 
 // Serve the hashed client bundle from Cache Storage. `CacheFirst` with no
 // revalidation is the aggressive strategy and also the safe one here: the URLs
@@ -100,11 +101,11 @@ registerRoute(
 //
 // A service-worker update is a byte-for-byte comparison of the newly fetched
 // script against the installed one — identical bytes and the browser aborts
-// the update before `updatefound`, so registerSW never calls onNeedRefresh
+// the update before `updatefound`, so register.ts never calls onNeedRefresh
 // and UpdateBanner never appears. Every other byte in this worker is stable
 // across a release, and since the precache narrowed to seven root-level
 // assets that don't change between releases either (0eff6c02), so is the
-// injected `__WB_MANIFEST`. The compiled worker was byte-identical across a
+// precache list, whose revisions are content hashes. The compiled worker was byte-identical across a
 // version bump plus a client rebuild, which had quietly retired the update
 // prompt: an iOS PWA resumed after a deploy would go on running the old
 // client against the new server indefinitely, since a resume re-checks the
@@ -118,14 +119,14 @@ self.__GLYPHSTREAM_BUILD__ = __APP_VERSION__;
 // Do NOT skipWaiting() on install. `install` fires as soon as the browser
 // notices a new worker — long before the user has seen anything — so calling
 // it there activates the new worker immediately and the worker never enters
-// the `waiting` state. registerType='prompt' (vite.config.ts) is implemented
-// by workbox-window, which raises the event behind onNeedRefresh ONLY for a
+// the `waiting` state. The update prompt ($lib/sw/register.ts) is built on
+// workbox-window, which raises the event behind onNeedRefresh ONLY for a
 // waiting worker: skipWaiting here meant the new SW silently claimed the open
 // page, UpdateBanner never rendered, and the page went on running the old
 // client bundle against the new server until something else reloaded it.
 //
-// Instead we wait, and let the user's click drive activation: workbox-window's
-// updateSW(true) posts SKIP_WAITING to the waiting worker and reloads once the
+// Instead we wait, and let the user's click drive activation: register.ts's
+// activate() posts SKIP_WAITING to the waiting worker and reloads once the
 // controller changes. Dismissing the banner leaves the worker waiting, which
 // is what UpdateBanner's own comment already promised.
 self.addEventListener('message', (event: ExtendableMessageEvent) => {

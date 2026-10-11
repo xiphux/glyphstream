@@ -24,6 +24,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
+import { WEB_MANIFEST_JSON } from '$lib/web-manifest';
 
 const appCss = readFileSync(fileURLToPath(new URL('../../src/app.css', import.meta.url)), 'utf-8');
 const splashDir = fileURLToPath(new URL('../../static/splash/', import.meta.url));
@@ -130,7 +131,7 @@ describe('iOS launch-image colours', () => {
 	});
 
 	// The manifest's two colours are the SAME token again, hand-copied into
-	// vite.config.ts. background_color was corrected to the real dark surface
+	// $lib/web-manifest.ts (vite.config.ts, when the PWA plugin generated it). background_color was corrected to the real dark surface
 	// when the splash drift was found; theme_color sat one line above it and was
 	// missed, so the manifest went on declaring the brand navy while app.html
 	// declared the light surface and the launch screen painted a third value.
@@ -143,16 +144,13 @@ describe('iOS launch-image colours', () => {
 	it.each([['theme_color'], ['background_color']] as const)(
 		"the manifest's %s matches the dark surface",
 		(field) => {
-			const viteConfig = readFileSync(
-				fileURLToPath(new URL('../../vite.config.ts', import.meta.url)),
-				'utf-8',
-			);
-			const declared = new RegExp(`${field}: '(#[0-9a-f]{6})'`, 'i').exec(viteConfig)?.[1];
+			// The served bytes, not the source text: what an install actually reads.
+			const declared = (JSON.parse(WEB_MANIFEST_JSON) as Record<string, unknown>)[field];
 			const [l, c, h] = surfaceOklch('dark');
 			const expected = `#${oklchToRgb(l, c, h)
 				.map((v) => v.toString(16).padStart(2, '0'))
 				.join('')}`;
-			expect(declared, `set the manifest's ${field} to '${expected}' in vite.config.ts`).toBe(
+			expect(declared, `set the manifest's ${field} to '${expected}' in $lib/web-manifest.ts`).toBe(
 				expected,
 			);
 		},
