@@ -27,7 +27,11 @@
 	// Form state. `editingId` null = creating a new preset; non-null = editing.
 	let editingId = $state<string | null>(null);
 	let name = $state('');
-	let description = $state('');
+	// Not `description`: that name is the snippet handed to <SettingsPage>
+	// below, which Svelte scopes over the page's markup — so a
+	// `bind:value={description}` there bound to the SNIPPET, and hydration threw
+	// (`source.equals is not a function`) the moment the form mounted.
+	let presetDescription = $state('');
 	let baseModelComposite = $state('');
 	let systemPrompt = $state('');
 	let temperatureStr = $state('');
@@ -76,7 +80,7 @@
 	function resetForm() {
 		editingId = null;
 		name = '';
-		description = '';
+		presetDescription = '';
 		baseModelComposite = '';
 		systemPrompt = '';
 		temperatureStr = '';
@@ -92,7 +96,7 @@
 	function loadIntoForm(m: CustomModel) {
 		editingId = m.id;
 		name = m.name;
-		description = m.description ?? '';
+		presetDescription = m.description ?? '';
 		baseModelComposite = `${m.baseEndpointId}::${m.baseModelId}`;
 		systemPrompt = m.systemPrompt ?? '';
 		temperatureStr =
@@ -236,7 +240,7 @@
 
 				const body: CreateCustomModelRequest = {
 					name: name.trim(),
-					description: description.trim() || undefined,
+					description: presetDescription.trim() || undefined,
 					baseEndpointId,
 					baseModelId,
 					systemPrompt: systemPrompt.trim() || undefined,
@@ -429,7 +433,7 @@
 					</label>
 					<input
 						id="description"
-						bind:value={description}
+						bind:value={presetDescription}
 						placeholder="What's this preset for?"
 						disabled={busy}
 						class="w-full rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
