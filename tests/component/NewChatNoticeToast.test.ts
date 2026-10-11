@@ -30,7 +30,7 @@ function stub() {
 	return holder.current;
 }
 
-vi.mock('$app/environment', () => ({ browser: true, dev: false, building: false, version: 't' }));
+vi.mock('$app/env', () => ({ browser: true, dev: false, building: false, version: 't' }));
 vi.mock('$app/navigation', () => ({
 	// The strip is a replacing goto with a `.catch`, so this returns a thenable.
 	goto: vi.fn(async () => {}),

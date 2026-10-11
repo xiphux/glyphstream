@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // happy-dom here supplies window/document but not localStorage; install a
 // minimal in-memory shim. `browser: true` makes the module take the live path.
-vi.mock('$app/environment', () => ({ browser: true }));
+vi.mock('$app/env', () => ({ browser: true }));
 
 const store = new Map<string, string>();
 const localStorageShim: Storage = {

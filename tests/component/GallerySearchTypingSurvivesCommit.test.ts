@@ -26,7 +26,7 @@ function stub() {
 	return holder.current;
 }
 
-vi.mock('$app/environment', () => ({ browser: true, dev: false, building: false, version: 't' }));
+vi.mock('$app/env', () => ({ browser: true, dev: false, building: false, version: 't' }));
 vi.mock('$app/navigation', () => ({
 	goto: vi.fn(async () => {}),
 	invalidate: vi.fn(async () => {}),
