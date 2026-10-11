@@ -13,7 +13,6 @@
 <script lang="ts">
 	import { FoldVertical } from '@lucide/svelte';
 	import { Popover } from 'bits-ui';
-	import ContextBreakdownPanel from './ContextBreakdownPanel.svelte';
 
 	interface Props {
 		/** Approximate context size (tokensIn + tokensOut of the latest assistant
@@ -102,7 +101,14 @@
 						onOpenAutoFocus={(e) => e.preventDefault()}
 						class="z-overlay max-h-[min(70vh,var(--bits-popover-content-available-height))] w-[min(340px,calc(100vw-1.5rem))] overflow-y-auto rounded-lg border border-border surface-glass gs-pop shadow-lg"
 					>
-						<ContextBreakdownPanel {conversationId} {revision} />
+						<!-- Imported on first open, not with the chat route (bundle-budget.spec.ts):
+						     the content only mounts while the popover is open. The first open
+						     loads this small chunk before the panel starts its own fetch;
+						     later opens find it cached, by the service worker's chunk cache
+						     too. -->
+						{#await import('./ContextBreakdownPanel.svelte') then { default: ContextBreakdownPanel }}
+							<ContextBreakdownPanel {conversationId} {revision} />
+						{/await}
 					</Popover.Content>
 				</Popover.Portal>
 			</Popover.Root>
