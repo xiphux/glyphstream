@@ -636,8 +636,15 @@ export const handleError: HandleServerError = (input) => {
 	const status = input.kind === 'framework' ? input.error.status : 500;
 	if (status < 500) return undefined;
 
-	const { error, event } = input;
-	const stack = error instanceof Error ? (error.stack ?? error.message) : String(error);
+	const { event } = input;
+	// A framework error arrives as a plain `{ status, message }`, not an Error,
+	// so String() of it would log `[object Object]`.
+	const stack =
+		input.kind === 'framework'
+			? input.error.message
+			: input.error instanceof Error
+				? (input.error.stack ?? input.error.message)
+				: String(input.error);
 
 	console.error(
 		`[server error] ${event.request.method} ${event.url.pathname} → ${status}:\n${stack}`,

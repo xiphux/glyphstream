@@ -58,7 +58,7 @@ vi.mock('#lib/server/mcp/registry.js', () => ({ stopMcp: vi.fn(async () => {}) }
 vi.mock('#lib/server/endpoints/list-models.js', () => ({ listAllModels: vi.fn(async () => []) }));
 vi.mock('#lib/server/code-interpreter/pool.js', () => ({ stopPool: vi.fn(async () => {}) }));
 
-import { handle } from '../../src/hooks.server';
+import { handle, handleError } from '../../src/hooks.server';
 import { createSession } from '#lib/server/auth/session.js';
 import { setAppLockTimeout } from '#lib/server/auth/app-lock.js';
 import { resetRateLimits } from '#lib/server/rate-limit.js';
@@ -374,5 +374,39 @@ describe('response decoration', () => {
 		expect(
 			(await call('/', { cookies: { 'gs-theme': '"><script>alert(1)</script>' } })).transformed,
 		).toBeUndefined();
+	});
+});
+
+// What handleError logs. It only ever logs (it returns nothing), so the log line
+// is its whole observable behaviour.
+describe('handleError', () => {
+	const event = {
+		request: new Request('http://localhost/x', { method: 'POST' }),
+		url: new URL('http://localhost/x'),
+	} as RequestEvent;
+	const logged = () => vi.mocked(console.error).mock.calls.map((c) => String(c[0]));
+
+	beforeEach(() => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+	});
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("logs a framework 5xx by its message — it's a plain object, not an Error", () => {
+		void handleError({ kind: 'framework', error: { status: 503, message: 'Gone fishing' }, event });
+		expect(logged()).toEqual([expect.stringContaining('→ 503:\nGone fishing')]);
+		expect(logged()[0]).not.toContain('[object Object]');
+	});
+
+	it('logs an unexpected throw as a 500, with its stack', () => {
+		void handleError({ kind: 'unknown', error: new Error('boom'), event });
+		expect(logged()).toEqual([expect.stringMatching(/→ 500:\nError: boom\n\s+at /)]);
+	});
+
+	it('stays quiet for a framework 4xx and for a deliberate error()', () => {
+		void handleError({ kind: 'framework', error: { status: 404, message: 'Not Found' }, event });
+		void handleError({ kind: 'app', error: { status: 500, message: 'Nope' }, event });
+		expect(logged()).toEqual([]);
 	});
 });
