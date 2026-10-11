@@ -216,7 +216,8 @@
 		//
 		// The cost of batching: an update that fails CI holds the rest of its
 		// group until it is fixed, or excluded by a rule of its own. Majors are
-		// never grouped, and a security fix ignores all of this -- Renovate
+		// not grouped (one exception: sveltekit, below), and a security fix
+		// ignores all of this -- Renovate
 		// applies `vulnerabilityAlerts` after these rules, and with `force`.
 		//
 		// These replace narrower groups that existed only for packages that must
@@ -332,6 +333,21 @@
 			matchUpdateTypes: ['minor', 'patch'],
 			matchCurrentVersion: '!/^v?0\\./',
 			schedule: ['* 0-5 * * 4'],
+		},
+		{
+			// The one exception to "majors are never grouped": kit and its adapters
+			// release majors in lockstep, each new adapter major requiring the new
+			// kit major (adapter-node 6 needs kit 3). Apart, neither pull request can
+			// pass CI -- #112 and #113 were exactly that -- so they come as one, and
+			// the migration lands as further commits on its branch before it is
+			// merged by hand. vite-plugin-svelte is here because kit pins its major
+			// as a peer. Kept to these names rather than `@sveltejs/**`, which would
+			// drag @sveltejs/eslint-config's unrelated majors into a framework
+			// migration. Inherits the major rule above: no auto-merge, rebased only
+			// on conflict.
+			groupName: 'sveltekit',
+			matchPackageNames: ['@sveltejs/kit', '@sveltejs/adapter-*', '@sveltejs/vite-plugin-svelte'],
+			matchUpdateTypes: ['major'],
 		},
 		{
 			// With shiki and its other @shikijs packages, which are production
