@@ -589,12 +589,14 @@ export const handle: Handle = async ({ event, resolve }) => {
 		finalResponse.headers.set('Server-Timing', metrics.join(', '));
 	}
 
-	// Last, because it prices the block only once every other header is on it —
+	// Dormant since SvelteKit 3, which puts the modulepreload hints in the
+	// document's <head> unless `output.linkHeaderPreload` is on (it isn't — see
+	// tests/e2e/proxy-header-budget.spec.ts), so no Link header reaches here.
+	// Kept as the guard for that option: a Link header restates every client
+	// chunk and once pushed the block past a proxy's 4 KB buffer (a 502). Last,
+	// because it prices the block only once every other header is on it —
 	// including the Server-Timing just set above, and any Set-Cookie from a
-	// session renewal. See header-budget.ts for why this trims rather than drops:
-	// in this app the preload hints live ONLY in this header, so deleting it
-	// leaves the browser to discover 45 chunks by walking the import graph, and
-	// `load` starts firing before the page can hydrate.
+	// session renewal. See header-budget.ts for why it trims rather than drops.
 	const link = finalResponse.headers.get('link');
 	if (link) {
 		const others = [...finalResponse.headers].filter(([name]) => name.toLowerCase() !== 'link');

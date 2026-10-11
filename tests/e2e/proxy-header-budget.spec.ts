@@ -2,9 +2,9 @@ import { test, expect } from './fixtures/test';
 import { seedConversation } from './helpers';
 
 /**
- * The response header block has to survive a reverse proxy — while still
- * carrying the preload hints, which is the part that makes this a squeeze rather
- * than a deletion.
+ * The response header block has to survive a reverse proxy — while the preload
+ * hints still reach the browser, which is what made this a squeeze rather than a
+ * deletion while they rode in a Link header (SvelteKit 2; see below).
  *
  * The ceiling is lower than it looks.
  *
@@ -62,17 +62,19 @@ test('a chat document fits inside a reverse proxy default header buffer', async 
 	expect(res.status()).toBe(200);
 
 	const headers = res.headersArray();
-	// The header must SURVIVE, trimmed. Deleting it is the tempting fix and it is
-	// wrong: in this app the modulepreload hints exist nowhere else — the head
-	// carries two stylesheets and an inline bootstrap, nothing more — so dropping
-	// it leaves the browser walking the import graph for 45 chunks, and `load`
-	// fires long before the page can hydrate. That shipped once, and it surfaced
-	// as four unrelated-looking e2e failures where a click focused a button whose
-	// handler was not attached yet.
+	// The modulepreload hints must reach the browser SOMEWHERE. Without them it
+	// walks the import graph for 45 chunks, and `load` fires long before the page
+	// can hydrate — that shipped once, and surfaced as four unrelated-looking e2e
+	// failures where a click focused a button whose handler was not attached yet.
+	// SvelteKit 2 sent them only as a Link header (hence the trimmer in
+	// hooks.server.ts); SvelteKit 3 writes them into the <head>, which takes them
+	// out of the header block altogether. Either form passes.
+	const linkHeader = headers.find((h) => h.name.toLowerCase() === 'link')?.value ?? '';
+	const html = await res.text();
 	expect(
-		headers.find((h) => h.name.toLowerCase() === 'link'),
-		'the Link preload header is gone; hydration will lag because nothing else hints the chunks',
-	).toBeDefined();
+		/rel="modulepreload"/.test(linkHeader) || /<link[^>]+rel="modulepreload"/.test(html),
+		'no modulepreload hints in the head or a Link header; hydration will lag',
+	).toBe(true);
 
 	const bytes = headerBlockBytes(headers);
 	expect(bytes, `header block is ${bytes} bytes`).toBeLessThan(BUDGET_BYTES);
