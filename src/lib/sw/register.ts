@@ -20,8 +20,13 @@
 import { Workbox } from 'workbox-window';
 
 interface RegisterOptions {
-	/** A new worker is waiting to take over. */
-	onNeedRefresh: () => void;
+	/**
+	 * A new worker is waiting to take over. Resolves whether the user was
+	 * actually offered the update: the caller may decline to prompt (a waiting
+	 * worker on the build the page already runs), and only an offer arms the
+	 * reload on takeover.
+	 */
+	onNeedRefresh: () => Promise<boolean>;
 	/** Registration succeeded; the layout hangs its own update checks off it. */
 	onRegistered: (registration: ServiceWorkerRegistration | undefined) => void;
 }
@@ -36,12 +41,15 @@ export function registerServiceWorker({
 }: RegisterOptions): () => void {
 	const wb = new Workbox('/service-worker.js', { scope: '/' });
 
-	// Reload on any takeover that follows a prompt — whichever tab's Refresh
-	// caused it. A worker activated from another tab claims this one too, and
-	// staying put would leave this page on the old bundle under the new worker,
-	// with a banner whose Refresh has nothing left to activate. The first install
-	// claims the page as well (`clients.claim()` on activate), but no prompt
-	// precedes it, so it doesn't reload: that would be a needless second load.
+	// Reload on any takeover that follows a prompt this page actually SHOWED —
+	// whichever tab's Refresh caused it. A worker activated from another tab
+	// claims this one too, and staying put would leave this page on the old
+	// bundle under the new worker, with a banner whose Refresh has nothing left
+	// to activate. Two takeovers must NOT reload, and neither shows a prompt: the
+	// first install (`clients.claim()` on activate — a needless second load), and
+	// an update this page declined to offer because it already runs that build,
+	// which is every page opened after a deploy, while an older tab still waits on
+	// its Refresh. Reloading those would cut off a stream or a draft unannounced.
 	//
 	// Deliberately not the plugin's test, `event.isUpdate`: workbox-window fixes
 	// that at registration, from whether anything controlled the page THEN. A
@@ -51,8 +59,12 @@ export function registerServiceWorker({
 	// had the same gap.)
 	let promptRaised = false;
 	const prompt = () => {
-		promptRaised = true;
-		onNeedRefresh();
+		void onNeedRefresh().then(
+			(shown) => {
+				if (shown) promptRaised = true;
+			},
+			() => {},
+		);
 	};
 	wb.addEventListener('controlling', () => {
 		if (promptRaised) window.location.reload();

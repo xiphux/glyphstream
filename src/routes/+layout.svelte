@@ -218,8 +218,9 @@
 			const { registerServiceWorker } = await import('$lib/sw/register');
 			const activate = registerServiceWorker({
 				onNeedRefresh() {
-					void waitingWorkerNeedsPrompt().then((needsPrompt) => {
+					return waitingWorkerNeedsPrompt().then((needsPrompt) => {
 						if (needsPrompt) updateAvailable = true;
+						return needsPrompt;
 					});
 				},
 				onRegistered(registration) {
