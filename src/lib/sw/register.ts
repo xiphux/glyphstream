@@ -5,8 +5,8 @@
  * mode, which this replaced when the plugin went: the worker is built by
  * SvelteKit, and this was the only part of the plugin still doing anything at
  * runtime. Kept to the same event semantics, because the root layout's update
- * flow was built and debugged against them — with one deliberate exception, the
- * reload after Refresh (see `activationRequested`).
+ * flow was built and debugged against them — with one deliberate exception, when
+ * a takeover reloads the page (see `promptRaised`).
  *
  * 'prompt', not auto-update: a new worker downloads in the background and
  * WAITS until the user opts in through UpdateBanner. Swapping it silently on
@@ -36,37 +36,56 @@ export function registerServiceWorker({
 }: RegisterOptions): () => void {
 	const wb = new Workbox('/service-worker.js', { scope: '/' });
 
-	// Reload on the takeover the user ASKED for, and only that one. The first
-	// install claims the page too (`clients.claim()` on activate), and reloading
-	// for that would be a needless second load.
+	// Reload on any takeover that follows a prompt — whichever tab's Refresh
+	// caused it. A worker activated from another tab claims this one too, and
+	// staying put would leave this page on the old bundle under the new worker,
+	// with a banner whose Refresh has nothing left to activate. The first install
+	// claims the page as well (`clients.claim()` on activate), but no prompt
+	// precedes it, so it doesn't reload: that would be a needless second load.
 	//
 	// Deliberately not the plugin's test, `event.isUpdate`: workbox-window fixes
 	// that at registration, from whether anything controlled the page THEN. A
 	// page first opened before any worker installed keeps `isUpdate: false` for
 	// its whole life, so a Refresh tapped later in that same session activated
-	// the new worker and never reloaded — the page sat on the old bundle under
-	// the new worker, with the banner gone. (Found verifying this port; the
-	// plugin had the same gap.)
-	let activationRequested = false;
+	// the new worker and never reloaded. (Found verifying this port; the plugin
+	// had the same gap.)
+	let promptRaised = false;
+	const prompt = () => {
+		promptRaised = true;
+		onNeedRefresh();
+	};
 	wb.addEventListener('controlling', () => {
-		if (activationRequested) window.location.reload();
+		if (promptRaised) window.location.reload();
 	});
 
 	// The usual path: this page registered, and a newer worker installed behind
 	// the one controlling it.
-	wb.addEventListener('waiting', onNeedRefresh);
+	wb.addEventListener('waiting', prompt);
 	// A worker installed by ANOTHER tab or window. workbox-window reports that as
 	// `isExternal` with `isUpdate` unset, and it waits all the same.
 	wb.addEventListener('installed', (event) => {
-		if (event.isUpdate === undefined && event.isExternal) onNeedRefresh();
+		if (event.isUpdate === undefined && event.isExternal) prompt();
 	});
 
 	// `immediate`: register now, not at window `load`. The layout calls this from
 	// onMount, which already runs after the page has loaded.
-	void wb.register({ immediate: true }).then(onRegistered, () => {});
+	let registration: ServiceWorkerRegistration | undefined;
+	void wb.register({ immediate: true }).then(
+		(r) => {
+			registration = r;
+			onRegistered(r);
+		},
+		() => {},
+	);
 
 	return () => {
-		activationRequested = true;
+		// Nothing waiting means the worker this prompt was for has already taken
+		// over — or gone redundant — and `messageSkipWaiting` would post to no one,
+		// leaving the click dead. A reload still lands the page on what's current.
+		if (!registration?.waiting) {
+			window.location.reload();
+			return;
+		}
 		wb.messageSkipWaiting();
 	};
 }
