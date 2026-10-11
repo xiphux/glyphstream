@@ -36,8 +36,12 @@ const route = (file: string) => '/' + relative(ROUTES, join(file, '..')).split(s
 
 describe('CSRF gate coverage', () => {
 	it('has no mutating server handler outside /api/', () => {
+		const names = MUTATING.join('|');
+		// A declaration (`export const POST`, `export async function POST`) or an
+		// export list (`export { handler as POST }`, `export { POST }`).
 		const re = new RegExp(
-			`export\\s+(?:const\\s+(?:${MUTATING.join('|')})\\b|(?:async\\s+)?function\\s+(?:${MUTATING.join('|')})\\b)`,
+			`export\\s+(?:const\\s+(?:${names})\\b|(?:async\\s+)?function\\s+(?:${names})\\b)` +
+				`|export\\s*\\{[^}]*\\b(?:${names})\\b[^}]*\\}`,
 		);
 		const outside = walk(ROUTES, /^\+server\.(ts|js)$/)
 			.filter((f) => !route(f).startsWith('/api/'))
