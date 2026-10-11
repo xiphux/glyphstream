@@ -75,7 +75,10 @@ export function registerServiceWorker({
 			registration = r;
 			onRegistered(r);
 		},
-		() => {},
+		// Nothing on the page depends on a worker, so a failure just leaves the app
+		// uncached — but it fails silently otherwise, including a worker that throws
+		// as it loads (a build that stopped forwarding `define`), so say so here.
+		(err: unknown) => console.warn('Service worker registration failed', err),
 	);
 
 	return () => {
