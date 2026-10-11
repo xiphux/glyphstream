@@ -31,5 +31,7 @@ export const GET: RequestHandler = async ({ locals, cookies, params }) => {
 	setCarryCookie(cookies, LINK_STATE_COOKIE, state, STATE_TTL_SECONDS);
 	if (codeVerifier) setCarryCookie(cookies, CODE_VERIFIER_COOKIE, codeVerifier, STATE_TTL_SECONDS);
 
-	redirect(302, url.toString());
+	// SvelteKit 3 refuses a cross-origin redirect unless it's opted in, and
+	// refuses by throwing — a 500. Allow exactly the provider's own origin.
+	redirect(302, url.toString(), { external: [url.origin] });
 };
