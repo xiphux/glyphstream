@@ -54,7 +54,7 @@
 		"@simplewebauthn/browser": "^14.0.0",
 		"@simplewebauthn/server": "^14.0.2",
 		"@stylistic/eslint-plugin": "^5.10.0",
-		"@sveltejs/adapter-node": "^5.5.7",
+		"@sveltejs/adapter-node": "^6.0.0",
 		"@sveltejs/eslint-config": "^10.0.4",
 		"@sveltejs/kit": "^2.70.3",
 		"@sveltejs/vite-plugin-svelte": "^7.3.0",
