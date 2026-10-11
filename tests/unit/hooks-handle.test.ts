@@ -241,7 +241,7 @@ describe('session resolution', () => {
 		expect(sets).toHaveLength(1);
 		expect(sets[0]).toMatchObject({ name: SESSION_COOKIE, value: token });
 		expect(sets[0].opts).toMatchObject({ httpOnly: true, sameSite: 'lax', path: '/' });
-		expect(sets[0].opts.expires!.getTime()).toBeGreaterThan(Date.now() + 7 * oneDay);
+		expect(sets[0].opts?.expires?.getTime()).toBeGreaterThan(Date.now() + 7 * oneDay);
 	});
 });
 
