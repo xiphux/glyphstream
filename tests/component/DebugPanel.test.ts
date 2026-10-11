@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
-import DebugPanel from '$lib/components/DebugPanel.svelte';
+import DebugPanel from '#lib/components/DebugPanel.svelte';
 
 const NAV = {
 	entryType: 'navigation',

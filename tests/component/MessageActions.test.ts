@@ -7,8 +7,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import MessageActions from '$lib/components/chat/MessageActions.svelte';
-import type { ChatMessage, MessageRole } from '$lib/types/api';
+import MessageActions from '#lib/components/chat/MessageActions.svelte';
+import type { ChatMessage, MessageRole } from '#lib/types/api.js';
 
 function makeMessage(role: MessageRole, overrides: Partial<ChatMessage> = {}): ChatMessage {
 	return {

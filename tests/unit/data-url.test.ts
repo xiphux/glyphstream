@@ -16,11 +16,11 @@ const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
 	mediaDir: '',
 }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
-vi.mock('$lib/server/env', () => ({
+vi.mock('#lib/server/env.js', () => ({
 	mediaDir: () => mocks.mediaDir,
 	// Coincident, as for any install that leaves DERIVED_DIR unset. The split
 	// itself is covered in media-derived-dir.test.ts.
@@ -37,9 +37,9 @@ import {
 	loadMediaBytes,
 	mediaIdToDataUrl,
 	MediaNotAvailableError,
-} from '$lib/server/media/data-url';
-import { insertMedia } from '$lib/server/db/queries/media';
-import { media } from '$lib/server/db/schema';
+} from '#lib/server/media/data-url.js';
+import { insertMedia } from '#lib/server/db/queries/media.js';
+import { media } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 
 function writeMediaFile(storagePath: string, bytes: Buffer): void {

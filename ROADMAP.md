@@ -410,7 +410,7 @@ scrollHeight` to be silently wrong. So options 1 and 2 below share the same
     overflows these wrappers today (the token-count popover is portaled), so
     paint containment is safe as of this writing.
   - **Option 4 — true windowing** (`@tanstack/virtual-core`, headless — _not_ the
-    gallery's `$lib/gallery-window.ts`, whose math leans on a _constant_ tile
+    gallery's `#lib/gallery-window.ts`, whose math leans on a _constant_ tile
     height chat can't offer: variable, async-image-shifted, streaming-grown
     heights). The hard part is the streaming case — the bottom message's height
     grows mid-stream, so the virtualizer re-measures every chunk and the

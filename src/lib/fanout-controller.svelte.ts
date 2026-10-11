@@ -15,7 +15,7 @@
  */
 
 import { tick } from 'svelte';
-import { invalidateAll } from '$app/navigation';
+import { refreshAll } from '$app/navigation';
 import { isAbortError } from './abort';
 import { appendReasoning, appendText } from './chat-render';
 import { buildAvatarBranchBody, buildFanoutBranchBody } from './chat-send-body';
@@ -432,7 +432,7 @@ export class FanoutController {
 			this.#deps.setError('No model responded. Edit your message and try again.');
 			// Guard the refetch like pick/dismiss do — errorMsg is already set.
 			try {
-				await invalidateAll();
+				await refreshAll();
 			} catch {
 				// Best-effort re-sync; the error is already surfaced above.
 			}
@@ -627,7 +627,7 @@ export class FanoutController {
 			this.live = false;
 			this.#deps.setError('No model produced an image. Try again, or pick another model.');
 			try {
-				await invalidateAll();
+				await refreshAll();
 			} catch {
 				// Best-effort re-sync; the error is already surfaced above.
 			}
@@ -786,7 +786,7 @@ export class FanoutController {
 					// flag a false error, matching the catch's interrupted handling.
 					if (this.live) {
 						this.handoffToRecovery();
-						void invalidateAll();
+						void refreshAll();
 					} else {
 						this.columns = this.columns.filter((c) => c.branchId !== col.branchId);
 					}
@@ -813,7 +813,7 @@ export class FanoutController {
 					// recovery to reconcile it.
 					col.status = 'streaming';
 					this.handoffToRecovery();
-					void invalidateAll();
+					void refreshAll();
 				} else {
 					// A re-roll on an ALREADY-parked grid: this client isn't driving
 					// recovery, so a 'streaming' column would dangle with no terminal
@@ -872,7 +872,7 @@ export class FanoutController {
 					});
 			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			this.#deps.setStreamedMessageId(targetId);
-			await invalidateAll();
+			await refreshAll();
 			if (!avatarMode) {
 				// Continue with the chosen model — the picker reflects it now and the
 				// next send persists it. tick() lets the data-sync effect (which resets
@@ -920,13 +920,13 @@ export class FanoutController {
 				// Nothing to promote — every branch failed. Selecting anything here
 				// would be wrong (the only rows under the anchor are error siblings,
 				// and `selectBranch` walks to the newest of them), but doing nothing
-				// was worse: the marker stayed parked, so `invalidateAll` below rebuilt
+				// was worse: the marker stayed parked, so `refreshAll` below rebuilt
 				// the very grid this is meant to take down, and Done was a no-op the
 				// user could press forever. Clear the marker instead and leave the
 				// thread where it is.
 				await fetch(`/api/conversations/${convId}/fanout`, { method: 'DELETE' });
 			}
-			await invalidateAll();
+			await refreshAll();
 			this.userMessageId = null;
 			this.live = false;
 		} catch (e) {
@@ -1165,7 +1165,7 @@ export class FanoutController {
 					// Resolved/gone server-side — one full reload to reconcile.
 					stopped = true;
 					clearInterval(interval);
-					await invalidateAll();
+					await refreshAll();
 					return;
 				}
 				// Rebuild from fresh server truth (more done, fewer pending) — unless

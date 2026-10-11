@@ -5,7 +5,7 @@ import {
 	rowsForUnits,
 	type SectionWindow,
 	type WindowConstants,
-} from '$lib/gallery-window';
+} from '#lib/gallery-window.js';
 
 // A clean set of constants: 100px tiles, 12px row gap → 112px pitch, 40px
 // headers, 4 columns. Round numbers keep the arithmetic assertions legible.

@@ -6,9 +6,9 @@
 // nothing failing. The MATCHERS differ on purpose — this one tests a full
 // resource URL with `includes`, the route tests a pathname with `startsWith` —
 // so only the literal is shared.
-import { IMMUTABLE_PREFIX } from '$lib/sw/asset-route';
-import { askWorkerBuild } from '$lib/sw/ask-build';
-import { readColdLaunchProbe, type StatusBarProbe } from '$lib/status-bar-probe';
+import { IMMUTABLE_PREFIX } from '#lib/sw/asset-route.js';
+import { askWorkerBuild } from '#lib/sw/ask-build.js';
+import { readColdLaunchProbe, type StatusBarProbe } from '#lib/status-bar-probe.js';
 
 /**
  * "Stats for nerds" — the numbers behind a page load, formatted for the panel

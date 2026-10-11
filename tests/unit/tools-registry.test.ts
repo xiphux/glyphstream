@@ -7,8 +7,8 @@ import {
 	openaiToolDefinitions,
 	register,
 	resolveActivatedToolDefs,
-} from '$lib/server/tools/registry';
-import type { Tool } from '$lib/server/tools/types';
+} from '#lib/server/tools/registry.js';
+import type { Tool } from '#lib/server/tools/types.js';
 
 function mkTool(name: string, description = 'test tool'): Tool {
 	return {

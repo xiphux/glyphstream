@@ -16,15 +16,15 @@ const mocks = vi.hoisted(() => ({
 	deleteBundle: vi.fn<(...a: unknown[]) => Promise<void>>(),
 }));
 
-vi.mock('$lib/server/skills/import-skill', () => ({
+vi.mock('#lib/server/skills/import-skill.js', () => ({
 	importSkillBundle: (...a: unknown[]) => mocks.importSkillBundle(...a),
 }));
-vi.mock('$lib/server/db/queries/skills', () => ({
+vi.mock('#lib/server/db/queries/skills.js', () => ({
 	listSkillsForUser: (...a: unknown[]) => mocks.listSkillsForUser(...a),
 	setSkillEnabled: (...a: unknown[]) => mocks.setSkillEnabled(...a),
 	deleteSkill: (...a: unknown[]) => mocks.deleteSkill(...a),
 }));
-vi.mock('$lib/server/skills/disk-store', () => ({
+vi.mock('#lib/server/skills/disk-store.js', () => ({
 	getSkillStore: () => ({ deleteBundle: (...a: unknown[]) => mocks.deleteBundle(...a) }),
 }));
 

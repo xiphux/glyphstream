@@ -6,17 +6,22 @@
  * it and nginx does not truncate or forward: it abandons the response and serves
  * its own 502 while the app logs an ordinary 200.
  *
- * The header that gets us there is SvelteKit's `Link:`, which hints one
+ * The header that got us there was SvelteKit's `Link:`, which hints one
  * modulepreload per client chunk — 46 of them, 3205 bytes, on the chat route.
- * Deleting it outright is NOT an option, and the reason is worth recording
- * because it looks like one: in this app those hints exist ONLY in the header.
- * `%sveltekit.head%` carries the two stylesheets and an inline bootstrap that
- * `import()`s the entry, and nothing else — so dropping the header leaves the
- * browser to discover 45 chunks by walking the import graph. Measured under
- * throttling, that took the count of chunks fetched by the `load` event from 17
- * to 2: `load` now fires long before the app can hydrate. Real users see a page
- * that paints and ignores them, and Playwright's `goto()` resolves on `load` and
- * starts clicking a dead document.
+ * Since SvelteKit 3 it is opt-in (`output.linkHeaderPreload`, which this app
+ * leaves off): the hints are `<link>` tags in `%sveltekit.head%` instead, no
+ * Link header is sent, and this trimmer sits dormant. Everything below is why
+ * it trims, should that option ever come back on.
+ *
+ * Deleting the header outright was NOT an option under SvelteKit 2, and the
+ * reason is worth recording because it looks like one: there, those hints
+ * existed ONLY in the header. `%sveltekit.head%` carried the two stylesheets and
+ * an inline bootstrap that `import()`s the entry, and nothing else — so
+ * dropping the header left the browser to discover 45 chunks by walking the
+ * import graph. Measured under throttling, that took the count of chunks
+ * fetched by the `load` event from 17 to 2: `load` fired long before the app
+ * could hydrate. Real users saw a page that painted and ignored them, and
+ * Playwright's `goto()` resolved on `load` and started clicking a dead document.
  *
  * So trim to fit rather than drop. The entries are in dependency order, entry
  * chunks first, so a prefix keeps the hints that unblock the most work.

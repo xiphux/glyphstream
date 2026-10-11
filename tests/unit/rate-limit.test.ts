@@ -3,7 +3,7 @@ import {
 	consumeRateLimitToken,
 	rateLimitBucketCount,
 	resetRateLimits,
-} from '$lib/server/rate-limit';
+} from '#lib/server/rate-limit.js';
 
 const MAX = 60; // AUTH_RATE_LIMIT_MAX default
 const WINDOW_MS = 60_000; // AUTH_RATE_LIMIT_WINDOW_SECONDS default

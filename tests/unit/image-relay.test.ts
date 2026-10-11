@@ -25,47 +25,51 @@ const mocks = vi.hoisted(() => ({
 	enhancePrompt: vi.fn(),
 }));
 
-vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
-vi.mock('$lib/server/endpoints/client', async (orig) => ({
-	...(await orig<typeof import('$lib/server/endpoints/client')>()),
+vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
+vi.mock('#lib/server/endpoints/client.js', async (orig) => ({
+	...(await orig<typeof import('#lib/server/endpoints/client.js')>()),
 	imageGeneration: mocks.imageGeneration,
 	imageEdit: mocks.imageEdit,
 }));
-vi.mock('$lib/server/media/persister', () => ({
+vi.mock('#lib/server/media/persister.js', () => ({
 	persistGeneratedImage: mocks.persistGeneratedImage,
 }));
-vi.mock('$lib/server/db/queries/media', async (orig) => ({
-	...(await orig<typeof import('$lib/server/db/queries/media')>()),
+vi.mock('#lib/server/db/queries/media.js', async (orig) => ({
+	...(await orig<typeof import('#lib/server/db/queries/media.js')>()),
 	linkMessageMedia: mocks.linkMessageMedia,
 }));
-vi.mock('$lib/server/media/data-url', () => ({
+vi.mock('#lib/server/media/data-url.js', () => ({
 	loadMediaBytes: mocks.loadMediaBytes,
 }));
-vi.mock('$lib/server/media/disk-store', () => ({
+vi.mock('#lib/server/media/disk-store.js', () => ({
 	unlinkMediaFiles: mocks.unlinkMediaFiles,
 }));
-vi.mock('$lib/server/push/notify', () => ({ notifyConversationComplete: mocks.notify }));
-vi.mock('$lib/server/tasks/title-task-runner', () => ({
+vi.mock('#lib/server/push/notify.js', () => ({ notifyConversationComplete: mocks.notify }));
+vi.mock('#lib/server/tasks/title-task-runner.js', () => ({
 	startTitleTaskIfFirstExchange: vi.fn(() => Promise.resolve(null)),
 	raceTitle: vi.fn(async (p: Promise<string | null>) => p),
 }));
-vi.mock('$lib/server/tasks/image-enhancer-model', () => ({
+vi.mock('#lib/server/tasks/image-enhancer-model.js', () => ({
 	getImageEnhancerModel: mocks.getImageEnhancerModel,
 }));
-vi.mock('$lib/server/streaming/prompt-enhancer', () => ({
+vi.mock('#lib/server/streaming/prompt-enhancer.js', () => ({
 	enhancePrompt: mocks.enhancePrompt,
 }));
 
-import { createConversation, getConversationDetail } from '$lib/server/db/queries/conversations';
-import { appendMessage, getMessage, getSiblingAssistants } from '$lib/server/db/queries/messages';
-import { startImageRelay, type ImageRelayParams } from '$lib/server/streaming/image-relay';
+import { createConversation, getConversationDetail } from '#lib/server/db/queries/conversations.js';
+import {
+	appendMessage,
+	getMessage,
+	getSiblingAssistants,
+} from '#lib/server/db/queries/messages.js';
+import { startImageRelay, type ImageRelayParams } from '#lib/server/streaming/image-relay.js';
 import {
 	acquireEndpointSlot,
 	getResourceGroupSnapshot,
 	resetEndpointGatesForTests,
-} from '$lib/server/endpoints/concurrency';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
-import type { ChatMessage, StreamEvent } from '$lib/types/api';
+} from '#lib/server/endpoints/concurrency.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
+import type { ChatMessage, StreamEvent } from '#lib/types/api.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

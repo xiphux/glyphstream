@@ -9,7 +9,7 @@
  *    difference is load-bearing: the root-level shell (`__PRECACHE_MANIFEST__`,
  *    listed by vite.config.ts) is PRECACHED at install, while the hashed
  *    `/_app/immutable/*` chunks are cached at RUNTIME as they're fetched (see
- *    $lib/sw/asset-route for why that split, and why precaching the chunks was
+ *    #lib/sw/asset-route for why that split, and why precaching the chunks was
  *    the wrong tool). Those two routes are the whole interception surface:
  *    /api/*, SSE streams and SSR'd HTML still pass straight through to the
  *    network, which is the "default route is no route" behavior that makes
@@ -37,16 +37,20 @@ import { precacheAndRoute } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
-import { CHUNK_CACHE_MAX_ENTRIES, CHUNK_CACHE_NAME, isImmutableAsset } from '$lib/sw/asset-route';
-import { pickAction, type ArbiterPayload } from '$lib/sw/arbiter';
-import { notificationBody, notificationTitle } from '$lib/sw/notification-copy';
+import {
+	CHUNK_CACHE_MAX_ENTRIES,
+	CHUNK_CACHE_NAME,
+	isImmutableAsset,
+} from '#lib/sw/asset-route.js';
+import { pickAction, type ArbiterPayload } from '#lib/sw/arbiter.js';
+import { notificationBody, notificationTitle } from '#lib/sw/notification-copy.js';
 import {
 	CLAIM_PENDING_NAVIGATION,
 	claimPendingNavigation,
 	recordPendingNavigation,
-} from '$lib/sw/pending-navigation';
-import { raiseAppBadge, syncAppBadge } from '$lib/sw/badge';
-import type { ActiveConversationReport, NotifyPushPayload } from '$lib/types/push';
+} from '#lib/sw/pending-navigation.js';
+import { raiseAppBadge, syncAppBadge } from '#lib/sw/badge.js';
+import type { ActiveConversationReport, NotifyPushPayload } from '#lib/types/push.js';
 
 // SW context: redeclare `self` with the correct worker-scope type so
 // addEventListener and clients/registration narrow correctly.
@@ -119,7 +123,7 @@ self.__GLYPHSTREAM_BUILD__ = __APP_VERSION__;
 // Do NOT skipWaiting() on install. `install` fires as soon as the browser
 // notices a new worker — long before the user has seen anything — so calling
 // it there activates the new worker immediately and the worker never enters
-// the `waiting` state. The update prompt ($lib/sw/register.ts) is built on
+// the `waiting` state. The update prompt (#lib/sw/register.ts) is built on
 // workbox-window, which raises the event behind onNeedRefresh ONLY for a
 // waiting worker: skipWaiting here meant the new SW silently claimed the open
 // page, UpdateBanner never rendered, and the page went on running the old
@@ -137,7 +141,7 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
 	}
 	// Which build is this worker? Two callers, asking different workers. The root
 	// layout asks the WAITING one before raising an update prompt — see
-	// $lib/sw/update-prompt.ts for why a waiting worker is so often the same
+	// #lib/sw/update-prompt.ts for why a waiting worker is so often the same
 	// build as the page that's asking. The debug panel asks the CONTROLLING one,
 	// because "controlled" says a worker drives the page and never which, and
 	// those diverge for as long as a prompt goes untapped.
@@ -152,7 +156,7 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
 	// COLD launch — it fires while the window is still parsing its bundle, before
 	// the root layout has a message listener to receive it — so the tap also
 	// leaves a record for the page to pull once it's ready. See
-	// $lib/sw/pending-navigation.ts. waitUntil because the read is async and the
+	// #lib/sw/pending-navigation.ts. waitUntil because the read is async and the
 	// worker must not be torn down mid-answer.
 	if (data?.type === CLAIM_PENDING_NAVIGATION) {
 		const port = event.ports[0];

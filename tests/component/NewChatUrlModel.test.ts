@@ -17,7 +17,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { flushSync } from 'svelte';
-import type { ModelEntry } from '$lib/types/api';
+import type { ModelEntry } from '#lib/types/api.js';
 import type { createKitStub } from './_helpers/kit-runtime-stub.svelte';
 
 const holder = vi.hoisted(() => ({ current: null as ReturnType<typeof createKitStub> | null }));
@@ -27,15 +27,14 @@ function stub() {
 	return holder.current;
 }
 
-vi.mock('$app/environment', () => ({ browser: true, dev: false, building: false, version: 't' }));
+vi.mock('$app/env', () => ({ browser: true, dev: false, building: false, version: 't' }));
 vi.mock('$app/navigation', () => ({
 	goto: vi.fn(async () => {}),
 	invalidate: vi.fn(async () => {}),
-	invalidateAll: vi.fn(async () => {}),
+	refreshAll: vi.fn(async () => {}),
 	afterNavigate: (callback: Parameters<ReturnType<typeof createKitStub>['afterNavigate']>[0]) =>
 		stub().afterNavigate(callback),
 	beforeNavigate: vi.fn(),
-	replaceState: vi.fn(),
 	pushState: vi.fn(),
 }));
 vi.mock('$app/state', async () => {

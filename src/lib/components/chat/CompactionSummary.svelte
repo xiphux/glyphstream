@@ -7,7 +7,7 @@
 -->
 <script lang="ts">
 	import { ChevronRight, FoldVertical, Undo2 } from '@lucide/svelte';
-	import type { ChatMessage } from '$lib/types/api';
+	import type { ChatMessage } from '#lib/types/api.js';
 
 	let {
 		message,

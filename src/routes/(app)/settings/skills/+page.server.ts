@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { listSkillsForUser } from '$lib/server/db/queries/skills';
+import { listSkillsForUser } from '#lib/server/db/queries/skills.js';
 import type { PageServerLoad } from './$types';
 
 /**

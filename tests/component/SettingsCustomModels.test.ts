@@ -12,9 +12,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import type { CustomModel, FeatureCategoryEntry, ModelEntry } from '$lib/types/api';
+import type { CustomModel, FeatureCategoryEntry, ModelEntry } from '#lib/types/api.js';
 
-vi.mock('$app/navigation', () => ({ invalidateAll: vi.fn(), goto: vi.fn() }));
+vi.mock('$app/navigation', () => ({ refreshAll: vi.fn(), goto: vi.fn() }));
 
 import CustomModelsPage from '../../src/routes/(app)/settings/models/+page.svelte';
 

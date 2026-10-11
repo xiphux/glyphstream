@@ -1,4 +1,4 @@
-import { truncateEllipsis } from '$lib/text';
+import { truncateEllipsis } from '#lib/text.js';
 import { stripReasoningTags } from '../util/reasoning-tags';
 
 /**

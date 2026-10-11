@@ -17,14 +17,14 @@
  * guard: add a preference, add it here.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { UserPreferences } from '$lib/types/api';
+import type { UserPreferences } from '#lib/types/api.js';
 
 const mocks = vi.hoisted(() => ({
 	setUserPreferences: vi.fn<(...a: unknown[]) => unknown>(),
 }));
 
-vi.mock('$lib/server/auth/guard', () => ({ requireUser: () => {} }));
-vi.mock('$lib/server/db/queries/user-preferences', () => ({
+vi.mock('#lib/server/auth/guard.js', () => ({ requireUser: () => {} }));
+vi.mock('#lib/server/db/queries/user-preferences.js', () => ({
 	getUserPreferences: () => ({ theme: 'glyphstream' }),
 	setUserPreferences: (...a: unknown[]) => mocks.setUserPreferences(...a),
 }));

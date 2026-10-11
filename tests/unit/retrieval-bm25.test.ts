@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bm25Rank, tokenize } from '$lib/server/retrieval/bm25';
+import { bm25Rank, tokenize } from '#lib/server/retrieval/bm25.js';
 
 describe('tokenize', () => {
 	it('lowercases and splits on non-alphanumeric runs', () => {

@@ -1,6 +1,6 @@
 /**
- * URL-policy primitives that are PURE (no SvelteKit env / config.toml /
- * `$env/dynamic/private` dependencies). Lives in its own module so the
+ * URL-policy primitives that are PURE (no env / config.toml dependencies).
+ * Lives in its own module so the
  * code-interpreter worker — which is bundled standalone via esbuild and
  * loaded by node:worker_threads outside Vite's transform pipeline — can
  * import these without dragging in the env layer.

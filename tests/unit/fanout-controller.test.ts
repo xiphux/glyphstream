@@ -8,20 +8,20 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const invalidateAll = vi.fn(async () => {});
-vi.mock('$app/navigation', () => ({ invalidateAll: () => invalidateAll() }));
-vi.mock('$lib/title-pending.svelte', () => ({
+const refreshAll = vi.fn(async () => {});
+vi.mock('$app/navigation', () => ({ refreshAll: () => refreshAll() }));
+vi.mock('#lib/title-pending.svelte.js', () => ({
 	markTitlePending: vi.fn(),
 	clearTitlePending: vi.fn(),
 }));
 
-import { FanoutController, type FanoutDeps } from '$lib/fanout-controller.svelte';
+import { FanoutController, type FanoutDeps } from '#lib/fanout-controller.svelte.js';
 import {
 	expandFanoutBranches,
 	MAX_FANOUT_BRANCHES_PER_CONVERSATION,
 	type FanoutModel,
-} from '$lib/fanout';
-import type { ChatMessage, FanoutRecoveryState, ModelEntry } from '$lib/types/api';
+} from '#lib/fanout.js';
+import type { ChatMessage, FanoutRecoveryState, ModelEntry } from '#lib/types/api.js';
 
 const MODELS = [
 	{ id: 'bridge::sdxl', displayName: 'SDXL', kind: 'image' },
@@ -350,7 +350,7 @@ describe('FanoutController — teardown + handoff', () => {
 
 describe('FanoutController — actions', () => {
 	beforeEach(() => {
-		invalidateAll.mockClear();
+		refreshAll.mockClear();
 	});
 
 	function jsonResponse(body: unknown): Response {
@@ -1105,7 +1105,7 @@ describe('FanoutController — avatar comparisons', () => {
 	}
 
 	beforeEach(() => {
-		invalidateAll.mockClear();
+		refreshAll.mockClear();
 	});
 
 	it('parks on the description, then draws one branch per model', async () => {
@@ -1472,7 +1472,7 @@ describe('FanoutController — avatar comparisons', () => {
 		// reload while nothing on it can resolve the comparison: "Use this avatar"
 		// needs an image, Discard refuses to remove the last column, and Done had no
 		// successful branch to select — so it contacted the server not at all and
-		// invalidateAll put the same grid straight back. Done now clears the marker.
+		// refreshAll put the same grid straight back. Done now clears the marker.
 		const posts: Array<{ url: string; method: string }> = [];
 		vi.stubGlobal(
 			'fetch',

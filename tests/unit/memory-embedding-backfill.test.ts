@@ -3,27 +3,27 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
 
 const embeddingsMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/client', () => ({ embeddings: embeddingsMock }));
+vi.mock('#lib/server/endpoints/client.js', () => ({ embeddings: embeddingsMock }));
 
 const resolveMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/retrieval/embeddings-config', () => ({
+vi.mock('#lib/server/retrieval/embeddings-config.js', () => ({
 	resolveRelevanceConfig: resolveMock,
 }));
 
-import { runBackfillSweep } from '$lib/server/memory/embedding-backfill';
+import { runBackfillSweep } from '#lib/server/memory/embedding-backfill.js';
 import {
 	createMemory,
 	listMemoriesNeedingEmbedding,
 	listMemoriesWithEmbeddings,
 	setMemoryEmbedding,
-} from '$lib/server/db/queries/memories';
-import { encodeVector } from '$lib/server/retrieval/vector';
+} from '#lib/server/db/queries/memories.js';
+import { encodeVector } from '#lib/server/retrieval/vector.js';
 
 const MODEL = 'embed-v1';
 const CFG = {

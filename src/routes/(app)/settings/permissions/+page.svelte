@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { invalidate } from '$app/navigation';
 	import { Undo2 } from '@lucide/svelte';
-	import { toast } from '$lib/toast.svelte';
-	import { confirmDialog } from '$lib/confirm.svelte';
-	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
+	import { toast } from '#lib/toast.svelte.js';
+	import { confirmDialog } from '#lib/confirm.svelte.js';
+	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
 
 	interface Group {
 		id: string;

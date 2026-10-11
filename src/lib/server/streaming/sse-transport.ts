@@ -12,7 +12,7 @@
  * not their plumbing.
  */
 
-import type { StreamEvent } from '$lib/types/api';
+import type { StreamEvent } from '#lib/types/api.js';
 import { formatUpstreamError, UpstreamError } from '../endpoints/client';
 
 /**

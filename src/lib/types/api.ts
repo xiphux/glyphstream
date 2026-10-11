@@ -211,7 +211,7 @@ export function featureCategoryAppliesToModelKind(
 
 /**
  * One entry in the dynamic category list assembled by
- * `$lib/server/feature-catalog.getAllFeatureCategoryLabels()`. Plain
+ * `#lib/server/feature-catalog.getAllFeatureCategoryLabels()`. Plain
  * data; built once per layout load and shipped to the client.
  */
 export interface FeatureCategoryEntry {
@@ -327,7 +327,7 @@ export interface ModelEntry {
 	 * openai-api-bridge `capabilities`: the model's `{input}-to-{output}`
 	 * modality routes (e.g. `["text-to-image", "image-to-image"]`). Drives the
 	 * picker's modality pill and the composer's image-required send gate via the
-	 * helpers in `$lib/model-capabilities`.
+	 * helpers in `#lib/model-capabilities.js`.
 	 *
 	 * Only entries of the `{input}-to-{output}` shape are kept here, which also
 	 * separates them from the Fireworks-ish flat `capabilities` vocabulary
@@ -585,7 +585,7 @@ export interface ChatMessage {
 	 * assistant row, and a retry appends a sibling without touching this. So
 	 * "which models did I run this prompt against" stays answerable, which
 	 * inspecting `modelUsed` across siblings cannot do. Consumed by the
-	 * reuse-prompt action (`$lib/prompt-reuse`). Ids that no longer resolve
+	 * reuse-prompt action (`#lib/prompt-reuse.js`). Ids that no longer resolve
 	 * against the current config are dropped by the consumer, not here.
 	 */
 	dispatchedModels?: CompareSelection[];
@@ -787,7 +787,7 @@ export interface UserPreferences {
 	 * that a service worker cached from before this gate doesn't pass
 	 * `undefined` to `showNotification`; do NOT read the field's presence as
 	 * meaning content was included. Consumers promote the modality/count line to
-	 * the heading and drop the body (see $lib/sw/notification-copy).
+	 * the heading and drop the body (see #lib/sw/notification-copy).
 	 */
 	notificationsShowContent: boolean;
 	/**
@@ -1454,7 +1454,7 @@ export interface CanvasVersion {
  * tool-execution stage IN PLACE OF the four `tool_call_*` frames a normal tool
  * produces — the whole point of a reaction is that it appears rather than being
  * announced, so the call itself never renders as a tool block (see
- * `isReactionTool` in `$lib/chat-render`, which drops the persisted part too).
+ * `isReactionTool` in `#lib/chat-render.js`, which drops the persisted part too).
  *
  * `messageId` is the USER message being reacted to, so the client can attach the
  * badge without inferring the target from stream position. Purely a live-tick
@@ -1462,7 +1462,7 @@ export interface CanvasVersion {
  * assistant row, which the post-`done` refetch reads back. One branch can react
  * more than once across a multi-iteration turn, so several of these can arrive
  * for the same `messageId` — last one wins live, and the reload agrees (see
- * `reactionsByMessageId` in `$lib/chat-render`). Not a fan-out concern: a
+ * `reactionsByMessageId` in `#lib/chat-render.js`). Not a fan-out concern: a
  * fan-out branch is dispatched with `supportsTools` forced false, so it carries
  * no tools at all and can never produce this event.
  */
@@ -1870,7 +1870,7 @@ export interface GeneratingConversationsResponse {
  * `SlotPurpose` rather than keeping a second copy, the way `models.ts` imports
  * `ModelKind` from here. It lives on this side because the wire shape is the
  * narrower contract — a purpose that cannot be sent is of no use to the gate,
- * and client-safe code may not import from `$lib/server`.
+ * and client-safe code may not import from `#lib/server`.
  *
  * `other` is work that fits none of the named kinds. It is a deliberate choice,
  * never a default — the gate requires every acquisition to name its work.

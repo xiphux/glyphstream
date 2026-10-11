@@ -13,21 +13,21 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const getEndpointMock = vi.hoisted(() => vi.fn());
 const listEndpointsMock = vi.hoisted(() => vi.fn(() => []));
-vi.mock('$lib/server/endpoints/registry', () => ({
+vi.mock('#lib/server/endpoints/registry.js', () => ({
 	getEndpoint: getEndpointMock,
 	listEndpoints: listEndpointsMock,
 }));
 
 const listUpstreamModelsMock = vi.hoisted(() => vi.fn(async () => []));
-vi.mock('$lib/server/endpoints/client', () => ({
+vi.mock('#lib/server/endpoints/client.js', () => ({
 	listUpstreamModels: listUpstreamModelsMock,
 	UpstreamError: class UpstreamError extends Error {
 		status?: number;
 	},
 }));
 
-import { ConfigError } from '$lib/server/endpoints/config';
-import { recheckEndpoint, resetModelCache } from '$lib/server/endpoints/list-models';
+import { ConfigError } from '#lib/server/endpoints/config.js';
+import { recheckEndpoint, resetModelCache } from '#lib/server/endpoints/list-models.js';
 
 afterEach(() => {
 	resetModelCache();

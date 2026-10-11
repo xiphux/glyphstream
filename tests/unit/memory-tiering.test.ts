@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { scoreMemory, selectMemoryTiers } from '$lib/server/memory/tiering';
-import type { MemoryTierRow } from '$lib/server/db/queries/memories';
+import { scoreMemory, selectMemoryTiers } from '#lib/server/memory/tiering.js';
+import type { MemoryTierRow } from '#lib/server/db/queries/memories.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = 1_700_000_000_000; // fixed epoch — pure functions take `now`, so tests are deterministic

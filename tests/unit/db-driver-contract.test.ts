@@ -13,8 +13,8 @@
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
-import { isUniqueViolation } from '$lib/server/db/errors';
-import { oauthAccounts, sessions, users } from '$lib/server/db/schema';
+import { isUniqueViolation } from '#lib/server/db/errors.js';
+import { oauthAccounts, sessions, users } from '#lib/server/db/schema.js';
 
 let db: TestDB;
 

@@ -52,7 +52,7 @@
  * `#draw` and `#serverSince` feed the UI.
  */
 
-import { invalidateAll } from '$app/navigation';
+import { refreshAll } from '$app/navigation';
 import { toast } from './toast.svelte';
 
 /** Everything the controller needs from the host page. A getter, so the read is
@@ -275,7 +275,7 @@ export class AvatarDrawController {
 	 * Ask the server whether a draw is still running, and reconcile to the
 	 * answer WITHOUT reloading the page unless there is something to reload for.
 	 *
-	 * `invalidateAll()` re-runs the chat route's load, which ships the entire
+	 * `refreshAll()` re-runs the chat route's load, which ships the entire
 	 * active branch with `content_html` — the payload that load drops
 	 * `await parent()` to keep off every refocus (measured 35 KB on a 40-turn
 	 * thread, megabytes on a code-heavy one; see its header). A draw runs for
@@ -304,7 +304,7 @@ export class AvatarDrawController {
 		if (this.#probingFor === cid) return;
 		this.#probingFor = cid;
 		// Set once the message has been shown, so the paths below can't show it
-		// twice — `invalidateAll()` rejecting after a toast would otherwise fall
+		// twice — `refreshAll()` rejecting after a toast would otherwise fall
 		// into the catch and repeat it.
 		let reported = false;
 		try {
@@ -333,7 +333,7 @@ export class AvatarDrawController {
 					toast.error(failureMessage);
 					reported = true;
 				}
-				await invalidateAll();
+				await refreshAll();
 			} else {
 				this.#serverSince = body.avatarDrawSince;
 			}

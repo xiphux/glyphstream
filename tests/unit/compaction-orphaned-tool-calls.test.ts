@@ -17,7 +17,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 
 const ENDPOINT: LoadedEndpoint = {
 	id: 'mock',
@@ -40,20 +40,20 @@ const ENDPOINT: LoadedEndpoint = {
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
-vi.mock('$lib/server/endpoints/registry', () => ({
+vi.mock('#lib/server/endpoints/registry.js', () => ({
 	getEndpoint: () => ENDPOINT,
 }));
-vi.mock('$lib/server/endpoints/list-models', () => ({
+vi.mock('#lib/server/endpoints/list-models.js', () => ({
 	listAllModels: async () => [],
 }));
 
-import { prepareCompaction } from '$lib/server/chat/compaction';
-import { createConversation } from '$lib/server/db/queries/conversations';
-import { appendMessage } from '$lib/server/db/queries/messages';
+import { prepareCompaction } from '#lib/server/chat/compaction.js';
+import { createConversation } from '#lib/server/db/queries/conversations.js';
+import { appendMessage } from '#lib/server/db/queries/messages.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

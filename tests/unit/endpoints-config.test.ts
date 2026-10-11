@@ -28,16 +28,10 @@ import {
 	DEFAULT_MEMORY_MODEL_MAX_TOKENS,
 	DEFAULT_MEMORY_MODEL_TEMPERATURE,
 	DEFAULT_MEMORY_OVERVIEW_MAX_CHARS,
-} from '$lib/server/endpoints/config';
+} from '#lib/server/endpoints/config.js';
 
-// Stub $env/dynamic/private so we can control api_key_env resolution
-// without touching the real process env.
-const envStub = vi.hoisted(() => ({ values: {} as Record<string, string> }));
-vi.mock('$env/dynamic/private', () => ({
-	env: new Proxy({} as Record<string, string>, {
-		get: (_t, k: string) => envStub.values[k],
-	}),
-}));
+// api_key_env names are resolved from process.env; tests set them with
+// vi.stubEnv, and afterEach restores the real environment.
 
 const tmpDirs: string[] = [];
 function writeConfig(toml: string): string {
@@ -50,7 +44,7 @@ function writeConfig(toml: string): string {
 
 afterEach(() => {
 	while (tmpDirs.length) rmSync(tmpDirs.pop()!, { recursive: true, force: true });
-	envStub.values = {};
+	vi.unstubAllEnvs();
 });
 
 describe('loadEndpoints', () => {
@@ -248,7 +242,7 @@ display_name = "My Bridge"
 	});
 
 	it('resolves api_key_env to the env var value', () => {
-		envStub.values.MY_KEY = 'sk-secret-123';
+		vi.stubEnv('MY_KEY', 'sk-secret-123');
 		const path = writeConfig(`
 [[endpoints]]
 id = "x"
@@ -435,7 +429,7 @@ base_url = "http://x"
 	});
 
 	it('parses a valid [notifications] block with env-resolved private key', () => {
-		envStub.values.VAPID_PRIVATE_KEY = 'super-secret-private';
+		vi.stubEnv('VAPID_PRIVATE_KEY', 'super-secret-private');
 		const path = writeConfig(`
 [notifications]
 vapid_public = "BPI-public-key"
@@ -450,7 +444,7 @@ vapid_subject = "mailto:admin@example.com"
 	});
 
 	it('accepts an https:// subject in place of mailto:', () => {
-		envStub.values.VAPID_PRIVATE_KEY = 'p';
+		vi.stubEnv('VAPID_PRIVATE_KEY', 'p');
 		const path = writeConfig(`
 [notifications]
 vapid_public = "x"
@@ -476,7 +470,7 @@ vapid_subject = "mailto:a@b.co"
 	});
 
 	it('rejects vapid_subject without mailto: or http(s)://', () => {
-		envStub.values.VAPID_PRIVATE_KEY = 'p';
+		vi.stubEnv('VAPID_PRIVATE_KEY', 'p');
 		const path = writeConfig(`
 [notifications]
 vapid_public = "x"
@@ -487,7 +481,7 @@ vapid_subject = "just-some-string"
 	});
 
 	it('rejects when vapid_private_env is missing', () => {
-		envStub.values.VAPID_PRIVATE_KEY = 'p';
+		vi.stubEnv('VAPID_PRIVATE_KEY', 'p');
 		const path = writeConfig(`
 [notifications]
 vapid_public = "x"
@@ -497,7 +491,7 @@ vapid_subject = "mailto:a@b.co"
 	});
 
 	it('rejects when vapid_public is missing', () => {
-		envStub.values.VAPID_PRIVATE_KEY = 'p';
+		vi.stubEnv('VAPID_PRIVATE_KEY', 'p');
 		const path = writeConfig(`
 [notifications]
 vapid_private_env = "VAPID_PRIVATE_KEY"
@@ -538,7 +532,7 @@ url = "http://searx.example.com///"
 	});
 
 	it('resolves api_key_env into apiKey', () => {
-		envStub.values.SEARXNG_KEY = 'token-abc';
+		vi.stubEnv('SEARXNG_KEY', 'token-abc');
 		const path = writeConfig(`
 [search]
 url = "https://searx.example.com"

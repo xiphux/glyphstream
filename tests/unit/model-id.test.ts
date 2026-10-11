@@ -1,9 +1,9 @@
 /** Tests for the model-id grammar and the model-kind guard. */
 
 import { describe, expect, it } from 'vitest';
-import { formatModelId, parseModelId } from '$lib/server/endpoints/model-id';
-import { endpointIdOf, mediaSourceModelId } from '$lib/model-ids';
-import { isModelKind, MODEL_KINDS } from '$lib/types/api';
+import { formatModelId, parseModelId } from '#lib/server/endpoints/model-id.js';
+import { endpointIdOf, mediaSourceModelId } from '#lib/model-ids.js';
+import { isModelKind, MODEL_KINDS } from '#lib/types/api.js';
 
 describe('parseModelId', () => {
 	it('splits a well-formed id on the :: separator', () => {

@@ -14,22 +14,22 @@
  *
  * See server/auth/app-lock.ts for the design.
  */
-import { error, json } from '@sveltejs/kit';
-import { isAppLockTimeout } from '$lib/app-lock';
-import { requireUser } from '$lib/server/auth/guard';
+import { error } from '@sveltejs/kit';
+import { isAppLockTimeout } from '#lib/app-lock.js';
+import { requireUser } from '#lib/server/auth/guard.js';
 import {
 	getAppLockTimeout,
 	setAppLockTimeout,
 	verifyUnlockAssertion,
-} from '$lib/server/auth/app-lock';
-import { countCredentialsForUser } from '$lib/server/db/queries/passkey';
-import { passkeyLoginEnabled } from '$lib/server/env';
-import { parseJsonBody } from '$lib/server/http';
+} from '#lib/server/auth/app-lock.js';
+import { countCredentialsForUser } from '#lib/server/db/queries/passkey.js';
+import { passkeyLoginEnabled } from '#lib/server/env.js';
+import { parseJsonBody } from '#lib/server/http.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals }) => {
 	requireUser(locals);
-	return json({ locked: false });
+	return Response.json({ locked: false });
 };
 
 export const PUT: RequestHandler = async ({ locals, request, cookies }) => {
@@ -51,5 +51,5 @@ export const PUT: RequestHandler = async ({ locals, request, cookies }) => {
 	}
 
 	setAppLockTimeout(locals.user.id, timeoutMs, { sessionId: locals.sessionId });
-	return json({ timeoutMs });
+	return Response.json({ timeoutMs });
 };

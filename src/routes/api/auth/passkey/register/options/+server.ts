@@ -8,14 +8,14 @@
  * httpOnly cookie; the matching `register/verify` route reads it back
  * and clears it as a single-use nonce.
  */
-import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
+import { error } from '@sveltejs/kit';
+import { requireUser } from '#lib/server/auth/guard.js';
 import {
 	generateRegistrationOptionsForUser,
 	setRegistrationChallengeCookie,
-} from '$lib/server/auth/passkey';
-import { listCredentialsForUser } from '$lib/server/db/queries/passkey';
-import { passkeyLoginEnabled } from '$lib/server/env';
+} from '#lib/server/auth/passkey.js';
+import { listCredentialsForUser } from '#lib/server/db/queries/passkey.js';
+import { passkeyLoginEnabled } from '#lib/server/env.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, cookies }) => {
@@ -24,5 +24,5 @@ export const POST: RequestHandler = async ({ locals, cookies }) => {
 	const existing = listCredentialsForUser(locals.user.id);
 	const options = await generateRegistrationOptionsForUser(locals.user, existing);
 	setRegistrationChallengeCookie(cookies, options.challenge);
-	return json(options);
+	return Response.json(options);
 };

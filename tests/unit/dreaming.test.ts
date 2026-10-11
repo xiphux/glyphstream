@@ -4,22 +4,22 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
+vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 
 const chatMock = vi.hoisted(() => vi.fn());
 const FakeUpstreamError = vi.hoisted(() => class UpstreamError extends Error {});
-vi.mock('$lib/server/endpoints/client', () => ({
+vi.mock('#lib/server/endpoints/client.js', () => ({
 	chatCompletionSync: chatMock,
 	UpstreamError: FakeUpstreamError,
 }));
 
 const memModelMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/tasks/memory-model', () => ({ getMemoryModel: memModelMock }));
+vi.mock('#lib/server/tasks/memory-model.js', () => ({ getMemoryModel: memModelMock }));
 
 const acquireMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/concurrency', () => ({ acquireEndpointSlot: acquireMock }));
+vi.mock('#lib/server/endpoints/concurrency.js', () => ({ acquireEndpointSlot: acquireMock }));
 
-import { runDreamSweep } from '$lib/server/memory/dreaming';
+import { runDreamSweep } from '#lib/server/memory/dreaming.js';
 import {
 	createMemory,
 	listMemoriesForUser,
@@ -27,8 +27,8 @@ import {
 	recordMemoryRecall,
 	softDeleteMemory,
 	updateMemory,
-} from '$lib/server/db/queries/memories';
-import { memories } from '$lib/server/db/schema';
+} from '#lib/server/db/queries/memories.js';
+import { memories } from '#lib/server/db/schema.js';
 
 const MODEL = {
 	endpoint: { id: 'gpu', maxConcurrent: 1, resourceGroup: 'gpu', resourceGroupMaxConcurrent: 1 },

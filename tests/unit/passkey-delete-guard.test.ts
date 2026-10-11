@@ -14,11 +14,11 @@ const mocks = vi.hoisted(() => ({
 	// Default: every provider enabled. Individual tests flip a provider off.
 	providerEnabled: (_id: string) => true as boolean,
 }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
-vi.mock('$lib/server/auth/oauth/registry', () => ({
+vi.mock('#lib/server/auth/oauth/registry.js', () => ({
 	isProviderEnabled: (id: string) => mocks.providerEnabled(id),
 }));
 
@@ -27,7 +27,7 @@ import {
 	insertCredential,
 	countCredentialsForUser,
 	type InsertPasskeyInput,
-} from '$lib/server/db/queries/passkey';
+} from '#lib/server/db/queries/passkey.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

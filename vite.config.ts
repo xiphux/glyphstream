@@ -1,11 +1,22 @@
 import process from 'node:process';
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { sveltekitOptions } from './sveltekit.config.ts';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig, type PluginOption } from 'vite';
 import { visualizer } from 'rollup-plugin-visualizer';
 import { WEB_MANIFEST_JSON } from './src/lib/web-manifest.ts';
+
+// Load .env into process.env, where #lib/server/env.ts reads everything (see
+// the note at its top for why not a Kit env module). Vite reads .env only for
+// its own `import.meta.env`, so without this `pnpm dev` would start with none
+// of it. Variables already set win, as they did under Kit. A missing file is
+// fine: production gets its environment from the host or container. Checked up
+// front rather than caught: Node reports an UNREADABLE .env as ENOENT too, so a
+// catch could not tell "absent" from "broken", and a broken one should fail
+// here, on the real cause, not later on whichever variable is read first.
+if (existsSync('.env')) process.loadEnvFile();
 
 // Enable bundle analysis with `ANALYZE=1 pnpm build`. Generates a
 // gzip + brotli treemap at bundle-stats.html in the project root —
@@ -93,14 +104,21 @@ export default defineConfig({
 	},
 	plugins: [
 		tailwindcss(),
-		sveltekit(),
+		sveltekit(sveltekitOptions),
+
+		// Client build only. SvelteKit 3 builds client, server and service worker
+		// as separate Vite environments, and each wrote this same report — so the
+		// last one, the service worker, was all it ever showed.
 		analyze &&
-			(visualizer({
-				filename: 'bundle-stats.html',
-				template: 'treemap',
-				gzipSize: true,
-				brotliSize: true,
-				open: false,
-			}) as PluginOption),
+			({
+				...visualizer({
+					filename: 'bundle-stats.html',
+					template: 'treemap',
+					gzipSize: true,
+					brotliSize: true,
+					open: false,
+				}),
+				applyToEnvironment: (environment) => environment.name === 'client',
+			} as PluginOption),
 	].filter(Boolean),
 });

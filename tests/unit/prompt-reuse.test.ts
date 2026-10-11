@@ -9,9 +9,9 @@ import {
 	deriveReuseModels,
 	resolveIntentSelection,
 	upgradeToPresetModelId,
-} from '$lib/prompt-reuse';
-import type { CompareSelection } from '$lib/fanout';
-import type { ModelKind } from '$lib/types/api';
+} from '#lib/prompt-reuse.js';
+import type { CompareSelection } from '#lib/fanout.js';
+import type { ModelKind } from '#lib/types/api.js';
 
 const KINDS: Record<string, ModelKind> = {
 	'bridge::a': 'chat',

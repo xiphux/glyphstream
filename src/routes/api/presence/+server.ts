@@ -14,9 +14,9 @@
  */
 
 import { error } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { recordPresence } from '$lib/server/push/presence';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { recordPresence } from '#lib/server/push/presence.js';
 import type { RequestHandler } from './$types';
 
 interface PresenceBody {

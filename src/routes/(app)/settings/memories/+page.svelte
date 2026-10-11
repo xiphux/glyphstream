@@ -1,10 +1,10 @@
 <script lang="ts">
-	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
+	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
 	import { invalidate } from '$app/navigation';
 	import { RotateCcw, Trash2 } from '@lucide/svelte';
-	import type { Memory, DeletedMemory } from '$lib/types/api';
-	import { confirmDialog } from '$lib/confirm.svelte';
-	import { toast } from '$lib/toast.svelte';
+	import type { Memory, DeletedMemory } from '#lib/types/api.js';
+	import { confirmDialog } from '#lib/confirm.svelte.js';
+	import { toast } from '#lib/toast.svelte.js';
 
 	let { data } = $props<{
 		data: {

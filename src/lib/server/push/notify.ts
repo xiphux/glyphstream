@@ -25,8 +25,8 @@
  * unguarded; see the payload construction below.
  */
 
-import type { NotifyModality, NotifyPushPayload } from '$lib/types/push';
-import { GENERIC_TITLE } from '$lib/sw/notification-copy';
+import type { NotifyModality, NotifyPushPayload } from '#lib/types/push.js';
+import { GENERIC_TITLE } from '#lib/sw/notification-copy.js';
 import {
 	deletePushSubscriptionsByEndpoints,
 	listPushSubscriptionsForUser,
@@ -34,7 +34,7 @@ import {
 import { getUserPreferences } from '../db/queries/user-preferences';
 import { isAppLockActive } from '../auth/app-lock';
 import { isConversationBeingViewed } from './presence';
-import { truncateEllipsis } from '$lib/text';
+import { truncateEllipsis } from '#lib/text.js';
 import { sendPushNotification, type WebPushSubscription } from './web-push';
 
 const MAX_TITLE_CHARS = 60;

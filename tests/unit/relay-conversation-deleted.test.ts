@@ -22,12 +22,12 @@ const mocks = vi.hoisted(() => ({
 	beforeResponse: null as null | (() => void),
 }));
 
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
-vi.mock('$lib/server/endpoints/client', async (orig) => {
-	const real = await orig<typeof import('$lib/server/endpoints/client')>();
+vi.mock('#lib/server/endpoints/client.js', async (orig) => {
+	const real = await orig<typeof import('#lib/server/endpoints/client.js')>();
 	return {
 		...real,
 		chatCompletionStream: vi.fn(async () => {
@@ -38,22 +38,22 @@ vi.mock('$lib/server/endpoints/client', async (orig) => {
 		}),
 	};
 });
-vi.mock('$lib/server/push/notify', () => ({
+vi.mock('#lib/server/push/notify.js', () => ({
 	notifyConversationComplete: vi.fn(async () => {}),
 }));
-vi.mock('$lib/server/tasks/title-task-runner', () => ({
+vi.mock('#lib/server/tasks/title-task-runner.js', () => ({
 	startTitleTaskIfFirstExchange: vi.fn(() => Promise.resolve(null)),
 	raceTitle: vi.fn(async (p: Promise<string | null>) => p),
 }));
 
-import { createConversation, deleteConversation } from '$lib/server/db/queries/conversations';
-import { appendMessage, walkActiveBranch } from '$lib/server/db/queries/messages';
-import { startStreamingRelay } from '$lib/server/streaming/relay';
-import { registerInFlight, resetInFlight } from '$lib/server/streaming/in-flight';
-import { resetEndpointGatesForTests } from '$lib/server/endpoints/concurrency';
+import { createConversation, deleteConversation } from '#lib/server/db/queries/conversations.js';
+import { appendMessage, walkActiveBranch } from '#lib/server/db/queries/messages.js';
+import { startStreamingRelay } from '#lib/server/streaming/relay.js';
+import { registerInFlight, resetInFlight } from '#lib/server/streaming/in-flight.js';
+import { resetEndpointGatesForTests } from '#lib/server/endpoints/concurrency.js';
 import { DELETE } from '../../src/routes/api/conversations/[id]/+server';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
-import type { ChatMessage } from '$lib/types/api';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
+import type { ChatMessage } from '#lib/types/api.js';
 
 const endpoint: LoadedEndpoint = {
 	id: 'bridge',

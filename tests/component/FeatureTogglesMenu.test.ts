@@ -15,8 +15,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
-import type { FeatureCategoryEntry } from '$lib/types/api';
+import FeatureTogglesMenu from '#lib/components/FeatureTogglesMenu.svelte';
+import type { FeatureCategoryEntry } from '#lib/types/api.js';
 
 /** Test fixture mirroring what the layout server load ships to the client. */
 const CATEGORIES: FeatureCategoryEntry[] = [

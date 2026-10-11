@@ -20,11 +20,15 @@
 	stale position with no error and no failing test.
 -->
 <script lang="ts">
-	import SnippetMenu from '$lib/components/chat/SnippetMenu.svelte';
-	import { filterSnippets, snippetMenuQuery } from '$lib/prompt-snippet-trigger';
-	import { ensureSnippetsLoaded, recordSnippetUse, snippetList } from '$lib/prompt-snippets.svelte';
-	import { replaceRange } from '$lib/composer';
-	import type { PromptSnippet, SnippetKind } from '$lib/types/api';
+	import SnippetMenu from '#lib/components/chat/SnippetMenu.svelte';
+	import { filterSnippets, snippetMenuQuery } from '#lib/prompt-snippet-trigger.js';
+	import {
+		ensureSnippetsLoaded,
+		recordSnippetUse,
+		snippetList,
+	} from '#lib/prompt-snippets.svelte.js';
+	import { replaceRange } from '#lib/composer.js';
+	import type { PromptSnippet, SnippetKind } from '#lib/types/api.js';
 
 	interface Props {
 		text: string;

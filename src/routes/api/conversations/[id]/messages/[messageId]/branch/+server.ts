@@ -23,9 +23,9 @@
  */
 
 import { error } from '@sveltejs/kit';
-import { requireFound, requireUser } from '$lib/server/auth/guard';
-import { getConversationMeta } from '$lib/server/db/queries/conversations';
-import { deleteBranch } from '$lib/server/db/queries/messages';
+import { requireFound, requireUser } from '#lib/server/auth/guard.js';
+import { getConversationMeta } from '#lib/server/db/queries/conversations.js';
+import { deleteBranch } from '#lib/server/db/queries/messages.js';
 import type { RequestHandler } from './$types';
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {

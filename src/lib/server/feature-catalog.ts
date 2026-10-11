@@ -1,7 +1,7 @@
 /**
  * Assemble the per-conversation feature-category list that the composer
  * UI consumes. Built-in categories ('web', 'personalization') come from
- * `$lib/types/api`; MCP-server categories (`mcp:<server-id>`) come from
+ * `#lib/types/api`; MCP-server categories (`mcp:<server-id>`) come from
  * the live MCP registry.
  *
  * Must run server-side — the MCP registry isn't exposed to the browser
@@ -10,14 +10,14 @@
  * filled synchronously, so ids, names and transports are right immediately,
  * and only `toolCount` and `available` need the boot handshakes. The layout
  * reports `mcpSettled` so the client can re-pull once those land — see
- * isMcpReady in $lib/server/mcp/bootstrap.
+ * isMcpReady in #lib/server/mcp/bootstrap.
  */
 
 import {
 	BUILTIN_FEATURE_CATEGORIES,
 	FEATURE_CATEGORY_LABELS,
 	type FeatureCategoryEntry,
-} from '$lib/types/api';
+} from '#lib/types/api.js';
 import { listServerCatalog } from './mcp/registry';
 
 export type { FeatureCategoryEntry };

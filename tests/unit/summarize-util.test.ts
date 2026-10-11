@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { UpstreamError } from '$lib/server/endpoints/client';
+import { UpstreamError } from '#lib/server/endpoints/client.js';
 import {
 	approxTokens,
 	capAtBoundary,
 	memoryInputBudget,
 	shrinkBudgetAfterOverflow,
 	splitToBudget,
-} from '$lib/server/memory/summarize-util';
+} from '#lib/server/memory/summarize-util.js';
 
 const OPTS = { maxTokens: 500, overheadTokens: 400, minBudget: 1000 };
 

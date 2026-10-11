@@ -10,15 +10,15 @@
  * atomically only after the verify endpoint sees a valid registration
  * response — abandoning the ceremony leaves no orphans.
  */
-import { error, json } from '@sveltejs/kit';
-import { RP_NAME, getRpId, setRegistrationChallengeCookie } from '$lib/server/auth/passkey';
+import { error } from '@sveltejs/kit';
+import { RP_NAME, getRpId, setRegistrationChallengeCookie } from '#lib/server/auth/passkey.js';
 import { generateRegistrationOptions } from '@simplewebauthn/server';
-import { SETUP_PASSKEY_CARRY_COOKIE, setupGate } from '$lib/server/auth/setup';
-import { sign, setCarryCookie } from '$lib/server/auth/signed-cookies';
-import { parseIdentityInput } from '$lib/server/auth/identity-input';
-import { parseJsonBody } from '$lib/server/http';
-import { generateId } from '$lib/server/util/id';
-import { passkeyLoginEnabled } from '$lib/server/env';
+import { SETUP_PASSKEY_CARRY_COOKIE, setupGate } from '#lib/server/auth/setup.js';
+import { sign, setCarryCookie } from '#lib/server/auth/signed-cookies.js';
+import { parseIdentityInput } from '#lib/server/auth/identity-input.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { generateId } from '#lib/server/util/id.js';
+import { passkeyLoginEnabled } from '#lib/server/env.js';
 import type { RequestHandler } from './$types';
 
 const CARRY_TTL_MS = 5 * 60 * 1000; // 5 min — matches the challenge cookie
@@ -57,5 +57,5 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 		CARRY_TTL_MS / 1000,
 	);
 
-	return json(options);
+	return Response.json(options);
 };

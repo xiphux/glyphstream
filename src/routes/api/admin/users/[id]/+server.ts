@@ -13,19 +13,19 @@
  *     instance with no one able to reach this UI. We check the would-be
  *     post-state against the target's current role/disabled status.
  */
-import { error, json } from '@sveltejs/kit';
-import { requireAdmin } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { unlinkMediaFiles } from '$lib/server/media/disk-store';
-import { cancelInFlightGenerations } from '$lib/server/streaming/cancel';
-import { clearAppLock } from '$lib/server/auth/app-lock';
+import { error } from '@sveltejs/kit';
+import { requireAdmin } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { unlinkMediaFiles } from '#lib/server/media/disk-store.js';
+import { cancelInFlightGenerations } from '#lib/server/streaming/cancel.js';
+import { clearAppLock } from '#lib/server/auth/app-lock.js';
 import {
 	countActiveAdmins,
 	deleteUser,
 	getUserRole,
 	listUsers,
 	setUserDisabled,
-} from '$lib/server/db/queries/users';
+} from '#lib/server/db/queries/users.js';
 import type { RequestHandler } from './$types';
 
 /** True when acting on `targetId` would drop the active-admin count to zero. */
@@ -69,7 +69,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 			strandMessage: '',
 		});
 		clearAppLock(params.id);
-		return json({ ok: true });
+		return Response.json({ ok: true });
 	}
 	if (typeof body.disabled !== 'boolean') {
 		error(400, '`disabled` must be a boolean');
@@ -81,7 +81,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 		strandMessage: 'Cannot disable the last active administrator',
 	});
 	if (!setUserDisabled(params.id, body.disabled)) error(404, 'User not found');
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
@@ -107,5 +107,5 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 	// The cascade removed the media rows; the bytes (and their thumbnails and
 	// vision variants) are only reachable from here.
 	await unlinkMediaFiles(deleted.files, 'admin.users.delete');
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

@@ -25,7 +25,7 @@
  */
 
 import { tick } from 'svelte';
-import { invalidateAll } from '$app/navigation';
+import { refreshAll } from '$app/navigation';
 import { compactionWorthwhile, isCompactionSummary, shouldAutoCompact } from './chat-compaction';
 import { consumeChatStream } from './consume-chat-stream';
 import { confirmDialog } from './confirm.svelte';
@@ -152,7 +152,7 @@ export class CompactionController {
 				},
 				onCompactionDone: async (summaryMessage) => {
 					doneSummaryId = summaryMessage.id;
-					await invalidateAll();
+					await refreshAll();
 				},
 				onError: (msg) => {
 					errored = msg;
@@ -213,10 +213,10 @@ export class CompactionController {
 		}
 		// The server commits the revert before replying, so by here the undo has
 		// durably succeeded. Report success independently of the view refresh: if
-		// invalidateAll fails (a transient load re-fetch error), the undo still
+		// refreshAll fails (a transient load re-fetch error), the undo still
 		// happened — ask for a reload instead of falsely claiming it failed.
 		try {
-			await invalidateAll();
+			await refreshAll();
 			toast.success('Compaction undone');
 		} catch {
 			toast.info('Compaction undone — reload to refresh the view.');

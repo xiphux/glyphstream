@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
 	connectImpl: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 }));
 
-vi.mock('$lib/server/mcp/config', () => ({
+vi.mock('#lib/server/mcp/config.js', () => ({
 	loadMcpServers: () => mocks.servers,
 }));
 
@@ -25,12 +25,12 @@ vi.mock('$lib/server/mcp/config', () => ({
 // MAX_CONNECT_ATTEMPTS, which healthyBootstrapBudgetMs prices off — comes from
 // the real module. Pinning the budget against a mocked constant would assert
 // nothing.
-vi.mock('$lib/server/mcp/client', async (importOriginal) => ({
-	...(await importOriginal<typeof import('$lib/server/mcp/client')>()),
+vi.mock('#lib/server/mcp/client.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/server/mcp/client.js')>()),
 	connectMcpServer: (...args: unknown[]) => mocks.connectImpl(...args),
 }));
 
-import { MAX_CONNECT_ATTEMPTS } from '$lib/server/mcp/client';
+import { MAX_CONNECT_ATTEMPTS } from '#lib/server/mcp/client.js';
 import { McpError } from '@modelcontextprotocol/sdk/types.js';
 import { StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
@@ -41,7 +41,7 @@ import {
 	getMcpServerTools,
 	resetMcpRegistryForTests,
 	callMcpTool,
-} from '$lib/server/mcp/registry';
+} from '#lib/server/mcp/registry.js';
 
 interface FakeConn {
 	listTools: ReturnType<typeof vi.fn>;

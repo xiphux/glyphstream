@@ -11,7 +11,7 @@ import {
 	resolveBranchIndex,
 	resolveModelOverride,
 	ModelOverrideError,
-} from '$lib/server/messages/fanout-dispatch';
+} from '#lib/server/messages/fanout-dispatch.js';
 
 const resolvers = {
 	parseEndpointId: (id: string) => (id.includes('::') ? id.split('::')[0] : null),

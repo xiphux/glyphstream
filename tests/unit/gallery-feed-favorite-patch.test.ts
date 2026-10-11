@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { GalleryFeed } from '$lib/gallery-feed.svelte';
-import type { GalleryLayout, GalleryUnit } from '$lib/types/api';
+import { GalleryFeed } from '#lib/gallery-feed.svelte.js';
+import type { GalleryLayout, GalleryUnit } from '#lib/types/api.js';
 
 /**
  * The gallery patches a tile's star badge in place instead of reseeding the grid,

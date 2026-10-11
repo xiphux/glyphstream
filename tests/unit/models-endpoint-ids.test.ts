@@ -18,10 +18,10 @@ const mocks = vi.hoisted(() => ({
 	results: vi.fn<() => Array<{ endpointId: string; models: unknown[]; error?: string }>>(),
 }));
 
-vi.mock('$lib/server/auth/guard', () => ({ requireUser: () => {} }));
-vi.mock('$lib/server/endpoints/registry', () => ({ listEndpoints: () => [] }));
-vi.mock('$lib/server/endpoints/config', () => ({ ConfigError: class extends Error {} }));
-vi.mock('$lib/server/endpoints/list-models', () => ({
+vi.mock('#lib/server/auth/guard.js', () => ({ requireUser: () => {} }));
+vi.mock('#lib/server/endpoints/registry.js', () => ({ listEndpoints: () => [] }));
+vi.mock('#lib/server/endpoints/config.js', () => ({ ConfigError: class extends Error {} }));
+vi.mock('#lib/server/endpoints/list-models.js', () => ({
 	listAllModelsWithErrors: () => Promise.resolve(mocks.results()),
 }));
 

@@ -1,3 +1,23 @@
+<script lang="ts">
+	import { DropdownMenu } from 'bits-ui';
+	import { resolve } from '$app/paths';
+
+	import {
+		Brain,
+		KeyRound,
+		LogOut,
+		Plug,
+		Server,
+		Settings,
+		ShieldCheck,
+		Sparkles,
+		TextQuote,
+		Users,
+	} from '@lucide/svelte';
+
+	let { goto, isAdmin = false }: { goto: (path: string) => unknown; isAdmin?: boolean } = $props();
+</script>
+
 <!--
 	Portal + Content for the (app) layout's bottom-of-sidebar account menu.
 
@@ -17,24 +37,6 @@
 	`conversation-ui-actions.svelte.ts`, which keeps its injected `goto` free of
 	`$app/paths` precisely because a node-env test imports it.
 -->
-<script lang="ts">
-	import { DropdownMenu } from 'bits-ui';
-	import { resolve } from '$app/paths';
-	import {
-		Brain,
-		KeyRound,
-		LogOut,
-		Plug,
-		Server,
-		Settings,
-		ShieldCheck,
-		Sparkles,
-		TextQuote,
-		Users,
-	} from '@lucide/svelte';
-
-	let { goto, isAdmin = false }: { goto: (path: string) => unknown; isAdmin?: boolean } = $props();
-</script>
 
 <DropdownMenu.Portal>
 	<DropdownMenu.Content
@@ -44,49 +46,49 @@
 		class="z-overlay min-w-[180px] overflow-hidden rounded-md border border-border surface-glass gs-pop py-1 shadow-lg"
 	>
 		<DropdownMenu.Item
-			onSelect={() => goto(resolve('/settings/preferences'))}
+			onSelect={() => goto(resolve('settings/preferences'))}
 			class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 		>
 			<Settings size={14} strokeWidth={2.25} />
 			<span>Preferences</span>
 		</DropdownMenu.Item>
 		<DropdownMenu.Item
-			onSelect={() => goto(resolve('/settings/memories'))}
+			onSelect={() => goto(resolve('settings/memories'))}
 			class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 		>
 			<Brain size={14} strokeWidth={2.25} />
 			<span>Memories</span>
 		</DropdownMenu.Item>
 		<DropdownMenu.Item
-			onSelect={() => goto(resolve('/settings/skills'))}
+			onSelect={() => goto(resolve('settings/skills'))}
 			class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 		>
 			<Sparkles size={14} strokeWidth={2.25} />
 			<span>Skills</span>
 		</DropdownMenu.Item>
 		<DropdownMenu.Item
-			onSelect={() => goto(resolve('/settings/snippets'))}
+			onSelect={() => goto(resolve('settings/snippets'))}
 			class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 		>
 			<TextQuote size={14} strokeWidth={2.25} />
 			<span>Prompt snippets</span>
 		</DropdownMenu.Item>
 		<DropdownMenu.Item
-			onSelect={() => goto(resolve('/settings/mcp'))}
+			onSelect={() => goto(resolve('settings/mcp'))}
 			class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 		>
 			<Plug size={14} strokeWidth={2.25} />
 			<span>MCP servers</span>
 		</DropdownMenu.Item>
 		<DropdownMenu.Item
-			onSelect={() => goto(resolve('/settings/permissions'))}
+			onSelect={() => goto(resolve('settings/permissions'))}
 			class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 		>
 			<ShieldCheck size={14} strokeWidth={2.25} />
 			<span>Permissions</span>
 		</DropdownMenu.Item>
 		<DropdownMenu.Item
-			onSelect={() => goto(resolve('/settings/security'))}
+			onSelect={() => goto(resolve('settings/security'))}
 			class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 		>
 			<KeyRound size={14} strokeWidth={2.25} />
@@ -105,14 +107,14 @@
 					Administration
 				</DropdownMenu.GroupHeading>
 				<DropdownMenu.Item
-					onSelect={() => goto(resolve('/settings/users'))}
+					onSelect={() => goto(resolve('settings/users'))}
 					class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 				>
 					<Users size={14} strokeWidth={2.25} />
 					<span>Users</span>
 				</DropdownMenu.Item>
 				<DropdownMenu.Item
-					onSelect={() => goto(resolve('/settings/endpoints'))}
+					onSelect={() => goto(resolve('settings/endpoints'))}
 					class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 				>
 					<Server size={14} strokeWidth={2.25} />

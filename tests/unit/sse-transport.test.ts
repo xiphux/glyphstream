@@ -6,8 +6,8 @@ import {
 	formatSSE,
 	isAbortError,
 	sseWriter,
-} from '$lib/server/streaming/sse-transport';
-import { UpstreamError } from '$lib/server/endpoints/client';
+} from '#lib/server/streaming/sse-transport.js';
+import { UpstreamError } from '#lib/server/endpoints/client.js';
 
 describe('formatSSE', () => {
 	it('frames an event with the event: and data: fields', () => {

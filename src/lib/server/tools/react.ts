@@ -24,7 +24,7 @@
  *    model already knows, and — worse — it would bias hard toward those six,
  *    which is exactly the "gets old fast" failure this feature has to avoid.
  *    The register is described instead, and the value is validated on the way
- *    back — by the SHARED predicate in `$lib/chat-render`, because the relay's
+ *    back — by the SHARED predicate in `#lib/chat-render`, because the relay's
  *    recorder persists a tool call's arguments before the tool runs, so the
  *    renderer has to apply the same check to the durable record.
  *
@@ -47,7 +47,7 @@ import type { Tool } from './types';
 // `relay.ts` uses for CODE_ARG_TOOLS. The renderer has to know this name too
 // (to drop the part), and one constant in a shared module is the only way the
 // two halves of "this tool is invisible" can't drift apart.
-import { REACTION_TOOL_NAME, validateEmoji } from '$lib/chat-render';
+import { REACTION_TOOL_NAME, validateEmoji } from '#lib/chat-render.js';
 
 /**
  * System-prompt line advertising reactions, appended by `buildChatToolContext`

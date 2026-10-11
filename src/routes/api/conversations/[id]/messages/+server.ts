@@ -1,63 +1,66 @@
-import { error, json } from '@sveltejs/kit';
-import { requireFound, requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { getConversationMeta, updateConversationModel } from '$lib/server/db/queries/conversations';
+import { error } from '@sveltejs/kit';
+import { requireFound, requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import {
+	getConversationMeta,
+	updateConversationModel,
+} from '#lib/server/db/queries/conversations.js';
 import {
 	appendMessage,
 	findUserMessageAncestor,
 	getMessage,
 	setActiveLeafMessageId,
 	walkActiveBranch,
-} from '$lib/server/db/queries/messages';
-import { createUserMessage } from '$lib/server/messages/create-user-message';
+} from '#lib/server/db/queries/messages.js';
+import { createUserMessage } from '#lib/server/messages/create-user-message.js';
 import {
 	chatCompletionSync,
 	formatUpstreamError,
 	UpstreamError,
 	type ChatCompletionRequest,
-} from '$lib/server/endpoints/client';
-import { acquireEndpointSlot } from '$lib/server/endpoints/concurrency';
-import { getEndpoint } from '$lib/server/endpoints/registry';
-import { generateId } from '$lib/server/util/id';
-import { listAllModels } from '$lib/server/endpoints/list-models';
+} from '#lib/server/endpoints/client.js';
+import { acquireEndpointSlot } from '#lib/server/endpoints/concurrency.js';
+import { getEndpoint } from '#lib/server/endpoints/registry.js';
+import { generateId } from '#lib/server/util/id.js';
+import { listAllModels } from '#lib/server/endpoints/list-models.js';
 import {
 	isModelVisiblePart,
 	serializeBranchForUpstream,
-} from '$lib/server/endpoints/serialize-upstream';
-import { upstreamBranch } from '$lib/chat-compaction';
-import { parseModelId } from '$lib/server/endpoints/model-id';
-import { resolveBranchIndex, resolveModelOverride } from '$lib/server/messages/fanout-dispatch';
-import { notifyFanoutCompleteIfLast } from '$lib/server/messages/fanout-notify';
-import { resolveActivatedToolDefs } from '$lib/server/tools';
-import { getMaxToolLoopIterations } from '$lib/server/endpoints/config';
-import { dedupeToolDefs } from '$lib/server/chat/tool-search-context';
-import { augmentRequestForCanvas, buildChatToolContext } from '$lib/server/chat/tool-context';
-import { resolveDisabledFeatures } from '$lib/server/chat/private-seal';
-import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
-import { composePersonaPrompt } from '$lib/server/chat/persona-context';
+} from '#lib/server/endpoints/serialize-upstream.js';
+import { upstreamBranch } from '#lib/chat-compaction.js';
+import { parseModelId } from '#lib/server/endpoints/model-id.js';
+import { resolveBranchIndex, resolveModelOverride } from '#lib/server/messages/fanout-dispatch.js';
+import { notifyFanoutCompleteIfLast } from '#lib/server/messages/fanout-notify.js';
+import { resolveActivatedToolDefs } from '#lib/server/tools/index.js';
+import { getMaxToolLoopIterations } from '#lib/server/endpoints/config.js';
+import { dedupeToolDefs } from '#lib/server/chat/tool-search-context.js';
+import { augmentRequestForCanvas, buildChatToolContext } from '#lib/server/chat/tool-context.js';
+import { resolveDisabledFeatures } from '#lib/server/chat/private-seal.js';
+import { getUserPreferences } from '#lib/server/db/queries/user-preferences.js';
+import { composePersonaPrompt } from '#lib/server/chat/persona-context.js';
 import {
 	synthesizeSkillActivations,
 	type SyntheticActivationEvent,
-} from '$lib/server/chat/synthesize-skill-activation';
-import { logLevel } from '$lib/server/env';
-import { renderMarkdown } from '$lib/server/markdown/render';
-import { mediaIdToDataUrl } from '$lib/server/media/data-url';
+} from '#lib/server/chat/synthesize-skill-activation.js';
+import { logLevel } from '#lib/server/env.js';
+import { renderMarkdown } from '#lib/server/markdown/render.js';
+import { mediaIdToDataUrl } from '#lib/server/media/data-url.js';
 import {
 	clearInFlight,
 	conversationFanoutAtCapacity,
 	registerInFlight,
-} from '$lib/server/streaming/in-flight';
-import { startStreamingRelay } from '$lib/server/streaming/relay';
-import { submitGenerationJob } from '$lib/server/generation/jobs';
-import { sseResponse } from '$lib/server/streaming/sse-transport';
-import { raceTitle, startTitleTaskIfFirstExchange } from '$lib/server/tasks/title-task-runner';
+} from '#lib/server/streaming/in-flight.js';
+import { startStreamingRelay } from '#lib/server/streaming/relay.js';
+import { submitGenerationJob } from '#lib/server/generation/jobs.js';
+import { sseResponse } from '#lib/server/streaming/sse-transport.js';
+import { raceTitle, startTitleTaskIfFirstExchange } from '#lib/server/tasks/title-task-runner.js';
 
 const TITLE_DELIVERY_BUDGET_MS = 5000;
 
 const DEBUG = logLevel() === 'debug';
-import { isMediaKind } from '$lib/fanout';
-import { isModelKind } from '$lib/types/api';
-import type { ModelEntry, SendMessageRequest, SendMessageResponse } from '$lib/types/api';
+import { isMediaKind } from '#lib/fanout.js';
+import { isModelKind } from '#lib/types/api.js';
+import type { ModelEntry, SendMessageRequest, SendMessageResponse } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, params, request, url }) => {
@@ -758,7 +761,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				assistantMessage,
 				...(syncTitle ? { title: syncTitle } : {}),
 			};
-			return json(response);
+			return Response.json(response);
 		} finally {
 			syncSlot.release();
 		}

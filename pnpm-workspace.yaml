@@ -7,18 +7,17 @@
 # not direct deps — they arrive under @modelcontextprotocol/sdk and
 # friends — so a plain upgrade can't move them.
 #
-# `cookie` is the one that crosses a 0.x minor: @sveltejs/kit (latest 2.70.3)
-# still declares ^0.6.0, and the fix (GHSA-pxg6-pf52-xh8x, out-of-bounds
-# characters in cookie name/path/domain) is 0.7.0. The parse/serialize API is
-# unchanged. We only set fixed cookie names, so it wasn't reachable here.
-# Drop this floor once kit depends on >=0.7.
+# (`cookie: '>=0.7.0'` used to be here, for GHSA-pxg6-pf52-xh8x while kit 2
+# declared ^0.6.0. It came out with SvelteKit 3, which depends on cookie ^2: an
+# override replaces EVERY spec for the package, so the floor resolved kit's ^2
+# to the 0.7.2 already in the lockfile — a cookie API kit 3 doesn't speak. The
+# other consumer, express under the MCP SDK, declares ^0.7.1 on its own.)
 overrides:
   fast-uri: '>=4.1.3'
   ip-address: '>=10.3.1'
   hono: '>=4.13.5'
   '@hono/node-server': '>=2.0.5'
   qs: '>=6.16.0'
-  cookie: '>=0.7.0'
 
 # Install-script decisions. Replaces the old `onlyBuiltDependencies` list,
 # which pnpm 11 removed; pnpm 12 additionally turns an undecided script from a

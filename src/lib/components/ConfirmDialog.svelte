@@ -1,7 +1,7 @@
 <!--
 	Host for the app-wide confirm dialog. Rendered once in the (app)
 	layout; it reads confirmDialog.pending and renders the modal. See
-	$lib/confirm.svelte for the store and the confirmDialog.ask() API
+	#lib/confirm.svelte for the store and the confirmDialog.ask() API
 	that callers use as a styled, promise-returning window.confirm().
 
 	The shell — role=alertdialog, backdrop, Escape handling — lives in
@@ -9,7 +9,7 @@
 	Cancel + destructive-action buttons.
 -->
 <script lang="ts">
-	import { confirmDialog } from '$lib/confirm.svelte';
+	import { confirmDialog } from '#lib/confirm.svelte.js';
 	import BaseDialog from './BaseDialog.svelte';
 </script>
 

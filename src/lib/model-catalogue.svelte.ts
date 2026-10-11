@@ -18,8 +18,8 @@
  * downward, which is exactly the direction needed here.
  */
 import { getContext, setContext } from 'svelte';
-import { endpointIdOf, MAX_MODEL_IDS_PER_REQUEST } from '$lib/model-ids';
-import type { ModelEntry } from '$lib/types/api';
+import { endpointIdOf, MAX_MODEL_IDS_PER_REQUEST } from '#lib/model-ids.js';
+import type { ModelEntry } from '#lib/types/api.js';
 
 /**
  * How much of the catalogue is present.

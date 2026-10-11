@@ -21,9 +21,9 @@ const ORIGIN = 'https://chat.example.test';
 const RP_ID = 'chat.example.test';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB, passkeysOn: true }));
-vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
-vi.mock('$lib/server/env', async (importOriginal) => ({
-	...(await importOriginal<typeof import('$lib/server/env')>()),
+vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
+vi.mock('#lib/server/env.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/server/env.js')>()),
 	publicBaseUrl: () => 'https://chat.example.test',
 	passkeyLoginEnabled: () => mocks.passkeysOn,
 }));
@@ -32,10 +32,10 @@ import { POST as loginOptions } from '../../src/routes/api/auth/passkey/login/op
 import { POST as loginVerify } from '../../src/routes/api/auth/passkey/login/verify/+server';
 import { POST as registerOptions } from '../../src/routes/api/auth/passkey/register/options/+server';
 import { POST as registerVerify } from '../../src/routes/api/auth/passkey/register/verify/+server';
-import { resetRpCache } from '$lib/server/auth/passkey';
-import { createSession, validateSessionToken } from '$lib/server/auth/session';
-import { findCredentialById, insertCredential } from '$lib/server/db/queries/passkey';
-import { passkeyCredentials, sessions, users } from '$lib/server/db/schema';
+import { resetRpCache } from '#lib/server/auth/passkey.js';
+import { createSession, validateSessionToken } from '#lib/server/auth/session.js';
+import { findCredentialById, insertCredential } from '#lib/server/db/queries/passkey.js';
+import { passkeyCredentials, sessions, users } from '#lib/server/db/schema.js';
 
 /** A browser's cookie jar, shared across the options → verify round trip. */
 function browserJar() {

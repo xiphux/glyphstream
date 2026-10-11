@@ -1,8 +1,8 @@
 import { redirect } from '@sveltejs/kit';
-import { safeUnlockReturn } from '$lib/app-lock';
-import { countUsers } from '$lib/server/db/queries/users';
-import { passkeyLoginEnabled } from '$lib/server/env';
-import { listEnabledProviders } from '$lib/server/auth/oauth/registry';
+import { safeUnlockReturn } from '#lib/app-lock.js';
+import { countUsers } from '#lib/server/db/queries/users.js';
+import { passkeyLoginEnabled } from '#lib/server/env.js';
+import { listEnabledProviders } from '#lib/server/auth/oauth/registry.js';
 import type { PageServerLoad } from './$types';
 
 const ERROR_MESSAGES: Record<string, string> = {

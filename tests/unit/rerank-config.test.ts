@@ -3,13 +3,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // Control the config loader and endpoint registry without touching disk.
 const loadMock = vi.hoisted(() => vi.fn());
 const getEndpointMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/config', () => ({ loadRerankConfig: loadMock }));
-vi.mock('$lib/server/endpoints/registry', () => ({ getEndpoint: getEndpointMock }));
+vi.mock('#lib/server/endpoints/config.js', () => ({ loadRerankConfig: loadMock }));
+vi.mock('#lib/server/endpoints/registry.js', () => ({ getEndpoint: getEndpointMock }));
 
 import {
 	resolveRerankConfig,
 	_resetRerankConfigCacheForTests,
-} from '$lib/server/retrieval/rerank-config';
+} from '#lib/server/retrieval/rerank-config.js';
 
 afterEach(() => {
 	_resetRerankConfigCacheForTests();

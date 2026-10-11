@@ -16,20 +16,20 @@ const mocks = vi.hoisted(() => ({
 	streamCompaction: vi.fn<(...a: unknown[]) => ReadableStream<Uint8Array>>(),
 }));
 
-vi.mock('$lib/server/db/queries/conversations', () => ({
+vi.mock('#lib/server/db/queries/conversations.js', () => ({
 	getConversationMeta: (...a: unknown[]) => mocks.getConversationMeta(...a),
 	getFanoutParent: (...a: unknown[]) => mocks.getFanoutParent(...a),
 }));
-vi.mock('$lib/server/chat/compaction', () => ({
+vi.mock('#lib/server/chat/compaction.js', () => ({
 	prepareCompaction: (...a: unknown[]) => mocks.prepareCompaction(...a),
 	runCompaction: (...a: unknown[]) => mocks.runCompaction(...a),
 }));
-vi.mock('$lib/server/streaming/compaction-relay', () => ({
+vi.mock('#lib/server/streaming/compaction-relay.js', () => ({
 	streamCompaction: (...a: unknown[]) => mocks.streamCompaction(...a),
 }));
 
 import { POST } from '../../src/routes/api/conversations/[id]/compact/+server';
-import { UpstreamError } from '$lib/server/endpoints/client';
+import { UpstreamError } from '#lib/server/endpoints/client.js';
 
 type Args = { stream?: boolean; userId?: string | null };
 function call(args: Args = {}) {

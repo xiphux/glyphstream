@@ -32,7 +32,7 @@ import {
 	withOverflowRetry,
 } from './summarize-util';
 import type { ResolvedMemoryModel } from '../tasks/memory-model';
-import type { ChatMessage } from '$lib/types/api';
+import type { ChatMessage } from '#lib/types/api.js';
 
 /** Max stored/indexed summary length. A gist, not a transcript. */
 export const SUMMARY_MAX_CHARS = 600;

@@ -1,11 +1,11 @@
-import { error, json } from '@sveltejs/kit';
-import { requireFound, requireUser } from '$lib/server/auth/guard';
+import { error } from '@sveltejs/kit';
+import { requireFound, requireUser } from '#lib/server/auth/guard.js';
 import {
 	getMediaListItemForUser,
 	setMediaFavorite,
 	trashMediaForUser,
-} from '$lib/server/db/queries/media';
-import { parseJsonBody } from '$lib/server/http';
+} from '#lib/server/db/queries/media.js';
+import { parseJsonBody } from '#lib/server/http.js';
 import type { RequestHandler } from './$types';
 
 /**
@@ -17,7 +17,7 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = async ({ locals, params }) => {
 	requireUser(locals);
 	const m = requireFound(getMediaListItemForUser(params.id, locals.user.id), 'Media not found');
-	return json(m);
+	return Response.json(m);
 };
 
 /**

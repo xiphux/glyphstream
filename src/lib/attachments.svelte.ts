@@ -13,7 +13,7 @@
  */
 
 import { untrack } from 'svelte';
-import type { ModelKind } from '$lib/types/api';
+import type { ModelKind } from '#lib/types/api.js';
 
 // --- client-side image resize -------------------------------------------
 //

@@ -9,21 +9,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Buffer } from 'node:buffer';
 
 const mocks = vi.hoisted(() => ({ fetchUpstreamBytes: vi.fn() }));
-vi.mock('$lib/server/endpoints/client', async (orig) => ({
-	...(await orig<typeof import('$lib/server/endpoints/client')>()),
+vi.mock('#lib/server/endpoints/client.js', async (orig) => ({
+	...(await orig<typeof import('#lib/server/endpoints/client.js')>()),
 	fetchUpstreamBytes: mocks.fetchUpstreamBytes,
 }));
-vi.mock('$lib/server/media/disk-store', () => ({
+vi.mock('#lib/server/media/disk-store.js', () => ({
 	getMediaStore: () => ({
 		put: vi.fn(async () => ({ storagePath: 'p', contentType: 'image/png', byteSize: 3 })),
 	}),
 }));
-vi.mock('$lib/server/db/queries/media', () => ({
+vi.mock('#lib/server/db/queries/media.js', () => ({
 	insertMedia: vi.fn(() => ({ id: 'media-1' })),
 }));
 
-import { persistGeneratedImage } from '$lib/server/media/persister';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+import { persistGeneratedImage } from '#lib/server/media/persister.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 
 const endpoint = (baseUrl: string): LoadedEndpoint =>
 	({ id: 'e', baseUrl, apiKey: 'k', requestTimeoutSeconds: 30 }) as unknown as LoadedEndpoint;

@@ -1,7 +1,7 @@
 /** Tests for the shared string helpers. */
 
 import { describe, expect, it } from 'vitest';
-import { truncateEllipsis } from '$lib/text';
+import { truncateEllipsis } from '#lib/text.js';
 
 describe('truncateEllipsis', () => {
 	it('returns a string within the cap unchanged', () => {

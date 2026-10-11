@@ -1,38 +1,38 @@
 <script lang="ts">
 	import type { LayoutData } from './$types';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 	import { resolve } from '$app/paths';
 	import { onMount, untrack } from 'svelte';
 	import type { Snippet } from 'svelte';
-	import { ModelCatalogue, setModelCatalogue } from '$lib/model-catalogue.svelte';
-	import { reconcileSubscription } from '$lib/push-subscribe';
-	import { syncTimeZone } from '$lib/timezone-sync';
+	import { ModelCatalogue, setModelCatalogue } from '#lib/model-catalogue.svelte.js';
+	import { reconcileSubscription } from '#lib/push-subscribe.js';
+	import { syncTimeZone } from '#lib/timezone-sync.js';
 	import { flip } from 'svelte/animate';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
 	import { MediaQuery } from 'svelte/reactivity';
-	import { afterNavigate, goto, invalidate, invalidateAll } from '$app/navigation';
+	import { afterNavigate, goto, invalidate, refreshAll } from '$app/navigation';
 	import { navigating, page } from '$app/state';
 	import { DropdownMenu } from 'bits-ui';
-	import Toaster from '$lib/components/Toaster.svelte';
-	import DeleteConversationDialog from '$lib/components/DeleteConversationDialog.svelte';
-	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-	import { createDoubleActivate } from '$lib/double-activate';
-	import { toast } from '$lib/toast.svelte';
-	import { searchModal } from '$lib/search-modal.svelte';
-	import ScrollPane from '$lib/components/ScrollPane.svelte';
-	import { revealScrollTop } from '$lib/scroll-reveal';
-	import { ConversationUiActions } from '$lib/conversation-ui-actions.svelte';
-	import { syncSurfaceChrome } from '$lib/theme-color';
-	import { FavoritesDrag } from '$lib/favorites-drag.svelte';
-	import { isTitlePending } from '$lib/title-pending.svelte';
+	import Toaster from '#lib/components/Toaster.svelte';
+	import DeleteConversationDialog from '#lib/components/DeleteConversationDialog.svelte';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import { createDoubleActivate } from '#lib/double-activate.js';
+	import { toast } from '#lib/toast.svelte.js';
+	import { searchModal } from '#lib/search-modal.svelte.js';
+	import ScrollPane from '#lib/components/ScrollPane.svelte';
+	import { revealScrollTop } from '#lib/scroll-reveal.js';
+	import { ConversationUiActions } from '#lib/conversation-ui-actions.svelte.js';
+	import { syncSurfaceChrome } from '#lib/theme-color.js';
+	import { FavoritesDrag } from '#lib/favorites-drag.svelte.js';
+	import { isTitlePending } from '#lib/title-pending.svelte.js';
 	import {
 		anyGenerating,
 		generationActivity,
 		markGenerating,
 		reconcileGenerating,
-	} from '$lib/generating-conversations.svelte';
-	import { MAX_CONVERSATION_TITLE_LENGTH } from '$lib/types/api';
+	} from '#lib/generating-conversations.svelte.js';
+	import { MAX_CONVERSATION_TITLE_LENGTH } from '#lib/types/api.js';
 	import {
 		Archive,
 		ChevronDown,
@@ -54,9 +54,9 @@
 		VenetianMask,
 		Video as VideoIcon,
 	} from '@lucide/svelte';
-	import type { GeneratingConversationsResponse, ModelKind } from '$lib/types/api';
-	import { privateView } from '$lib/private-chat.svelte';
-	import { APP_LOCK_KEEPALIVE_PATH, APP_LOCKED_STATUS, appLockKeepAliveMs } from '$lib/app-lock';
+	import type { GeneratingConversationsResponse, ModelKind } from '#lib/types/api.js';
+	import { privateView } from '#lib/private-chat.svelte.js';
+	import { APP_LOCK_KEEPALIVE_PATH, APP_LOCKED_STATUS, appLockKeepAliveMs } from '#lib/app-lock.js';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
@@ -232,14 +232,14 @@
 				// the server's lock redirect first, which carries the right `from`
 				// and unmounts this layout — but not this check, still in flight):
 				// leave it alone. Another hop would only nest `from` inside itself.
-				if (target.pathname === resolve('/unlock')) return;
+				if (target.pathname === resolve('unlock')) return;
 				const from = encodeURIComponent(target.pathname + target.search);
-				await goto(`${resolve('/unlock')}?from=${from}`, { replaceState: true });
+				await goto(`${resolve('unlock')}?from=${from}`, { replace: true });
 			} else if (res.ok) {
 				appLockCovered = false;
 			} else if (res.status === 401) {
 				// Session gone entirely — let the layout load send us to /login.
-				await invalidateAll();
+				await refreshAll();
 			}
 		} catch {
 			// Offline, unreachable, timed out or superseded: stay covered.
@@ -282,7 +282,7 @@
 	//
 	// Once, at mount, not on every `data` refresh: mid-session the client's own
 	// marks are the authoritative, immediate signal, so re-reading server state
-	// on each `invalidateAll` would be redundant work that can only lag them.
+	// on each `refreshAll` would be redundant work that can only lag them.
 	//
 	// The conversation being *displayed* is skipped because the chat page owns a
 	// strictly better signal for it — `recoveredInFlight` qualifies the same
@@ -315,7 +315,7 @@
 	// Gated on a boolean rather than the set itself so one of several
 	// conversations finishing doesn't restart the timer, and self-terminating:
 	// the last dot clearing stops the interval.
-	// `/api/conversations?generating=1` returns bare ids — invalidateAll would
+	// `/api/conversations?generating=1` returns bare ids — refreshAll would
 	// re-fetch every endpoint's model list, far too heavy for an interval.
 	const GENERATING_POLL_MS = 5000;
 	const generatingActive = $derived(anyGenerating());
@@ -409,6 +409,7 @@
 		// it directly without invalidating, so it can be the fresher of the two.
 		const m = document.cookie.match(/(?:^|;\s*)gs-scheme=([^;]+)/);
 		const p = m ? m[1] : 'system';
+
 		document.documentElement.dataset.scheme =
 			p === 'dark' || (p !== 'light' && dark) ? 'dark' : 'light';
 		syncSurfaceChrome();
@@ -587,7 +588,7 @@
 	const convUi = new ConversationUiActions({
 		getPathname: () => page.url.pathname,
 		goto,
-		invalidateAll,
+		refreshAll,
 		invalidateConversations: () => invalidate('app:conversations'),
 	});
 
@@ -649,7 +650,12 @@
 	// `afterNavigate` is the question actually being asked: it runs once per
 	// completed navigation, same-URL ones included, plus once on enter — and
 	// `_invalidate()` never dispatches it.
-	afterNavigate(() => {
+	afterNavigate(({ shallow, type }) => {
+		// Not a navigation. Since SvelteKit 3 a shallow `goto` (a page stripping
+		// its own URL fragment, say) dispatches afterNavigate too; every handler
+		// here exists for real navigations, so each one skips it.
+		if (shallow && type === 'goto') return;
+
 		// Held open while a conversation's overflow menu is showing: the menu
 		// portals out of the drawer, so sliding the drawer away mid-navigation
 		// would leave it floating over the page (see `openOverflowFor`). Plain
@@ -710,12 +716,12 @@
 	// dead connection is exactly the case that fails — and it's a plausible one,
 	// since a flaky connection is a reason to open this panel.
 	let debugOpen = $state(false);
-	let DebugPanel = $state<typeof import('$lib/components/DebugPanel.svelte').default | null>(null);
+	let DebugPanel = $state<typeof import('#lib/components/DebugPanel.svelte').default | null>(null);
 
 	const onVersionActivate = createDoubleActivate(() => {
 		void (async () => {
 			try {
-				DebugPanel ??= (await import('$lib/components/DebugPanel.svelte')).default;
+				DebugPanel ??= (await import('#lib/components/DebugPanel.svelte')).default;
 				debugOpen = true;
 			} catch {
 				toast.error('Debug info unavailable offline');
@@ -799,7 +805,7 @@
 					 "you have to be looking for it" affordance for confirming
 					 a service-worker refresh or which build is loaded. -->
 				<div class="flex items-baseline gap-1.5">
-					<a href={resolve('/')} class="font-semibold tracking-tight">GlyphStream</a>
+					<a href={resolve('/(app)')} class="font-semibold tracking-tight">GlyphStream</a>
 					<!-- Double-activate for the debug panel ("stats for nerds").
 						 A button, not the old span: it's interactive now, and that
 						 keeps it focusable so two quick Enter presses reach the
@@ -845,7 +851,7 @@
 
 		<div class="px-2">
 			<a
-				href={resolve('/')}
+				href={resolve('/(app)')}
 				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {newChatPending
 					? 'bg-surface-sunken text-accent'
 					: 'hover:bg-surface-sunken/70'} {collapsed ? 'sm:justify-center sm:px-0' : ''}"
@@ -878,7 +884,7 @@
 				{/if}
 			</button>
 			<a
-				href={resolve('/gallery')}
+				href={resolve('gallery')}
 				title={collapsed ? 'Gallery' : ''}
 				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {galleryActive
 					? 'bg-surface-sunken text-accent'
@@ -888,7 +894,7 @@
 				{#if !collapsed}<span>Gallery</span>{/if}
 			</a>
 			<a
-				href={resolve('/settings/models')}
+				href={resolve('settings/models')}
 				title={collapsed ? 'Custom models' : ''}
 				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {customModelsActive
 					? 'bg-surface-sunken text-accent'
@@ -898,7 +904,7 @@
 				{#if !collapsed}<span>Custom models</span>{/if}
 			</a>
 			<a
-				href={resolve('/archived')}
+				href={resolve('archived')}
 				title={collapsed ? 'Archived' : ''}
 				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {archivedActive
 					? 'bg-surface-sunken text-accent'
@@ -958,7 +964,7 @@
 							>
 								<a
 									draggable="false"
-									href={resolve(`/?model=${encodeURIComponent(fav.value)}`)}
+									href={resolve(`?model=${encodeURIComponent(fav.value)}`)}
 									title={fav.label}
 									class="flex cursor-grab items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition hover:bg-surface-sunken/70 active:cursor-grabbing active:bg-surface-sunken {collapsed
 										? 'sm:justify-center sm:px-0'
@@ -1046,7 +1052,7 @@
 									>
 										{#if activity === 'active'}
 											<!-- A generation is running for this conversation right
-											 now (see $lib/generating-conversations). Takes the
+											 now (see #lib/generating-conversations). Takes the
 											 leading slot ahead of both the title spinner and the
 											 private mask: on a first exchange all three compete,
 											 and "a response is coming" is the one worth the pixel.
@@ -1079,7 +1085,7 @@
 										{:else if isTitlePending(c.id)}
 											<!-- Subtle spinner while the background auto-title
 											 task is still generating this conversation's
-											 title (see $lib/title-pending). -->
+											 title (see #lib/title-pending). -->
 											<span
 												class="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-border-focus border-t-transparent"
 												aria-hidden="true"
@@ -1190,7 +1196,7 @@
 					sessions that never open this menu.
 				-->
 				{#if accountMenuOpen}
-					{#await import('$lib/components/AccountMenuContent.svelte') then { default: AccountMenuContent }}
+					{#await import('#lib/components/AccountMenuContent.svelte') then { default: AccountMenuContent }}
 						<AccountMenuContent {goto} isAdmin={data.user.role === 'admin'} />
 					{/await}
 				{/if}
@@ -1262,7 +1268,7 @@
 			</button>
 			<!-- A link, matching the sidebar's title on desktop. The visible New chat
 				 button below is the real affordance; this is for whoever tries it. -->
-			<a href={resolve('/')} class="text-sm font-semibold tracking-tight">GlyphStream</a>
+			<a href={resolve('/(app)')} class="text-sm font-semibold tracking-tight">GlyphStream</a>
 			<!-- Private-chat control, shared with the hamburger row so it isn't
 				 stranded on its own line (and, in an open chat, doesn't eat the
 				 title's width). New-chat screen → an interactive toggle; an open
@@ -1296,7 +1302,7 @@
 				 are and the private-chat toggle wants the slot. -->
 				{#if currentPath !== '/'}
 					<a
-						href={resolve('/')}
+						href={resolve('/(app)')}
 						aria-label="New chat"
 						class="rounded-md p-1.5 transition hover:bg-surface-raised {newChatPending
 							? 'text-accent'
@@ -1373,7 +1379,7 @@
 	while open, which is when it's actually needed.
 -->
 {#if searchModal.open}
-	{#await import('$lib/components/SearchModal.svelte') then { default: SearchModal }}
+	{#await import('#lib/components/SearchModal.svelte') then { default: SearchModal }}
 		<SearchModal />
 	{/await}
 {/if}
@@ -1391,4 +1397,4 @@
 	onpageshow={onPageShow}
 	onpagehide={coverForAppLock}
 />
-<svelte:document onvisibilitychange={onVisibilityChange} />
+<svelte:document onvisibilitychange={onVisibilityChange}></svelte:document>

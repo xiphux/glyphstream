@@ -9,7 +9,7 @@
  * `@oslojs/{crypto,encoding,jwt}`, which existed only to polyfill what
  * `node:crypto` and Buffer already do.
  *
- * Server-only by construction (`$lib/server`), hence `node:crypto` rather
+ * Server-only by construction (`#lib/server`), hence `node:crypto` rather
  * than WebCrypto — the SHA-256 is then synchronous, so building a PKCE
  * challenge doesn't need to be async.
  *

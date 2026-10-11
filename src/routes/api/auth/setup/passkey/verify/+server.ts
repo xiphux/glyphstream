@@ -6,14 +6,14 @@
  * authenticator already recorded as the userHandle) and the credential
  * row. Signs the operator in.
  */
-import { error, json } from '@sveltejs/kit';
-import { verifyRegistrationCeremony } from '$lib/server/auth/passkey';
-import { SETUP_PASSKEY_CARRY_COOKIE, setupGate } from '$lib/server/auth/setup';
-import { verify } from '$lib/server/auth/signed-cookies';
-import { createSession, setSessionCookie } from '$lib/server/auth/session';
-import { insertCredential } from '$lib/server/db/queries/passkey';
-import { createInitialUser } from '$lib/server/db/queries/users';
-import { passkeyLoginEnabled } from '$lib/server/env';
+import { error } from '@sveltejs/kit';
+import { verifyRegistrationCeremony } from '#lib/server/auth/passkey.js';
+import { SETUP_PASSKEY_CARRY_COOKIE, setupGate } from '#lib/server/auth/setup.js';
+import { verify } from '#lib/server/auth/signed-cookies.js';
+import { createSession, setSessionCookie } from '#lib/server/auth/session.js';
+import { insertCredential } from '#lib/server/db/queries/passkey.js';
+import { createInitialUser } from '#lib/server/db/queries/users.js';
+import { passkeyLoginEnabled } from '#lib/server/env.js';
 import type { RequestHandler } from './$types';
 
 interface CarryPayload {
@@ -62,5 +62,5 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 	const { token, expiresAt } = createSession(userId, request.headers.get('user-agent'));
 	setSessionCookie(cookies, token, expiresAt);
 
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

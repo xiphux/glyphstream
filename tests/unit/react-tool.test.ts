@@ -10,8 +10,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { parseEmojiArg, reactToMessageTool, validateEmoji } from '$lib/server/tools/react';
-import type { ToolContext } from '$lib/server/tools/types';
+import { parseEmojiArg, reactToMessageTool, validateEmoji } from '#lib/server/tools/react.js';
+import type { ToolContext } from '#lib/server/tools/types.js';
 
 describe('validateEmoji', () => {
 	it.each(['😄', '❤️', '👍', '🙂', '⭐', '✅', '‼️'])('accepts %s', (emoji) => {

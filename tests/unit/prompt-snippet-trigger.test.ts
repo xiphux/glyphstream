@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { filterSnippets, snippetMenuQuery, SNIPPET_TRIGGER } from '$lib/prompt-snippet-trigger';
-import type { PromptSnippet, SnippetKind } from '$lib/types/api';
+import { filterSnippets, snippetMenuQuery, SNIPPET_TRIGGER } from '#lib/prompt-snippet-trigger.js';
+import type { PromptSnippet, SnippetKind } from '#lib/types/api.js';
 
 /** Query at the end of `text` — the common "user is typing" case. */
 function atEnd(text: string) {

@@ -13,7 +13,7 @@
  * narrower `tool-search-context.ts` / `skills-context.ts` helpers — it owns the
  * orchestration that calls them in the right order with the right gating.
  */
-import type { ChatMessage, FeatureCategory, McpUnavailableServer } from '$lib/types/api';
+import type { ChatMessage, FeatureCategory, McpUnavailableServer } from '#lib/types/api.js';
 import type { OpenAIToolDefinition } from '../tools/types';
 import type { ChatCompletionRequest } from '../endpoints/client';
 import { openaiToolDefinitions, resolveActivatedToolDefs } from '../tools';

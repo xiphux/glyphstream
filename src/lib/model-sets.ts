@@ -20,10 +20,10 @@
  */
 
 import { invalidate } from '$app/navigation';
-import { errorMessageFromResponse } from '$lib/fetch-error';
-import { toast } from '$lib/toast.svelte';
-import type { CompareSelection } from '$lib/fanout';
-import type { SavedModelSet } from '$lib/types/api';
+import { errorMessageFromResponse } from '#lib/fetch-error.js';
+import { toast } from '#lib/toast.svelte.js';
+import type { CompareSelection } from '#lib/fanout.js';
+import type { SavedModelSet } from '#lib/types/api.js';
 
 async function setModelSets(next: readonly SavedModelSet[]): Promise<void> {
 	try {

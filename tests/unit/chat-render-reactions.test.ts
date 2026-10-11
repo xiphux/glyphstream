@@ -18,8 +18,8 @@ import {
 	messageToBlocks,
 	parseReactionEmoji,
 	type ToolResultEntry,
-} from '$lib/chat-render';
-import type { ChatMessage, MessagePart } from '$lib/types/api';
+} from '#lib/chat-render.js';
+import type { ChatMessage, MessagePart } from '#lib/types/api.js';
 
 function msg(
 	id: string,

@@ -7,7 +7,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
-import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
+import ChatHeader from '#lib/components/chat/ChatHeader.svelte';
 
 describe('ChatHeader', () => {
 	it('renders the conversation title', () => {

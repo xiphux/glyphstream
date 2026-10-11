@@ -5,7 +5,7 @@ import { test, expect } from './fixtures/test';
  * only thing that makes it useful is what does NOT count as a request.
  *
  * It shipped capped at 30 seconds. The Dockerfile bakes in a HEALTHCHECK that
- * polls `/api/health` every 30s, and unlike a static asset — which sirv answers
+ * polls `/api/health` every 30s, and unlike a static asset — which adapter-node answers
  * ahead of the SSR handler — a dynamic route reaches the hook and reset the
  * clock. The field kept rendering a plausible number that could never be the
  * real one, and the docs told the operator to read a small number as "the server

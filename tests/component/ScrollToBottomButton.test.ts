@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import ScrollToBottomButton from '$lib/components/chat/ScrollToBottomButton.svelte';
+import ScrollToBottomButton from '#lib/components/chat/ScrollToBottomButton.svelte';
 
 describe('ScrollToBottomButton', () => {
 	it('is opaque + tabbable + not aria-hidden when visible', () => {

@@ -16,7 +16,7 @@
  * on demand — and it's why there's no server-size threshold (a count gate would
  * leave the largest, most-needed catalogs blind, the exact opposite of useful).
  */
-import type { ChatMessage, FeatureCategory } from '$lib/types/api';
+import type { ChatMessage, FeatureCategory } from '#lib/types/api.js';
 import type { DeferredToolEntry, OpenAIToolDefinition } from '../tools/types';
 import { searchToolsDefinition } from '../tools/search-tools';
 import { deferredToolCatalog } from '../tools/registry';

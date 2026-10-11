@@ -1,58 +1,59 @@
+import type { Handle, HandleServerError } from '@sveltejs/kit/hooks';
 import process from 'node:process';
-import type { Handle, HandleServerError } from '@sveltejs/kit';
+
 import {
 	readSessionCookie,
 	setSessionCookie,
 	setSessionUnlockedUntil,
 	validateSessionToken,
-} from '$lib/server/auth/session';
+} from '#lib/server/auth/session.js';
 import {
 	evaluateAppLock,
 	readInstalledAppCookie,
 	type AppLockState,
-} from '$lib/server/auth/app-lock';
-import { APP_LOCK_KEEPALIVE_PATH } from '$lib/app-lock';
-import { maybeCompressResponse } from '$lib/server/compression';
-import { applySecurityHeaders } from '$lib/server/security-headers';
-import { consumeRateLimitToken } from '$lib/server/rate-limit';
-import { routedPathname } from '$lib/server/util/request-path';
+} from '#lib/server/auth/app-lock.js';
+import { APP_LOCK_KEEPALIVE_PATH } from '#lib/app-lock.js';
+import { maybeCompressResponse } from '#lib/server/compression.js';
+import { applySecurityHeaders } from '#lib/server/security-headers.js';
+import { consumeRateLimitToken } from '#lib/server/rate-limit.js';
+import { routedPathname } from '#lib/server/util/request-path.js';
 import {
 	compressDynamicResponses,
 	passkeyLoginEnabled,
 	validateAuthMethodsEnabled,
-} from '$lib/server/env';
-import { ensureAdminBootstrap } from '$lib/server/db/queries/users';
-import { startMediaPurger, stopMediaPurger } from '$lib/server/media/purger';
+} from '#lib/server/env.js';
+import { ensureAdminBootstrap } from '#lib/server/db/queries/users.js';
+import { startMediaPurger, stopMediaPurger } from '#lib/server/media/purger.js';
 import {
 	startEmbeddingBackfiller,
 	stopEmbeddingBackfiller,
-} from '$lib/server/memory/embedding-backfill';
-import { startTopicBackfiller, stopTopicBackfiller } from '$lib/server/memory/topic-backfill';
-import { startDreamingWorker, stopDreamingWorker } from '$lib/server/memory/dreaming';
+} from '#lib/server/memory/embedding-backfill.js';
+import { startTopicBackfiller, stopTopicBackfiller } from '#lib/server/memory/topic-backfill.js';
+import { startDreamingWorker, stopDreamingWorker } from '#lib/server/memory/dreaming.js';
 import {
 	startConversationSummaryWorker,
 	stopConversationSummaryWorker,
-} from '$lib/server/memory/conversation-summary';
-import { bootstrapMcp } from '$lib/server/mcp/bootstrap';
-import { listAllModels } from '$lib/server/endpoints/list-models';
-import { installPersistedPauses } from '$lib/server/endpoints/pause';
+} from '#lib/server/memory/conversation-summary.js';
+import { bootstrapMcp } from '#lib/server/mcp/bootstrap.js';
+import { listAllModels } from '#lib/server/endpoints/list-models.js';
+import { installPersistedPauses } from '#lib/server/endpoints/pause.js';
 import {
 	resumeGenerationJobs,
 	scheduleGenerationJobResume,
 	stopGenerationJobResume,
-} from '$lib/server/generation/jobs';
-import { stopMcp } from '$lib/server/mcp/registry';
-import { stopPool } from '$lib/server/code-interpreter/pool';
-import { maxLoopLagSince, startLoopLagSampler } from '$lib/server/util/loop-lag';
-import { swapBytes } from '$lib/server/util/proc-swap';
-import { dbFileBytes, mmapBytes } from '$lib/server/db/client';
+} from '#lib/server/generation/jobs.js';
+import { stopMcp } from '#lib/server/mcp/registry.js';
+import { stopPool } from '#lib/server/code-interpreter/pool.js';
+import { maxLoopLagSince, startLoopLagSampler } from '#lib/server/util/loop-lag.js';
+import { swapBytes } from '#lib/server/util/proc-swap.js';
+import { dbFileBytes, mmapBytes } from '#lib/server/db/client.js';
 import {
 	HEADER_BUDGET_RESERVE_BYTES,
 	PROXY_HEADER_BUFFER_BYTES,
 	TRANSPORT_OVERHEAD_BYTES,
 	headerBlockBytes,
 	trimToBudget,
-} from '$lib/server/util/header-budget';
+} from '#lib/server/util/header-budget.js';
 
 // Refuse to start if the auth-method toggles leave no way in. Better to
 // crash at boot with a clear message than serve a /login page with zero
@@ -201,8 +202,8 @@ const AUTH_RATE_LIMIT_PATH_PREFIX = '/api/auth/';
  * measured from the last activity — not from process start, which `proc` already
  * reports and which the readings have already ruled out.
  *
- * Two things do NOT reset it: static assets, which sirv serves ahead of the SSR
- * handler and which therefore never reach this hook, and the container's health
+ * Two things do NOT reset it: static assets, which adapter-node serves ahead of
+ * the SSR handler and which therefore never reach this hook, and the container's health
  * probe (see HEALTH_PROBE_PATH). Enumerating only the first of those is what
  * shipped this field capped at 30 seconds — if another unattended poller is ever
  * added, it belongs on that list too.
@@ -289,9 +290,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// reports `idleMs` in the first place.
 	if (path !== HEALTH_PROBE_PATH) lastRequestAt = Date.now();
 
-	// CSRF gate for /api/* state-mutating requests. SvelteKit's built-in
-	// csrf.checkOrigin only fires on form-encoded submissions, not the
-	// JSON POST/PATCH/DELETE traffic our API actually uses. SameSite=Lax
+	// CSRF gate for /api/* state-mutating requests — the ONLY CSRF check:
+	// SvelteKit's own origin check is off (`csrf.trustedOrigins: ['*']` in
+	// sveltekit.config.ts, which says why), and it never looked at the JSON
+	// POST/PATCH/DELETE traffic our API actually uses anyway. It reaches /api/*
+	// only, so tests/unit/csrf-gate-coverage.test.ts fails if a mutating route
+	// or form action appears anywhere else. SameSite=Lax
 	// on the session cookie blocks the cookie from being sent on cross-
 	// origin POSTs already, but that's a property of the cookie, not
 	// the route — a single explicit check here makes the same guarantee
@@ -588,12 +592,14 @@ export const handle: Handle = async ({ event, resolve }) => {
 		finalResponse.headers.set('Server-Timing', metrics.join(', '));
 	}
 
-	// Last, because it prices the block only once every other header is on it —
+	// Dormant since SvelteKit 3, which puts the modulepreload hints in the
+	// document's <head> unless `output.linkHeaderPreload` is on (it isn't — see
+	// tests/e2e/proxy-header-budget.spec.ts), so no Link header reaches here.
+	// Kept as the guard for that option: a Link header restates every client
+	// chunk and once pushed the block past a proxy's 4 KB buffer (a 502). Last,
+	// because it prices the block only once every other header is on it —
 	// including the Server-Timing just set above, and any Set-Cookie from a
-	// session renewal. See header-budget.ts for why this trims rather than drops:
-	// in this app the preload hints live ONLY in this header, so deleting it
-	// leaves the browser to discover 45 chunks by walking the import graph, and
-	// `load` starts firing before the page can hydrate.
+	// session renewal. See header-budget.ts for why it trims rather than drops.
 	const link = finalResponse.headers.get('link');
 	if (link) {
 		const others = [...finalResponse.headers].filter(([name]) => name.toLowerCase() !== 'link');
@@ -616,17 +622,36 @@ export const handle: Handle = async ({ event, resolve }) => {
  * status with a generic message body. Default SvelteKit behavior
  * swallows errors silently which makes CI debugging painful.
  *
- * Gate on status >= 500 — handleError fires for every error including
- * routine 404s (stale Open WebUI socket.io reconnects, bot scanners,
- * old service workers hitting moved paths). Those are client problems,
- * not server problems; logging them is noise that drowns out the
- * actual 5xx events worth attention.
+ * Log only what's actually a server fault. handleError fires for every error,
+ * including routine 404s (stale Open WebUI socket.io reconnects, bot scanners,
+ * old service workers hitting moved paths) — client problems, whose logging is
+ * noise that drowns out the 5xx events worth attention. SvelteKit 3 reports a
+ * `kind` instead of a status, so:
+ *   - `unknown`: an unexpected throw, i.e. a 500. Log it.
+ *   - `framework`: SvelteKit's own errors. Log only a 5xx; a 404 is the noise.
+ *   - `app` / `validation`: a deliberate `error(...)` or a rejected argument.
+ *     Skipped — the code that raised it already decided what it meant, and
+ *     SvelteKit 2 never sent these here at all, so logging them now would only
+ *     add lines the logs never had.
  */
-export const handleError: HandleServerError = ({ error, event, status }) => {
+export const handleError: HandleServerError = (input) => {
+	if (input.kind === 'app' || input.kind === 'validation') return undefined;
+	const status = input.kind === 'framework' ? input.error.status : 500;
 	if (status < 500) return undefined;
-	const stack = error instanceof Error ? (error.stack ?? error.message) : String(error);
+
+	const { event } = input;
+	// A framework error arrives as a plain `{ status, message }`, not an Error,
+	// so String() of it would log `[object Object]`.
+	const stack =
+		input.kind === 'framework'
+			? input.error.message
+			: input.error instanceof Error
+				? (input.error.stack ?? input.error.message)
+				: String(input.error);
+
 	console.error(
 		`[server error] ${event.request.method} ${event.url.pathname} → ${status}:\n${stack}`,
 	);
+
 	return undefined;
 };

@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { KeyRound } from '@lucide/svelte';
-	import ProviderIcon from '$lib/components/ProviderIcon.svelte';
-	import { errorMessageFromResponse } from '$lib/fetch-error';
+	import ProviderIcon from '#lib/components/ProviderIcon.svelte';
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
 
 	let { data }: { data: PageData } = $props();
 

@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { seedDisabledFeatures } from '$lib/feature-defaults';
+import { seedDisabledFeatures } from '#lib/feature-defaults.js';
 
 describe('seedDisabledFeatures', () => {
 	it('starts from the user’s standing defaults', () => {

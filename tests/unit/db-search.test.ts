@@ -3,18 +3,18 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
 
-import { buildFtsQuery, searchConversations } from '$lib/server/db/queries/search';
+import { buildFtsQuery, searchConversations } from '#lib/server/db/queries/search.js';
 import {
 	createConversation,
 	deleteConversation,
 	renameConversation,
-} from '$lib/server/db/queries/conversations';
-import { appendMessage } from '$lib/server/db/queries/messages';
+} from '#lib/server/db/queries/conversations.js';
+import { appendMessage } from '#lib/server/db/queries/messages.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

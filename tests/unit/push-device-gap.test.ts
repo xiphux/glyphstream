@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deviceNotificationGap, type DeviceNotificationGap } from '$lib/push-subscribe';
+import { deviceNotificationGap, type DeviceNotificationGap } from '#lib/push-subscribe.js';
 
 // Baseline: opted in and genuinely receiving on this device. Each test
 // overrides one axis, so the matrix reads as "what changes when X differs

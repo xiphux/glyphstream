@@ -10,8 +10,8 @@
  *    the caller skips the conversation-model write.
  */
 
-import { isModelKind } from '$lib/types/api';
-import type { ModelKind } from '$lib/types/api';
+import { isModelKind } from '#lib/types/api.js';
+import type { ModelKind } from '#lib/types/api.js';
 
 export class ModelOverrideError extends Error {}
 

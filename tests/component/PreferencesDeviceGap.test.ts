@@ -16,9 +16,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import type { UserPreferences } from '$lib/types/api';
+import type { UserPreferences } from '#lib/types/api.js';
 
-vi.mock('$app/environment', () => ({ browser: true, dev: false, building: false, version: 't' }));
+vi.mock('$app/env', () => ({ browser: true, dev: false, building: false, version: 't' }));
 
 import PreferencesPage from '../../src/routes/(app)/settings/preferences/+page.svelte';
 

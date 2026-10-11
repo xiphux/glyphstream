@@ -1,23 +1,23 @@
-import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
+import { error } from '@sveltejs/kit';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
 import {
 	createConversation,
 	listConversationIds,
 	listConversations,
-} from '$lib/server/db/queries/conversations';
-import { getCustomModelForUser } from '$lib/server/db/queries/custom-models';
-import { getEndpoint } from '$lib/server/endpoints/registry';
-import { filterFullyQueued, filterInFlight } from '$lib/server/streaming/in-flight';
-import { parseModelId } from '$lib/server/endpoints/model-id';
-import { isModelKind } from '$lib/types/api';
+} from '#lib/server/db/queries/conversations.js';
+import { getCustomModelForUser } from '#lib/server/db/queries/custom-models.js';
+import { getEndpoint } from '#lib/server/endpoints/registry.js';
+import { filterFullyQueued, filterInFlight } from '#lib/server/streaming/in-flight.js';
+import { parseModelId } from '#lib/server/endpoints/model-id.js';
+import { isModelKind } from '#lib/types/api.js';
 import type {
 	CreateConversationRequest,
 	CustomModelParameters,
 	GeneratingConversationsResponse,
 	ModelKind,
-} from '$lib/types/api';
-import { validateDisabledFeaturesOrThrow400 } from '$lib/server/util/validate-features';
+} from '#lib/types/api.js';
+import { validateDisabledFeaturesOrThrow400 } from '#lib/server/util/validate-features.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals, url }) => {
@@ -39,10 +39,10 @@ export const GET: RequestHandler = ({ locals, url }) => {
 	if (url.searchParams.get('generating') === '1') {
 		const ids = filterInFlight(listConversationIds(locals.user.id));
 		const body: GeneratingConversationsResponse = { ids, queuedIds: filterFullyQueued(ids) };
-		return json(body);
+		return Response.json(body);
 	}
 
-	return json({ conversations: listConversations(locals.user.id) });
+	return Response.json({ conversations: listConversations(locals.user.id) });
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -131,5 +131,5 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		// "Private chat" content seal — create-time only, never mutable via PATCH.
 		private: body.private ?? false,
 	});
-	return json({ conversation: conv }, { status: 201 });
+	return Response.json({ conversation: conv }, { status: 201 });
 };

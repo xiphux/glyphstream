@@ -18,7 +18,7 @@
  *
  *  - `X-Frame-Options: DENY` — make the "we don't want to be iframed"
  *    stance explicit. The CSP `frame-ancestors 'none'` directive (set
- *    in svelte.config.js) is the modern enforcement; this header is
+ *    in sveltekit.config.ts) is the modern enforcement; this header is
  *    just for older user-agents that don't honor `frame-ancestors`.
  *
  * Not set here: HSTS. TLS termination is expected to happen at a
@@ -32,7 +32,7 @@ const SECURITY_HEADERS: Record<string, string> = {
 };
 
 /**
- * The CSP configured in svelte.config.js is injected by SvelteKit at *page
+ * The CSP configured in sveltekit.config.ts is injected by SvelteKit at *page
  * render*, so a hand-built `+server.ts` Response gets none — which is why a
  * media asset served with the wrong Content-Type had nothing behind it. This
  * gives the media routes a document-level backstop: navigating directly to a

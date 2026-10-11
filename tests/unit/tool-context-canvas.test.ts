@@ -3,16 +3,16 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
+vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 
-import { createConversation } from '$lib/server/db/queries/conversations';
+import { createConversation } from '#lib/server/db/queries/conversations.js';
 import {
 	appendCanvasVersion,
 	createCanvas,
 	listActiveCanvases,
-} from '$lib/server/db/queries/artifacts';
-import { augmentRequestForCanvas } from '$lib/server/chat/tool-context';
-import type { ChatCompletionRequest } from '$lib/server/endpoints/client';
+} from '#lib/server/db/queries/artifacts.js';
+import { augmentRequestForCanvas } from '#lib/server/chat/tool-context.js';
+import type { ChatCompletionRequest } from '#lib/server/endpoints/client.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

@@ -24,14 +24,14 @@
 		messageToBlocks,
 		type RenderBlock,
 		type ToolResultEntry,
-	} from '$lib/chat-render';
+	} from '#lib/chat-render.js';
 	import {
 		canDiscardColumn,
 		isColumnSettled,
 		isMediaKind,
 		MAX_FANOUT_BRANCHES_PER_CONVERSATION,
 		type FanoutColumn,
-	} from '$lib/fanout';
+	} from '#lib/fanout.js';
 
 	interface Props {
 		columns: FanoutColumn[];

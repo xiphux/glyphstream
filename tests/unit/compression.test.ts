@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { brotliDecompressSync, gunzipSync, zstdDecompressSync } from 'node:zlib';
-import { maybeCompressResponse } from '$lib/server/compression';
+import { maybeCompressResponse } from '#lib/server/compression.js';
 
 // Common Accept-Encoding header carried by modern browsers — Chrome 123+,
 // Firefox 126+, Safari 17.4+. Used by skip-rule tests where the specific

@@ -4,7 +4,7 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
@@ -32,14 +32,14 @@ import {
 	listMediaForUser,
 	listMessageIdsForConversation,
 	stampOrphanedZeroRefRows,
-} from '$lib/server/db/queries/media';
+} from '#lib/server/db/queries/media.js';
 import {
 	archiveConversation,
 	createConversation,
 	deleteConversation,
-} from '$lib/server/db/queries/conversations';
-import { appendMessage } from '$lib/server/db/queries/messages';
-import { conversations, media } from '$lib/server/db/schema';
+} from '#lib/server/db/queries/conversations.js';
+import { appendMessage } from '#lib/server/db/queries/messages.js';
+import { conversations, media } from '#lib/server/db/schema.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

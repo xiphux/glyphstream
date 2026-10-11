@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { composerEnterHandler } from '$lib/composer-keys';
+import { composerEnterHandler } from '#lib/composer-keys.js';
 
 /** Minimal KeyboardEvent stub with the fields the handler reads + a
  *  preventDefault spy so we can assert the "consumed the key" contract. */

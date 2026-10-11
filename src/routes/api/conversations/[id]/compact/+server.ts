@@ -1,10 +1,10 @@
-import { error, json } from '@sveltejs/kit';
-import { requireFound, requireUser } from '$lib/server/auth/guard';
-import { getConversationMeta, getFanoutParent } from '$lib/server/db/queries/conversations';
-import { prepareCompaction, runCompaction, undoCompaction } from '$lib/server/chat/compaction';
-import { streamCompaction } from '$lib/server/streaming/compaction-relay';
-import { sseResponse } from '$lib/server/streaming/sse-transport';
-import { formatUpstreamError, UpstreamError } from '$lib/server/endpoints/client';
+import { error } from '@sveltejs/kit';
+import { requireFound, requireUser } from '#lib/server/auth/guard.js';
+import { getConversationMeta, getFanoutParent } from '#lib/server/db/queries/conversations.js';
+import { prepareCompaction, runCompaction, undoCompaction } from '#lib/server/chat/compaction.js';
+import { streamCompaction } from '#lib/server/streaming/compaction-relay.js';
+import { sseResponse } from '#lib/server/streaming/sse-transport.js';
+import { formatUpstreamError, UpstreamError } from '#lib/server/endpoints/client.js';
 import type { RequestHandler } from './$types';
 
 /**
@@ -44,7 +44,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		if (result.status === 'noop') {
 			error(409, 'Not enough conversation history to compact yet.');
 		}
-		return json({ ok: true, summaryMessageId: result.summaryMessageId });
+		return Response.json({ ok: true, summaryMessageId: result.summaryMessageId });
 	} catch (e) {
 		if (e instanceof UpstreamError) {
 			error(502, formatUpstreamError(e));
@@ -67,5 +67,5 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 	if (result.status === 'noop') {
 		error(409, 'Nothing to undo — messages were added after the summary.');
 	}
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

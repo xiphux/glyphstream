@@ -1,7 +1,7 @@
 import { redirect } from '@sveltejs/kit';
-import { setupGate } from '$lib/server/auth/setup';
-import { passkeyLoginEnabled } from '$lib/server/env';
-import { listEnabledProviders } from '$lib/server/auth/oauth/registry';
+import { setupGate } from '#lib/server/auth/setup.js';
+import { passkeyLoginEnabled } from '#lib/server/env.js';
+import { listEnabledProviders } from '#lib/server/auth/oauth/registry.js';
 import type { PageServerLoad } from './$types';
 
 const ERROR_MESSAGES: Record<string, string> = {

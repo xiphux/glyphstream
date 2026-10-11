@@ -7,19 +7,19 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
-import type { UpstreamModel } from '$lib/types/api';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
+import type { UpstreamModel } from '#lib/types/api.js';
 
 const mocks = vi.hoisted(() => ({
 	listUpstreamModels: vi.fn<(endpoint: LoadedEndpoint) => Promise<UpstreamModel[]>>(),
 	listEndpoints: vi.fn<() => LoadedEndpoint[]>(),
 }));
 
-vi.mock('$lib/server/endpoints/client', async () => {
+vi.mock('#lib/server/endpoints/client.js', async () => {
 	// Real UpstreamError so the error-message formatting branch is exercised
 	// instead of stubbed.
-	const actual = await vi.importActual<typeof import('$lib/server/endpoints/client')>(
-		'$lib/server/endpoints/client',
+	const actual = await vi.importActual<typeof import('#lib/server/endpoints/client.js')>(
+		'#lib/server/endpoints/client.js',
 	);
 	return {
 		...actual,
@@ -27,7 +27,7 @@ vi.mock('$lib/server/endpoints/client', async () => {
 	};
 });
 
-vi.mock('$lib/server/endpoints/registry', () => ({
+vi.mock('#lib/server/endpoints/registry.js', () => ({
 	listEndpoints: mocks.listEndpoints,
 }));
 
@@ -35,9 +35,9 @@ import {
 	listAllModels,
 	listAllModelsWithErrors,
 	resetModelCache,
-} from '$lib/server/endpoints/list-models';
-import { ConfigError } from '$lib/server/endpoints/config';
-import { UpstreamError } from '$lib/server/endpoints/client';
+} from '#lib/server/endpoints/list-models.js';
+import { ConfigError } from '#lib/server/endpoints/config.js';
+import { UpstreamError } from '#lib/server/endpoints/client.js';
 
 /** Minimal LoadedEndpoint shape — fields touched by normalizeUpstreamModel. */
 function endpoint(id: string, overrides: Partial<LoadedEndpoint> = {}): LoadedEndpoint {

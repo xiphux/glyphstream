@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decideReconcile, type ReconcileAction } from '$lib/push-subscribe';
+import { decideReconcile, type ReconcileAction } from '#lib/push-subscribe.js';
 
 // Baseline: a fully opted-in, healthy state. Each test overrides one axis so
 // the matrix reads as "what changes when X differs from healthy."

@@ -1,10 +1,10 @@
 <script lang="ts">
-	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
+	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
 	import { invalidate } from '$app/navigation';
 	import { Copy, Trash2, UserPlus } from '@lucide/svelte';
-	import { confirmDialog } from '$lib/confirm.svelte';
-	import { toast } from '$lib/toast.svelte';
-	import { errorMessageFromResponse } from '$lib/fetch-error';
+	import { confirmDialog } from '#lib/confirm.svelte.js';
+	import { toast } from '#lib/toast.svelte.js';
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
 
 	type UserRole = 'admin' | 'user';
 	interface UserRow {

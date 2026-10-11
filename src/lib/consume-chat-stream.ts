@@ -183,7 +183,7 @@ export async function consumeChatStream(
 				// not just passed to the callback, because the caller reads both —
 				// `onDone` decides whether to append optimistically, and the
 				// post-stream code reads this function's RETURN value to choose
-				// between `invalidateAll()` and the cheap sidebar-only invalidate.
+				// between `refreshAll()` and the cheap sidebar-only invalidate.
 				// Letting those two disagree is worse than either answer alone: the
 				// append is skipped AND the refetch never happens, so the turn's rows
 				// never reach the client at all.

@@ -22,8 +22,8 @@
  */
 
 import type { LoadedEndpoint } from '../endpoints/config';
-import type { ModelKind } from '$lib/types/api';
-import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '$lib/fanout';
+import type { ModelKind } from '#lib/types/api.js';
+import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '#lib/fanout.js';
 
 /** Key for a plain single-generation turn — at most one at a time per
  *  conversation, matching the pre-fan-out behavior. */

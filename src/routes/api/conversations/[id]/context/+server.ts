@@ -13,24 +13,24 @@
  * opening the panel on a thread full of screenshots costs a few row reads rather
  * than tens of megabytes of encoding.
  */
-import { json } from '@sveltejs/kit';
-import { requireFound, requireUser } from '$lib/server/auth/guard';
-import { getConversationMeta } from '$lib/server/db/queries/conversations';
-import { walkActiveBranch } from '$lib/server/db/queries/messages';
-import { getMediaForUser } from '$lib/server/db/queries/media';
+
+import { requireFound, requireUser } from '#lib/server/auth/guard.js';
+import { getConversationMeta } from '#lib/server/db/queries/conversations.js';
+import { walkActiveBranch } from '#lib/server/db/queries/messages.js';
+import { getMediaForUser } from '#lib/server/db/queries/media.js';
 import {
 	getUserPreferences,
 	PERSONA_PART_SEPARATOR,
-} from '$lib/server/db/queries/user-preferences';
-import { getEndpoint } from '$lib/server/endpoints/registry';
-import { listAllModels } from '$lib/server/endpoints/list-models';
-import { parseModelId } from '$lib/server/endpoints/model-id';
-import { resolveDisabledFeatures } from '$lib/server/chat/private-seal';
-import { composePersonaPromptParts } from '$lib/server/chat/persona-context';
-import { buildCanvasInjection, buildChatToolContext } from '$lib/server/chat/tool-context';
-import { dedupeToolDefs } from '$lib/server/chat/tool-search-context';
-import { buildContextBreakdown, type MediaSize } from '$lib/server/chat/context-breakdown';
-import { cachedVisionVariantSize } from '$lib/server/media/vision-variant';
+} from '#lib/server/db/queries/user-preferences.js';
+import { getEndpoint } from '#lib/server/endpoints/registry.js';
+import { listAllModels } from '#lib/server/endpoints/list-models.js';
+import { parseModelId } from '#lib/server/endpoints/model-id.js';
+import { resolveDisabledFeatures } from '#lib/server/chat/private-seal.js';
+import { composePersonaPromptParts } from '#lib/server/chat/persona-context.js';
+import { buildCanvasInjection, buildChatToolContext } from '#lib/server/chat/tool-context.js';
+import { dedupeToolDefs } from '#lib/server/chat/tool-search-context.js';
+import { buildContextBreakdown, type MediaSize } from '#lib/server/chat/context-breakdown.js';
+import { cachedVisionVariantSize } from '#lib/server/media/vision-variant.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
@@ -152,5 +152,5 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 		contextWindow: modelEntry?.contextWindow ?? null,
 	});
 
-	return json(breakdown);
+	return Response.json(breakdown);
 };

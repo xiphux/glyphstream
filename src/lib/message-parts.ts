@@ -9,7 +9,7 @@
  * small contract, and exactly the kind that should have one definition.
  *
  * Client-safe on purpose: the server serializer and the browser both need it,
- * and `MessagePart` already lives in `$lib/types/api`.
+ * and `MessagePart` already lives in `#lib/types/api.js`.
  */
 
 import type { MessagePart } from './types/api';

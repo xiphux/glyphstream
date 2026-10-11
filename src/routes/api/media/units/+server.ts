@@ -1,6 +1,5 @@
-import { json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { listGalleryUnits } from '$lib/server/gallery/layout';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { listGalleryUnits } from '#lib/server/gallery/layout.js';
 import type { RequestHandler } from './$types';
 
 /**
@@ -39,5 +38,5 @@ export const GET: RequestHandler = ({ locals, url }) => {
 		offset: Number.isFinite(offset) ? offset : 0,
 		limit: limit != null && Number.isFinite(limit) ? limit : undefined,
 	});
-	return json(page);
+	return Response.json(page);
 };

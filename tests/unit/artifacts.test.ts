@@ -3,18 +3,18 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
+vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 
-import { createConversation } from '$lib/server/db/queries/conversations';
+import { createConversation } from '#lib/server/db/queries/conversations.js';
 import {
 	appendCanvasVersion,
 	createCanvas,
 	getCanvasById,
 	listActiveCanvases,
-} from '$lib/server/db/queries/artifacts';
-import { computeEdit, updateCanvasTool } from '$lib/server/tools/update-canvas';
-import { deriveCanvasTitle } from '$lib/server/tools/create-canvas';
-import type { ToolContext } from '$lib/server/tools/types';
+} from '#lib/server/db/queries/artifacts.js';
+import { computeEdit, updateCanvasTool } from '#lib/server/tools/update-canvas.js';
+import { deriveCanvasTitle } from '#lib/server/tools/create-canvas.js';
+import type { ToolContext } from '#lib/server/tools/types.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

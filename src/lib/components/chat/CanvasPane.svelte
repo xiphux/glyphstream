@@ -8,7 +8,7 @@
 <script lang="ts">
 	import { X } from '@lucide/svelte';
 	import { cubicOut } from 'svelte/easing';
-	import type { CanvasVersion } from '$lib/types/api';
+	import type { CanvasVersion } from '#lib/types/api.js';
 
 	interface Props {
 		/** The document currently shown. */

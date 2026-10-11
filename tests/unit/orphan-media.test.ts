@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { collectOrphanGeneratedMediaIds } from '$lib/server/db/queries/media';
+import { collectOrphanGeneratedMediaIds } from '#lib/server/db/queries/media.js';
 
 describe('collectOrphanGeneratedMediaIds', () => {
 	it('flags generated media whose every reference is in the row set', () => {

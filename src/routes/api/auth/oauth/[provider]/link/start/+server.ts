@@ -12,14 +12,14 @@
  * aren't restricted by CSP.
  */
 import { error, redirect } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { getEnabledProvider } from '$lib/server/auth/oauth/registry';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { getEnabledProvider } from '#lib/server/auth/oauth/registry.js';
 import {
 	CODE_VERIFIER_COOKIE,
 	LINK_STATE_COOKIE,
 	STATE_TTL_SECONDS,
-} from '$lib/server/auth/oauth/cookies';
-import { setCarryCookie } from '$lib/server/auth/signed-cookies';
+} from '#lib/server/auth/oauth/cookies.js';
+import { setCarryCookie } from '#lib/server/auth/signed-cookies.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ locals, cookies, params }) => {
@@ -31,5 +31,7 @@ export const GET: RequestHandler = async ({ locals, cookies, params }) => {
 	setCarryCookie(cookies, LINK_STATE_COOKIE, state, STATE_TTL_SECONDS);
 	if (codeVerifier) setCarryCookie(cookies, CODE_VERIFIER_COOKIE, codeVerifier, STATE_TTL_SECONDS);
 
-	redirect(302, url.toString());
+	// SvelteKit 3 refuses a cross-origin redirect unless it's opted in, and
+	// refuses by throwing — a 500. Allow exactly the provider's own origin.
+	redirect(302, url.toString(), { external: [url.origin] });
 };

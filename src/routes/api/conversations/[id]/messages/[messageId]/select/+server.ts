@@ -11,10 +11,9 @@
  * of the currently-shown message.
  */
 
-import { json } from '@sveltejs/kit';
-import { requireFound, requireUser } from '$lib/server/auth/guard';
-import { getConversationMeta } from '$lib/server/db/queries/conversations';
-import { selectBranch } from '$lib/server/db/queries/messages';
+import { requireFound, requireUser } from '#lib/server/auth/guard.js';
+import { getConversationMeta } from '#lib/server/db/queries/conversations.js';
+import { selectBranch } from '#lib/server/db/queries/messages.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = ({ locals, params }) => {
@@ -26,5 +25,5 @@ export const POST: RequestHandler = ({ locals, params }) => {
 		'Message not found in this conversation',
 	);
 
-	return json({ activeLeafMessageId: result.newActiveLeaf });
+	return Response.json({ activeLeafMessageId: result.newActiveLeaf });
 };

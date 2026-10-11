@@ -12,39 +12,39 @@ const mcpRegistryMock = vi.hoisted(() => ({
 	getMcpServerCfg: vi.fn(),
 }));
 
-vi.mock('$lib/server/endpoints/config', async (orig) => ({
-	...(await orig<typeof import('$lib/server/endpoints/config')>()),
+vi.mock('#lib/server/endpoints/config.js', async (orig) => ({
+	...(await orig<typeof import('#lib/server/endpoints/config.js')>()),
 	loadEmbeddingsConfig: loadEmbeddingsConfigMock,
 }));
-vi.mock('$lib/server/endpoints/registry', async (orig) => ({
-	...(await orig<typeof import('$lib/server/endpoints/registry')>()),
+vi.mock('#lib/server/endpoints/registry.js', async (orig) => ({
+	...(await orig<typeof import('#lib/server/endpoints/registry.js')>()),
 	getEndpoint: getEndpointMock,
 }));
-vi.mock('$lib/server/endpoints/client', async (orig) => ({
-	...(await orig<typeof import('$lib/server/endpoints/client')>()),
+vi.mock('#lib/server/endpoints/client.js', async (orig) => ({
+	...(await orig<typeof import('#lib/server/endpoints/client.js')>()),
 	embeddings: embeddingsMock,
 }));
 // Per-user deferred catalog hits the DB / live connections — stub it.
-vi.mock('$lib/server/mcp/tool-bridge', () => ({
+vi.mock('#lib/server/mcp/tool-bridge.js', () => ({
 	buildUserDeferredToolCatalog: buildUserDeferredToolCatalogMock,
 }));
 // tool-search-context's only mcp/registry surface.
-vi.mock('$lib/server/mcp/registry', () => mcpRegistryMock);
+vi.mock('#lib/server/mcp/registry.js', () => mcpRegistryMock);
 
 import {
 	searchToolsTool,
 	toolSearchEmbeddingConfig,
 	TOOL_SEARCH_EMBED_TIMEOUT_SECONDS,
-} from '$lib/server/tools/search-tools';
-import { _resetEmbeddingsConfigCacheForTests } from '$lib/server/retrieval/embeddings-config';
+} from '#lib/server/tools/search-tools.js';
+import { _resetEmbeddingsConfigCacheForTests } from '#lib/server/retrieval/embeddings-config.js';
 import {
 	appendToolSearchHint,
 	buildToolSearchRequestContext,
 	collectActivatedToolNames,
-} from '$lib/server/chat/tool-search-context';
-import { _resetForTests, register } from '$lib/server/tools/registry';
-import type { ToolContext } from '$lib/server/tools/types';
-import type { ChatMessage } from '$lib/types/api';
+} from '#lib/server/chat/tool-search-context.js';
+import { _resetForTests, register } from '#lib/server/tools/registry.js';
+import type { ToolContext } from '#lib/server/tools/types.js';
+import type { ChatMessage } from '#lib/types/api.js';
 
 function registerDeferred(
 	name: string,

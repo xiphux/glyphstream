@@ -1,15 +1,15 @@
-import { listConversations } from '$lib/server/db/queries/conversations';
-import { listCustomModelsForUser } from '$lib/server/db/queries/custom-models';
-import { redirectUnauthenticatedPage } from '$lib/server/auth/guard';
-import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
-import { listEnabledSkillsForUser } from '$lib/server/db/queries/skills';
-import { listConfiguredServerIds } from '$lib/server/db/queries/mcp-credentials';
-import { listAllModels } from '$lib/server/endpoints/list-models';
-import { firstPaintModelIds, pickDefaultModelId } from '$lib/model-default';
-import { getAllFeatureCategoryLabels } from '$lib/server/feature-catalog';
-import { isMcpReady } from '$lib/server/mcp/bootstrap';
-import { filterFullyQueued, filterInFlight } from '$lib/server/streaming/in-flight';
-import { timeDb } from '$lib/server/util/db-timing';
+import { listConversations } from '#lib/server/db/queries/conversations.js';
+import { listCustomModelsForUser } from '#lib/server/db/queries/custom-models.js';
+import { redirectUnauthenticatedPage } from '#lib/server/auth/guard.js';
+import { getUserPreferences } from '#lib/server/db/queries/user-preferences.js';
+import { listEnabledSkillsForUser } from '#lib/server/db/queries/skills.js';
+import { listConfiguredServerIds } from '#lib/server/db/queries/mcp-credentials.js';
+import { listAllModels } from '#lib/server/endpoints/list-models.js';
+import { firstPaintModelIds, pickDefaultModelId } from '#lib/model-default.js';
+import { getAllFeatureCategoryLabels } from '#lib/server/feature-catalog.js';
+import { isMcpReady } from '#lib/server/mcp/bootstrap.js';
+import { filterFullyQueued, filterInFlight } from '#lib/server/streaming/in-flight.js';
+import { timeDb } from '#lib/server/util/db-timing.js';
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async ({ locals, url, depends, isDataRequest }) => {
@@ -51,7 +51,7 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 	// Tagged so a client that resumes from background (visibilitychange /
 	// focus / pageshow in the (app) layout) can `invalidate('app:conversations')`
 	// to pull in conversations created on *other* clients since it last loaded.
-	// Targeted key rather than invalidateAll() so the chat page's own load +
+	// Targeted key rather than refreshAll() so the chat page's own load +
 	// in-flight stream stay untouched — only this layout load re-runs. (That
 	// re-runs the whole load body, not just listConversations. Cheap while WARM —
 	// cached models + local SQLite — but the deferral note below measures that

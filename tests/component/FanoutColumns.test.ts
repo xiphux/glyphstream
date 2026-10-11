@@ -8,9 +8,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import FanoutColumns from '$lib/components/chat/FanoutColumns.svelte';
-import { MAX_FANOUT_BRANCHES_PER_CONVERSATION, type FanoutColumn } from '$lib/fanout';
-import type { ChatMessage } from '$lib/types/api';
+import FanoutColumns from '#lib/components/chat/FanoutColumns.svelte';
+import { MAX_FANOUT_BRANCHES_PER_CONVERSATION, type FanoutColumn } from '#lib/fanout.js';
+import type { ChatMessage } from '#lib/types/api.js';
 
 function persisted(id: string, text: string): ChatMessage {
 	return {

@@ -1,14 +1,14 @@
-import type { embeddings } from '$lib/server/endpoints/client';
+import type { embeddings } from '#lib/server/endpoints/client.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // tool-search.ts reaches the embeddings client only through embed-rank.ts;
 // mock it so the dense leg is hermetic (same approach as retrieval-select).
 const embeddingsMock = vi.hoisted(() => vi.fn<typeof embeddings>());
-vi.mock('$lib/server/endpoints/client', () => ({ embeddings: embeddingsMock }));
+vi.mock('#lib/server/endpoints/client.js', () => ({ embeddings: embeddingsMock }));
 
-import { searchToolCatalog, clearToolDocVecCache } from '$lib/server/retrieval/tool-search';
-import { EMBED_CAP, type RelevanceConfig } from '$lib/server/retrieval/embed-rank';
-import type { DeferredToolEntry } from '$lib/server/tools/types';
+import { searchToolCatalog, clearToolDocVecCache } from '#lib/server/retrieval/tool-search.js';
+import { EMBED_CAP, type RelevanceConfig } from '#lib/server/retrieval/embed-rank.js';
+import type { DeferredToolEntry } from '#lib/server/tools/types.js';
 
 const fakeEndpoint = { id: 'e', baseUrl: 'http://e', apiKey: null } as never;
 function cfg(): RelevanceConfig {

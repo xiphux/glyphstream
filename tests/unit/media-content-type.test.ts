@@ -4,8 +4,8 @@ import {
 	isNeverInlineType,
 	normalizeContentType,
 	SVG_CONTENT_TYPE,
-} from '$lib/server/media/content-type';
-import { classifyUpload } from '$lib/server/uploads/classify';
+} from '#lib/server/media/content-type.js';
+import { classifyUpload } from '#lib/server/uploads/classify.js';
 
 describe('normalizeContentType', () => {
 	it('strips parameters, trims, and lowercases', () => {

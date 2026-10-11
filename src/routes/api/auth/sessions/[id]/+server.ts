@@ -9,9 +9,9 @@
  * out, and the next request resolves to no user. The client redirects to
  * /login when it recognizes that case.
  */
-import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { clearSessionCookie, revokeSessionForUser } from '$lib/server/auth/session';
+import { error } from '@sveltejs/kit';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { clearSessionCookie, revokeSessionForUser } from '#lib/server/auth/session.js';
 import type { RequestHandler } from './$types';
 
 export const DELETE: RequestHandler = ({ locals, params, cookies }) => {
@@ -27,5 +27,5 @@ export const DELETE: RequestHandler = ({ locals, params, cookies }) => {
 	// It would fail to resolve anyway, but clearing it keeps the browser from
 	// sending a dead token on every subsequent request.
 	if (self) clearSessionCookie(cookies);
-	return json({ ok: true, self });
+	return Response.json({ ok: true, self });
 };

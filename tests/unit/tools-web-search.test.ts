@@ -2,12 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the config loader so we can control what `[search]` looks like.
 const loadSearchConfigMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/config', () => ({
+vi.mock('#lib/server/endpoints/config.js', () => ({
 	loadSearchConfig: loadSearchConfigMock,
 }));
 
-import { webSearchTool, _resetConfigCacheForTests } from '$lib/server/tools/web-search';
-import type { ToolContext } from '$lib/server/tools/types';
+import { webSearchTool, _resetConfigCacheForTests } from '#lib/server/tools/web-search.js';
+import type { ToolContext } from '#lib/server/tools/types.js';
 
 function ctx(): ToolContext {
 	return {

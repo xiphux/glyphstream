@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { invalidate } from '$app/navigation';
-	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
+	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
 	import { onMount } from 'svelte';
 	import { Check } from '@lucide/svelte';
 	import type {
@@ -10,8 +10,8 @@
 		FeatureCategoryEntry,
 		ThemeName,
 		UserPreferences,
-	} from '$lib/types/api';
-	import { syncSurfaceChrome } from '$lib/theme-color';
+	} from '#lib/types/api.js';
+	import { syncSurfaceChrome } from '#lib/theme-color.js';
 	import {
 		deviceNotificationGap,
 		getPermissionState,
@@ -23,7 +23,7 @@
 		subscribe as subscribeToPush,
 		type SubscribeResult,
 		unsubscribe as unsubscribeFromPush,
-	} from '$lib/push-subscribe';
+	} from '#lib/push-subscribe.js';
 
 	let { data } = $props<{
 		data: {

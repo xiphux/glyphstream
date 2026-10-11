@@ -23,11 +23,11 @@
  */
 
 import { Buffer } from 'node:buffer';
-import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { insertMedia } from '$lib/server/db/queries/media';
-import { getMediaStore } from '$lib/server/media/disk-store';
-import { classifyUpload, MAX_UPLOAD_BYTES_FILE } from '$lib/server/uploads/classify';
+import { error } from '@sveltejs/kit';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { insertMedia } from '#lib/server/db/queries/media.js';
+import { getMediaStore } from '#lib/server/media/disk-store.js';
+import { classifyUpload, MAX_UPLOAD_BYTES_FILE } from '#lib/server/uploads/classify.js';
 import type { RequestHandler } from './$types';
 
 /** Headroom for multipart framing (boundaries, part headers, the trailing
@@ -121,7 +121,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		originalFilename,
 	});
 
-	return json({
+	return Response.json({
 		id,
 		contentType: ref.contentType,
 		byteSize: ref.byteSize,

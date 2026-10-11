@@ -18,18 +18,18 @@ const notifyConversationComplete = vi.hoisted(() => vi.fn());
 // turn-scoped view that excludes side errands like an avatar draw. Mocked as
 // the same stub so these tests keep controlling "how many branches are still
 // in flight" directly; the exclusion itself is covered in in-flight.test.ts.
-vi.mock('$lib/server/streaming/in-flight', () => ({
+vi.mock('#lib/server/streaming/in-flight.js', () => ({
 	getInFlightEntries,
 	conversationTurnEntries: getInFlightEntries,
 }));
-vi.mock('$lib/server/db/queries/messages', () => ({
+vi.mock('#lib/server/db/queries/messages.js', () => ({
 	getSiblingAssistants,
 }));
-vi.mock('$lib/server/push/notify', () => ({
+vi.mock('#lib/server/push/notify.js', () => ({
 	notifyConversationComplete,
 }));
 
-import { notifyFanoutCompleteIfLast } from '$lib/server/messages/fanout-notify';
+import { notifyFanoutCompleteIfLast } from '#lib/server/messages/fanout-notify.js';
 
 /** N stand-in successful sibling rows (id + non-error parts). */
 function siblings(n: number) {

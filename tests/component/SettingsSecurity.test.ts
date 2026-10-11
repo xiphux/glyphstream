@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import type { PasskeySummary } from '$lib/server/db/queries/passkey';
+import type { PasskeySummary } from '#lib/server/db/queries/passkey.js';
 
 const invalidateMock = vi.fn<(key: string) => Promise<void>>();
 vi.mock('$app/navigation', () => ({
@@ -36,8 +36,8 @@ vi.mock('@simplewebauthn/browser', () => ({
 }));
 
 import SecurityPage from '../../src/routes/(app)/settings/security/+page.svelte';
-import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-import { confirmDialog } from '$lib/confirm.svelte';
+import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+import { confirmDialog } from '#lib/confirm.svelte.js';
 
 const fetchMock = vi.fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>();
 

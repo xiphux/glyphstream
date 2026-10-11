@@ -1,8 +1,8 @@
 import { eq, and, inArray } from 'drizzle-orm';
 import { generateId } from '../../util/id';
-import type { CompareSelection } from '$lib/fanout';
-import type { ChatMessage, MessagePart, MessageRole } from '$lib/types/api';
-import { isReactionTool } from '$lib/chat-render';
+import type { CompareSelection } from '#lib/fanout.js';
+import type { ChatMessage, MessagePart, MessageRole } from '#lib/types/api.js';
+import { isReactionTool } from '#lib/chat-render.js';
 import { parseDispatchedModels, parseMessageParts } from './json-columns';
 import { getDb, type DB, type Tx } from '../client';
 import { conversations, media, messages } from '../schema';

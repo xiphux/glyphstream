@@ -27,7 +27,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
  */
 const OKLCH_SURFACE = 'oklch(0.15 0.012 258)';
 const RGB_SURFACE = 'rgb(8, 11, 16)';
-vi.mock('$lib/theme-color', () => ({
+vi.mock('#lib/theme-color.js', () => ({
 	toLegacyRgb: (value: string) => (value === OKLCH_SURFACE ? RGB_SURFACE : value),
 }));
 

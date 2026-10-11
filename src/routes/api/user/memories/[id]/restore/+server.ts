@@ -9,8 +9,8 @@
  * non-destructive, so unlike forget the client issues it without a confirm step.
  */
 import { error } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { restoreMemory } from '$lib/server/db/queries/memories';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { restoreMemory } from '#lib/server/db/queries/memories.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = ({ locals, params }) => {

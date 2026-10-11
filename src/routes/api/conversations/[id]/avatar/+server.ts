@@ -11,10 +11,10 @@
  * /api/uploads first, and this only ever moves a reference.
  */
 
-import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { setConversationAvatar } from '$lib/server/db/queries/conversations';
+import { error } from '@sveltejs/kit';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { setConversationAvatar } from '#lib/server/db/queries/conversations.js';
 import type { RequestHandler } from './$types';
 
 interface SetAvatarBody {
@@ -34,12 +34,12 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 		if (result.reason === 'not_found') error(404, 'Conversation not found');
 		error(400, 'Media not found');
 	}
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };
 
 export const DELETE: RequestHandler = ({ locals, params }) => {
 	requireUser(locals);
 	const result = setConversationAvatar(params.id, locals.user.id, null);
 	if (!result.ok) error(404, 'Conversation not found');
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

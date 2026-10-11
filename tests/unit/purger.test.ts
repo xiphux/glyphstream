@@ -14,12 +14,12 @@ const mocks = vi.hoisted(() => ({
 	graceMs: 0,
 }));
 
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
 
-vi.mock('$lib/server/env', () => ({
+vi.mock('#lib/server/env.js', () => ({
 	mediaDir: () => mocks.mediaDir,
 	// Coincident, as for any install that leaves DERIVED_DIR unset. The split
 	// itself is covered in media-derived-dir.test.ts.
@@ -38,10 +38,10 @@ vi.mock('$lib/server/env', () => ({
 	allowedGithubUserIdsRaw: () => '',
 }));
 
-import { runPurgeSweep } from '$lib/server/media/purger';
-import { insertMedia, trashMediaForUser } from '$lib/server/db/queries/media';
-import { TRASH_RETENTION_MS } from '$lib/server/media/trash';
-import { media } from '$lib/server/db/schema';
+import { runPurgeSweep } from '#lib/server/media/purger.js';
+import { insertMedia, trashMediaForUser } from '#lib/server/db/queries/media.js';
+import { TRASH_RETENTION_MS } from '#lib/server/media/trash.js';
+import { media } from '#lib/server/db/schema.js';
 
 let tmpDirs: string[] = [];
 

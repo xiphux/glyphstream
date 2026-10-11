@@ -48,7 +48,7 @@ const state = vi.hoisted(() => ({
 	advanceMs: 0,
 }));
 
-vi.mock('$lib/server/env', () => ({
+vi.mock('#lib/server/env.js', () => ({
 	mediaDir: () => state.media,
 	derivedDir: () => state.derived,
 }));
@@ -121,7 +121,7 @@ vi.mock('sharp', () => ({
 }));
 
 const { getOrCreateThumbnail, thumbStoragePath, FAILED_TTL_MS } =
-	await import('$lib/server/media/thumbnail');
+	await import('#lib/server/media/thumbnail.js');
 
 const VIDEO_PATH = 'ab/cd/clip.mp4';
 

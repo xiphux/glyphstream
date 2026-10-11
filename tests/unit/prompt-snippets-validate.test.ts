@@ -7,7 +7,7 @@ import {
 	snippetCapViolation,
 	validateCreateSnippet,
 	validateUpdateSnippet,
-} from '$lib/server/prompt-snippets/validate';
+} from '#lib/server/prompt-snippets/validate.js';
 
 const ok = { name: 'Anime', body: 'a clean look' };
 

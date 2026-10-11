@@ -8,8 +8,8 @@
  * collectActivatedToolNames) runs for real.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { OpenAIToolDefinition } from '$lib/server/tools/types';
-import type { ChatMessage } from '$lib/types/api';
+import type { OpenAIToolDefinition } from '#lib/server/tools/types.js';
+import type { ChatMessage } from '#lib/types/api.js';
 
 const def = (name: string): OpenAIToolDefinition => ({
 	type: 'function',
@@ -33,37 +33,37 @@ const mocks = vi.hoisted(() => ({
 	callOrder: [] as string[],
 }));
 
-vi.mock('$lib/server/mcp/bootstrap', () => ({
+vi.mock('#lib/server/mcp/bootstrap.js', () => ({
 	awaitMcpReady: () => {
 		mocks.callOrder.push('awaitMcpReady');
 		return mocks.awaitMcpReady();
 	},
 }));
-vi.mock('$lib/server/mcp/registry', () => ({
+vi.mock('#lib/server/mcp/registry.js', () => ({
 	getUserServerStates: (...a: unknown[]) => {
 		mocks.callOrder.push('getUserServerStates');
 		return mocks.getUserServerStates(...(a as []));
 	},
 }));
-vi.mock('$lib/server/mcp/tool-bridge', () => ({
+vi.mock('#lib/server/mcp/tool-bridge.js', () => ({
 	buildUserMcpToolDefinitions: (...a: unknown[]) => mocks.buildUserMcpToolDefinitions(...(a as [])),
 }));
-vi.mock('$lib/server/tools', () => ({
+vi.mock('#lib/server/tools/index.js', () => ({
 	openaiToolDefinitions: (...a: unknown[]) => mocks.openaiToolDefinitions(...(a as [])),
 	resolveActivatedToolDefs: (...a: unknown[]) => mocks.resolveActivatedToolDefs(...(a as [])),
 }));
-vi.mock('$lib/server/chat/skills-context', async (orig) => ({
-	...(await orig<typeof import('$lib/server/chat/skills-context')>()),
+vi.mock('#lib/server/chat/skills-context.js', async (orig) => ({
+	...(await orig<typeof import('#lib/server/chat/skills-context.js')>()),
 	buildSkillsRequestContext: (...a: unknown[]) => mocks.buildSkillsRequestContext(...(a as [])),
 }));
-vi.mock('$lib/server/chat/tool-search-context', async (orig) => ({
-	...(await orig<typeof import('$lib/server/chat/tool-search-context')>()),
+vi.mock('#lib/server/chat/tool-search-context.js', async (orig) => ({
+	...(await orig<typeof import('#lib/server/chat/tool-search-context.js')>()),
 	buildToolSearchRequestContext: (...a: unknown[]) =>
 		mocks.buildToolSearchRequestContext(...(a as [])),
 }));
 
-import { buildChatToolContext } from '$lib/server/chat/tool-context';
-import { REACTIONS_HINT } from '$lib/server/tools/react';
+import { buildChatToolContext } from '#lib/server/chat/tool-context.js';
+import { REACTIONS_HINT } from '#lib/server/tools/react.js';
 
 beforeEach(() => {
 	mocks.callOrder.length = 0;

@@ -11,15 +11,15 @@
 	Adding a new special case = one new component + one branch here.
 -->
 <script lang="ts">
-	import SkillToolBlock from '$lib/components/chat/tool-blocks/SkillToolBlock.svelte';
-	import CodeArgToolBlock from '$lib/components/chat/tool-blocks/CodeArgToolBlock.svelte';
-	import GenericToolBlock from '$lib/components/chat/tool-blocks/GenericToolBlock.svelte';
+	import SkillToolBlock from '#lib/components/chat/tool-blocks/SkillToolBlock.svelte';
+	import CodeArgToolBlock from '#lib/components/chat/tool-blocks/CodeArgToolBlock.svelte';
+	import GenericToolBlock from '#lib/components/chat/tool-blocks/GenericToolBlock.svelte';
 	import {
 		isCodeArgTool,
 		parseSkillToolDisplay,
 		type ToolResultAttachment,
-	} from '$lib/chat-render';
-	import type { ApprovalAction } from '$lib/approval-workflow';
+	} from '#lib/chat-render.js';
+	import type { ApprovalAction } from '#lib/approval-workflow.js';
 
 	type Status = 'executing' | 'done' | 'error' | 'pending_approval';
 

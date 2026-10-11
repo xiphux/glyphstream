@@ -27,9 +27,9 @@
 
 import { describe, expect, it, afterEach } from 'vitest';
 import { flushSync } from 'svelte';
-import { ChatTurnController } from '$lib/chat-turn-controller.svelte';
-import { appendText } from '$lib/chat-render';
-import type { RenderBlock } from '$lib/chat-render';
+import { ChatTurnController } from '#lib/chat-turn-controller.svelte.js';
+import { appendText } from '#lib/chat-render.js';
+import type { RenderBlock } from '#lib/chat-render.js';
 import { trackReactive } from './_reactive-probe.svelte';
 
 /** Minimal deps — this suite only exercises the segments/blocks reactivity. */

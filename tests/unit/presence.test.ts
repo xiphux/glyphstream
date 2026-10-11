@@ -19,7 +19,7 @@ import {
 	presenceEntryCount,
 	recordPresence,
 	resetPresence,
-} from '$lib/server/push/presence';
+} from '#lib/server/push/presence.js';
 
 const USER = 'user-1';
 const CONV = 'conv-1';

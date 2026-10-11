@@ -25,7 +25,7 @@ import { ConfigError } from './config';
 import { listUpstreamModels, UpstreamError } from './client';
 import { normalizeUpstreamModel } from './models';
 import { getEndpoint, listEndpoints } from './registry';
-import type { ModelEntry } from '$lib/types/api';
+import type { ModelEntry } from '#lib/types/api.js';
 
 interface CacheEntry {
 	models: ModelEntry[];

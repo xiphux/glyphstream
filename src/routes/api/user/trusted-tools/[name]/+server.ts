@@ -12,7 +12,7 @@
  */
 
 import { error } from '@sveltejs/kit';
-import { getUserPreferences, setUserPreferences } from '$lib/server/db/queries/user-preferences';
+import { getUserPreferences, setUserPreferences } from '#lib/server/db/queries/user-preferences.js';
 import type { RequestHandler } from './$types';
 
 export const PUT: RequestHandler = async ({ params, locals }) => {

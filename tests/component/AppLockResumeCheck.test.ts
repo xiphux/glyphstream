@@ -27,7 +27,7 @@ function stub() {
 	return holder.current;
 }
 
-vi.mock('$app/environment', () => ({
+vi.mock('$app/env', () => ({
 	browser: true,
 	dev: false,
 	building: false,
@@ -48,17 +48,16 @@ vi.mock('$app/navigation', async () => {
 	return {
 		goto: nav.goto,
 		invalidate: v.fn(async () => {}),
-		invalidateAll: v.fn(async () => {}),
+		refreshAll: v.fn(async () => {}),
 		afterNavigate: (cb: Parameters<ReturnType<typeof createKitStub>['afterNavigate']>[0]) =>
 			stub().afterNavigate(cb),
 		beforeNavigate: v.fn(),
-		replaceState: v.fn(),
 		pushState: v.fn(),
 		preloadData: v.fn(async () => ({})),
 	};
 });
-vi.mock('$lib/push-subscribe', () => ({ reconcileSubscription: vi.fn(async () => {}) }));
-vi.mock('$lib/timezone-sync', () => ({ syncTimeZone: vi.fn(async () => {}) }));
+vi.mock('#lib/push-subscribe.js', () => ({ reconcileSubscription: vi.fn(async () => {}) }));
+vi.mock('#lib/timezone-sync.js', () => ({ syncTimeZone: vi.fn(async () => {}) }));
 vi.stubGlobal('__APP_VERSION__', '9.9.9');
 const store = new Map<string, string>();
 vi.stubGlobal('localStorage', {
@@ -180,7 +179,7 @@ describe('app-lock resume check', () => {
 		checks[0].respond(423);
 		await settle();
 		expect(nav.goto).toHaveBeenCalledWith(expect.stringMatching(/^\/unlock\?from=/), {
-			replaceState: true,
+			replace: true,
 		});
 		expect(covered()).toBe(true);
 	});
@@ -202,7 +201,7 @@ describe('app-lock resume check', () => {
 		checks[0].respond(423);
 		await settle();
 		expect(nav.goto).toHaveBeenCalledWith(`/unlock?from=${encodeURIComponent('/chat/tapped')}`, {
-			replaceState: true,
+			replace: true,
 		});
 	});
 

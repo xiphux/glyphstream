@@ -1,9 +1,9 @@
-import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { purgeTrashForUser } from '$lib/server/db/queries/media';
-import { unlinkMediaFiles } from '$lib/server/media/disk-store';
-import { parseTrashIds } from '$lib/server/media/trash-api';
+import { error } from '@sveltejs/kit';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { purgeTrashForUser } from '#lib/server/db/queries/media.js';
+import { unlinkMediaFiles } from '#lib/server/media/disk-store.js';
+import { parseTrashIds } from '#lib/server/media/trash-api.js';
 import type { RequestHandler } from './$types';
 
 /**
@@ -31,5 +31,5 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	}
 	const purged = purgeTrashForUser(which, locals.user.id);
 	await unlinkMediaFiles(purged, 'media.trash.purge');
-	return json({ purged: purged.length });
+	return Response.json({ purged: purged.length });
 };

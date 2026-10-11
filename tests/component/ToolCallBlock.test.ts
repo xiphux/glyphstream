@@ -13,7 +13,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { render, screen } from '@testing-library/svelte';
-import ToolCallBlock from '$lib/components/ToolCallBlock.svelte';
+import ToolCallBlock from '#lib/components/ToolCallBlock.svelte';
 
 /** Expand a tool block's <details> (skill bodies render lazily on expand). */
 async function expandDetails(container: HTMLElement) {

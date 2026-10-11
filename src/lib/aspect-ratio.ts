@@ -1,5 +1,5 @@
 /**
- * Aspect-ratio helpers for the composer. Client-safe (no `$lib/server` import).
+ * Aspect-ratio helpers for the composer. Client-safe (no `#lib/server` import).
  *
  * There is deliberately NO vocabulary of ratios here. The menu is whatever the
  * selected models advertised in `ModelEntry.aspectRatios`; a `value` is an
@@ -12,7 +12,7 @@
  * choosing which offered shape is nearest to a remembered one.
  */
 
-import type { AspectRatioOption, ModelEntry } from '$lib/types/api';
+import type { AspectRatioOption, ModelEntry } from '#lib/types/api.js';
 
 /**
  * `localStorage` key for the last ratio the user explicitly picked.

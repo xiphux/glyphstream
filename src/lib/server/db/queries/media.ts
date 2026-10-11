@@ -14,7 +14,7 @@ import type {
 	MediaKind,
 	MediaListItem,
 	TrashedMediaItem,
-} from '$lib/types/api';
+} from '#lib/types/api.js';
 
 export interface MediaInsertInput {
 	userId: string;

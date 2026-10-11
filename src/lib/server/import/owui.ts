@@ -26,7 +26,7 @@ import type { NodeSQLiteDatabase } from 'drizzle-orm/node-sqlite';
 import { conversations, messages } from '../db/schema';
 import { generateId } from '../util/id';
 import { renderMarkdown } from '../markdown/render';
-import type { MessagePart, ModelKind } from '$lib/types/api';
+import type { MessagePart, ModelKind } from '#lib/types/api.js';
 
 export type ImportDb = NodeSQLiteDatabase;
 
@@ -89,8 +89,8 @@ interface OwuiTreeMessage {
  * Top-level entry point — accepts the raw JSON value (already parsed) so
  * the caller controls how it was loaded (file read, HTTP upload, fixture)
  * and the DB connection so the function works equally well from the
- * SvelteKit runtime, the CLI script, and unit tests without pulling in
- * `$env/dynamic/private` from the runtime env module.
+ * SvelteKit runtime, the CLI script, and unit tests without pulling in the
+ * runtime env module.
  */
 export async function importOwuiExport(
 	rawJson: unknown,

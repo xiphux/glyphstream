@@ -25,7 +25,7 @@ const state = vi.hoisted(() => ({
 	live: 0,
 }));
 
-vi.mock('$lib/server/env', () => ({
+vi.mock('#lib/server/env.js', () => ({
 	mediaDir: () => state.root,
 	// Coincident here, as it is for any install that leaves DERIVED_DIR unset.
 	// The split itself is covered in media-derived-dir.test.ts.
@@ -57,7 +57,7 @@ vi.mock('sharp', () => {
 	return { default: () => makeChain({ value: '' }) };
 });
 
-import { getOrCreateThumbnail } from '$lib/server/media/thumbnail';
+import { getOrCreateThumbnail } from '#lib/server/media/thumbnail.js';
 
 /**
  * Release mocked sharp jobs until `work` settles, then return its value.

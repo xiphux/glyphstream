@@ -35,8 +35,8 @@
  *
  * Module split: the pure (env-free) parts live in `url-policy-base.ts`
  * so the code-interpreter worker — bundled standalone via esbuild outside
- * the SvelteKit transform pipeline — can import them without dragging
- * `$env/dynamic/private` along. This file adds the env-using
+ * the SvelteKit transform pipeline — can import them without dragging the
+ * env and config.toml layer along. This file adds the config-using
  * `assertNotConfiguredBackend` and the forbidden-host accessor used by
  * the pool to pass the set into the worker at init.
  */

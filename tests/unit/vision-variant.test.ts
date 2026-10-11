@@ -27,14 +27,14 @@ const mocks = vi.hoisted(() => ({
 	maxImageDim: 1568,
 	imageQuality: 82,
 }));
-vi.mock('$lib/server/env', () => ({
+vi.mock('#lib/server/env.js', () => ({
 	mediaDir: () => mocks.mediaDir,
 	derivedDir: () => mocks.derivedDir || mocks.mediaDir,
 	dbPath: () => './data/glyphstream.db',
 	configPath: () => './config.toml',
 	logLevel: () => 'info',
 }));
-vi.mock('$lib/server/endpoints/config', () => ({
+vi.mock('#lib/server/endpoints/config.js', () => ({
 	getVisionConfig: () => ({
 		maxImageDim: mocks.maxImageDim,
 		imageQuality: mocks.imageQuality,
@@ -46,7 +46,7 @@ import {
 	cachedVisionVariantSize,
 	getVisionVariant,
 	visionStoragePath,
-} from '$lib/server/media/vision-variant';
+} from '#lib/server/media/vision-variant.js';
 
 function write(storagePath: string, bytes: Buffer): void {
 	const abs = resolve(mocks.mediaDir, storagePath);

@@ -32,7 +32,7 @@
 			Reload
 		</button>
 		<a
-			href={resolve('/')}
+			href={resolve('/(app)')}
 			class="rounded-md border border-border px-3 py-1.5 text-sm font-medium transition hover:bg-surface-raised"
 		>
 			Back to GlyphStream

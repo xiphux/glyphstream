@@ -18,12 +18,12 @@ const mocks = vi.hoisted(() => ({
 	getFanoutParent: vi.fn<(...a: unknown[]) => string | null>(),
 }));
 
-vi.mock('$lib/server/db/queries/conversations', () => ({
+vi.mock('#lib/server/db/queries/conversations.js', () => ({
 	getConversationMeta: (...a: unknown[]) => mocks.getConversationMeta(...a),
 	setConversationAvatar: (...a: unknown[]) => mocks.setConversationAvatar(...a),
 	getFanoutParent: (...a: unknown[]) => mocks.getFanoutParent(...a),
 }));
-vi.mock('$lib/server/db/queries/messages', () => ({
+vi.mock('#lib/server/db/queries/messages.js', () => ({
 	getMessage: (...a: unknown[]) => mocks.getMessage(...a),
 	selectBranch: (...a: unknown[]) => mocks.selectBranch(...a),
 }));

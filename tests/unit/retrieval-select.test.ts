@@ -1,11 +1,11 @@
-import type { embeddings } from '$lib/server/endpoints/client';
+import type { embeddings } from '#lib/server/endpoints/client.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // select.ts reaches the embeddings + rerank clients in this graph; fully mock
 // both so the dense and rerank legs are hermetic.
 const embeddingsMock = vi.hoisted(() => vi.fn<typeof embeddings>());
 const rerankMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/client', () => ({
+vi.mock('#lib/server/endpoints/client.js', () => ({
 	embeddings: embeddingsMock,
 	rerank: rerankMock,
 }));
@@ -16,8 +16,8 @@ import {
 	EMBED_CAP,
 	type RelevanceConfig,
 	type RerankConfig,
-} from '$lib/server/retrieval/select';
-import type { Chunk } from '$lib/server/retrieval/chunker';
+} from '#lib/server/retrieval/select.js';
+import type { Chunk } from '#lib/server/retrieval/chunker.js';
 
 function mk(blockIndex: number, body: string, breadcrumb = '', overlapPrefixLen = 0): Chunk {
 	return {

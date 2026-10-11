@@ -22,16 +22,16 @@
  * the reuse-prompt action. The branch requests each know only their own model.
  */
 
-import { json, error } from '@sveltejs/kit';
-import { requireFound, requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { getConversationMeta, setFanoutParent } from '$lib/server/db/queries/conversations';
-import { parseModelId } from '$lib/server/endpoints/model-id';
-import { createUserMessage } from '$lib/server/messages/create-user-message';
-import { startTitleTaskIfFirstExchange } from '$lib/server/tasks/title-task-runner';
-import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '$lib/fanout';
-import type { CompareSelection } from '$lib/fanout';
-import type { PrepareFanoutRequest, PrepareFanoutResponse } from '$lib/types/api';
+import { error } from '@sveltejs/kit';
+import { requireFound, requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { getConversationMeta, setFanoutParent } from '#lib/server/db/queries/conversations.js';
+import { parseModelId } from '#lib/server/endpoints/model-id.js';
+import { createUserMessage } from '#lib/server/messages/create-user-message.js';
+import { startTitleTaskIfFirstExchange } from '#lib/server/tasks/title-task-runner.js';
+import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '#lib/fanout.js';
+import type { CompareSelection } from '#lib/fanout.js';
+import type { PrepareFanoutRequest, PrepareFanoutResponse } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
 
 /**
@@ -106,5 +106,5 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	void startTitleTaskIfFirstExchange(params.id, locals.user.id);
 
 	const response: PrepareFanoutResponse = { userMessage };
-	return json(response);
+	return Response.json(response);
 };

@@ -11,10 +11,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/server/auth/guard', () => ({ requireUser: () => {} }));
+vi.mock('#lib/server/auth/guard.js', () => ({ requireUser: () => {} }));
 
 import { POST } from '../../src/routes/api/presence/+server';
-import { isConversationBeingViewed, resetPresence } from '$lib/server/push/presence';
+import { isConversationBeingViewed, resetPresence } from '#lib/server/push/presence.js';
 
 async function post(body: unknown, userId = 'u1'): Promise<Response> {
 	return POST({

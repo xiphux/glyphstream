@@ -51,8 +51,8 @@ vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => {
 // Stub the build-time global so client.ts can import without Vite.
 vi.stubGlobal('__APP_VERSION__', 'test');
 
-import { connectMcpServer } from '$lib/server/mcp/client';
-import type { LoadedHttpMcpServer, LoadedStdioMcpServer } from '$lib/server/mcp/config';
+import { connectMcpServer } from '#lib/server/mcp/client.js';
+import type { LoadedHttpMcpServer, LoadedStdioMcpServer } from '#lib/server/mcp/config.js';
 
 function httpCfg(): LoadedHttpMcpServer {
 	return {

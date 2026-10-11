@@ -3,19 +3,19 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB, ci: true }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
 // run_skill_script is gated on the interpreter; pin it deterministically.
-vi.mock('$lib/server/code-interpreter/config', () => ({
+vi.mock('#lib/server/code-interpreter/config.js', () => ({
 	isCodeInterpreterEnabled: () => mocks.ci,
 	getCodeInterpreterConfig: () => ({}),
 	resetCodeInterpreterConfigForTests: () => {},
 }));
 
-import { createSkill, setSkillEnabled, skillStoragePath } from '$lib/server/db/queries/skills';
-import { appendSkillsCatalog, buildSkillsRequestContext } from '$lib/server/chat/skills-context';
+import { createSkill, setSkillEnabled, skillStoragePath } from '#lib/server/db/queries/skills.js';
+import { appendSkillsCatalog, buildSkillsRequestContext } from '#lib/server/chat/skills-context.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

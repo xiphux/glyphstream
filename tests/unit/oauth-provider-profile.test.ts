@@ -5,7 +5,7 @@
  * the username fallback chain) and that both providers carry a PKCE code
  * verifier through `createAuthorizationURL`.
  *
- * Only `$lib/server/env` and `fetch` are stubbed. This deliberately does
+ * Only `#lib/server/env` and `fetch` are stubbed. This deliberately does
  * NOT mock the OAuth2 layer: it used to mock `arctic` wholesale, which
  * meant the token exchange — the request body, the client-auth header, the
  * ID-token decode — was the one part of the login path with no coverage at
@@ -16,7 +16,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/server/env', () => ({
+vi.mock('#lib/server/env.js', () => ({
 	publicBaseUrl: () => 'http://localhost:5173',
 	googleClientId: () => 'g-id',
 	googleClientSecret: () => 'g-sec',
@@ -31,8 +31,8 @@ vi.mock('$lib/server/env', () => ({
 	oidcScopes: () => ['openid', 'profile', 'email'],
 }));
 
-import { googleProvider } from '$lib/server/auth/oauth/google';
-import { oidcProvider } from '$lib/server/auth/oauth/oidc';
+import { googleProvider } from '#lib/server/auth/oauth/google.js';
+import { oidcProvider } from '#lib/server/auth/oauth/oidc.js';
 
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const OIDC_TOKEN_URL = 'https://issuer.example.com/token';

@@ -7,7 +7,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ secretKey: 'master-key-one' }));
-vi.mock('$lib/server/env', () => ({
+vi.mock('#lib/server/env.js', () => ({
 	mcpSecretKey: () => mocks.secretKey,
 }));
 
@@ -15,7 +15,7 @@ import {
 	encryptSecret,
 	decryptSecret,
 	_resetSecretKeyCacheForTests,
-} from '$lib/server/crypto/secret-box';
+} from '#lib/server/crypto/secret-box.js';
 
 beforeEach(() => {
 	mocks.secretKey = 'master-key-one';

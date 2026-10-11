@@ -12,8 +12,8 @@
  * how you check the gate handover was recorded.
  */
 
-import type { InFlightEntry } from '$lib/server/streaming/in-flight';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+import type { InFlightEntry } from '#lib/server/streaming/in-flight.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 
 export function inFlightEntryStub(endpoint: LoadedEndpoint): InFlightEntry {
 	return {

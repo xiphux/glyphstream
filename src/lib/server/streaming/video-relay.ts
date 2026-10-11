@@ -39,7 +39,7 @@ import {
 	type MediaRelayScaffoldParams,
 	type MediaRelaySink,
 } from './media-relay';
-import type { StreamErrorEvent, StreamProgressEvent } from '$lib/types/api';
+import type { StreamErrorEvent, StreamProgressEvent } from '#lib/types/api.js';
 
 const DEBUG = logLevel() === 'debug';
 

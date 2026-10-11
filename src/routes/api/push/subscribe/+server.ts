@@ -11,19 +11,19 @@
  * by the calling user, so one user can't unsubscribe another's device.
  */
 
-import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
+import { error } from '@sveltejs/kit';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
 import {
 	deletePushSubscriptionByEndpoint,
 	upsertPushSubscription,
-} from '$lib/server/db/queries/push-subscriptions';
-import { getVapidPublicKey } from '$lib/server/push/web-push';
+} from '#lib/server/db/queries/push-subscriptions.js';
+import { getVapidPublicKey } from '#lib/server/push/web-push.js';
 import {
 	assertHostnameRoutable,
 	assertHttpScheme,
 	UrlPolicyError,
-} from '$lib/server/tools/url-policy-base';
+} from '#lib/server/tools/url-policy-base.js';
 import type { RequestHandler } from './$types';
 
 interface SubscribeBody {
@@ -98,7 +98,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		auth,
 		userAgent,
 	});
-	return json({ id: row.id, endpoint: row.endpoint }, { status: 201 });
+	return Response.json({ id: row.id, endpoint: row.endpoint }, { status: 201 });
 };
 
 export const DELETE: RequestHandler = async ({ locals, request }) => {
@@ -109,5 +109,5 @@ export const DELETE: RequestHandler = async ({ locals, request }) => {
 
 	const removed = deletePushSubscriptionByEndpoint(endpoint, locals.user.id);
 	if (!removed) error(404, 'No matching subscription');
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

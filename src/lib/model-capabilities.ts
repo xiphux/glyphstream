@@ -6,7 +6,7 @@
  * the attached image, so this array is the only remaining signal for what a
  * given model does with an image.
  *
- * Client-safe ($lib): both the model picker (the modality pill) and the
+ * Client-safe (#lib): both the model picker (the modality pill) and the
  * composer (the image-required send gate) read these, so the predicate lives
  * in one place. Nothing here is OpenAI-standard — the field is a bridge
  * extension, absent on generic passthrough upstreams.

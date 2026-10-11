@@ -8,14 +8,15 @@
  * mock the config layer therefore behaved one way on a dev machine (a real config,
  * with [search] and [embeddings] blocks) and another way in CI (no config at all).
  *
- * `vitest.config.ts` now aliases that module to `tests/_stubs/env-dynamic-private.ts`,
- * which reads `process.env`. This test is the guard: it fails the moment the alias
- * is dropped, rather than letting the suite quietly go back to reading whatever
+ * env.ts now reads `process.env` directly (SvelteKit 3; see the note at its top),
+ * which is exactly what vitest's `env` block sets. This test is the guard: it fails
+ * the moment config reads stop reaching that setting — say, a move back to a Kit
+ * env module — rather than letting the suite quietly go back to reading whatever
  * happens to be on the machine running it.
  */
 import { describe, expect, it } from 'vitest';
-import { configPath } from '$lib/server/env';
-import { loadEndpoints } from '$lib/server/endpoints/config';
+import { configPath } from '#lib/server/env.js';
+import { loadEndpoints } from '#lib/server/endpoints/config.js';
 
 describe('config isolation', () => {
 	it("resolves CONFIG_PATH from vitest's env, not the './config.toml' fallback", () => {

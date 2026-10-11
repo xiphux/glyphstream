@@ -14,7 +14,7 @@ import {
 	acquireEndpointSlot,
 	getResourceQueueDepth,
 	resetEndpointGatesForTests,
-} from '$lib/server/endpoints/concurrency';
+} from '#lib/server/endpoints/concurrency.js';
 
 const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
@@ -22,13 +22,13 @@ const mocks = vi.hoisted(() => ({
 	upstreamCalls: [] as unknown[],
 }));
 
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
 
-vi.mock('$lib/server/endpoints/client', async (orig) => {
-	const real = await orig<typeof import('$lib/server/endpoints/client')>();
+vi.mock('#lib/server/endpoints/client.js', async (orig) => {
+	const real = await orig<typeof import('#lib/server/endpoints/client.js')>();
 	return {
 		...real,
 		chatCompletionStream: vi.fn(async (_endpoint, body) => {
@@ -40,12 +40,12 @@ vi.mock('$lib/server/endpoints/client', async (orig) => {
 	};
 });
 
-import { createConversation } from '$lib/server/db/queries/conversations';
-import { appendMessage, walkActiveBranch } from '$lib/server/db/queries/messages';
-import { streamCompaction } from '$lib/server/streaming/compaction-relay';
-import type { CompactionPlan } from '$lib/server/chat/compaction';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
-import type { ChatMessage, StreamEvent } from '$lib/types/api';
+import { createConversation } from '#lib/server/db/queries/conversations.js';
+import { appendMessage, walkActiveBranch } from '#lib/server/db/queries/messages.js';
+import { streamCompaction } from '#lib/server/streaming/compaction-relay.js';
+import type { CompactionPlan } from '#lib/server/chat/compaction.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
+import type { ChatMessage, StreamEvent } from '#lib/types/api.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

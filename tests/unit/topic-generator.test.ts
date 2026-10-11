@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const chatMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/client', () => ({ chatCompletionSync: chatMock }));
+vi.mock('#lib/server/endpoints/client.js', () => ({ chatCompletionSync: chatMock }));
 
 import {
 	buildTopicPrompt,
 	fallbackTopic,
 	generateMemoryTopic,
 	sanitizeTopic,
-} from '$lib/server/tasks/topic-generator';
-import type { ResolvedTaskModel } from '$lib/server/tasks/task-model';
+} from '#lib/server/tasks/topic-generator.js';
+import type { ResolvedTaskModel } from '#lib/server/tasks/task-model.js';
 
 const MODEL = { endpoint: {}, upstreamId: 'm' } as unknown as ResolvedTaskModel;
 

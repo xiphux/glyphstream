@@ -1,40 +1,28 @@
-import { fileURLToPath } from 'node:url';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { sveltekitOptions } from './sveltekit.config.ts';
 import { svelteTesting } from '@testing-library/svelte/vite';
 import { defineConfig } from 'vitest/config';
 
 /**
  * Vitest config — kept separate from vite.config.ts so the production
- * build doesn't inherit test-only setup. Includes sveltekit() so test
- * files can import from `$lib/*` aliases the same way runtime code does.
+ * build doesn't inherit test-only setup. Includes sveltekit(), with the app's
+ * own options (sveltekit.config.ts), so components compile exactly as they do
+ * in the build.
  *
- * svelteTesting() flips resolve.conditions to prefer the 'browser'
- * export of Svelte over its SSR ('node') export, so testing-library's
- * mount() works rather than throwing `mount is not available on the
- * server`.
+ * svelteTesting() (component project only) flips resolve.conditions to
+ * prefer the 'browser' export of Svelte over its SSR ('node') export, so
+ * testing-library's mount() works rather than throwing `mount is not
+ * available on the server`.
  *
  * Its `autoCleanup` is off, and the component project lists the cleanup
- * file itself: the plugin adds that file to the ROOT config's setupFiles,
- * and since vitest 5 a setup file added that way no longer reaches the
- * projects below. Every component test then rendered into the leftovers of
- * the one before it (400 "Found multiple elements" failures).
+ * file itself. The plugin used to sit in the ROOT config, where it added
+ * that file to the root's setupFiles — which since vitest 5 no longer reach
+ * the projects below, so every component test rendered into the leftovers
+ * of the one before it (400 "Found multiple elements" failures). Listing it
+ * explicitly keeps cleanup independent of where the plugin is installed.
  */
 export default defineConfig({
-	plugins: [sveltekit(), svelteTesting({ autoCleanup: false })],
-	resolve: {
-		alias: {
-			// `$env/dynamic/private` is populated by the SvelteKit SERVER at runtime;
-			// under vitest it resolves to an empty object, so every `env.X` read in
-			// src/lib/server/env.ts silently fell through to its hard-coded fallback —
-			// and the `env` block below, which sets process.env, never reached it. The
-			// CONFIG_PATH isolation was therefore inert, and the suite had been reading
-			// the developer's REAL ./config.toml all along. Aliasing to process.env is
-			// what actually makes that block work.
-			'$env/dynamic/private': fileURLToPath(
-				new URL('./tests/_stubs/env-dynamic-private.ts', import.meta.url),
-			),
-		},
-	},
+	plugins: [sveltekit(sveltekitOptions)],
 	test: {
 		// The environment follows the directory, not a per-file header. Headers
 		// were the old mechanism, and a component test that forgot one ran under
@@ -56,6 +44,12 @@ export default defineConfig({
 			},
 			{
 				extends: true,
+				// Here, not at the root: its 'browser' resolution reaches every module,
+				// and `tests/unit` exercises SERVER code. There it swapped in Kit's
+				// client build of `redirect()`'s origin check, which reads `window`
+				// — and since SvelteKit 3 validates every redirect target, every
+				// unit test that hit a redirect died on `window is not defined`.
+				plugins: [svelteTesting({ autoCleanup: false })],
 				test: {
 					name: 'component',
 					include: ['tests/component/**/*.{test,spec}.{js,ts}'],
@@ -76,7 +70,9 @@ export default defineConfig({
 		// behave differently on a dev machine (real config present) than in CI
 		// (no config.toml). The loaders degrade to their documented defaults on
 		// ENOENT, so "config absent" is the deterministic, isolated baseline.
-		// Only effective because of the $env/dynamic/private alias above.
+		// Lands because #lib/server/env.ts reads process.env, which this sets.
+		// (It didn't while env.ts read Kit's `$env/dynamic/private`, empty under
+		// vitest; config-isolation.test.ts guards against that coming back.)
 		env: { CONFIG_PATH: '/glyphstream-test-no-such-config.toml' },
 		// Run each test file in its own worker so DB tests with global
 		// connection state don't cross-contaminate. `isolate: false` really

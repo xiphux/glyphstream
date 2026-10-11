@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildLayoutSections, dayStartMs, monthTicksFromLayout } from '$lib/gallery-layout';
+import { buildLayoutSections, dayStartMs, monthTicksFromLayout } from '#lib/gallery-layout.js';
 
 // Fixed "now" well after the fixtures so no day resolves to Today/Yesterday.
 const NOW = new Date(2024, 11, 31, 12).getTime();

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ACK_DEFER_MS, NotificationAck } from '$lib/notification-ack';
+import { ACK_DEFER_MS, NotificationAck } from '#lib/notification-ack.js';
 
 /**
  * The interesting cases here are the ones CI can't reach any other way: the

@@ -18,16 +18,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import type { FeatureCategoryEntry, UserPreferences } from '$lib/types/api';
+import type { FeatureCategoryEntry, UserPreferences } from '#lib/types/api.js';
 
-vi.mock('$app/environment', () => ({ browser: true, dev: false, building: false, version: 't' }));
+vi.mock('$app/env', () => ({ browser: true, dev: false, building: false, version: 't' }));
 
 const mocks = vi.hoisted(() => ({
 	invalidate: vi.fn<(key: string) => Promise<void>>(async () => {}),
 }));
 vi.mock('$app/navigation', () => ({
 	invalidate: (key: string) => mocks.invalidate(key),
-	invalidateAll: vi.fn(async () => {}),
+	refreshAll: vi.fn(async () => {}),
 	goto: vi.fn(async () => {}),
 	afterNavigate: vi.fn(),
 	beforeNavigate: vi.fn(),

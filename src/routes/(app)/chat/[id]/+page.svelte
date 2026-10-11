@@ -1,55 +1,55 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, refreshAll } from '$app/navigation';
 	import { navigating } from '$app/state';
-	import { getModelCatalogue } from '$lib/model-catalogue.svelte';
-	import { observeSentinel } from '$lib/observe-sentinel';
-	import { FanoutController } from '$lib/fanout-controller.svelte';
-	import { ChatTurnController } from '$lib/chat-turn-controller.svelte';
-	import { preferredFirstName } from '$lib/greeting';
-	import { ensureLiveMarkdown, renderLiveMarkdown } from '$lib/markdown-live';
-	import { ensureLiveHighlighter } from '$lib/markdown-live-shiki.svelte';
-	import { buildApprovalDecisionsSnapshot, type ApprovalAction } from '$lib/approval-workflow';
-	import { errorMessageFromResponse } from '$lib/fetch-error';
-	import { toggleFavoriteModel } from '$lib/favorite-models';
-	import { imageAttachment } from '$lib/model-capabilities';
-	import { saveModelSet, deleteModelSet } from '$lib/model-sets';
-	import { pendingFirstMessageKey } from '$lib/pending-first-message';
-	import { dismissConversationNotifications } from '$lib/notification-dismiss';
-	import { NotificationAck } from '$lib/notification-ack';
+	import { getModelCatalogue } from '#lib/model-catalogue.svelte.js';
+	import { observeSentinel } from '#lib/observe-sentinel.js';
+	import { FanoutController } from '#lib/fanout-controller.svelte.js';
+	import { ChatTurnController } from '#lib/chat-turn-controller.svelte.js';
+	import { preferredFirstName } from '#lib/greeting.js';
+	import { ensureLiveMarkdown, renderLiveMarkdown } from '#lib/markdown-live.js';
+	import { ensureLiveHighlighter } from '#lib/markdown-live-shiki.svelte.js';
+	import { buildApprovalDecisionsSnapshot, type ApprovalAction } from '#lib/approval-workflow.js';
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
+	import { toggleFavoriteModel } from '#lib/favorite-models.js';
+	import { imageAttachment } from '#lib/model-capabilities.js';
+	import { saveModelSet, deleteModelSet } from '#lib/model-sets.js';
+	import { pendingFirstMessageKey } from '#lib/pending-first-message.js';
+	import { dismissConversationNotifications } from '#lib/notification-dismiss.js';
+	import { NotificationAck } from '#lib/notification-ack.js';
 	import {
 		deriveReuseModels,
 		upgradeToPresetModelId,
 		PROMPT_REUSE_KEY,
 		type PromptReuseIntent,
-	} from '$lib/prompt-reuse';
-	import { loadDraft, clearDraft, createDraftWriter } from '$lib/composer-draft';
-	import { confirmDialog } from '$lib/confirm.svelte';
-	import ChatComposer from '$lib/components/chat/ChatComposer.svelte';
-	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
-	import { AVATAR_DESCRIPTION_PROMPT, extractAvatarPrompt } from '$lib/avatar-prompt';
-	import AvatarDrawDialog from '$lib/components/chat/AvatarDrawDialog.svelte';
-	import { CanvasController } from '$lib/canvas-controller.svelte';
-	import { CompactionController } from '$lib/compaction-controller.svelte';
-	import { EditSession } from '$lib/edit-session.svelte';
-	import { privateView } from '$lib/private-chat.svelte';
-	import { streamPresence } from '$lib/stream-presence.svelte';
+	} from '#lib/prompt-reuse.js';
+	import { loadDraft, clearDraft, createDraftWriter } from '#lib/composer-draft.js';
+	import { confirmDialog } from '#lib/confirm.svelte.js';
+	import ChatComposer from '#lib/components/chat/ChatComposer.svelte';
+	import ChatHeader from '#lib/components/chat/ChatHeader.svelte';
+	import { AVATAR_DESCRIPTION_PROMPT, extractAvatarPrompt } from '#lib/avatar-prompt.js';
+	import AvatarDrawDialog from '#lib/components/chat/AvatarDrawDialog.svelte';
+	import { CanvasController } from '#lib/canvas-controller.svelte.js';
+	import { CompactionController } from '#lib/compaction-controller.svelte.js';
+	import { EditSession } from '#lib/edit-session.svelte.js';
+	import { privateView } from '#lib/private-chat.svelte.js';
+	import { streamPresence } from '#lib/stream-presence.svelte.js';
 	import {
 		clearGenerating,
 		isGenerating,
 		markGenerating,
 		type GenerationActivity,
-	} from '$lib/generating-conversations.svelte';
-	import EditMessageForm from '$lib/components/chat/EditMessageForm.svelte';
-	import InFlightBubble from '$lib/components/chat/InFlightBubble.svelte';
-	import MessageActions from '$lib/components/chat/MessageActions.svelte';
-	import MessageBubble from '$lib/components/chat/MessageBubble.svelte';
-	import ScrollToBottomButton from '$lib/components/chat/ScrollToBottomButton.svelte';
+	} from '#lib/generating-conversations.svelte.js';
+	import EditMessageForm from '#lib/components/chat/EditMessageForm.svelte';
+	import InFlightBubble from '#lib/components/chat/InFlightBubble.svelte';
+	import MessageActions from '#lib/components/chat/MessageActions.svelte';
+	import MessageBubble from '#lib/components/chat/MessageBubble.svelte';
+	import ScrollToBottomButton from '#lib/components/chat/ScrollToBottomButton.svelte';
 	import {
 		assistantIdentityForMessage,
 		buildRenderedConversation,
@@ -61,18 +61,18 @@
 		splitCanvasCards,
 		type AssistantIdentity,
 		type RenderBlock,
-	} from '$lib/chat-render';
-	import { displayContextTokens, isCompactionSummary } from '$lib/chat-compaction';
-	import CompactionSummary from '$lib/components/chat/CompactionSummary.svelte';
-	import CompactionSummaryStreaming from '$lib/components/chat/CompactionSummaryStreaming.svelte';
-	import ContextBudgetBar from '$lib/components/chat/ContextBudgetBar.svelte';
-	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
+	} from '#lib/chat-render.js';
+	import { displayContextTokens, isCompactionSummary } from '#lib/chat-compaction.js';
+	import CompactionSummary from '#lib/components/chat/CompactionSummary.svelte';
+	import CompactionSummaryStreaming from '#lib/components/chat/CompactionSummaryStreaming.svelte';
+	import ContextBudgetBar from '#lib/components/chat/ContextBudgetBar.svelte';
+	import { AttachmentStore, attachmentsAllowedFor } from '#lib/attachments.svelte.js';
 	import { resolve } from '$app/paths';
-	import { stripSkillCommand } from '$lib/skill-command';
-	import { hasCopyableText, partsToText } from '$lib/message-parts';
-	import { AvatarDrawController } from '$lib/avatar-draw-controller.svelte';
-	import { consumeChatStream } from '$lib/consume-chat-stream';
-	import FanoutColumns from '$lib/components/chat/FanoutColumns.svelte';
+	import { stripSkillCommand } from '#lib/skill-command.js';
+	import { hasCopyableText, partsToText } from '#lib/message-parts.js';
+	import { AvatarDrawController } from '#lib/avatar-draw-controller.svelte.js';
+	import { consumeChatStream } from '#lib/consume-chat-stream.js';
+	import FanoutColumns from '#lib/components/chat/FanoutColumns.svelte';
 	import {
 		applyDisplayOrder,
 		canDiscardColumn,
@@ -85,16 +85,16 @@
 		type CompareSelection,
 		type FanoutColumn,
 		type FanoutModel,
-	} from '$lib/fanout';
-	import { toast } from '$lib/toast.svelte';
-	import { isSnippetKind } from '$lib/types/api';
+	} from '#lib/fanout.js';
+	import { toast } from '#lib/toast.svelte.js';
+	import { isSnippetKind } from '#lib/types/api.js';
 	import type {
 		ChatMessage,
 		ConversationMediaRef,
 		FeatureCategory,
 		MediaListItem,
 		ModelKind,
-	} from '$lib/types/api';
+	} from '#lib/types/api.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -158,7 +158,7 @@
 	 * of "the model drew its own portrait", and the reason the action is offered
 	 * on the chat surface at all and not just in the gallery.
 	 *
-	 * `invalidateAll()` on purpose, despite this page's careful avoidance of it
+	 * `refreshAll()` on purpose, despite this page's careful avoidance of it
 	 * elsewhere: the avatar shown in the bubbles comes from THIS page's load
 	 * (`assistantAvatarMediaId`), not the layout's preset list, so a targeted
 	 * `invalidate('app:conversations')` would refresh the picker's checkmarks
@@ -188,7 +188,7 @@
 				target.kind === 'conversation'
 					? 'this conversation'
 					: data.customModels.find((c) => c.id === target.id)?.name;
-			await invalidateAll();
+			await refreshAll();
 			toast.success(name ? `Avatar set for ${name}` : 'Avatar set');
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : 'Failed to set avatar');
@@ -544,7 +544,7 @@
 			// telling them its avatar changed — would be noise about someone else's
 			// thread. Navigating back re-runs the load anyway.
 			if (convId === cid) {
-				await invalidateAll();
+				await refreshAll();
 				if (drew) toast.success('Avatar updated');
 			}
 		} catch (e) {
@@ -623,6 +623,7 @@
 			? (data.customModels?.find((cm) => cm.id === data.conversation.customModelId) ?? null)
 			: null,
 	);
+
 	const activePresetModelId = $derived(
 		activePreset ? `${activePreset.baseEndpointId}::${activePreset.baseModelId}` : null,
 	);
@@ -674,7 +675,7 @@
 	// Side-by-side canvas pane. The server is authoritative; this holds the
 	// live doc + open state. Seeded from the page load, updated by
 	// canvas_version stream events during a turn (see ChatTurnController's
-	// #runChatStream in $lib/chat-turn-controller.svelte, via the applyCanvas dep).
+	// #runChatStream in #lib/chat-turn-controller.svelte, via the applyCanvas dep).
 	const canvas = new CanvasController();
 	// svelte-ignore state_referenced_locally
 	canvas.hydrate(data.canvases);
@@ -686,8 +687,8 @@
 	// it as initial content (no intro). A stable {#if} makes the slide reliable.
 	let CanvasPaneComp = $state<
 		| import('svelte').Component<{
-				doc: import('$lib/types/api').CanvasVersion;
-				docs: Array<import('$lib/types/api').CanvasVersion>;
+				doc: import('#lib/types/api.js').CanvasVersion;
+				docs: Array<import('#lib/types/api.js').CanvasVersion>;
 				changed: boolean;
 				onClose: () => void;
 				onSwitch: (artifactId: string) => void;
@@ -697,7 +698,7 @@
 	>(null);
 	$effect(() => {
 		if (canvas.docs.length > 0 && !CanvasPaneComp) {
-			void import('$lib/components/chat/CanvasPane.svelte').then(
+			void import('#lib/components/chat/CanvasPane.svelte').then(
 				(m) => (CanvasPaneComp = m.default),
 			);
 		}
@@ -724,7 +725,7 @@
 	 * calling effect. A mid-turn `create_canvas`/`update_canvas` mutates
 	 * `canvas.docs`, which would then re-fire the seeding effect and reset
 	 * `messages` back to the (pre-turn) load data, making the user's just-sent
-	 * prompt bubble vanish until the end-of-turn invalidateAll.
+	 * prompt bubble vanish until the end-of-turn refreshAll.
 	 */
 	function maybeAutoOpenCanvas(): void {
 		untrack(() => {
@@ -742,7 +743,7 @@
 	// page load, i.e. a pre-turn snapshot: re-seeding from it would wipe the
 	// messages this turn just appended and clobber a live-streamed title back to
 	// null. Comparing identity re-seeds on a genuine page-data change (entering
-	// another conversation, or the post-tool-turn invalidateAll) and skips the
+	// another conversation, or the post-tool-turn refreshAll) and skips the
 	// layout-only refresh.
 	// svelte-ignore state_referenced_locally
 	let seededFromConversation: unknown = data.conversation;
@@ -759,7 +760,7 @@
 		serverGeneratingSince = data.inFlightGeneratingSince;
 		avatarDraw.syncFromServer(data.avatarDrawSince);
 		// Re-seed the canvas ONLY when switching conversations. A mid-turn
-		// invalidateAll refreshes `data` with the same id — re-hydrating then
+		// refreshAll refreshes `data` with the same id — re-hydrating then
 		// would reopen a pane the user closed and clobber the just-applied live
 		// state, which already matches the persisted content.
 		if (data.conversation.id !== hydratedCanvasConvId) {
@@ -787,7 +788,7 @@
 	// Single-turn orchestration (send/edit/retry streaming, approval-resume,
 	// server-truth recovery) + its shared render state — the in-flight bubble,
 	// `busy`, `activeAbort`, `streamedMessageId`, the approval-resume latch, and
-	// the suspend/offline flags — extracted to $lib/chat-turn-controller for
+	// the suspend/offline flags — extracted to #lib/chat-turn-controller for
 	// testability. Constructed up here (ahead of the fan-out controller) because
 	// the approval-pending derivations below read `turn.inFlightSegments`. The
 	// page owns the composer/picker bindings, the higher-level send() dispatch,
@@ -1003,7 +1004,7 @@
 
 	// Per-page attachment store. The store eagerly POSTs to /api/uploads
 	// as files are picked, so by send-time `readyMediaIds()` is just a
-	// state read. See $lib/attachments.svelte.ts.
+	// state read. See #lib/attachments.svelte.ts.
 	const attachments = new AttachmentStore();
 	const allowAttachments = $derived(attachmentsAllowedFor(modelKind));
 	// Snippet filtering for the inline editor. The conversation's own kind, not
@@ -1138,7 +1139,7 @@
 	// Compared against the last id rather than just read: touching
 	// `data.conversation` makes the whole `data` prop a dependency, so this fired
 	// on *any* invalidation, not just a conversation change. It was invisible
-	// while every turn ended in `invalidateAll()` — the clear was immediately
+	// while every turn ended in `refreshAll()` — the clear was immediately
 	// followed by a re-seeded `messages`, which re-ran the auto-attach effect and
 	// put the image back — but it meant each turn needlessly tore down and
 	// rebuilt the composer's attachments, and a layout-only invalidation would
@@ -1449,7 +1450,7 @@
 	let isOffline = $derived(browser && !navigator.onLine);
 
 	// Multi-model fan-out controller (state + orchestration extracted to
-	// $lib/fanout-controller for testability). The page owns the composer/picker
+	// #lib/fanout-controller for testability). The page owns the composer/picker
 	// bindings + a few effects that delegate here; the controller reaches shared
 	// page state through these getters/setters.
 	const fanout: FanoutController = new FanoutController({
@@ -1626,10 +1627,10 @@
 			// grid (losing the QUEUED badge + timer). If the connections actually
 			// died (iOS suspend), the branch fetches error and runBranch hands the
 			// fan-out off to recovery itself.
-			void invalidateAll();
+			void refreshAll();
 		} else {
 			// A draw reconciles through the cheap probe, not a reload: a turn is over
-			// in seconds, a draw takes minutes, and a full `invalidateAll()` per
+			// in seconds, a draw takes minutes, and a full `refreshAll()` per
 			// refocus across those minutes re-downloads a branch that cannot have
 			// changed. The controller owns the scoping and the no-clear-here rule —
 			// see `reconcileIfOwed`.
@@ -1652,7 +1653,7 @@
 	 *
 	 * Only the acknowledgment rides this, not the reconciliation in the visible
 	 * branch above: that path already self-heals through the recovery polls and
-	 * `syncFromServer`, and its `invalidateAll()` is the expensive refetch this
+	 * `syncFromServer`, and its `refreshAll()` is the expensive refetch this
 	 * route goes out of its way to avoid. `becameVisible()` re-reads visibility
 	 * and the pending navigation when its timer fires, and dismissal is
 	 * idempotent, so a platform that fires BOTH events costs one extra string
@@ -1673,7 +1674,7 @@
 		isOffline = false;
 		// Same reasoning as the visibility path — don't pre-emptively abort a
 		// live fan-out; an actually-dropped branch fetch recovers via runBranch.
-		if (turn.wasOfflineDuringFetch) void invalidateAll();
+		if (turn.wasOfflineDuringFetch) void refreshAll();
 		else avatarDraw.reconcileIfOwed();
 	}
 
@@ -1979,7 +1980,7 @@
 	// recovered bubble — the local fetch died to an iOS suspension or dropped
 	// connection), the controller polls the in-flight registry so the
 	// "Generating…" bubble resolves the moment the generation finishes — even
-	// if the user just stays in the app. invalidateAll() is too heavy to poll (it
+	// if the user just stays in the app. refreshAll() is too heavy to poll (it
 	// re-fetches every endpoint's model list); see startRecoveryPoll for why it
 	// rides the branch-walk-free `?fanout=1` variant.
 	$effect(() => {
@@ -2027,7 +2028,11 @@
 		const skillsActive = modelKind === 'chat' && !disabledFeatures.includes('skills');
 		const { text, activatedSkillNames } = skillsActive
 			? stripSkillCommand(composerText.trim(), data.enabledSkills)
-			: { text: composerText.trim(), activatedSkillNames: [] as string[] };
+			: {
+					text: composerText.trim(),
+					activatedSkillNames: [] as string[],
+				};
+
 		if ((!text && attachments.items.length === 0) || generating || compaction.compacting) return;
 		if (attachments.isBusy) return;
 		// Offline: block the send before anything is cleared. The button is
@@ -2330,7 +2335,7 @@
 
 	// Inline message editing. The bubble for `edit.messageId` re-renders as an
 	// in-place editor and the bottom composer hides, so it's unambiguous which
-	// message is being edited. See $lib/edit-session.
+	// message is being edited. See #lib/edit-session.
 	const edit = new EditSession({
 		generating: () => generating,
 		// The ratio rides an edit for the same reason it rides a retry — except the
@@ -2343,10 +2348,7 @@
 		// fan-out siblings today — see ROADMAP "An edit resend should inherit its own
 		// message's aspect ratio".
 		send: (text, mediaIds, editedMessageId) =>
-			turn.send(text, mediaIds, {
-				editedMessageId,
-				...(aspectRatio ? { aspectRatio } : {}),
-			}),
+			turn.send(text, mediaIds, { editedMessageId, ...(aspectRatio ? { aspectRatio } : {}) }),
 	});
 	onDestroy(() => edit.destroy());
 
@@ -2358,8 +2360,8 @@
 	// an open edit session (whose target message doesn't exist in the new
 	// conversation) would hide the composer with no inline editor to replace
 	// it, leaving no way to type. Drafts are per-conversation, so each switch
-	// loads its own (usually empty); see $lib/composer-draft. Guarded on a real
-	// id change so a same-conversation invalidateAll() can't wipe a draft
+	// loads its own (usually empty); see #lib/composer-draft. Guarded on a real
+	// id change so a same-conversation refreshAll() can't wipe a draft
 	// mid-compose.
 	let composerResetConvId: string | undefined;
 	$effect(() => {
@@ -2445,7 +2447,7 @@
 			// opens an ordinary new chat, which beats an onclick that throws and
 			// leaves the user on a button that appears to do nothing.
 		}
-		void goto(resolve('/'));
+		void goto(resolve('/(app)'));
 	}
 
 	/**
@@ -2487,7 +2489,7 @@
 			if (!res.ok) {
 				throw new Error(await errorMessageFromResponse(res));
 			}
-			await invalidateAll();
+			await refreshAll();
 			// Wait one microtask for the messages-sync $effect to apply the
 			// new data and the DOM to reflect it, then scroll the sibling
 			// into the middle of the viewport.
@@ -2540,7 +2542,7 @@
 			if (!res.ok && res.status !== 404) {
 				throw new Error(await errorMessageFromResponse(res));
 			}
-			await invalidateAll();
+			await refreshAll();
 		} catch (e) {
 			errorMsg = `Couldn't delete branch: ${e instanceof Error ? e.message : String(e)}`;
 		}
@@ -2548,7 +2550,8 @@
 </script>
 
 <svelte:window onoffline={onOffline} ononline={onOnline} onpageshow={onPageShow} />
-<svelte:document onvisibilitychange={onVisibilityChange} />
+
+<svelte:document onvisibilitychange={onVisibilityChange}></svelte:document>
 
 <div class="flex h-full min-w-0">
 	<div class="relative flex h-full min-w-0 flex-1 flex-col">
@@ -2966,7 +2969,7 @@
 />
 
 {#if lightbox}
-	{#await import('$lib/components/MediaLightbox.svelte') then { default: MediaLightbox }}
+	{#await import('#lib/components/MediaLightbox.svelte') then { default: MediaLightbox }}
 		<MediaLightbox
 			media={lightbox}
 			onClose={() => (lightbox = null)}

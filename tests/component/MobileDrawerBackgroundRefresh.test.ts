@@ -37,7 +37,7 @@ function stub() {
 	return holder.current;
 }
 
-vi.mock('$app/environment', () => ({
+vi.mock('$app/env', () => ({
 	browser: true,
 	dev: false,
 	building: false,
@@ -55,19 +55,18 @@ vi.mock('$app/state', async () => {
 vi.mock('$app/navigation', () => ({
 	goto: vi.fn(async () => {}),
 	invalidate: vi.fn(async () => {}),
-	invalidateAll: vi.fn(async () => {}),
+	refreshAll: vi.fn(async () => {}),
 	// Registered against the same stub, so `navigate()` below dispatches to the
 	// layout's real callback while `refreshData()` deliberately does not.
 	afterNavigate: (callback: Parameters<ReturnType<typeof createKitStub>['afterNavigate']>[0]) =>
 		stub().afterNavigate(callback),
 	beforeNavigate: vi.fn(),
-	replaceState: vi.fn(),
 	pushState: vi.fn(),
 	preloadData: vi.fn(async () => ({})),
 }));
 // Both fire network work from the layout's onMount and neither is under test.
-vi.mock('$lib/push-subscribe', () => ({ reconcileSubscription: vi.fn(async () => {}) }));
-vi.mock('$lib/timezone-sync', () => ({ syncTimeZone: vi.fn(async () => {}) }));
+vi.mock('#lib/push-subscribe.js', () => ({ reconcileSubscription: vi.fn(async () => {}) }));
+vi.mock('#lib/timezone-sync.js', () => ({ syncTimeZone: vi.fn(async () => {}) }));
 
 // Vite `define`s the version at build time; the sidebar footer renders it.
 vi.stubGlobal('__APP_VERSION__', '9.9.9');

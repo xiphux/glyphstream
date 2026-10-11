@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { pickAction } from '$lib/sw/arbiter';
-import type { ActiveConversationReport } from '$lib/types/push';
+import { pickAction } from '#lib/sw/arbiter.js';
+import type { ActiveConversationReport } from '#lib/types/push.js';
 
 function report(conversationId: string | null, visible = true): ActiveConversationReport {
 	return { conversationId, visible };

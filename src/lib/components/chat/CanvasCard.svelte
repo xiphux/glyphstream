@@ -7,7 +7,7 @@
 -->
 <script lang="ts">
 	import { FileText, CircleAlert } from '@lucide/svelte';
-	import { parseCanvasAck } from '$lib/chat-render';
+	import { parseCanvasAck } from '#lib/chat-render.js';
 
 	interface Props {
 		/** The canvas tool's result (terse ack JSON); absent while executing. */

@@ -1,6 +1,6 @@
-import { requireAdmin } from '$lib/server/auth/guard';
-import { listUsers } from '$lib/server/db/queries/users';
-import { listInvites } from '$lib/server/db/queries/invites';
+import { requireAdmin } from '#lib/server/auth/guard.js';
+import { listUsers } from '#lib/server/db/queries/users.js';
+import { listInvites } from '#lib/server/db/queries/invites.js';
 import type { PageServerLoad } from './$types';
 
 /**

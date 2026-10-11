@@ -17,7 +17,7 @@
  * step reads back two branches that produced nothing, wipes the comparison and
  * announces that no model drew a portrait — for a draw that in fact succeeded
  * twice. What rescues the screen is the server-truth rebuild that the wipe's
- * `invalidateAll` triggers, which quietly puts up a RECOVERED grid holding the
+ * `refreshAll` triggers, which quietly puts up a RECOVERED grid holding the
  * real portraits. So the bug shipped looking almost right, and gave itself away
  * only by the one control a recovered grid withholds (Regenerate).
  *
@@ -31,15 +31,15 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('$app/navigation', () => ({ invalidateAll: async () => {} }));
-vi.mock('$lib/title-pending.svelte', () => ({
+vi.mock('$app/navigation', () => ({ refreshAll: async () => {} }));
+vi.mock('#lib/title-pending.svelte.js', () => ({
 	markTitlePending: vi.fn(),
 	clearTitlePending: vi.fn(),
 }));
 
-import { FanoutController, type FanoutDeps } from '$lib/fanout-controller.svelte';
+import { FanoutController, type FanoutDeps } from '#lib/fanout-controller.svelte.js';
 import { trackReactive } from './_reactive-probe.svelte';
-import type { ChatMessage } from '$lib/types/api';
+import type { ChatMessage } from '#lib/types/api.js';
 
 function portrait(id: string, modelUsed: string): ChatMessage {
 	return {

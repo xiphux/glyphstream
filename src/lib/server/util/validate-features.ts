@@ -1,6 +1,6 @@
 /**
  * Validate a request-body `disabledFeatures` payload (per-conversation
- * feature opt-out, see FEATURE_CATEGORIES in $lib/types/api).
+ * feature opt-out, see FEATURE_CATEGORIES in #lib/types/api).
  *
  * Accepts unknown / null / undefined → `[]` (no opt-outs); an array of
  * known FeatureCategory strings → that array, with duplicates removed.
@@ -11,8 +11,8 @@
  */
 
 import { error } from '@sveltejs/kit';
-import { isFeatureCategoryString } from '$lib/types/api';
-import type { FeatureCategory } from '$lib/types/api';
+import { isFeatureCategoryString } from '#lib/types/api.js';
+import type { FeatureCategory } from '#lib/types/api.js';
 
 export class FeatureCategoryValidationError extends Error {}
 

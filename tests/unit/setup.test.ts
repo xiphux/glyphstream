@@ -6,16 +6,16 @@ const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
 	token: '',
 }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
-vi.mock('$lib/server/env', () => ({
+vi.mock('#lib/server/env.js', () => ({
 	setupToken: () => mocks.token,
 	publicBaseUrl: () => 'https://chat.example.test',
 }));
 
-import { setupGate, _resetGeneratedSetupTokenForTests } from '$lib/server/auth/setup';
+import { setupGate, _resetGeneratedSetupTokenForTests } from '#lib/server/auth/setup.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

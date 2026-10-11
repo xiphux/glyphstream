@@ -32,7 +32,7 @@ import type {
 	StreamTitleEvent,
 	StreamToolCallArgsDeltaEvent,
 	StreamToolCallStartEvent,
-} from '$lib/types/api';
+} from '#lib/types/api.js';
 import type { LoadedEndpoint, ProviderQuirk } from '../endpoints/config';
 import { acquireEndpointSlot, type EndpointSlot } from '../endpoints/concurrency';
 import type { InFlightEntry } from './in-flight';
@@ -42,14 +42,14 @@ import { getConversationMeta } from '../db/queries/conversations';
 import { logLevel } from '../env';
 import { renderMarkdown } from '../markdown/render';
 import { notifyConversationComplete } from '../push/notify';
-import type { NotifyModality } from '$lib/types/push';
+import type { NotifyModality } from '#lib/types/push.js';
 import { raceTitle, startTitleTaskIfFirstExchange } from '../tasks/title-task-runner';
 import { parseSSEStream } from './sse-parser';
 import { createNormalizer, type NormalizedDelta } from './normalizers';
 import { errorMessage, isAbortError, sseWriter, type SseWriter } from './sse-transport';
 import { executeToolCalls } from './tool-execution';
 import type { Tool } from '../tools/types';
-import { CODE_ARG_TOOLS, isReactionTool } from '$lib/chat-render';
+import { CODE_ARG_TOOLS, isReactionTool } from '#lib/chat-render.js';
 
 // Generous budget because the SSE channel stays open *in the background*
 // after `done` has already settled the in-flight UI on the client.
@@ -66,7 +66,7 @@ const DEBUG = logLevel() === 'debug';
 
 /**
  * Server-side pre-render of a code-shaped tool's primary argument
- * through shiki. CODE_ARG_TOOLS lives in `$lib/chat-render` so the
+ * through shiki. CODE_ARG_TOOLS lives in `#lib/chat-render.js` so the
  * streaming view can use the same table to pick out the code for its
  * un-highlighted mid-stream `<pre>` rendering — keeps server and
  * client in sync on which tools have code args and which language to
@@ -200,7 +200,7 @@ export interface RelayParams {
 	 * conversation's switches at execute time, not just request-build
 	 * time.
 	 */
-	disabledFeatures?: ReadonlyArray<import('$lib/types/api').FeatureCategory>;
+	disabledFeatures?: ReadonlyArray<import('#lib/types/api.js').FeatureCategory>;
 	/**
 	 * Hard cap on tool-loop iterations for this turn. The route handlers pass
 	 * the config-driven value (`[tools] max_tool_loop_iterations`); omitted →

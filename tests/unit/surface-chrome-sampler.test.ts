@@ -17,7 +17,7 @@
  * the sampler is found and written at all, from the same call the meta is.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { syncSurfaceChrome } from '$lib/theme-color';
+import { syncSurfaceChrome } from '#lib/theme-color.js';
 
 /** Already legacy rgb(), so toLegacyRgb short-circuits and the canvas — which
  *  happy-dom cannot honour — never enters into it. */

@@ -23,7 +23,7 @@
  * Both are pure over `ChatMessage[]` (root → leaf order) and unit-tested.
  */
 
-import type { ChatMessage } from '$lib/types/api';
+import type { ChatMessage } from '#lib/types/api.js';
 
 /** How many trailing turns (each beginning at a user message) compaction keeps
  *  verbatim below the summary, so the model continues with sharp recent

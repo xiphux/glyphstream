@@ -7,8 +7,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import EditMessageForm from '$lib/components/chat/EditMessageForm.svelte';
-import type { AttachmentStore } from '$lib/attachments.svelte';
+import EditMessageForm from '#lib/components/chat/EditMessageForm.svelte';
+import type { AttachmentStore } from '#lib/attachments.svelte.js';
 
 function makeStore(overrides: Partial<AttachmentStore> = {}): AttachmentStore {
 	return {

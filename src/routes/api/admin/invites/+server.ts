@@ -4,11 +4,11 @@
  * the token's hash is persisted, so it can never be re-surfaced — losing it
  * means revoking and minting a new one.
  */
-import { error, json } from '@sveltejs/kit';
-import { requireAdmin } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { createInvite } from '$lib/server/db/queries/invites';
-import type { UserRole } from '$lib/server/db/queries/users';
+import { error } from '@sveltejs/kit';
+import { requireAdmin } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { createInvite } from '#lib/server/db/queries/invites.js';
+import type { UserRole } from '#lib/server/db/queries/users.js';
 import type { RequestHandler } from './$types';
 
 // 7-day default window — long enough to share an invite and have it redeemed,
@@ -31,5 +31,5 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
 	// The raw token is returned only here; the client assembles the join URL
 	// from its own origin so this endpoint needs no base-URL config.
-	return json({ id: invite.id, token: invite.token, role, expiresAt: invite.expiresAt });
+	return Response.json({ id: invite.id, token: invite.token, role, expiresAt: invite.expiresAt });
 };

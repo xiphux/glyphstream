@@ -61,7 +61,7 @@ vi.mock('node:child_process', () => ({
 	},
 }));
 
-const { isFaststart, makeFaststart } = await import('$lib/server/media/faststart');
+const { isFaststart, makeFaststart } = await import('#lib/server/media/faststart.js');
 
 /** A structurally valid top-level box chain. Bodies are zero-filled — the
  *  detector only ever reads headers, which is the property being pinned. */

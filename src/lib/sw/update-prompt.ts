@@ -5,7 +5,7 @@
  * is fast. There is no navigation fallback, so a cold launch fetches the
  * current HTML + JS straight from the server — the user is on the new build
  * before the worker has even looked. The worker then updates through its own
- * lifecycle, lands in `waiting`, and $lib/sw/register.ts raises onNeedRefresh for a
+ * lifecycle, lands in `waiting`, and #lib/sw/register.ts raises onNeedRefresh for a
  * version the page has been running since first paint.
  *
  * Left to the lifecycle alone, that fires on the FIRST launch after every

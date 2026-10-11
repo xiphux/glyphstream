@@ -6,17 +6,17 @@
  * prospective id the authenticator recorded as the userHandle), inserts the
  * credential, and consumes the invite — all in one transaction. Signs in.
  */
-import { error, json } from '@sveltejs/kit';
-import { verifyRegistrationCeremony } from '$lib/server/auth/passkey';
+import { error } from '@sveltejs/kit';
+import { verifyRegistrationCeremony } from '#lib/server/auth/passkey.js';
 import {
 	JOIN_PASSKEY_CARRY_COOKIE,
 	InviteConsumedError,
 	finalizePasskeyJoin,
-} from '$lib/server/auth/join';
-import { verify } from '$lib/server/auth/signed-cookies';
-import { createSession, setSessionCookie } from '$lib/server/auth/session';
-import { findValidInvite } from '$lib/server/db/queries/invites';
-import { passkeyLoginEnabled } from '$lib/server/env';
+} from '#lib/server/auth/join.js';
+import { verify } from '#lib/server/auth/signed-cookies.js';
+import { createSession, setSessionCookie } from '#lib/server/auth/session.js';
+import { findValidInvite } from '#lib/server/db/queries/invites.js';
+import { passkeyLoginEnabled } from '#lib/server/env.js';
 import type { RequestHandler } from './$types';
 
 interface CarryPayload {
@@ -76,5 +76,5 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	const { token, expiresAt } = createSession(userId, request.headers.get('user-agent'));
 	setSessionCookie(cookies, token, expiresAt);
 
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

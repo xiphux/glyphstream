@@ -9,8 +9,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import MessageBubble from '$lib/components/chat/MessageBubble.svelte';
-import type { ChatMessage, MessagePart, MessageRole } from '$lib/types/api';
+import MessageBubble from '#lib/components/chat/MessageBubble.svelte';
+import type { ChatMessage, MessagePart, MessageRole } from '#lib/types/api.js';
 
 function makeMessage(
 	role: MessageRole,

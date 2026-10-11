@@ -20,7 +20,7 @@
 	import { onMount } from 'svelte';
 	import { Popover } from 'bits-ui';
 	import { ChevronDown, Sparkles } from '@lucide/svelte';
-	import type { AspectRatioOption } from '$lib/types/api';
+	import type { AspectRatioOption } from '#lib/types/api.js';
 	import {
 		clearStickyRatio,
 		detectRatioInPrompt,
@@ -28,7 +28,7 @@
 		parseRatio,
 		readStickyRatio,
 		writeStickyRatio,
-	} from '$lib/aspect-ratio';
+	} from '#lib/aspect-ratio.js';
 
 	interface Props {
 		/** Ratios to offer — the union across the selected models, in render order. */

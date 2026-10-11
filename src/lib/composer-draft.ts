@@ -20,7 +20,7 @@
  * explicit logout and every silent session expiry/revocation lands on).
  */
 
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 
 const PREFIX = 'glyphstream:composerDraft:';
 /** Drafts older than this are treated as expired and ignored/removed on load. */

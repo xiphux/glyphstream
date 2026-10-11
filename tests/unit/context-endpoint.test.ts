@@ -17,41 +17,41 @@
  * BETWEEN two correct components. So the assertion lives here, at the seam.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ChatMessage, ContextBreakdown } from '$lib/types/api';
+import type { ChatMessage, ContextBreakdown } from '#lib/types/api.js';
 
 const mocks = vi.hoisted(() => ({
 	walkActiveBranch: vi.fn<(...a: unknown[]) => unknown[]>(),
 }));
 
-vi.mock('$lib/server/db/queries/messages', () => ({
+vi.mock('#lib/server/db/queries/messages.js', () => ({
 	walkActiveBranch: (...a: unknown[]) => mocks.walkActiveBranch(...a),
 }));
-vi.mock('$lib/server/auth/guard', () => ({
+vi.mock('#lib/server/auth/guard.js', () => ({
 	requireUser: () => {},
 	requireFound: <T>(v: T) => v,
 }));
-vi.mock('$lib/server/db/queries/conversations', () => ({
+vi.mock('#lib/server/db/queries/conversations.js', () => ({
 	getConversationMeta: () => ({ id: 'c1', modelId: 'e::m', systemPrompt: null }),
 }));
-vi.mock('$lib/server/db/queries/media', () => ({ getMediaForUser: () => null }));
-vi.mock('$lib/server/db/queries/user-preferences', () => ({
+vi.mock('#lib/server/db/queries/media.js', () => ({ getMediaForUser: () => null }));
+vi.mock('#lib/server/db/queries/user-preferences.js', () => ({
 	getUserPreferences: () => null,
 	PERSONA_PART_SEPARATOR: '\n\n',
 }));
-vi.mock('$lib/server/endpoints/registry', () => ({
+vi.mock('#lib/server/endpoints/registry.js', () => ({
 	getEndpoint: () => ({ supportsTools: false }),
 }));
-vi.mock('$lib/server/endpoints/list-models', () => ({
+vi.mock('#lib/server/endpoints/list-models.js', () => ({
 	listAllModels: async () => [
 		{ endpointId: 'e', upstreamId: 'm', supportsTools: false, contextWindow: 65536 },
 	],
 }));
-vi.mock('$lib/server/endpoints/model-id', () => ({
+vi.mock('#lib/server/endpoints/model-id.js', () => ({
 	parseModelId: () => ({ endpointId: 'e', upstreamId: 'm' }),
 }));
-vi.mock('$lib/server/chat/private-seal', () => ({ resolveDisabledFeatures: () => [] }));
-vi.mock('$lib/server/chat/persona-context', () => ({ composePersonaPromptParts: () => [] }));
-vi.mock('$lib/server/chat/tool-context', () => ({
+vi.mock('#lib/server/chat/private-seal.js', () => ({ resolveDisabledFeatures: () => [] }));
+vi.mock('#lib/server/chat/persona-context.js', () => ({ composePersonaPromptParts: () => [] }));
+vi.mock('#lib/server/chat/tool-context.js', () => ({
 	buildChatToolContext: async () => ({
 		systemPrompt: null,
 		environmentBlock: 'today is a day',
@@ -63,7 +63,9 @@ vi.mock('$lib/server/chat/tool-context', () => ({
 	}),
 	buildCanvasInjection: () => ({ tailText: null, toolDefs: [] }),
 }));
-vi.mock('$lib/server/media/vision-variant', () => ({ cachedVisionVariantSize: async () => null }));
+vi.mock('#lib/server/media/vision-variant.js', () => ({
+	cachedVisionVariantSize: async () => null,
+}));
 
 import { GET } from '../../src/routes/api/conversations/[id]/context/+server';
 

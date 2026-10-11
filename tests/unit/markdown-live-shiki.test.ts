@@ -23,7 +23,7 @@ import {
 	resetLiveHighlighterForTests,
 	resolveLiveLang,
 	setLiveHighlighterForTests,
-} from '$lib/markdown-live-shiki.svelte';
+} from '#lib/markdown-live-shiki.svelte.js';
 
 afterEach(() => {
 	resetLiveHighlighterForTests();

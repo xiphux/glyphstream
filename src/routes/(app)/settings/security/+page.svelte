@@ -1,17 +1,17 @@
 <script lang="ts">
-	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
-	import { afterNavigate, goto, invalidate, invalidateAll } from '$app/navigation';
+	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
+	import { afterNavigate, goto, invalidate, refreshAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Check, KeyRound, Laptop, Pencil, Plus, Trash2, X } from '@lucide/svelte';
-	import ProviderIcon from '$lib/components/ProviderIcon.svelte';
-	import type { OAuthAccountSummary } from '$lib/server/db/queries/oauth-accounts';
-	import type { PasskeySummary } from '$lib/server/db/queries/passkey';
-	import type { SessionSummary } from '$lib/server/auth/session';
-	import { confirmDialog } from '$lib/confirm.svelte';
-	import { toast } from '$lib/toast.svelte';
-	import { errorMessageFromResponse } from '$lib/fetch-error';
-	import { APP_LOCK_TIMEOUTS_MS, describeAppLockTimeout } from '$lib/app-lock';
-	import { getAppLockAssertion } from '$lib/app-lock-ceremony';
+	import ProviderIcon from '#lib/components/ProviderIcon.svelte';
+	import type { OAuthAccountSummary } from '#lib/server/db/queries/oauth-accounts.js';
+	import type { PasskeySummary } from '#lib/server/db/queries/passkey.js';
+	import type { SessionSummary } from '#lib/server/auth/session.js';
+	import { confirmDialog } from '#lib/confirm.svelte.js';
+	import { toast } from '#lib/toast.svelte.js';
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
+	import { APP_LOCK_TIMEOUTS_MS, describeAppLockTimeout } from '#lib/app-lock.js';
+	import { getAppLockAssertion } from '#lib/app-lock-ceremony.js';
 
 	interface ProviderInfo {
 		id: string;
@@ -49,8 +49,9 @@
 	// The strip is a replacing `goto`, and neither shortcut works. A raw
 	// `history.replaceState` swaps the entry's state object wholesale, dropping
 	// the router's own history keys, so a later popstate onto that entry misses
-	// its scroll and snapshot restore. Kit's `replaceState` is the SHALLOW-
-	// routing API: it rewrites the address bar while recording the page's real
+	// its scroll and snapshot restore. Kit's shallow update (`goto(…, { shallow:
+	// true })`, formerly `replaceState`) is the SHALLOW-routing API: it rewrites
+	// the address bar while recording the page's real
 	// URL — `?link=` and all — in the entry's `PAGE_URL_KEY`, which a Back onto
 	// that entry then navigates to, announcing the link a second time. (Only
 	// once another navigation has moved the navigation index; a Back Kit still
@@ -64,11 +65,14 @@
 	// URL swap.
 	//
 	// The microtask is load-bearing, and for a sharper reason than the two
-	// deferred `replaceState`s on the new-chat page: `goto` has no not-started
+	// deferred updates on the new-chat page: `goto` has no not-started
 	// guard at all, so calling it before `initialize()` sets `started` re-enters
 	// that function and mounts a SECOND app root — silently, in production, not
 	// only in dev. By the next microtask `started` is true.
-	afterNavigate(() => {
+	afterNavigate(({ shallow, type }) => {
+		// Skip shallow updates — see the note at the (app) layout's afterNavigate.
+		if (shallow && type === 'goto') return;
+
 		const result = page.url.searchParams.get('link');
 		if (!result) return;
 		if (result === 'success') toast.success('Provider linked.');
@@ -79,13 +83,12 @@
 		else toast.error(`Link failed (${result}).`);
 		// Strip the query so a reload — or a Back onto this entry — doesn't
 		// replay the toast.
-		const next = new URL(page.url);
+		const next = new URL(page.url.href);
 		next.searchParams.delete('link');
 		queueMicrotask(() => {
 			void goto(next.pathname + next.search + next.hash, {
-				replaceState: true,
-				noScroll: true,
-				keepFocus: true,
+				replace: true,
+				reset: false,
 			}).catch(() => {
 				/* same-origin and started by now — belt-and-braces */
 			});
@@ -171,6 +174,7 @@
 						: /Linux/.test(ua)
 							? 'Linux'
 							: null;
+
 		// Order matters: Edge and Chrome both claim "Chrome", Safari claims
 		// none of the others.
 		const browser = /Edg\//.test(ua)
@@ -182,6 +186,7 @@
 					: /Safari\//.test(ua)
 						? 'Safari'
 						: null;
+
 		if (os && browser) return `${browser} on ${os}`;
 		return browser ?? os ?? 'Unknown device';
 	}
@@ -233,7 +238,9 @@
 				toast.error(`Couldn't sign out: ${await errorMessageFromResponse(res)}`);
 				return;
 			}
+
 			const { revoked } = (await res.json()) as { revoked: number };
+
 			toast.success(
 				revoked === 0
 					? 'No other devices were signed in.'
@@ -316,11 +323,11 @@
 			}
 			toast.success(timeoutMs === null ? 'App lock turned off.' : 'App lock updated.');
 		} finally {
-			// invalidateAll because the setting lives on the (app) layout's data,
+			// refreshAll because the setting lives on the (app) layout's data,
 			// which also starts or stops the keep-alive. Then put the select back
 			// on the saved value by hand: after a cancelled or failed change the
 			// data is unchanged, so the one-way `value` binding never re-applies.
-			await invalidateAll();
+			await refreshAll();
 			select.value = savedAppLockValue();
 			appLockBusy = false;
 		}
@@ -343,10 +350,10 @@
 				addError = await errorMessageFromResponse(optionsRes);
 				return;
 			}
+
 			const optionsJSON = (await optionsRes.json()) as Parameters<
 				typeof startRegistration
 			>[0]['optionsJSON'];
-
 			let regResponse;
 			try {
 				regResponse = await startRegistration({ optionsJSON });

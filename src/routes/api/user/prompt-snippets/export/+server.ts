@@ -5,9 +5,9 @@
  * Round-tripping is the point: the export is a backup, a way to hand-edit ~100
  * snippets in a real editor, and a way to move a library between instances.
  */
-import { requireUser } from '$lib/server/auth/guard';
-import { listPromptSnippetsForUser } from '$lib/server/db/queries/prompt-snippets';
-import { serializeSnippetMarkdown } from '$lib/server/prompt-snippets/markdown';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { listPromptSnippetsForUser } from '#lib/server/db/queries/prompt-snippets.js';
+import { serializeSnippetMarkdown } from '#lib/server/prompt-snippets/markdown.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals }) => {

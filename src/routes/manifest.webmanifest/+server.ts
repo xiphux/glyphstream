@@ -1,4 +1,4 @@
-import { WEB_MANIFEST_JSON } from '$lib/web-manifest';
+import { WEB_MANIFEST_JSON } from '#lib/web-manifest.js';
 
 // Not prerendered: as a dynamic route it passes through `handle`, which marks it
 // `no-cache` (ALWAYS_REVALIDATE_PATHS in hooks.server.ts) so a proxy can't pin

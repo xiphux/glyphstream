@@ -3,7 +3,7 @@ import {
 	MAX_SKILL_BODY_BYTES,
 	MAX_SKILL_NAME_CHARS,
 	parseSkillMd,
-} from '$lib/server/skills/parse-skill-md';
+} from '#lib/server/skills/parse-skill-md.js';
 
 function ok(raw: string) {
 	const r = parseSkillMd(raw);

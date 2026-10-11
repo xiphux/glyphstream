@@ -1,10 +1,10 @@
-import type { embeddings } from '$lib/server/endpoints/client';
+import type { embeddings } from '#lib/server/endpoints/client.js';
 import { describe, expect, it, vi } from 'vitest';
 
 // embed-rank.ts reaches the backend only through the embeddings client; mock it
 // so we can observe batching without real I/O.
 const embeddingsMock = vi.hoisted(() => vi.fn<typeof embeddings>());
-vi.mock('$lib/server/endpoints/client', () => ({ embeddings: embeddingsMock }));
+vi.mock('#lib/server/endpoints/client.js', () => ({ embeddings: embeddingsMock }));
 
 import {
 	embedAndRank,
@@ -14,8 +14,8 @@ import {
 	truncate,
 	CHARS_PER_TOKEN,
 	type RelevanceConfig,
-} from '$lib/server/retrieval/embed-rank';
-import type { Vec } from '$lib/server/retrieval/vector';
+} from '#lib/server/retrieval/embed-rank.js';
+import type { Vec } from '#lib/server/retrieval/vector.js';
 
 const fakeEndpoint = { id: 'e', baseUrl: 'http://e', apiKey: null } as never;
 function cfg(): RelevanceConfig {

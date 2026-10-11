@@ -14,9 +14,9 @@
 	import CanvasCard from './CanvasCard.svelte';
 	import AssistantAvatar from './AssistantAvatar.svelte';
 	import MessageReaction from './MessageReaction.svelte';
-	import { messageToBlocks, type RenderBlock, type ToolResultEntry } from '$lib/chat-render';
-	import type { ChatMessage } from '$lib/types/api';
-	import type { ApprovalAction } from '$lib/approval-workflow';
+	import { messageToBlocks, type RenderBlock, type ToolResultEntry } from '#lib/chat-render.js';
+	import type { ChatMessage } from '#lib/types/api.js';
+	import type { ApprovalAction } from '#lib/approval-workflow.js';
 
 	interface Props {
 		message: ChatMessage;

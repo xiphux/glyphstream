@@ -11,9 +11,7 @@
  *
  * Reads DB_PATH and MEDIA_DIR from the environment, matching the SvelteKit
  * runtime defaults. Opens its own node:sqlite connection rather than going
- * through src/lib/server/db/client, which pulls in $env/dynamic/private and
- * doesn't resolve outside the SvelteKit runtime — same reason import-owui.ts
- * does.
+ * through src/lib/server/db/client — see import-owui.ts for why.
  *
  * SAFE TO RUN REPEATEDLY, and that is the design rather than a nicety. The
  * alternative — rewrite the file, then update the row, and hope nothing dies in

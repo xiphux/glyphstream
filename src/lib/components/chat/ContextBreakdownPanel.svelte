@@ -12,7 +12,7 @@
 	refetched whenever the turn count changes so it doesn't go stale behind you.
 -->
 <script lang="ts">
-	import type { ContextBreakdown, ContextSegment, ContextSegmentKey } from '$lib/types/api';
+	import type { ContextBreakdown, ContextSegment, ContextSegmentKey } from '#lib/types/api.js';
 
 	interface Props {
 		conversationId: string;

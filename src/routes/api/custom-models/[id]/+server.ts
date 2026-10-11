@@ -1,17 +1,17 @@
-import { error, json } from '@sveltejs/kit';
-import { requireFound, requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
+import { error } from '@sveltejs/kit';
+import { requireFound, requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
 import {
 	deleteCustomModel,
 	getCustomModelForUser,
 	updateCustomModel,
-} from '$lib/server/db/queries/custom-models';
+} from '#lib/server/db/queries/custom-models.js';
 import {
 	validateDefaultDisabledFeatures,
 	validateParameters,
-} from '$lib/server/custom-models/validate';
-import { getEndpoint } from '$lib/server/endpoints/registry';
-import type { UpdateCustomModelRequest } from '$lib/types/api';
+} from '#lib/server/custom-models/validate.js';
+import { getEndpoint } from '#lib/server/endpoints/registry.js';
+import type { UpdateCustomModelRequest } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals, params }) => {
@@ -20,7 +20,7 @@ export const GET: RequestHandler = ({ locals, params }) => {
 		getCustomModelForUser(params.id, locals.user.id),
 		'Custom model not found',
 	);
-	return json({ customModel: m });
+	return Response.json({ customModel: m });
 };
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
@@ -66,7 +66,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 
 	const updated = updateCustomModel(params.id, locals.user.id, patch);
 	if (!updated) error(404, 'Custom model not found');
-	return json({ customModel: updated });
+	return Response.json({ customModel: updated });
 };
 
 export const DELETE: RequestHandler = ({ locals, params }) => {

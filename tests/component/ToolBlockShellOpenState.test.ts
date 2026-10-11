@@ -18,7 +18,7 @@
 import { describe, expect, it } from 'vitest';
 import { tick } from 'svelte';
 import { render } from '@testing-library/svelte';
-import ToolCallBlock from '$lib/components/ToolCallBlock.svelte';
+import ToolCallBlock from '#lib/components/ToolCallBlock.svelte';
 
 function isOpen(container: HTMLElement): boolean {
 	return container.querySelector('details')!.open;

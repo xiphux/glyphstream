@@ -19,20 +19,20 @@ const mocks = vi.hoisted(() => ({
 	},
 }));
 
-vi.mock('$lib/server/code-interpreter/config', () => ({
+vi.mock('#lib/server/code-interpreter/config.js', () => ({
 	getCodeInterpreterConfig: () => ({}),
 	isCodeInterpreterEnabled: () => true,
 	resetCodeInterpreterConfigForTests: () => {},
 }));
-vi.mock('$lib/server/db/queries/skills', () => ({
+vi.mock('#lib/server/db/queries/skills.js', () => ({
 	getEnabledSkillByName: (...a: unknown[]) => mocks.getEnabledSkillByName(...a),
 }));
-vi.mock('$lib/server/skills/disk-store', () => ({
+vi.mock('#lib/server/skills/disk-store.js', () => ({
 	getSkillStore: () => mocks.store,
 }));
 
-import { activateSkillTool, readSkillFileTool } from '$lib/server/tools/activate-skill';
-import type { ToolContext } from '$lib/server/tools/types';
+import { activateSkillTool, readSkillFileTool } from '#lib/server/tools/activate-skill.js';
+import type { ToolContext } from '#lib/server/tools/types.js';
 
 function ctx(overrides: Partial<ToolContext> = {}): ToolContext {
 	return {

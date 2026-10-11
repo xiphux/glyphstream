@@ -3,7 +3,7 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
@@ -22,7 +22,7 @@ import {
 	setFanoutParent,
 	unarchiveConversation,
 	updateConversationModel,
-} from '$lib/server/db/queries/conversations';
+} from '#lib/server/db/queries/conversations.js';
 import {
 	appendMessage,
 	deleteBranch,
@@ -34,16 +34,16 @@ import {
 	setActiveLeafMessageId,
 	truncateAtMessage,
 	walkActiveBranch,
-} from '$lib/server/db/queries/messages';
+} from '#lib/server/db/queries/messages.js';
 import {
 	countOrphanMediaInConversation,
 	insertMedia,
 	linkMessageMedia,
-} from '$lib/server/db/queries/media';
-import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
-import { registerInFlight, resetInFlight } from '$lib/server/streaming/in-flight';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
-import { media } from '$lib/server/db/schema';
+} from '#lib/server/db/queries/media.js';
+import { getFanoutRecoveryState } from '#lib/server/messages/fanout-recovery.js';
+import { registerInFlight, resetInFlight } from '#lib/server/streaming/in-flight.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
+import { media } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 
 beforeEach(() => {

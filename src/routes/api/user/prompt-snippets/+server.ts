@@ -7,20 +7,20 @@
  * payload — ~100 style paragraphs would ride every page load for a feature
  * many sessions never touch).
  */
-import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
+import { error } from '@sveltejs/kit';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
 import {
 	createPromptSnippet,
 	listPromptSnippetsForUser,
 	promptSnippetExistsByName,
-} from '$lib/server/db/queries/prompt-snippets';
-import { validateCreateSnippet } from '$lib/server/prompt-snippets/validate';
+} from '#lib/server/db/queries/prompt-snippets.js';
+import { validateCreateSnippet } from '#lib/server/prompt-snippets/validate.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals }) => {
 	requireUser(locals);
-	return json({ promptSnippets: listPromptSnippetsForUser(locals.user.id) });
+	return Response.json({ promptSnippets: listPromptSnippetsForUser(locals.user.id) });
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -35,5 +35,5 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	}
 
 	const promptSnippet = createPromptSnippet({ userId: locals.user.id, ...input });
-	return json({ promptSnippet }, { status: 201 });
+	return Response.json({ promptSnippet }, { status: 201 });
 };

@@ -11,9 +11,9 @@
 	import RenderBlocks from './RenderBlocks.svelte';
 	import CanvasCard from './CanvasCard.svelte';
 	import AssistantAvatar from './AssistantAvatar.svelte';
-	import { splitCanvasCards, type RenderBlock } from '$lib/chat-render';
-	import type { ApprovalAction } from '$lib/approval-workflow';
-	import type { McpUnavailableServer } from '$lib/types/api';
+	import { splitCanvasCards, type RenderBlock } from '#lib/chat-render.js';
+	import type { ApprovalAction } from '#lib/approval-workflow.js';
+	import type { McpUnavailableServer } from '#lib/types/api.js';
 
 	interface Props {
 		blocks: RenderBlock[];

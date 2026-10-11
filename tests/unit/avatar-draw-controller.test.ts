@@ -15,11 +15,11 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const invalidateAll = vi.fn(async () => {});
-vi.mock('$app/navigation', () => ({ invalidateAll: () => invalidateAll() }));
+const refreshAll = vi.fn(async () => {});
+vi.mock('$app/navigation', () => ({ refreshAll: () => refreshAll() }));
 
 const toastError = vi.fn<(message: string) => void>();
-vi.mock('$lib/toast.svelte', () => ({
+vi.mock('#lib/toast.svelte.js', () => ({
 	toast: {
 		error: (m: string) => {
 			toastError(m);
@@ -27,7 +27,7 @@ vi.mock('$lib/toast.svelte', () => ({
 	},
 }));
 
-import { AvatarDrawController } from '$lib/avatar-draw-controller.svelte';
+import { AvatarDrawController } from '#lib/avatar-draw-controller.svelte.js';
 
 /** A controller plus a handle on the conversation the "page" is showing. */
 function setup(startOn = 'A', serverDrawSince: number | null = null) {
@@ -65,8 +65,8 @@ beforeEach(() => {
 	// `mockReset`, not `mockClear`: a queued `mockRejectedValueOnce` that its own
 	// test failed to consume would otherwise leak into the next one and surface
 	// as a confusing cascade instead of a single clean failure.
-	invalidateAll.mockReset();
-	invalidateAll.mockImplementation(async () => {});
+	refreshAll.mockReset();
+	refreshAll.mockImplementation(async () => {});
 	toastError.mockReset();
 	vi.unstubAllGlobals();
 	// Belt-and-braces against a future timer test written without its own
@@ -194,7 +194,7 @@ describe('the reconcile debt', () => {
 		page.convId = 'A';
 		stubProbe({ running: null });
 		expect(c.reconcileIfOwed()).toBe(false);
-		expect(invalidateAll).not.toHaveBeenCalled();
+		expect(refreshAll).not.toHaveBeenCalled();
 	});
 
 	it('is not probed for a conversation the user has left', () => {
@@ -220,12 +220,12 @@ describe('the probe', () => {
 
 		stubProbe({ running: 7000 });
 		await c.reconcile('A');
-		expect(invalidateAll).not.toHaveBeenCalled();
+		expect(refreshAll).not.toHaveBeenCalled();
 		expect(c.status).toBe('Drawing…');
 
 		stubProbe({ running: null });
 		await c.reconcile('A');
-		expect(invalidateAll).toHaveBeenCalledTimes(1);
+		expect(refreshAll).toHaveBeenCalledTimes(1);
 	});
 
 	it('writes nothing for a conversation the user has navigated away from', async () => {
@@ -255,7 +255,7 @@ describe('the probe', () => {
 		await inFlight;
 
 		expect(c.status).toBeNull();
-		expect(invalidateAll).not.toHaveBeenCalled();
+		expect(refreshAll).not.toHaveBeenCalled();
 	});
 
 	it('writes nothing when the user leaves DURING the body read', async () => {
@@ -291,7 +291,7 @@ describe('the probe', () => {
 		await inFlight;
 
 		expect(c.status).toBeNull();
-		expect(invalidateAll).not.toHaveBeenCalled();
+		expect(refreshAll).not.toHaveBeenCalled();
 	});
 
 	it('reports the failure message when the server answers but not with an answer', async () => {
@@ -323,7 +323,7 @@ describe('the probe', () => {
 		// there falls into the catch, which would otherwise repeat it.
 		const { c } = setup('A');
 		stubProbe({ running: null });
-		invalidateAll.mockRejectedValueOnce(new Error('reload failed'));
+		refreshAll.mockRejectedValueOnce(new Error('reload failed'));
 		await c.reconcile('A', 'upstream exploded');
 		expect(toastError).toHaveBeenCalledTimes(1);
 	});
@@ -357,7 +357,7 @@ describe('the probe', () => {
 		await Promise.all([c.reconcile('A'), c.reconcile('A'), c.reconcile('A')]);
 
 		expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
-		expect(invalidateAll).toHaveBeenCalledTimes(1);
+		expect(refreshAll).toHaveBeenCalledTimes(1);
 	});
 
 	it('releases the in-flight guard so a later probe still runs', async () => {
@@ -381,7 +381,7 @@ describe('what the probe deliberately does NOT report', () => {
 		await c.reconcile('A', 'ComfyUI ran out of memory');
 
 		expect(toastError).not.toHaveBeenCalled();
-		expect(invalidateAll).not.toHaveBeenCalled();
+		expect(refreshAll).not.toHaveBeenCalled();
 		expect(c.status).toBe('Drawing…');
 	});
 
@@ -433,7 +433,7 @@ describe('the production entry points', () => {
 		const { c } = setup('A');
 		stubProbe({ running: null });
 		c.reportFailure('A', 'ComfyUI ran out of memory');
-		await vi.waitFor(() => expect(invalidateAll).toHaveBeenCalled());
+		await vi.waitFor(() => expect(refreshAll).toHaveBeenCalled());
 
 		expect(toastError).toHaveBeenCalledWith('ComfyUI ran out of memory');
 	});
@@ -587,15 +587,15 @@ describe('the recovery poll', () => {
 		try {
 			const { c } = setup('A', 1000);
 			stubProbe({ running: null });
-			invalidateAll.mockRejectedValueOnce(new Error('reload failed'));
+			refreshAll.mockRejectedValueOnce(new Error('reload failed'));
 			const stop = c.startRecoveryPoll();
 
 			await vi.advanceTimersByTimeAsync(4000);
-			expect(invalidateAll).toHaveBeenCalledTimes(1);
+			expect(refreshAll).toHaveBeenCalledTimes(1);
 			// Mirror untouched by the failed reload, so the gate is still true…
 			expect(c.recovered).toBe(true);
 			await vi.advanceTimersByTimeAsync(4000);
-			expect(invalidateAll).toHaveBeenCalledTimes(2);
+			expect(refreshAll).toHaveBeenCalledTimes(2);
 			stop();
 		} finally {
 			vi.useRealTimers();

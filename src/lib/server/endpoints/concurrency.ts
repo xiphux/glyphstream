@@ -28,7 +28,7 @@
  * as the in-flight registry).
  */
 
-import type { EndpointSlotPurpose, EndpointSlotState } from '$lib/types/api';
+import type { EndpointSlotPurpose, EndpointSlotState } from '#lib/types/api.js';
 import type { LoadedEndpoint } from './config';
 import { releaseEndpointResources } from './release';
 
@@ -37,11 +37,11 @@ import { releaseEndpointResources } from './release';
  * the admin endpoint view can say which model is generating and what the
  * background work occupying a single-GPU box actually is.
  *
- * Defined in `$lib/types/api` and aliased here rather than declared twice: two
+ * Defined in `#lib/types/api.js` and aliased here rather than declared twice: two
  * hand-synced copies of the same union is exactly the drift `MODEL_KINDS`
  * exists to avoid, and the compiler only catches one direction of it. Importing
  * a client-safe TYPE into server code is the allowed direction — the rule is
- * that client code may not import from `$lib/server`, not the reverse.
+ * that client code may not import from `#lib/server`, not the reverse.
  */
 export type SlotPurpose = EndpointSlotPurpose;
 

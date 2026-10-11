@@ -1,22 +1,23 @@
-// Use SvelteKit's $env/dynamic/private so .env is loaded in dev + values are
-// read at runtime in production. drizzle.config.ts and other CLI tooling
-// use process.env directly because they run outside SvelteKit's context.
+// Server environment variables are read from process.env.
 //
-// Rule of thumb for any new server module that needs an env var:
-//   - Inside SvelteKit (anything under src/) -> import { env } from
-//     '$env/dynamic/private'; using process.env will silently miss .env
-//     values in pnpm dev because Vite doesn't populate process.env.
-//   - In CLI scripts (drizzle.config.ts etc.) -> process.env is fine.
+// SvelteKit 3 narrowed `$env/dynamic/private` to variables declared up front
+// in src/env.ts, and a lookup by an undeclared name quietly returns undefined.
+// That can't serve this app: config.toml names its secrets indirectly
+// (`api_key_env = "SOME_VAR"`), so those names aren't known until runtime. One
+// mechanism for every read, then — and this module, not Kit, is where each fixed
+// variable is parsed and validated.
+//
+// In `pnpm dev`, .env reaches process.env because vite.config.ts loads it
+// (Vite doesn't); in production the host or container sets the environment.
 
 import process from 'node:process';
-import { env } from '$env/dynamic/private';
 
 function readString(name: string, fallback: string): string {
-	return env[name] ?? fallback;
+	return process.env[name] ?? fallback;
 }
 
 function requireString(name: string): string {
-	const v = env[name];
+	const v = process.env[name];
 	if (!v || v.length === 0) {
 		throw new Error(`Required environment variable ${name} is not set`);
 	}
@@ -29,7 +30,7 @@ function requireString(name: string): string {
  *  `*_LOGIN_ENABLED` flag is on AND its credentials are present, so a
  *  half-configured provider never shows a button that would 500 on click. */
 function hasString(name: string): boolean {
-	const v = env[name];
+	const v = process.env[name];
 	return !!v && v.length > 0;
 }
 
@@ -158,7 +159,7 @@ export function publicBaseUrl(): string {
 	// outside (e.g. https://chat.example.com). Used to construct the
 	// OAuth callback URL registered with GitHub. Avoid names with the
 	// `PUBLIC_` prefix — SvelteKit reserves that for client-exposed env
-	// vars and filters them out of `$env/dynamic/private`.
+	// vars, so the name would read as meant for the browser.
 	return readString('EXTERNAL_BASE_URL', 'http://localhost:5173').replace(/\/+$/, '');
 }
 
@@ -183,7 +184,7 @@ export function cookiesSecure(): boolean {
 }
 
 function readBool(name: string, fallback: boolean): boolean {
-	const raw = env[name];
+	const raw = process.env[name];
 	if (raw === undefined || raw === '') return fallback;
 	const v = raw.toLowerCase();
 	if (v === '1' || v === 'true' || v === 'yes' || v === 'on') return true;
@@ -285,6 +286,7 @@ export function validateAuthMethodsEnabled(): void {
 		(githubLoginEnabled() && hasGithubCredentials()) ||
 		(googleLoginEnabled() && hasGoogleCredentials()) ||
 		(oidcLoginEnabled() && hasOidcCredentials());
+
 	const passkey = passkeyLoginEnabled();
 	if (!anyOAuth && !passkey) {
 		throw new Error(
@@ -329,7 +331,7 @@ export function compressDynamicResponses(): boolean {
  * where a misconfiguration that could lock everyone out belongs.
  */
 function readNonNegativeInt(name: string, fallback: number): number {
-	const raw = env[name];
+	const raw = process.env[name];
 	if (raw === undefined || raw.trim() === '') return fallback;
 	const parsed = Number(raw);
 	if (!Number.isFinite(parsed) || parsed < 0) return fallback;

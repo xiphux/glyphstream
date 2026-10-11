@@ -1,19 +1,19 @@
 import { redirect } from '@sveltejs/kit';
-import { CONVERSATION_MISSING_NOTICE } from '$lib/notices';
-import { requireUserPage } from '$lib/server/auth/guard';
-import { listActiveCanvases } from '$lib/server/db/queries/artifacts';
-import { getConversationDetail } from '$lib/server/db/queries/conversations';
-import { getCustomModelForUser } from '$lib/server/db/queries/custom-models';
-import { friendlyModelName } from '$lib/model-ids';
-import { parseModelId } from '$lib/server/endpoints/model-id';
-import { listAllModelsWithErrors } from '$lib/server/endpoints/list-models';
-import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
+import { CONVERSATION_MISSING_NOTICE } from '#lib/notices.js';
+import { requireUserPage } from '#lib/server/auth/guard.js';
+import { listActiveCanvases } from '#lib/server/db/queries/artifacts.js';
+import { getConversationDetail } from '#lib/server/db/queries/conversations.js';
+import { getCustomModelForUser } from '#lib/server/db/queries/custom-models.js';
+import { friendlyModelName } from '#lib/model-ids.js';
+import { parseModelId } from '#lib/server/endpoints/model-id.js';
+import { listAllModelsWithErrors } from '#lib/server/endpoints/list-models.js';
+import { getFanoutRecoveryState } from '#lib/server/messages/fanout-recovery.js';
 import {
 	getAvatarDrawSince,
 	getInFlightGeneratingSince,
 	getInFlightSince,
-} from '$lib/server/streaming/in-flight';
-import { timeDb } from '$lib/server/util/db-timing';
+} from '#lib/server/streaming/in-flight.js';
+import { timeDb } from '#lib/server/util/db-timing.js';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, params, url }) => {

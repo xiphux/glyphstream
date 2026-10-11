@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { composeSignals } from '$lib/server/util/abort';
+import { composeSignals } from '#lib/server/util/abort.js';
 
 describe('composeSignals — degenerate inputs', () => {
 	it('returns a non-aborted signal when given no signals', () => {

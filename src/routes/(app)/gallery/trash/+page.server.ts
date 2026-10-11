@@ -1,5 +1,5 @@
-import { listTrashForUser } from '$lib/server/db/queries/media';
-import { toTrashedMediaItem } from '$lib/server/media/trash-api';
+import { listTrashForUser } from '#lib/server/db/queries/media.js';
+import { toTrashedMediaItem } from '#lib/server/media/trash-api.js';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, parent, depends }) => {

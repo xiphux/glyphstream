@@ -17,17 +17,17 @@ const mocks = vi.hoisted(() => ({
 	// Default: every provider enabled. Individual tests flip a provider off.
 	providerEnabled: (_id: string) => true as boolean,
 }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
-vi.mock('$lib/server/auth/oauth/registry', () => ({
+vi.mock('#lib/server/auth/oauth/registry.js', () => ({
 	isProviderEnabled: (id: string) => mocks.providerEnabled(id),
 }));
 
 import { DELETE } from '../../src/routes/api/auth/oauth/[provider]/+server';
-import { insertCredential } from '$lib/server/db/queries/passkey';
-import { listOAuthAccountsForUser } from '$lib/server/db/queries/oauth-accounts';
+import { insertCredential } from '#lib/server/db/queries/passkey.js';
+import { listOAuthAccountsForUser } from '#lib/server/db/queries/oauth-accounts.js';
 
 interface Event {
 	locals: { user: { id: string; displayName: string | null; email: string | null } | null };

@@ -9,25 +9,25 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ModelEntry } from '$lib/types/api';
+import type { ModelEntry } from '#lib/types/api.js';
 
 const listEndpointsMock = vi.hoisted(() => vi.fn());
 const getModelCacheEntryMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/registry', () => ({ listEndpoints: listEndpointsMock }));
-vi.mock('$lib/server/endpoints/list-models', () => ({
+vi.mock('#lib/server/endpoints/registry.js', () => ({ listEndpoints: listEndpointsMock }));
+vi.mock('#lib/server/endpoints/list-models.js', () => ({
 	getModelCacheEntry: getModelCacheEntryMock,
 }));
 
 const releaseMock = vi.hoisted(() => vi.fn(async () => true));
-vi.mock('$lib/server/endpoints/release', () => ({ releaseEndpointResources: releaseMock }));
+vi.mock('#lib/server/endpoints/release.js', () => ({ releaseEndpointResources: releaseMock }));
 
 import {
 	acquireEndpointSlot,
 	declarePendingWork,
 	resetEndpointGatesForTests,
-} from '$lib/server/endpoints/concurrency';
-import { ConfigError, type LoadedEndpoint } from '$lib/server/endpoints/config';
-import { getEndpointsStatus } from '$lib/server/endpoints/status';
+} from '#lib/server/endpoints/concurrency.js';
+import { ConfigError, type LoadedEndpoint } from '#lib/server/endpoints/config.js';
+import { getEndpointsStatus } from '#lib/server/endpoints/status.js';
 
 function ep(over: Partial<LoadedEndpoint> & { id: string }): LoadedEndpoint {
 	return {

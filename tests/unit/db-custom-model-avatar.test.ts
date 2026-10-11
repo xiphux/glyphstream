@@ -16,7 +16,7 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
@@ -26,21 +26,21 @@ import {
 	deleteCustomModel,
 	getCustomModelForUser,
 	setCustomModelAvatar,
-} from '$lib/server/db/queries/custom-models';
+} from '#lib/server/db/queries/custom-models.js';
 import {
 	countOrphanMediaInConversation,
 	findPurgeCandidates,
 	insertMedia,
 	linkMessageMedia,
-} from '$lib/server/db/queries/media';
+} from '#lib/server/db/queries/media.js';
 import {
 	createConversation,
 	deleteConversation,
 	getConversationDetail,
 	setConversationAvatar,
-} from '$lib/server/db/queries/conversations';
-import { appendMessage, updateMessageParts } from '$lib/server/db/queries/messages';
-import { media } from '$lib/server/db/schema';
+} from '#lib/server/db/queries/conversations.js';
+import { appendMessage, updateMessageParts } from '#lib/server/db/queries/messages.js';
+import { media } from '#lib/server/db/schema.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

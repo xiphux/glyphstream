@@ -2,7 +2,7 @@
  * Sidebar conversation mutation orchestration: the busy-state, toasts,
  * navigation, Undo flow, inline-rename state machine, and delete-
  * confirmation handoff that wrap the low-level fetches in
- * $lib/conversation-actions.
+ * #lib/conversation-actions.
  *
  * Lives separately from the (app) layout so the rename state machine
  * (renamingId, renameDraft, renameOriginal, focus management) and the
@@ -45,12 +45,12 @@ export interface ConversationUiActionsDeps {
 	/** SvelteKit's `goto`, surfaced as a dep so the class doesn't need
 	 *  to import from `$app/navigation` directly (keeps the import
 	 *  graph testable in the node vitest env). */
-	goto: (url: string, opts?: { invalidateAll?: boolean }) => Promise<void>;
-	/** SvelteKit's `invalidateAll`. */
-	invalidateAll: () => Promise<void>;
+	goto: (url: string, opts?: { refreshAll?: boolean }) => Promise<void>;
+	/** SvelteKit's `refreshAll`. */
+	refreshAll: () => Promise<void>;
 	/** `invalidate('app:conversations')` — refreshes the sidebar list only.
 	 *  Preferred whenever the mutation can't have changed what the open page
-	 *  is showing: on the chat route `invalidateAll` re-serializes the entire
+	 *  is showing: on the chat route `refreshAll` re-serializes the entire
 	 *  active branch, which is a lot of bytes to move a row in a list. */
 	invalidateConversations: () => Promise<void>;
 }
@@ -92,7 +92,7 @@ export class ConversationUiActions {
 			// action and offers Undo so a misclick is one tap to recover
 			// instead of a trip through /archived.
 			if (wasViewingChat) {
-				await this.#deps.goto('/', { invalidateAll: true });
+				await this.#deps.goto('/', { refreshAll: true });
 			} else {
 				// Not the open conversation — only the sidebar row moves.
 				await this.#deps.invalidateConversations();
@@ -148,7 +148,7 @@ export class ConversationUiActions {
 		try {
 			await deleteConversationApi(id, deleteMedia);
 			if (this.#deps.getPathname() === `/chat/${id}`) {
-				await this.#deps.goto('/', { invalidateAll: true });
+				await this.#deps.goto('/', { refreshAll: true });
 			} else {
 				// Deleting some other thread only removes a sidebar row.
 				await this.#deps.invalidateConversations();
@@ -192,7 +192,7 @@ export class ConversationUiActions {
 		// Optimistic-ish: close the input immediately so the UI feels
 		// responsive even before the PATCH round-trip resolves. The
 		// text shown in the sidebar reverts to the stale title until
-		// invalidateAll() lands the new one — sub-300ms in practice.
+		// refreshAll() lands the new one — sub-300ms in practice.
 		this.renamingId = null;
 		this.renameDraft = '';
 		this.renameOriginal = '';
@@ -202,7 +202,7 @@ export class ConversationUiActions {
 			// header, which is page data — that one needs the full reload. Any
 			// other row is sidebar-only.
 			if (this.#deps.getPathname() === `/chat/${id}`) {
-				await this.#deps.invalidateAll();
+				await this.#deps.refreshAll();
 			} else {
 				await this.#deps.invalidateConversations();
 			}

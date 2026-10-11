@@ -4,7 +4,7 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
@@ -17,9 +17,9 @@ import {
 	listOAuthAccountsForUser,
 	touchOAuthAccount,
 	type AddOAuthAccountInput,
-} from '$lib/server/db/queries/oauth-accounts';
-import { users } from '$lib/server/db/schema';
-import { isUniqueViolation } from '$lib/server/db/errors';
+} from '#lib/server/db/queries/oauth-accounts.js';
+import { users } from '#lib/server/db/schema.js';
+import { isUniqueViolation } from '#lib/server/db/errors.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

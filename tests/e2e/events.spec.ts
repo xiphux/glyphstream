@@ -51,7 +51,7 @@ test.describe('event: visibilitychange recovery during in-flight stream', () => 
 
 		// Mid-stream: hide, then come back. Hidden flips
 		// wasHiddenDuringFetch=true while busy; visible triggers
-		// invalidateAll. Playwright doesn't actually kill the fetch on
+		// refreshAll. Playwright doesn't actually kill the fetch on
 		// visibilitychange (real iOS suspension does), so the stream
 		// keeps flowing — which is exactly the case the recovery path
 		// is *also* designed to be safe for. The assertion below is the
@@ -109,7 +109,7 @@ test.describe('event: online/offline recovery during in-flight stream', () => {
 		// stream AND fires the window 'offline' event. The chat-id
 		// page's listener sets wasOfflineDuringFetch=true (busy is
 		// still true), then the fetch's catch block swallows the
-		// abort + calls invalidateAll instead of toasting "Load
+		// abort + calls refreshAll instead of toasting "Load
 		// failed". The server-side relay continues writing chunks to
 		// the recorder regardless — by the time we go back online,
 		// the assistant message is fully persisted in the DB and the
@@ -123,7 +123,7 @@ test.describe('event: online/offline recovery during in-flight stream', () => {
 
 		// The full MOCK_REPLY lands once the server-side stream
 		// finishes (kept alive by the relay's swallow-on-disconnect
-		// recorder) and invalidateAll resolves. 15s timeout absorbs
+		// recorder) and refreshAll resolves. 15s timeout absorbs
 		// the slow-chat total (~2s) plus the load function's refetch.
 		await expect(page.getByText(MOCK_REPLY)).toBeVisible({ timeout: 15_000 });
 		await expect(page.getByRole('status')).toHaveCount(0);

@@ -4,18 +4,18 @@
  * verifies the signed assertion (userHandle cross-check + counter-clone
  * guard live in `verifyStoredCredentialAssertion`), and creates a session.
  */
-import { error, json } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { AuthenticationResponseJSON } from '@simplewebauthn/server';
 import {
 	clearLoginChallengeCookie,
 	readLoginChallengeCookie,
 	verifyStoredCredentialAssertion,
-} from '$lib/server/auth/passkey';
-import { createSession, setSessionCookie } from '$lib/server/auth/session';
-import { getAppLockTimeout, initialUnlockedUntil } from '$lib/server/auth/app-lock';
-import { bumpUserLastLogin } from '$lib/server/db/queries/users';
-import { findCredentialById, findUserForCredential } from '$lib/server/db/queries/passkey';
-import { passkeyLoginEnabled } from '$lib/server/env';
+} from '#lib/server/auth/passkey.js';
+import { createSession, setSessionCookie } from '#lib/server/auth/session.js';
+import { getAppLockTimeout, initialUnlockedUntil } from '#lib/server/auth/app-lock.js';
+import { bumpUserLastLogin } from '#lib/server/db/queries/users.js';
+import { findCredentialById, findUserForCredential } from '#lib/server/db/queries/passkey.js';
+import { passkeyLoginEnabled } from '#lib/server/env.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ cookies, request }) => {
@@ -62,5 +62,5 @@ export const POST: RequestHandler = async ({ cookies, request }) => {
 	);
 	setSessionCookie(cookies, token, expiresAt);
 
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

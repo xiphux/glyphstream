@@ -9,9 +9,12 @@
  * 100-custom-models approach it's meant to avoid.
  */
 
-import { getDb } from '$lib/server/db/client';
-import { createPromptSnippet, updatePromptSnippet } from '$lib/server/db/queries/prompt-snippets';
-import { promptSnippets } from '$lib/server/db/schema';
+import { getDb } from '#lib/server/db/client.js';
+import {
+	createPromptSnippet,
+	updatePromptSnippet,
+} from '#lib/server/db/queries/prompt-snippets.js';
+import { promptSnippets } from '#lib/server/db/schema.js';
 import { and, eq } from 'drizzle-orm';
 import { parseSnippetMarkdown } from './markdown';
 import { snippetCapViolation } from './validate';

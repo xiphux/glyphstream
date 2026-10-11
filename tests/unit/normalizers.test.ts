@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createNormalizer } from '$lib/server/streaming/normalizers';
-import type { SSERecord } from '$lib/server/streaming/sse-parser';
+import { createNormalizer } from '#lib/server/streaming/normalizers.js';
+import type { SSERecord } from '#lib/server/streaming/sse-parser.js';
 
 /**
  * SSE records the way the parser hands them to the normalizer: just the

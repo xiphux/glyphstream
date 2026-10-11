@@ -6,8 +6,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import ContextBudgetBar from '$lib/components/chat/ContextBudgetBar.svelte';
-import type { ContextBreakdown } from '$lib/types/api';
+import ContextBudgetBar from '#lib/components/chat/ContextBudgetBar.svelte';
+import type { ContextBreakdown } from '#lib/types/api.js';
 
 const noop = () => {};
 
@@ -135,7 +135,9 @@ describe('ContextBudgetBar — breakdown popover', () => {
 		});
 
 		await user.click(screen.getByRole('button', { name: /4,210 tokens/ }));
-		expect(fetchMock).toHaveBeenCalledWith('/api/conversations/c1/context');
+		// Waited for, not immediate: the panel is imported on first open, and
+		// fetches once it mounts.
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/conversations/c1/context'));
 
 		// Popover content is portaled to document.body — query via `screen`.
 		expect(await screen.findByText('Tool definitions')).toBeInTheDocument();

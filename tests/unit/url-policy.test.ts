@@ -12,7 +12,7 @@ vi.mock('node:dns', () => ({
 // the forbidden hosts. The module under test reads these lazily.
 const loadEndpointsMock = vi.fn<() => Array<{ baseUrl: string }>>();
 const loadSearchConfigMock = vi.fn<() => { url: string } | null>();
-vi.mock('$lib/server/endpoints/config', () => ({
+vi.mock('#lib/server/endpoints/config.js', () => ({
 	loadEndpoints: () => loadEndpointsMock(),
 	loadSearchConfig: () => loadSearchConfigMock(),
 }));
@@ -23,7 +23,7 @@ import {
 	assertNotConfiguredBackend,
 	resetUrlPolicyCacheForTests,
 	UrlPolicyError,
-} from '$lib/server/tools/url-policy';
+} from '#lib/server/tools/url-policy.js';
 
 beforeEach(() => {
 	dnsLookupMock.mockReset();

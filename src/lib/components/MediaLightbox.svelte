@@ -17,9 +17,9 @@
 		UserRound,
 		X,
 	} from '@lucide/svelte';
-	import type { MediaConversationRef, MediaKind, MediaListItem } from '$lib/types/api';
-	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
-	import { endpointIdOf, friendlyModelName, mediaSourceModelId } from '$lib/model-ids';
+	import type { MediaConversationRef, MediaKind, MediaListItem } from '#lib/types/api.js';
+	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '#lib/gallery-launch.js';
+	import { endpointIdOf, friendlyModelName, mediaSourceModelId } from '#lib/model-ids.js';
 
 	interface Props {
 		/** The media being shown; null means the lightbox is closed (renders nothing). */
@@ -520,7 +520,7 @@
 			aspectRatio: m.aspectRatio,
 		});
 		onClose();
-		await goto(resolve('/'));
+		await goto(resolve('/(app)'));
 	}
 
 	async function useAsStartingImage(m: MediaListItem) {
@@ -534,7 +534,7 @@
 			sourceModelId: sourceModelIdFor(m),
 		});
 		onClose();
-		await goto(resolve('/'));
+		await goto(resolve('/(app)'));
 	}
 
 	// Whether to route saving through the native share sheet. iOS Safari
@@ -606,6 +606,7 @@
 	function timestampSlug(ms: number): string {
 		const d = new Date(ms);
 		const p = (n: number) => String(n).padStart(2, '0');
+
 		return (
 			`${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}` +
 			`-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
@@ -698,9 +699,8 @@
 						{m.sourceModel ? friendlyModelName(m.sourceModel) : 'Unknown model'}
 					</span>
 					{#if showCarousel}
-						<span class="ml-1 opacity-60 tabular-nums">
-							{displayIndex + 1} / {siblings!.length}
-						</span>
+						<span class="ml-1 opacity-60 tabular-nums">{displayIndex + 1} / {siblings!.length}</span
+						>
 					{/if}
 				</span>
 				<span class="opacity-70">{metaLine(m)}</span>
@@ -928,9 +928,9 @@
 						type="button"
 						class="mt-1 text-[11px] text-media-fg-subtle underline decoration-dotted underline-offset-2 hover:text-media-fg-secondary"
 						onclick={() => (showOriginal = !showOriginal)}
+						>{showOriginal ? 'Hide original' : 'Enhanced — show original'}</button
 					>
-						{showOriginal ? 'Hide original' : 'Enhanced — show original'}
-					</button>
+
 					{#if showOriginal}
 						<p class="mt-1 text-xs text-media-fg-subtle italic line-clamp-4">
 							{m.originalPrompt}
@@ -1101,7 +1101,7 @@
 					<p class="text-center">
 						<span class="opacity-60">In conversation: </span>
 						<a
-							href={resolve(`/chat/${c.id}`)}
+							href={resolve(`chat/${c.id}`)}
 							class="inline-block max-w-full truncate align-bottom text-media-fg-secondary underline decoration-media-border underline-offset-2 hover:decoration-media-fg-muted"
 						>
 							{c.title ?? 'Untitled'}
@@ -1118,7 +1118,7 @@
 						{#each conversationsUsingThis as c (c.id)}
 							<li>
 								<a
-									href={resolve(`/chat/${c.id}`)}
+									href={resolve(`chat/${c.id}`)}
 									class="block truncate rounded px-2 py-1 text-center text-media-fg-secondary hover:bg-media-surface"
 								>
 									{c.title ?? 'Untitled'}

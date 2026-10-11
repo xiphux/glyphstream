@@ -1,29 +1,29 @@
-import type { chatCompletionSync } from '$lib/server/endpoints/client';
+import type { chatCompletionSync } from '#lib/server/endpoints/client.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const chatMock = vi.hoisted(() => vi.fn<typeof chatCompletionSync>());
 // Mock only the network call; keep the REAL UpstreamError + parseContextOverflow so
 // the overflow-retry path here exercises the actual classifier it branches on.
-vi.mock('$lib/server/endpoints/client', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('$lib/server/endpoints/client')>();
+vi.mock('#lib/server/endpoints/client.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/server/endpoints/client.js')>();
 	return { ...actual, chatCompletionSync: chatMock };
 });
 
 const acquireMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/concurrency', () => ({ acquireEndpointSlot: acquireMock }));
+vi.mock('#lib/server/endpoints/concurrency.js', () => ({ acquireEndpointSlot: acquireMock }));
 
 import {
 	summarizeConversation,
 	buildTranscript,
 	SUMMARY_MAX_CHARS,
-} from '$lib/server/memory/conversation-summarizer';
+} from '#lib/server/memory/conversation-summarizer.js';
 import {
 	EmptyCompletionError,
 	TruncatedCompletionError,
 	memoryInputBudget,
-} from '$lib/server/memory/summarize-util';
-import { UpstreamError } from '$lib/server/endpoints/client';
-import type { ChatMessage } from '$lib/types/api';
+} from '#lib/server/memory/summarize-util.js';
+import { UpstreamError } from '#lib/server/endpoints/client.js';
+import type { ChatMessage } from '#lib/types/api.js';
 
 /** llama.cpp's context-overflow 400, verbatim in shape. */
 function overflow400(promptTokens: number, nCtx: number): UpstreamError {

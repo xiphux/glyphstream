@@ -9,9 +9,8 @@
  * config edit + restart — no rebuild required.
  */
 
-import { json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { getVapidPublicKey } from '$lib/server/push/web-push';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { getVapidPublicKey } from '#lib/server/push/web-push.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals }) => {
@@ -19,7 +18,7 @@ export const GET: RequestHandler = ({ locals }) => {
 	// reason to expose any internal config to anonymous callers.
 	requireUser(locals);
 	const vapidPublicKey = getVapidPublicKey();
-	return json({
+	return Response.json({
 		enabled: vapidPublicKey !== null,
 		vapidPublicKey,
 	});

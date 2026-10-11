@@ -1,6 +1,5 @@
-import { json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { listMediaMonthPeriodsForUser } from '$lib/server/db/queries/media';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { listMediaMonthPeriodsForUser } from '#lib/server/db/queries/media.js';
 import type { RequestHandler } from './$types';
 
 /**
@@ -30,5 +29,5 @@ export const GET: RequestHandler = ({ locals, url }) => {
 		favorite,
 		tzOffsetMinutes: Number.isFinite(tz) ? tz : undefined,
 	});
-	return json({ periods });
+	return Response.json({ periods });
 };

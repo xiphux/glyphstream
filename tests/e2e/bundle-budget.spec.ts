@@ -26,7 +26,11 @@ import { test, expect } from './fixtures/test';
 
 const CLIENT_DIR = resolve('./build/client');
 const MANIFEST = resolve('./.svelte-kit/output/client/.vite/manifest.json');
-const APP_JS = resolve('./.svelte-kit/generated/client-optimized/app.js');
+// SvelteKit 3 moved its generated client under generated/build/. (A stale
+// generated/client-optimized/ from an older build can linger beside it — read
+// that and the route dictionary is silently a previous build's.)
+const GENERATED_CLIENT = '.svelte-kit/generated/build/client-optimized';
+const APP_JS = resolve(`./${GENERATED_CLIENT}/app.js`);
 const BASELINE = resolve('./tests/e2e/fixtures/bundle-baseline.json');
 
 /** Growth allowed before failing: 5%, but never less than 2 KB gzip, so a
@@ -73,7 +77,7 @@ function measureRoute(manifest: Manifest, routeId: string): RouteSize {
 		...Object.keys(manifest).filter(
 			(k) => k.endsWith('/client-optimized/app.js') || k.endsWith('/runtime/client/entry.js'),
 		),
-		...routeNodes(routeId).map((n) => `.svelte-kit/generated/client-optimized/nodes/${n}.js`),
+		...routeNodes(routeId).map((n) => `${GENERATED_CLIENT}/nodes/${n}.js`),
 	];
 	const seen = new Set<string>();
 	const js = new Set<string>();

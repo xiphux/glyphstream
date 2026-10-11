@@ -3,8 +3,8 @@ import {
 	detectKind,
 	extractContextWindow,
 	normalizeUpstreamModel,
-} from '$lib/server/endpoints/models';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+} from '#lib/server/endpoints/models.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 
 // (supportsTools fallback tests appended at the bottom)
 

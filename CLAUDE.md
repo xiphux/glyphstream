@@ -13,7 +13,7 @@ Still optimized for the small-team / household scale, not SaaS.
 
 ## Stack
 
-SvelteKit (adapter-node) · TypeScript · Tailwind v4 · Drizzle ORM (SQLite,
+SvelteKit 3 (adapter-node) · TypeScript · Tailwind v4 · Drizzle ORM (SQLite,
 dialect-portable) · in-tree OAuth2 client (`auth/oauth/oauth2.ts`) +
 @simplewebauthn (passkeys), custom Lucia-style session module · bits-ui
 (headless) · markdown-it + shiki · Vitest + Playwright · pnpm.
@@ -112,15 +112,29 @@ tests/e2e/            # playwright (production-build webServer)
   destination until the moment it queues. It is the one gate record with no
   self-cleaning path, so a declaration is passed to `acquireEndpointSlot` as
   `supersedes` AND settled from the caller's `finally`.
-- Wire types live in `$lib/types/api.ts`, never in a `db/queries/*`
-  module. A DTO imported from `$lib/server` by client-safe code
+- Wire types live in `#lib/types/api.ts`, never in a `db/queries/*`
+  module. A DTO imported from `#lib/server` by client-safe code
   type-checks and ships nothing, so nothing catches it — but it makes the
   browser's contract whatever a `SELECT` happens to project, with no
   boundary at which changing a query registers as changing an API. The
   media/gallery feature did exactly this; no client module imports from
-  `$lib/server` now, and that's worth keeping true.
+  `#lib/server` now, and that's worth keeping true.
 - Per-endpoint secrets use the `*_env` field convention in `config.toml`:
   the field stores the _name_ of an env var, never the secret itself.
+- **Server env vars are read from `process.env`, never a Kit env module.**
+  SvelteKit 3's `$app/env/private` (and the `$env/dynamic/private` alias)
+  holds only names declared up front in `src/env.ts`; any other name reads as
+  `undefined`, silently — and the `*_env` names above are only known at
+  runtime. `vite.config.ts` loads `.env` into `process.env` for `pnpm dev`.
+- **SvelteKit's options live in `sveltekit.config.ts`**, shared by
+  `vite.config.ts` and both vitest configs. Kit 3 refuses a `svelte.config.js`,
+  and a bare `sveltekit()` in a test config compiles without the app's `runes`
+  option.
+- **Every state-changing route lives under `/api/`.** Kit's CSRF origin check
+  is off (`csrf.trustedOrigins: ['*']` — it 403'd every body-less DELETE over
+  plain http or behind a proxy that rewrites Host), so the gate in
+  `hooks.server.ts` is the only one, and it covers `/api/*` only. A mutating
+  handler or form action anywhere else fails `csrf-gate-coverage.test.ts`.
 - MCP servers are `auth = "global"` (one shared `api_key_env` token, the
   default) or `auth = "per_user"` (each user enters their own token in
   `/settings/mcp`, stored AES-256-GCM-encrypted, keyed `(serverId, userId)`).
@@ -144,7 +158,7 @@ tests/e2e/            # playwright (production-build webServer)
   _and_ every tab refocus refetch the entire conversation (measured 35 KB → 4 KB
   on a 40-turn thread; megabytes on a long code-heavy one). If you re-add
   `await parent()` there, that regresses silently.
-- **Module singletons under `$lib/*.svelte.ts` may only be written from
+- **Module singletons under `#lib/*.svelte.ts` may only be written from
   effects, event handlers, or functions those call** — never at
   component-init depth. `toast`, `confirmDialog`, `searchModal`,
   `privateView`, `streamPresence`, the `generating` / `title-pending` sets
@@ -421,7 +435,7 @@ exact-match `apple-touch-startup-image` media query.
   path — it costs 50–200 KB raw per grammar and the marginal value
   past Python tails off fast.
 - **Don't compress _static assets_ at the reverse proxy.** adapter-node has
-  `precompress: true`, so they ship as `.br` + `.gz` on disk and sirv
+  `precompress: true`, so they ship as `.br` + `.gz` on disk and adapter-node
   negotiates via `Accept-Encoding`. Re-compressing at the proxy
   double-compresses. **This does not extend to dynamic responses** — SSR HTML
   and `__data.json` are generated per request and are never precompressed, and
@@ -431,10 +445,17 @@ exact-match `apple-touch-startup-image` media query.
   is doing it. Read as blanket advice, this bullet used to leave both sides off.
 - **Allowlist by numeric GitHub user ID, not username.** Usernames can be
   deleted and re-registered by someone else.
-- **`schema.ts` must stay `$lib`-free.** It's loaded outside the Vite
+- **`schema.ts` must stay `#lib`-free.** It's loaded outside the Vite
   build — by drizzle-kit, the `import-owui` esbuild bundle, and
-  Playwright's e2e `global-setup.ts` — none of which resolve the `$lib`
-  alias. Import shared code into it with a relative path.
+  Playwright's e2e `global-setup.ts`. The first two resolve `#lib` through
+  package.json `imports`; Playwright's plain Node loader does not (a
+  `#lib/….js` specifier names a file that only exists as `.ts`). Import
+  shared code into it with a relative path.
+- **A snippet passed to a component shadows a same-named script variable
+  inside that component's markup.** `<SettingsPage>{#snippet description()}…`
+  made a `bind:value={description}` in the same block bind to the snippet, and
+  hydration threw `source.equals is not a function` (custom models page). Name
+  the state something else.
 - **`eslint --fix` can silently break type-checking — use `pnpm lint:fix`,
   which type-checks afterwards.** `no-unnecessary-type-assertion` asks
   "does the receiver already accept this expression's type?" and does NOT

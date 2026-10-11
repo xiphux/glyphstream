@@ -14,10 +14,10 @@
  * `./data/glyphstream.db` to match the SvelteKit runtime default).
  *
  * The CLI sets up its own node:sqlite connection rather than going
- * through `src/lib/server/db/client` because that module pulls in
+ * through `src/lib/server/db/client`. That was forced while the client read
  * SvelteKit's `$env/dynamic/private`, which doesn't resolve outside the
- * SvelteKit runtime — same reason `drizzle.config.ts` reads process.env
- * directly.
+ * SvelteKit runtime; since SvelteKit 3 the env layer is plain process.env,
+ * so it's now just the smaller dependency surface for a standalone bundle.
  */
 
 import { DatabaseSync } from 'node:sqlite';

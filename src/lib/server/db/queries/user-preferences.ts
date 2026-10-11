@@ -10,8 +10,8 @@
  */
 
 import { eq } from 'drizzle-orm';
-import type { CompareSelection } from '$lib/fanout';
-import type { ContextSegmentKey, SavedModelSet, UserPreferences } from '$lib/types/api';
+import type { CompareSelection } from '#lib/fanout.js';
+import type { ContextSegmentKey, SavedModelSet, UserPreferences } from '#lib/types/api.js';
 import { getDb } from '../client';
 import { users } from '../schema';
 import { composeMemorySection, type Memory, type MemoryIndexRow } from './memories';

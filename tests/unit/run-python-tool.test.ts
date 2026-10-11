@@ -30,23 +30,23 @@ const mocks = vi.hoisted(() => ({
 	},
 }));
 
-vi.mock('$lib/server/code-interpreter/config', () => ({
+vi.mock('#lib/server/code-interpreter/config.js', () => ({
 	getCodeInterpreterConfig: () => mocks.config,
 	isCodeInterpreterEnabled: () => mocks.enabled,
 	resetCodeInterpreterConfigForTests: () => {},
 }));
 
-vi.mock('$lib/server/code-interpreter/pool', () => ({
+vi.mock('#lib/server/code-interpreter/pool.js', () => ({
 	runPython: (...args: unknown[]) => mocks.runPython(...args),
 }));
 
-vi.mock('$lib/server/code-interpreter/files', () => ({
+vi.mock('#lib/server/code-interpreter/files.js', () => ({
 	collectConversationFiles: (...args: unknown[]) => mocks.collectConversationFiles(...args),
 	persistGeneratedFiles: (...args: unknown[]) => mocks.persistGeneratedFiles(...args),
 }));
 
-import { runPythonTool } from '$lib/server/tools/run-python';
-import type { ToolContext } from '$lib/server/tools/types';
+import { runPythonTool } from '#lib/server/tools/run-python.js';
+import type { ToolContext } from '#lib/server/tools/types.js';
 
 function ctx(overrides: Partial<ToolContext> = {}): ToolContext {
 	return {

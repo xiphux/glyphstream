@@ -18,8 +18,8 @@
  * footgun.
  */
 
-import type { MediaKind } from '$lib/types/api';
-import { normalizeContentType, SVG_CONTENT_TYPE } from '$lib/server/media/content-type';
+import type { MediaKind } from '#lib/types/api.js';
+import { normalizeContentType, SVG_CONTENT_TYPE } from '#lib/server/media/content-type.js';
 
 /** Photos can be large (full-resolution iPhone photo on Pro models is
  *  well into double-digit MB). 20 MB matches the prior cap. */

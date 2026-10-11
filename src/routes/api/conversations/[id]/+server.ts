@@ -1,6 +1,6 @@
-import { error, json } from '@sveltejs/kit';
-import { requireFound, requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
+import { error } from '@sveltejs/kit';
+import { requireFound, requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
 import {
 	archiveConversation,
 	deleteConversation,
@@ -10,15 +10,15 @@ import {
 	RenameValidationError,
 	setDisabledFeatures,
 	unarchiveConversation,
-} from '$lib/server/db/queries/conversations';
-import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
+} from '#lib/server/db/queries/conversations.js';
+import { getFanoutRecoveryState } from '#lib/server/messages/fanout-recovery.js';
 import {
 	getAvatarDrawSince,
 	getInFlightGeneratingSince,
 	getInFlightSince,
-} from '$lib/server/streaming/in-flight';
-import { cancelInFlightGenerations } from '$lib/server/streaming/cancel';
-import { validateDisabledFeaturesOrThrow400 } from '$lib/server/util/validate-features';
+} from '#lib/server/streaming/in-flight.js';
+import { cancelInFlightGenerations } from '#lib/server/streaming/cancel.js';
+import { validateDisabledFeaturesOrThrow400 } from '#lib/server/util/validate-features.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals, params, url }) => {
@@ -45,7 +45,7 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 			getConversationMeta(params.id, locals.user.id),
 			'Conversation not found',
 		);
-		return json({
+		return Response.json({
 			inFlightSince: getInFlightSince(params.id),
 			inFlightGeneratingSince: getInFlightGeneratingSince(params.id),
 			avatarDrawSince: getAvatarDrawSince(params.id),
@@ -64,7 +64,7 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 	const inFlightGeneratingSince = getInFlightGeneratingSince(params.id);
 	const avatarDrawSince = getAvatarDrawSince(params.id);
 	const fanout = getFanoutRecoveryState(params.id, locals.user.id, conv.activeLeafMessageId);
-	return json({
+	return Response.json({
 		conversation: conv,
 		inFlightSince,
 		inFlightGeneratingSince,
@@ -79,7 +79,7 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
  *   - `{ title: string }` — rename (sets title_source='user', locking
  *      the title against future AI overwrite)
  *   - `{ disabledFeatures: string[] }` — per-conversation feature opt-outs
- *      (see FEATURE_CATEGORIES in $lib/types/api)
+ *      (see FEATURE_CATEGORIES in #lib/types/api)
  *
  * Discriminated body: exactly one of the three fields must be present.
  * Combining them in one request is rejected to keep the semantics

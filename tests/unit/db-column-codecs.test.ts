@@ -20,27 +20,27 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
-vi.mock('$lib/server/env', async (importOriginal) => ({
-	...(await importOriginal<typeof import('$lib/server/env')>()),
+vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
+vi.mock('#lib/server/env.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/server/env.js')>()),
 	mcpSecretKey: () => 'codec-test-key-not-a-secret',
 }));
 
-import * as schema from '$lib/server/db/schema';
-import { createConversation, getConversationMeta } from '$lib/server/db/queries/conversations';
+import * as schema from '#lib/server/db/schema.js';
+import { createConversation, getConversationMeta } from '#lib/server/db/queries/conversations.js';
 import {
 	createMemory,
 	listMemoryRecallVectors,
 	setMemoryEmbedding,
-} from '$lib/server/db/queries/memories';
+} from '#lib/server/db/queries/memories.js';
 import {
 	insertMedia,
 	listMediaEmbeddingsForUser,
 	setMediaEmbedding,
-} from '$lib/server/db/queries/media';
-import { getMcpCredential, setMcpCredential } from '$lib/server/db/queries/mcp-credentials';
-import { findCredentialById, insertCredential } from '$lib/server/db/queries/passkey';
-import { decodeVector, encodeVector } from '$lib/server/retrieval/vector';
+} from '#lib/server/db/queries/media.js';
+import { getMcpCredential, setMcpCredential } from '#lib/server/db/queries/mcp-credentials.js';
+import { findCredentialById, insertCredential } from '#lib/server/db/queries/passkey.js';
+import { decodeVector, encodeVector } from '#lib/server/retrieval/vector.js';
 
 const COVERED = [
 	'conversations.private',

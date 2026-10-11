@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { fuseRankings, RRF_K } from '$lib/server/retrieval/fusion';
-import type { ScoredChunk } from '$lib/server/retrieval/bm25';
+import { fuseRankings, RRF_K } from '#lib/server/retrieval/fusion.js';
+import type { ScoredChunk } from '#lib/server/retrieval/bm25.js';
 
 /** Build a ranking from indices in rank order (scores are ignored by RRF). */
 function ranking(...indices: number[]): ScoredChunk[] {

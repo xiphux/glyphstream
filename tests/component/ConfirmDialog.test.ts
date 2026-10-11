@@ -15,8 +15,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { tick } from 'svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-import { confirmDialog } from '$lib/confirm.svelte';
+import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+import { confirmDialog } from '#lib/confirm.svelte.js';
 
 afterEach(() => {
 	if (confirmDialog.pending) confirmDialog.cancel();

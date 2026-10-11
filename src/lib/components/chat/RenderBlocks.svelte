@@ -9,11 +9,11 @@
 -->
 <script lang="ts">
 	import { CircleAlert } from '@lucide/svelte';
-	import ToolCallBlock from '$lib/components/ToolCallBlock.svelte';
-	import CanvasCard from '$lib/components/chat/CanvasCard.svelte';
-	import FileAttachmentChip from '$lib/components/FileAttachmentChip.svelte';
-	import { isCanvasTool, splitCanvasCards, type RenderBlock } from '$lib/chat-render';
-	import type { ApprovalAction } from '$lib/approval-workflow';
+	import ToolCallBlock from '#lib/components/ToolCallBlock.svelte';
+	import CanvasCard from '#lib/components/chat/CanvasCard.svelte';
+	import FileAttachmentChip from '#lib/components/FileAttachmentChip.svelte';
+	import { isCanvasTool, splitCanvasCards, type RenderBlock } from '#lib/chat-render.js';
+	import type { ApprovalAction } from '#lib/approval-workflow.js';
 
 	interface Props {
 		blocks: RenderBlock[];

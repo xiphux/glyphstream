@@ -6,14 +6,14 @@
  * re-inlined at each row-mapping site.
  */
 
-import { isFeatureCategoryString, isSnippetKind } from '$lib/types/api';
-import type { CompareSelection } from '$lib/fanout';
+import { isFeatureCategoryString, isSnippetKind } from '#lib/types/api.js';
+import type { CompareSelection } from '#lib/fanout.js';
 import type {
 	CustomModelParameters,
 	FeatureCategory,
 	MessagePart,
 	SnippetKind,
-} from '$lib/types/api';
+} from '#lib/types/api.js';
 
 /**
  * Parse a message row's `content_json` column into MessagePart[]. Falls

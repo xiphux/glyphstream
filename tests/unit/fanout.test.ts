@@ -23,7 +23,7 @@ import {
 	type CompareSelection,
 	type FanoutColumn,
 	type FanoutModel,
-} from '$lib/fanout';
+} from '#lib/fanout.js';
 
 const resolve = (id: string) => {
 	const table: Record<string, { displayName: string; modelKind: 'chat' }> = {

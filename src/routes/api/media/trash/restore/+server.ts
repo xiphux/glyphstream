@@ -1,8 +1,7 @@
-import { json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { restoreMediaForUser } from '$lib/server/db/queries/media';
-import { parseTrashIds } from '$lib/server/media/trash-api';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { restoreMediaForUser } from '#lib/server/db/queries/media.js';
+import { parseTrashIds } from '#lib/server/media/trash-api.js';
 import type { RequestHandler } from './$types';
 
 /**
@@ -13,5 +12,5 @@ import type { RequestHandler } from './$types';
 export const POST: RequestHandler = async ({ locals, request }) => {
 	requireUser(locals);
 	const ids = parseTrashIds(await parseJsonBody<{ ids?: unknown }>(request));
-	return json({ restored: restoreMediaForUser(ids, locals.user.id).length });
+	return Response.json({ restored: restoreMediaForUser(ids, locals.user.id).length });
 };

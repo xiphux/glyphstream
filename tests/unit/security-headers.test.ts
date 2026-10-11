@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applySecurityHeaders, MEDIA_CSP } from '$lib/server/security-headers';
+import { applySecurityHeaders, MEDIA_CSP } from '#lib/server/security-headers.js';
 
 function apply(pathname: string): Headers {
 	return applySecurityHeaders(new Response('body'), pathname).headers;
@@ -16,7 +16,7 @@ describe('applySecurityHeaders', () => {
 	});
 
 	it('adds a locked-down CSP to media responses', () => {
-		// SvelteKit injects the svelte.config.js CSP at page render, so a
+		// SvelteKit injects the sveltekit.config.ts CSP at page render, so a
 		// hand-built +server.ts Response carries none. Without this, a media
 		// asset served with a scriptable Content-Type had nothing behind it.
 		for (const pathname of [

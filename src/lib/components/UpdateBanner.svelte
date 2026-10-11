@@ -12,7 +12,7 @@
 <!--
 	Sticky bottom-center toast surfaced when the PWA service worker
 	signals that a new version is waiting to activate. Clicking Refresh
-	calls the activate() returned by $lib/sw/register.ts, which takes the
+	calls the activate() returned by #lib/sw/register.ts, which takes the
 	new SW live and reloads the page. Dismissing just hides the toast for this
 	session — the new SW stays waiting and will eventually activate on
 	its own when all tabs close.

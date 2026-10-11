@@ -15,11 +15,11 @@ const mocks = vi.hoisted(() => ({
 }));
 
 const retryMcpServerMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/mcp/registry', () => ({
+vi.mock('#lib/server/mcp/registry.js', () => ({
 	getMcpServerCfg: () => mocks.cfg,
 	retryMcpServer: retryMcpServerMock,
 }));
-vi.mock('$lib/server/mcp/tool-bridge', () => ({ registerMcpServerTools: vi.fn() }));
+vi.mock('#lib/server/mcp/tool-bridge.js', () => ({ registerMcpServerTools: vi.fn() }));
 
 import { POST } from '../../src/routes/api/mcp/servers/[id]/reconnect/+server';
 

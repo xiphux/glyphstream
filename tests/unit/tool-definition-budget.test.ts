@@ -25,15 +25,15 @@ import {
 	recallMemoryTool,
 	saveMemoryTool,
 	updateMemoryTool,
-} from '$lib/server/tools/memory';
-import { fetchUrlTool } from '$lib/server/tools/fetch-url';
-import { runPythonTool } from '$lib/server/tools/run-python';
-import { webSearchTool } from '$lib/server/tools/web-search';
-import { searchConversationsTool } from '$lib/server/tools/conversation-search';
-import { createCanvasTool } from '$lib/server/tools/create-canvas';
-import { updateCanvasTool } from '$lib/server/tools/update-canvas';
-import { REACTIONS_HINT, reactToMessageTool } from '$lib/server/tools/react';
-import type { Tool } from '$lib/server/tools/types';
+} from '#lib/server/tools/memory.js';
+import { fetchUrlTool } from '#lib/server/tools/fetch-url.js';
+import { runPythonTool } from '#lib/server/tools/run-python.js';
+import { webSearchTool } from '#lib/server/tools/web-search.js';
+import { searchConversationsTool } from '#lib/server/tools/conversation-search.js';
+import { createCanvasTool } from '#lib/server/tools/create-canvas.js';
+import { updateCanvasTool } from '#lib/server/tools/update-canvas.js';
+import { REACTIONS_HINT, reactToMessageTool } from '#lib/server/tools/react.js';
+import type { Tool } from '#lib/server/tools/types.js';
 
 /** Serialized size of a definition exactly as it goes on the wire. */
 function wireChars(tool: Tool): number {

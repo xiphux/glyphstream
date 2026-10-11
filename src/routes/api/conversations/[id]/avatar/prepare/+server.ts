@@ -29,18 +29,18 @@
  * only the single-model background draw.
  */
 
-import { error, json } from '@sveltejs/kit';
-import { requireFound, requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { getConversationMeta, setFanoutParent } from '$lib/server/db/queries/conversations';
+import { error } from '@sveltejs/kit';
+import { requireFound, requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { getConversationMeta, setFanoutParent } from '#lib/server/db/queries/conversations.js';
 import {
 	getMessage,
 	getSiblingAssistants,
 	hasChildMessages,
 	resolveReplyLeaf,
-} from '$lib/server/db/queries/messages';
-import { getAvatarDrawSince } from '$lib/server/streaming/in-flight';
-import type { PrepareAvatarDrawResponse } from '$lib/types/api';
+} from '#lib/server/db/queries/messages.js';
+import { getAvatarDrawSince } from '#lib/server/streaming/in-flight.js';
+import type { PrepareAvatarDrawResponse } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
 
 interface PrepareAvatarDrawBody {
@@ -134,5 +134,5 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		// round's portrait re-sends what drew IT, not this round's prompt.
 		siblings: getSiblingAssistants(params.id, source.id, { avatarPrompts: true }),
 	};
-	return json(response);
+	return Response.json(response);
 };

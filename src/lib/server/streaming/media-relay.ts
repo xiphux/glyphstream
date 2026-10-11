@@ -46,7 +46,7 @@ import type {
 	StreamErrorEvent,
 	StreamStartEvent,
 	StreamTitleEvent,
-} from '$lib/types/api';
+} from '#lib/types/api.js';
 
 // Title gen has been running since generation started (the prompt is the
 // topic), so it's almost always ready by the time the asset lands — a short

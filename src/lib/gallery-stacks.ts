@@ -1,4 +1,4 @@
-import type { MediaListItem } from '$lib/types/api';
+import type { MediaListItem } from '#lib/types/api.js';
 
 /**
  * The minimal media shape the stacking pass needs. `MediaListItem` satisfies it,

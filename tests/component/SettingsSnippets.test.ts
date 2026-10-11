@@ -12,9 +12,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import type { PromptSnippet } from '$lib/types/api';
+import type { PromptSnippet } from '#lib/types/api.js';
 
-vi.mock('$app/navigation', () => ({ invalidateAll: vi.fn(), goto: vi.fn() }));
+vi.mock('$app/navigation', () => ({ refreshAll: vi.fn(), goto: vi.fn() }));
 
 import SnippetsPage from '../../src/routes/(app)/settings/snippets/+page.svelte';
 

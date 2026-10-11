@@ -4,12 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // `parseTimezone` in clock.ts), so the prefs lookup is the thing under control
 // here — not the database.
 const mocks = vi.hoisted(() => ({ timezone: null as string | null }));
-vi.mock('$lib/server/db/queries/user-preferences', () => ({
+vi.mock('#lib/server/db/queries/user-preferences.js', () => ({
 	getUserPreferences: () => ({ timezone: mocks.timezone }),
 }));
 
-import { clockTool } from '$lib/server/tools/clock';
-import type { Tool, ToolContext, ToolExecution } from '$lib/server/tools/types';
+import { clockTool } from '#lib/server/tools/clock.js';
+import type { Tool, ToolContext, ToolExecution } from '#lib/server/tools/types.js';
 
 /** The server's own zone — what the tool falls back to when the user has never
  *  had a browser report one. */

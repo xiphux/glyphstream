@@ -1,6 +1,9 @@
 import { error } from '@sveltejs/kit';
-import { listMemoriesForUser, listDeletedMemoriesForUser } from '$lib/server/db/queries/memories';
-import { getConversationOverviewMeta } from '$lib/server/db/queries/users';
+import {
+	listMemoriesForUser,
+	listDeletedMemoriesForUser,
+} from '#lib/server/db/queries/memories.js';
+import { getConversationOverviewMeta } from '#lib/server/db/queries/users.js';
 import type { PageServerLoad } from './$types';
 
 /**

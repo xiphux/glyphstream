@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/svelte';
 import { flushSync } from 'svelte';
-import type { ModelEntry } from '$lib/types/api';
+import type { ModelEntry } from '#lib/types/api.js';
 import type { createKitStub } from './_helpers/kit-runtime-stub.svelte';
 
 const holder = vi.hoisted(() => ({ current: null as ReturnType<typeof createKitStub> | null }));
@@ -30,16 +30,15 @@ function stub() {
 	return holder.current;
 }
 
-vi.mock('$app/environment', () => ({ browser: true, dev: false, building: false, version: 't' }));
+vi.mock('$app/env', () => ({ browser: true, dev: false, building: false, version: 't' }));
 vi.mock('$app/navigation', () => ({
 	// The strip is a replacing goto with a `.catch`, so this returns a thenable.
 	goto: vi.fn(async () => {}),
 	invalidate: vi.fn(async () => {}),
-	invalidateAll: vi.fn(async () => {}),
+	refreshAll: vi.fn(async () => {}),
 	afterNavigate: (callback: Parameters<ReturnType<typeof createKitStub>['afterNavigate']>[0]) =>
 		stub().afterNavigate(callback),
 	beforeNavigate: vi.fn(),
-	replaceState: vi.fn(),
 	pushState: vi.fn(),
 }));
 vi.mock('$app/state', async () => {
@@ -50,7 +49,7 @@ vi.mock('$app/state', async () => {
 
 import Harness from './_helpers/NewChatHarness.svelte';
 import { goto } from '$app/navigation';
-import { toast } from '$lib/toast.svelte';
+import { toast } from '#lib/toast.svelte.js';
 
 const model: ModelEntry = {
 	id: 'bridge::alpha',
@@ -112,8 +111,14 @@ describe('new-chat page — ?notice= from a redirect', () => {
 		await vi.waitFor(() =>
 			expect(vi.mocked(goto)).toHaveBeenCalledWith(
 				'/',
-				expect.objectContaining({ replaceState: true, keepFocus: true }),
+				expect.objectContaining({ replace: true, reset: false }),
 			),
+		);
+		// Since SvelteKit 3 a shallow update is a `goto` too, so "a goto was
+		// called" no longer rules one out on its own.
+		expect(vi.mocked(goto)).not.toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ shallow: true }),
 		);
 	});
 
@@ -126,7 +131,7 @@ describe('new-chat page — ?notice= from a redirect', () => {
 		await vi.waitFor(() =>
 			expect(vi.mocked(goto)).toHaveBeenCalledWith(
 				'/?model=bridge%3A%3Aalpha',
-				expect.objectContaining({ replaceState: true }),
+				expect.objectContaining({ replace: true }),
 			),
 		);
 	});

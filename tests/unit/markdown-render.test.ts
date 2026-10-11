@@ -17,7 +17,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { renderMarkdown } from '$lib/server/markdown/render';
+import { renderMarkdown } from '#lib/server/markdown/render.js';
 
 describe('renderMarkdown — empty handling', () => {
 	it('returns null for an empty string', async () => {

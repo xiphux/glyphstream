@@ -2,7 +2,7 @@
  * Unit tests for DiskMediaStore — the streaming `putStream` path that avoids
  * buffering the full payload in memory, and `open`'s miss contract.
  *
- * Follows the same pattern as purger.test.ts: mock $lib/server/env to point
+ * Follows the same pattern as purger.test.ts: mock #lib/server/env to point
  * `mediaDir()` at a temp directory we control, then exercise the store
  * against real disk I/O.
  */
@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
 	derivedDir: '',
 }));
 
-vi.mock('$lib/server/env', () => ({
+vi.mock('#lib/server/env.js', () => ({
 	mediaDir: () => mocks.mediaDir,
 	derivedDir: () => mocks.derivedDir || mocks.mediaDir,
 	dbPath: () => ':memory:',
@@ -30,7 +30,7 @@ vi.mock('$lib/server/env', () => ({
 	allowedGithubUserIdsRaw: () => '',
 }));
 
-import { DiskMediaStore } from '$lib/server/media/disk-store';
+import { DiskMediaStore } from '#lib/server/media/disk-store.js';
 
 let tmpDirs: string[] = [];
 

@@ -6,8 +6,8 @@ import {
 	VIDEO_ENHANCER_BASE,
 	VIDEO_PROMPT_STYLES,
 	VIDEO_STYLE_INSTRUCTIONS,
-} from '$lib/server/streaming/prompt-styles-video';
-import { normalizeStyle } from '$lib/server/streaming/prompt-styles';
+} from '#lib/server/streaming/prompt-styles-video.js';
+import { normalizeStyle } from '#lib/server/streaming/prompt-styles.js';
 
 describe('normalizeVideoStyle', () => {
 	it('passes through the canonical keys', () => {

@@ -21,7 +21,7 @@
 	be left open for a long time.
 -->
 <script lang="ts">
-	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
+	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
 	import {
 		CircleAlert,
 		CircleCheck,
@@ -33,8 +33,8 @@
 		RefreshCw,
 	} from '@lucide/svelte';
 	import { SvelteSet } from 'svelte/reactivity';
-	import { toast } from '$lib/toast.svelte';
-	import { errorMessageFromResponse } from '$lib/fetch-error';
+	import { toast } from '#lib/toast.svelte.js';
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
 	import type { PageData } from './$types';
 	import type {
 		EndpointGroupStatus,
@@ -43,7 +43,7 @@
 		EndpointSlotPurpose,
 		EndpointStatus,
 		EndpointsStatusResponse,
-	} from '$lib/types/api';
+	} from '#lib/types/api.js';
 
 	let { data }: { data: PageData } = $props();
 

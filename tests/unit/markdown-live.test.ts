@@ -1,9 +1,9 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { ensureLiveMarkdown, renderLiveMarkdown } from '$lib/markdown-live';
+import { ensureLiveMarkdown, renderLiveMarkdown } from '#lib/markdown-live.js';
 import {
 	resetLiveHighlighterForTests,
 	setLiveHighlighterForTests,
-} from '$lib/markdown-live-shiki.svelte';
+} from '#lib/markdown-live-shiki.svelte.js';
 
 // markdown-it is dynamic-imported in production. Force the load once so
 // the rest of these synchronous tests get the real render path.

@@ -4,7 +4,7 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
@@ -14,12 +14,12 @@ import {
 	importOwuiExport,
 	stripOwuiFileUrls,
 	IMPORTED_ENDPOINT_ID,
-} from '$lib/server/import/owui';
+} from '#lib/server/import/owui.js';
 import {
 	getConversationDetail,
 	listArchivedConversations,
 	listConversations,
-} from '$lib/server/db/queries/conversations';
+} from '#lib/server/db/queries/conversations.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

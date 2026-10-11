@@ -16,8 +16,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { createRawSnippet } from 'svelte';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import ComposerCore from '$lib/components/chat/ComposerCore.svelte';
-import type { AttachmentStore } from '$lib/attachments.svelte';
+import ComposerCore from '#lib/components/chat/ComposerCore.svelte';
+import type { AttachmentStore } from '#lib/attachments.svelte.js';
 
 const SKILLS = [
 	{ id: '1', name: 'review', description: 'Review a diff' },

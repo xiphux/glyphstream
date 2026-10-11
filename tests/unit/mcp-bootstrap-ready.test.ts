@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
 	registerCalls: 0,
 }));
 
-vi.mock('$lib/server/mcp/registry', () => ({
+vi.mock('#lib/server/mcp/registry.js', () => ({
 	initializeMcpServers: () => {
 		mocks.initCalls++;
 		return new Promise<void>((resolve, reject) => {
@@ -30,14 +30,14 @@ vi.mock('$lib/server/mcp/registry', () => ({
 		});
 	},
 }));
-vi.mock('$lib/server/mcp/tool-bridge', () => ({
+vi.mock('#lib/server/mcp/tool-bridge.js', () => ({
 	registerAllMcpTools: () => {
 		mocks.registerCalls++;
 	},
 }));
 
 const { _resetMcpBootstrapForTests, awaitMcpReady, bootstrapMcp, isMcpReady } =
-	await import('$lib/server/mcp/bootstrap');
+	await import('#lib/server/mcp/bootstrap.js');
 
 beforeEach(() => {
 	_resetMcpBootstrapForTests();

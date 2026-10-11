@@ -9,8 +9,8 @@
 <script lang="ts">
 	import { FileText, Sparkles } from '@lucide/svelte';
 	import ToolBlockShell from './ToolBlockShell.svelte';
-	import { renderLiveMarkdown } from '$lib/markdown-live';
-	import type { SkillToolDisplay, ToolResultAttachment } from '$lib/chat-render';
+	import { renderLiveMarkdown } from '#lib/markdown-live.js';
+	import type { SkillToolDisplay, ToolResultAttachment } from '#lib/chat-render.js';
 
 	type Status = 'executing' | 'done' | 'error' | 'pending_approval';
 

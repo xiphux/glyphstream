@@ -9,16 +9,16 @@
  * No DB writes here — the user + credential rows are inserted (and the invite
  * consumed) atomically only after the verify endpoint sees a valid response.
  */
-import { error, json } from '@sveltejs/kit';
-import { RP_NAME, getRpId, setRegistrationChallengeCookie } from '$lib/server/auth/passkey';
+import { error } from '@sveltejs/kit';
+import { RP_NAME, getRpId, setRegistrationChallengeCookie } from '#lib/server/auth/passkey.js';
 import { generateRegistrationOptions } from '@simplewebauthn/server';
-import { JOIN_PASSKEY_CARRY_COOKIE } from '$lib/server/auth/join';
-import { sign, setCarryCookie } from '$lib/server/auth/signed-cookies';
-import { parseIdentityInput } from '$lib/server/auth/identity-input';
-import { parseJsonBody } from '$lib/server/http';
-import { findValidInvite } from '$lib/server/db/queries/invites';
-import { generateId } from '$lib/server/util/id';
-import { passkeyLoginEnabled } from '$lib/server/env';
+import { JOIN_PASSKEY_CARRY_COOKIE } from '#lib/server/auth/join.js';
+import { sign, setCarryCookie } from '#lib/server/auth/signed-cookies.js';
+import { parseIdentityInput } from '#lib/server/auth/identity-input.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { findValidInvite } from '#lib/server/db/queries/invites.js';
+import { generateId } from '#lib/server/util/id.js';
+import { passkeyLoginEnabled } from '#lib/server/env.js';
 import type { RequestHandler } from './$types';
 
 const CARRY_TTL_MS = 5 * 60 * 1000; // 5 min — matches the challenge cookie
@@ -63,5 +63,5 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		CARRY_TTL_MS / 1000,
 	);
 
-	return json(options);
+	return Response.json(options);
 };

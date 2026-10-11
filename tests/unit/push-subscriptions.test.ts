@@ -3,7 +3,7 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
@@ -14,8 +14,8 @@ import {
 	listPushSubscriptionsForUser,
 	deletePushSubscriptionByEndpoint,
 	deletePushSubscriptionsByEndpoints,
-} from '$lib/server/db/queries/push-subscriptions';
-import { users } from '$lib/server/db/schema';
+} from '#lib/server/db/queries/push-subscriptions.js';
+import { users } from '#lib/server/db/schema.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

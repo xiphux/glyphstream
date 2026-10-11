@@ -12,7 +12,7 @@
  * `meta.systemPrompt === null` gate; a snapshotted custom-model conversation
  * keeps its own prompt and never calls this.
  */
-import type { FeatureCategory, UserPreferences } from '$lib/types/api';
+import type { FeatureCategory, UserPreferences } from '#lib/types/api.js';
 import {
 	composePersonaParts,
 	PERSONA_PART_SEPARATOR,

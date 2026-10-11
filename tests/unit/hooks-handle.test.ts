@@ -20,49 +20,49 @@ import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 	dbFileBytes: () => ({ main: null, wal: null }),
 	mmapBytes: () => null,
 }));
-vi.mock('$lib/server/env', async (importOriginal) => ({
-	...(await importOriginal<typeof import('$lib/server/env')>()),
+vi.mock('#lib/server/env.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/server/env.js')>()),
 	validateAuthMethodsEnabled: () => {},
 	compressDynamicResponses: () => false,
 	authRateLimitMax: () => 3,
 	authRateLimitWindowSeconds: () => 60,
 }));
-vi.mock('$lib/server/media/purger', () => ({
+vi.mock('#lib/server/media/purger.js', () => ({
 	startMediaPurger: vi.fn(),
 	stopMediaPurger: vi.fn(),
 }));
-vi.mock('$lib/server/memory/embedding-backfill', () => ({
+vi.mock('#lib/server/memory/embedding-backfill.js', () => ({
 	startEmbeddingBackfiller: vi.fn(),
 	stopEmbeddingBackfiller: vi.fn(),
 }));
-vi.mock('$lib/server/memory/topic-backfill', () => ({
+vi.mock('#lib/server/memory/topic-backfill.js', () => ({
 	startTopicBackfiller: vi.fn(),
 	stopTopicBackfiller: vi.fn(),
 }));
-vi.mock('$lib/server/memory/dreaming', () => ({
+vi.mock('#lib/server/memory/dreaming.js', () => ({
 	startDreamingWorker: vi.fn(),
 	stopDreamingWorker: vi.fn(),
 }));
-vi.mock('$lib/server/memory/conversation-summary', () => ({
+vi.mock('#lib/server/memory/conversation-summary.js', () => ({
 	startConversationSummaryWorker: vi.fn(),
 	stopConversationSummaryWorker: vi.fn(),
 }));
-vi.mock('$lib/server/mcp/bootstrap', () => ({ bootstrapMcp: vi.fn(async () => {}) }));
-vi.mock('$lib/server/mcp/registry', () => ({ stopMcp: vi.fn(async () => {}) }));
-vi.mock('$lib/server/endpoints/list-models', () => ({ listAllModels: vi.fn(async () => []) }));
-vi.mock('$lib/server/code-interpreter/pool', () => ({ stopPool: vi.fn(async () => {}) }));
+vi.mock('#lib/server/mcp/bootstrap.js', () => ({ bootstrapMcp: vi.fn(async () => {}) }));
+vi.mock('#lib/server/mcp/registry.js', () => ({ stopMcp: vi.fn(async () => {}) }));
+vi.mock('#lib/server/endpoints/list-models.js', () => ({ listAllModels: vi.fn(async () => []) }));
+vi.mock('#lib/server/code-interpreter/pool.js', () => ({ stopPool: vi.fn(async () => {}) }));
 
-import { handle } from '../../src/hooks.server';
-import { createSession } from '$lib/server/auth/session';
-import { setAppLockTimeout } from '$lib/server/auth/app-lock';
-import { resetRateLimits } from '$lib/server/rate-limit';
-import { sessions } from '$lib/server/db/schema';
+import { handle, handleError } from '../../src/hooks.server';
+import { createSession } from '#lib/server/auth/session.js';
+import { setAppLockTimeout } from '#lib/server/auth/app-lock.js';
+import { resetRateLimits } from '#lib/server/rate-limit.js';
+import { sessions } from '#lib/server/db/schema.js';
 
 const ORIGIN = 'https://chat.example.test';
 const SESSION_COOKIE = 'glyphstream_session';
@@ -241,7 +241,7 @@ describe('session resolution', () => {
 		expect(sets).toHaveLength(1);
 		expect(sets[0]).toMatchObject({ name: SESSION_COOKIE, value: token });
 		expect(sets[0].opts).toMatchObject({ httpOnly: true, sameSite: 'lax', path: '/' });
-		expect(sets[0].opts.expires!.getTime()).toBeGreaterThan(Date.now() + 7 * oneDay);
+		expect(sets[0].opts?.expires?.getTime()).toBeGreaterThan(Date.now() + 7 * oneDay);
 	});
 });
 
@@ -374,5 +374,39 @@ describe('response decoration', () => {
 		expect(
 			(await call('/', { cookies: { 'gs-theme': '"><script>alert(1)</script>' } })).transformed,
 		).toBeUndefined();
+	});
+});
+
+// What handleError logs. It only ever logs (it returns nothing), so the log line
+// is its whole observable behaviour.
+describe('handleError', () => {
+	const event = {
+		request: new Request('http://localhost/x', { method: 'POST' }),
+		url: new URL('http://localhost/x'),
+	} as RequestEvent;
+	const logged = () => vi.mocked(console.error).mock.calls.map((c) => String(c[0]));
+
+	beforeEach(() => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+	});
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("logs a framework 5xx by its message — it's a plain object, not an Error", () => {
+		void handleError({ kind: 'framework', error: { status: 503, message: 'Gone fishing' }, event });
+		expect(logged()).toEqual([expect.stringContaining('→ 503:\nGone fishing')]);
+		expect(logged()[0]).not.toContain('[object Object]');
+	});
+
+	it('logs an unexpected throw as a 500, with its stack', () => {
+		void handleError({ kind: 'unknown', error: new Error('boom'), event });
+		expect(logged()).toEqual([expect.stringMatching(/→ 500:\nError: boom\n\s+at /)]);
+	});
+
+	it('stays quiet for a framework 4xx and for a deliberate error()', () => {
+		void handleError({ kind: 'framework', error: { status: 404, message: 'Not Found' }, event });
+		void handleError({ kind: 'app', error: { status: 500, message: 'Nope' }, event });
+		expect(logged()).toEqual([]);
 	});
 });

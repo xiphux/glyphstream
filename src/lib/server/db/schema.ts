@@ -9,10 +9,12 @@ import {
 	type AnySQLiteColumn,
 } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
-// Relative import (not the $lib alias) on purpose: schema.ts is loaded
-// outside the Vite build — by drizzle-kit, by the import-owui esbuild
-// bundle, and by Playwright's e2e global-setup — none of which resolve
-// $lib. Keep this module alias-free so it stays loadable everywhere.
+// Relative import (not #lib) on purpose: schema.ts is loaded outside the Vite
+// build — by drizzle-kit, the import-owui esbuild bundle, and Playwright's e2e
+// global-setup. The first two resolve #lib through package.json `imports`;
+// Playwright's plain Node loader does not, because a `#lib/….js` specifier
+// names a file that only exists as .ts. Keep this module alias-free so it
+// stays loadable everywhere.
 import { MODEL_KINDS } from '../../types/api';
 
 // --- users + sessions ----------------------------------------------------
@@ -337,7 +339,7 @@ export const conversations = sqliteTable(
 		createdAt: integer('created_at').notNull(),
 		updatedAt: integer('updated_at').notNull(),
 		archivedAt: integer('archived_at'),
-		// Per-conversation opt-outs (see FEATURE_CATEGORIES in $lib/types/api).
+		// Per-conversation opt-outs (see FEATURE_CATEGORIES in #lib/types/api).
 		// JSON-serialized array of category keys, e.g. `["web"]`. Null/empty
 		// means all features ON. Stored as a JSON array (not a column per
 		// feature) so adding categories doesn't require a migration each time.

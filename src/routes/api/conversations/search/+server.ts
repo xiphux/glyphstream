@@ -1,6 +1,5 @@
-import { json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { searchConversations } from '$lib/server/db/queries/search';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { searchConversations } from '#lib/server/db/queries/search.js';
 import type { RequestHandler } from './$types';
 
 /**
@@ -17,5 +16,5 @@ export const GET: RequestHandler = ({ locals, url }) => {
 	requireUser(locals);
 	const q = url.searchParams.get('q') ?? '';
 	const results = searchConversations(locals.user.id, q);
-	return json({ results });
+	return Response.json({ results });
 };

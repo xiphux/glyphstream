@@ -5,8 +5,8 @@
  * working with no reconfiguration. All the logic lives in the shared
  * handler; this just supplies the github provider.
  */
-import { getProvider } from '$lib/server/auth/oauth/registry';
-import { handleOAuthCallback } from '$lib/server/auth/oauth/callback-handler';
+import { getProvider } from '#lib/server/auth/oauth/registry.js';
+import { handleOAuthCallback } from '#lib/server/auth/oauth/callback-handler.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ url, cookies, locals, request }) => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chunkArticleHtml, chunkPlainText } from '$lib/server/retrieval/chunker';
+import { chunkArticleHtml, chunkPlainText } from '#lib/server/retrieval/chunker.js';
 
 describe('chunkArticleHtml', () => {
 	it('builds a Title › H2 › H3 breadcrumb from the heading hierarchy', () => {

@@ -17,14 +17,23 @@
 <script lang="ts">
 	import { type Snippet } from 'svelte';
 	import { Plus } from '@lucide/svelte';
-	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
-	import SkillMenu from '$lib/components/chat/SkillMenu.svelte';
-	import SnippetAutocomplete from '$lib/components/chat/SnippetAutocomplete.svelte';
-	import { autoResizeTextarea, dragHasFiles, extractImageFiles, replaceRange } from '$lib/composer';
-	import { composerEnterHandler } from '$lib/composer-keys';
-	import { filterSkillCommands, skillMenuQuery, type SkillCommandOption } from '$lib/skill-command';
-	import { ATTACHMENT_ACCEPT, type AttachmentStore } from '$lib/attachments.svelte';
-	import type { EnterBehavior, SnippetKind } from '$lib/types/api';
+	import AttachmentThumbnails from '#lib/components/AttachmentThumbnails.svelte';
+	import SkillMenu from '#lib/components/chat/SkillMenu.svelte';
+	import SnippetAutocomplete from '#lib/components/chat/SnippetAutocomplete.svelte';
+	import {
+		autoResizeTextarea,
+		dragHasFiles,
+		extractImageFiles,
+		replaceRange,
+	} from '#lib/composer.js';
+	import { composerEnterHandler } from '#lib/composer-keys.js';
+	import {
+		filterSkillCommands,
+		skillMenuQuery,
+		type SkillCommandOption,
+	} from '#lib/skill-command.js';
+	import { ATTACHMENT_ACCEPT, type AttachmentStore } from '#lib/attachments.svelte.js';
+	import type { EnterBehavior, SnippetKind } from '#lib/types/api.js';
 
 	interface SkillCommand extends SkillCommandOption {
 		id: string;
