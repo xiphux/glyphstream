@@ -27,7 +27,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 /** What client.ts asks for. Restated rather than imported: importing it would
- *  pull in `$env/dynamic/private` through env.ts, and the constant is the
+ *  pull in the env and config layer through env.ts, and the constant is the
  *  subject here, not a dependency. */
 const REQUESTED = 268_435_456; // 256 MiB
 

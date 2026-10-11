@@ -8,6 +8,17 @@ import { defineConfig, type PluginOption } from 'vite';
 import { visualizer } from 'rollup-plugin-visualizer';
 import { WEB_MANIFEST_JSON } from './src/lib/web-manifest.ts';
 
+// Load .env into process.env, where $lib/server/env.ts reads everything (see
+// the note at its top for why not a Kit env module). Vite reads .env only for
+// its own `import.meta.env`, so without this `pnpm dev` would start with none
+// of it. Variables already set win, as they did under Kit. A missing file is
+// fine: production gets its environment from the host or container.
+try {
+	process.loadEnvFile();
+} catch {
+	// no .env
+}
+
 // Enable bundle analysis with `ANALYZE=1 pnpm build`. Generates a
 // gzip + brotli treemap at bundle-stats.html in the project root —
 // useful for spotting unexpected client-side dependencies (most often:

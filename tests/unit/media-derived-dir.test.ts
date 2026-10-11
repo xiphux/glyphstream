@@ -9,8 +9,8 @@
  * a re-encode rather than data. That makes them the wrong thing to put on the
  * big slow volume MEDIA_DIR may point at, and the right thing to keep local.
  *
- * These tests drive the REAL env module (mocking `$env/dynamic/private` rather
- * than `#lib/server/env.js`) against real temp directories, because the wiring is
+ * These tests drive the REAL env module (stubbing process.env rather than
+ * mocking `#lib/server/env.js`) against real temp directories, because the wiring is
  * the whole feature — a module that resolved the wrong root would still pass
  * every test that mocks `derivedDir()` alongside `mediaDir()`.
  *
@@ -31,8 +31,6 @@ import { dirname, join, resolve } from 'node:path';
 import { Buffer } from 'node:buffer';
 import { photoPng } from './_helpers/photo-png';
 
-const e = vi.hoisted(() => ({ vars: {} as Record<string, string | undefined> }));
-vi.mock('$env/dynamic/private', () => ({ env: e.vars }));
 vi.mock('#lib/server/endpoints/config.js', () => ({
 	getVisionConfig: () => ({ maxImageDim: 1568, imageQuality: 82 }),
 }));
@@ -57,24 +55,19 @@ function writeOriginal(bytes: Buffer, storagePath: string = STORAGE_PATH): void 
 beforeEach(() => {
 	media = mkdtempSync(join(tmpdir(), 'gs-media-'));
 	derived = mkdtempSync(join(tmpdir(), 'gs-derived-'));
-	// MUTATE the object rather than reassigning it: the mock factory runs once
-	// and captured this exact reference, so `e.vars = {...}` would swap in an
-	// object the module under test never sees — leaving every read on the
-	// defaults, where MEDIA_DIR and DERIVED_DIR happen to agree and the
-	// assertions pass without testing anything.
-	for (const k of Object.keys(e.vars)) delete e.vars[k];
-	e.vars.MEDIA_DIR = media;
-	e.vars.DERIVED_DIR = derived;
+	vi.stubEnv('MEDIA_DIR', media);
+	vi.stubEnv('DERIVED_DIR', derived);
 });
 
 afterEach(() => {
+	vi.unstubAllEnvs();
 	rmSync(media, { recursive: true, force: true });
 	rmSync(derived, { recursive: true, force: true });
 });
 
 describe('derivedDir()', () => {
 	it('falls back to MEDIA_DIR when unset, so existing installs do not move', () => {
-		delete e.vars.DERIVED_DIR;
+		vi.stubEnv('DERIVED_DIR', undefined);
 		expect(derivedDir()).toBe(media);
 		expect(derivedDir()).toBe(mediaDir());
 	});
@@ -148,7 +141,7 @@ describe('an unusable DERIVED_DIR degrades instead of failing the request', () =
 	beforeEach(() => {
 		const blocker = join(media, 'not-a-directory');
 		writeFileSync(blocker, 'this is a file, so nothing can be mkdir-ed beneath it');
-		e.vars.DERIVED_DIR = join(blocker, 'derived');
+		vi.stubEnv('DERIVED_DIR', join(blocker, 'derived'));
 		vi.spyOn(console, 'warn').mockImplementation(() => {});
 	});
 

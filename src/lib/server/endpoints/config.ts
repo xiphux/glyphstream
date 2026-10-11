@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { env } from '$env/dynamic/private';
+import process from 'node:process';
 import { parse as parseToml } from 'smol-toml';
 import { configPath } from '../env';
 import { parseModelId } from './model-id';
@@ -344,8 +344,7 @@ export function loadNotificationsConfig(path = configPath()): LoadedNotification
 
 	const envName = requireString(block.vapid_private_env, 'vapid_private_env', at);
 
-	// @migration-task Rewrite dynamic env lookup manually.
-	const envValue = env[envName];
+	const envValue = process.env[envName];
 	if (!envValue) {
 		throw new ConfigError(
 			`${at}: vapid_private_env="${envName}" but env var ${envName} is unset or empty`,
@@ -896,8 +895,7 @@ export function loadSearchConfig(path = configPath()): LoadedSearchConfig | null
 	if (block.api_key_env !== undefined) {
 		const envName = requireString(block.api_key_env, 'api_key_env', at);
 
-		// @migration-task Rewrite dynamic env lookup manually.
-		const envValue = env[envName];
+		const envValue = process.env[envName];
 		if (!envValue) {
 			throw new ConfigError(
 				`${at}: api_key_env="${envName}" but env var ${envName} is unset or empty`,
@@ -1077,11 +1075,9 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 	if (raw.api_key_env !== undefined) {
 		const envName = requireString(raw.api_key_env, 'api_key_env', at);
 
-		// @migration-task Rewrite dynamic env lookup manually.
-		// Read via SvelteKit's $env/dynamic/private so .env values picked up
-		// in dev (Vite doesn't populate process.env from .env). In production
-		// adapter-node both `env` and process.env reflect the host env.
-		const envValue = env[envName];
+		// A runtime name, so process.env rather than a Kit env module — see the
+		// note at the top of $lib/server/env.ts.
+		const envValue = process.env[envName];
 		if (!envValue) {
 			throw new ConfigError(
 				`${at}: api_key_env="${envName}" but env var ${envName} is unset or empty`,

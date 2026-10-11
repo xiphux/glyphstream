@@ -5,12 +5,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { McpConfigError, loadMcpServers } from '#lib/server/mcp/config.js';
 
-const envStub = vi.hoisted(() => ({ values: {} as Record<string, string> }));
-vi.mock('$env/dynamic/private', () => ({
-	env: new Proxy({} as Record<string, string>, {
-		get: (_t, k: string) => envStub.values[k],
-	}),
-}));
+// Referenced env vars are resolved from process.env; tests set them with
+// vi.stubEnv, and afterEach restores the real environment.
 
 const tmpDirs: string[] = [];
 function writeConfig(toml: string): string {
@@ -23,7 +19,7 @@ function writeConfig(toml: string): string {
 
 afterEach(() => {
 	while (tmpDirs.length) rmSync(tmpDirs.pop()!, { recursive: true, force: true });
-	envStub.values = {};
+	vi.unstubAllEnvs();
 });
 
 describe('loadMcpServers', () => {
@@ -176,7 +172,7 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
 	});
 
 	it('resolves env_from entries to env-var values', () => {
-		envStub.values.LINEAR_API_KEY = 'sk-linear-123';
+		vi.stubEnv('LINEAR_API_KEY', 'sk-linear-123');
 		const path = writeConfig(`
 [[mcp_servers]]
 id = "linear-local"
@@ -192,7 +188,7 @@ env_from = { LINEAR_API_KEY = "LINEAR_API_KEY" }
 	});
 
 	it('resolves api_key_env on http servers', () => {
-		envStub.values.LINEAR_TOKEN = 'tok-abc';
+		vi.stubEnv('LINEAR_TOKEN', 'tok-abc');
 		const path = writeConfig(`
 [[mcp_servers]]
 id = "linear"

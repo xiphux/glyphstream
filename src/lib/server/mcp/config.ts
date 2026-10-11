@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { env } from '$env/dynamic/private';
+import process from 'node:process';
 import { parse as parseToml } from 'smol-toml';
 import { configPath } from '../env';
 
@@ -243,8 +243,7 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 	if (raw.api_key_env !== undefined) {
 		const envName = requireString(raw.api_key_env, 'api_key_env', at);
 
-		// @migration-task Rewrite dynamic env lookup manually.
-		const envValue = env[envName];
+		const envValue = process.env[envName];
 		if (!envValue) {
 			throw new McpConfigError(
 				`${at}: api_key_env="${envName}" but env var ${envName} is unset or empty`,
@@ -269,8 +268,7 @@ function resolveEnvFrom(raw: unknown, at: string): Record<string, string> {
 	for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
 		const envName = requireString(value, `env_from.${key}`, at);
 
-		// @migration-task Rewrite dynamic env lookup manually.
-		const envValue = env[envName];
+		const envValue = process.env[envName];
 		if (!envValue) {
 			throw new McpConfigError(
 				`${at}: env_from.${key}="${envName}" but env var ${envName} is unset or empty`,
