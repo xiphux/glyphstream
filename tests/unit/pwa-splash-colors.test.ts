@@ -24,7 +24,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
-import { WEB_MANIFEST_JSON } from '$lib/web-manifest';
+import { WEB_MANIFEST_JSON } from '#lib/web-manifest.js';
 
 const appCss = readFileSync(fileURLToPath(new URL('../../src/app.css', import.meta.url)), 'utf-8');
 const splashDir = fileURLToPath(new URL('../../static/splash/', import.meta.url));

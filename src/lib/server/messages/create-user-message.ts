@@ -10,11 +10,11 @@
  */
 
 import { error } from '@sveltejs/kit';
-import { setConversationTitle } from '$lib/server/db/queries/conversations';
-import { getMediaForUser, linkMessageMedia } from '$lib/server/db/queries/media';
-import { appendMessage, resolveParentForUserMessage } from '$lib/server/db/queries/messages';
-import type { CompareSelection } from '$lib/fanout';
-import type { ChatMessage, MessagePart } from '$lib/types/api';
+import { setConversationTitle } from '#lib/server/db/queries/conversations.js';
+import { getMediaForUser, linkMessageMedia } from '#lib/server/db/queries/media.js';
+import { appendMessage, resolveParentForUserMessage } from '#lib/server/db/queries/messages.js';
+import type { CompareSelection } from '#lib/fanout.js';
+import type { ChatMessage, MessagePart } from '#lib/types/api.js';
 
 const TITLE_PREVIEW_MAX = 60;
 

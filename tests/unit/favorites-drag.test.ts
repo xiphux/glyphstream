@@ -8,9 +8,10 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('$app/navigation', () => ({
 	invalidateAll: vi.fn(async () => {}),
 }));
-vi.mock('$lib/toast.svelte', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock('#lib/toast.svelte.js', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
-const { computeAutoScrollSpeed, computeDropPosition } = await import('$lib/favorites-drag.svelte');
+const { computeAutoScrollSpeed, computeDropPosition } =
+	await import('#lib/favorites-drag.svelte.js');
 
 describe('computeDropPosition', () => {
 	const rect = { top: 100, height: 40 }; // midpoint at y=120

@@ -1,9 +1,9 @@
 import { error } from '@sveltejs/kit';
-import { listOAuthAccountsForUser } from '$lib/server/db/queries/oauth-accounts';
-import { listCredentialSummariesForUser } from '$lib/server/db/queries/passkey';
-import { listSessionsForUser } from '$lib/server/auth/session';
-import { passkeyLoginEnabled } from '$lib/server/env';
-import { describeProviders } from '$lib/server/auth/oauth/registry';
+import { listOAuthAccountsForUser } from '#lib/server/db/queries/oauth-accounts.js';
+import { listCredentialSummariesForUser } from '#lib/server/db/queries/passkey.js';
+import { listSessionsForUser } from '#lib/server/auth/session.js';
+import { passkeyLoginEnabled } from '#lib/server/env.js';
+import { describeProviders } from '#lib/server/auth/oauth/registry.js';
 import type { PageServerLoad } from './$types';
 
 /**

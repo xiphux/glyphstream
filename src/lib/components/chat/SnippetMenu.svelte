@@ -11,8 +11,8 @@
 	Selecting a row inserts the snippet body at the caret — it never submits.
 -->
 <script lang="ts">
-	import AutocompleteMenu from '$lib/components/chat/AutocompleteMenu.svelte';
-	import type { PromptSnippet } from '$lib/types/api';
+	import AutocompleteMenu from '#lib/components/chat/AutocompleteMenu.svelte';
+	import type { PromptSnippet } from '#lib/types/api.js';
 
 	interface Props {
 		snippets: PromptSnippet[];

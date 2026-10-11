@@ -9,7 +9,7 @@
 	Cancel + destructive-action buttons.
 -->
 <script lang="ts">
-	import { confirmDialog } from '$lib/confirm.svelte';
+	import { confirmDialog } from '#lib/confirm.svelte.js';
 	import BaseDialog from './BaseDialog.svelte';
 </script>
 

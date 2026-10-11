@@ -16,9 +16,9 @@
  *      of those siblings.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AVATAR_BRANCH, registerInFlight, resetInFlight } from '$lib/server/streaming/in-flight';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
-import type { ChatMessage } from '$lib/types/api';
+import { AVATAR_BRANCH, registerInFlight, resetInFlight } from '#lib/server/streaming/in-flight.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
+import type { ChatMessage } from '#lib/types/api.js';
 
 const mocks = vi.hoisted(() => ({
 	getConversationMeta: vi.fn<(...a: unknown[]) => unknown>(),
@@ -29,11 +29,11 @@ const mocks = vi.hoisted(() => ({
 	resolveReplyLeaf: vi.fn<(...a: unknown[]) => string>(),
 }));
 
-vi.mock('$lib/server/db/queries/conversations', () => ({
+vi.mock('#lib/server/db/queries/conversations.js', () => ({
 	getConversationMeta: (...a: unknown[]) => mocks.getConversationMeta(...a),
 	setFanoutParent: (...a: unknown[]) => mocks.setFanoutParent(...a),
 }));
-vi.mock('$lib/server/db/queries/messages', () => ({
+vi.mock('#lib/server/db/queries/messages.js', () => ({
 	getMessage: (...a: unknown[]) => mocks.getMessage(...a),
 	getSiblingAssistants: (...a: unknown[]) => mocks.getSiblingAssistants(...a),
 	hasChildMessages: (...a: unknown[]) => mocks.hasChildMessages(...a),

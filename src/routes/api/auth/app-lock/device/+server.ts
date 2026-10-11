@@ -7,7 +7,7 @@
  * server/auth/app-lock.ts. Unauthenticated on purpose: it's called from the
  * login page too, and the marker can only ever ADD a restriction.
  */
-import { setInstalledAppCookie } from '$lib/server/auth/app-lock';
+import { setInstalledAppCookie } from '#lib/server/auth/app-lock.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = ({ cookies }) => {

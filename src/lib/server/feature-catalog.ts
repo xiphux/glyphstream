@@ -1,7 +1,7 @@
 /**
  * Assemble the per-conversation feature-category list that the composer
  * UI consumes. Built-in categories ('web', 'personalization') come from
- * `$lib/types/api`; MCP-server categories (`mcp:<server-id>`) come from
+ * `#lib/types/api`; MCP-server categories (`mcp:<server-id>`) come from
  * the live MCP registry.
  *
  * Must run server-side — the MCP registry isn't exposed to the browser
@@ -17,7 +17,7 @@ import {
 	BUILTIN_FEATURE_CATEGORIES,
 	FEATURE_CATEGORY_LABELS,
 	type FeatureCategoryEntry,
-} from '$lib/types/api';
+} from '#lib/types/api.js';
 import { listServerCatalog } from './mcp/registry';
 
 export type { FeatureCategoryEntry };

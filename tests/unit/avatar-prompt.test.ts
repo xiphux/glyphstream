@@ -7,7 +7,7 @@
  * stop it either; it just has to make the answer findable.
  */
 import { describe, expect, it } from 'vitest';
-import { AVATAR_DESCRIPTION_PROMPT, extractAvatarPrompt } from '$lib/avatar-prompt';
+import { AVATAR_DESCRIPTION_PROMPT, extractAvatarPrompt } from '#lib/avatar-prompt.js';
 
 describe('extractAvatarPrompt', () => {
 	it('drops in-character prose that precedes the description', () => {

@@ -11,7 +11,7 @@
 	submits.
 -->
 <script lang="ts">
-	import AutocompleteMenu from '$lib/components/chat/AutocompleteMenu.svelte';
+	import AutocompleteMenu from '#lib/components/chat/AutocompleteMenu.svelte';
 
 	interface SkillItem {
 		id: string;

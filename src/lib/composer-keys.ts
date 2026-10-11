@@ -1,4 +1,4 @@
-import type { EnterBehavior } from '$lib/types/api';
+import type { EnterBehavior } from '#lib/types/api.js';
 
 /**
  * Build a keydown handler for a message composer textarea that honors

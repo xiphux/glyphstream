@@ -12,18 +12,18 @@
  */
 
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
 import {
 	deletePushSubscriptionByEndpoint,
 	upsertPushSubscription,
-} from '$lib/server/db/queries/push-subscriptions';
-import { getVapidPublicKey } from '$lib/server/push/web-push';
+} from '#lib/server/db/queries/push-subscriptions.js';
+import { getVapidPublicKey } from '#lib/server/push/web-push.js';
 import {
 	assertHostnameRoutable,
 	assertHttpScheme,
 	UrlPolicyError,
-} from '$lib/server/tools/url-policy-base';
+} from '#lib/server/tools/url-policy-base.js';
 import type { RequestHandler } from './$types';
 
 interface SubscribeBody {

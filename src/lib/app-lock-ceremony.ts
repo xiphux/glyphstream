@@ -4,7 +4,7 @@
  * passkey works before switching the lock on). Fetches options restricted to
  * the signed-in account's passkeys and runs the OS prompt — Face ID on iOS.
  */
-import { errorMessageFromResponse } from '$lib/fetch-error';
+import { errorMessageFromResponse } from '#lib/fetch-error.js';
 
 export type AppLockAssertionResult =
 	| { ok: true; response: unknown }

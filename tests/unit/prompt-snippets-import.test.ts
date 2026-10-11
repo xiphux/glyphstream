@@ -4,7 +4,7 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
@@ -12,15 +12,18 @@ vi.mock('$lib/server/db/client', () => ({
 import {
 	parseSnippetMarkdown,
 	serializeSnippetMarkdown,
-} from '$lib/server/prompt-snippets/markdown';
-import { importSnippets, MAX_IMPORT_SNIPPETS } from '$lib/server/prompt-snippets/import-snippets';
+} from '#lib/server/prompt-snippets/markdown.js';
+import {
+	importSnippets,
+	MAX_IMPORT_SNIPPETS,
+} from '#lib/server/prompt-snippets/import-snippets.js';
 import {
 	MAX_BODY_LENGTH,
 	MAX_NAME_LENGTH,
 	MAX_TAGS,
 	MAX_TAG_LENGTH,
-} from '$lib/server/prompt-snippets/validate';
-import { listPromptSnippetsForUser } from '$lib/server/db/queries/prompt-snippets';
+} from '#lib/server/prompt-snippets/validate.js';
+import { listPromptSnippetsForUser } from '#lib/server/db/queries/prompt-snippets.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

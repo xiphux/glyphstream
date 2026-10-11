@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { validateCreateInput, validateParameters } from '$lib/server/custom-models/validate';
+import { validateCreateInput, validateParameters } from '#lib/server/custom-models/validate.js';
 
 // Stub the endpoint registry so the validator's "is this a known endpoint?"
 // check has predictable input. Otherwise validateCreateInput would try to
 // load config.toml from disk.
-vi.mock('$lib/server/endpoints/registry', () => ({
+vi.mock('#lib/server/endpoints/registry.js', () => ({
 	getEndpoint: (id: string) =>
 		id === 'bridge' ? { id: 'bridge', baseUrl: 'http://x', apiKey: null } : undefined,
 }));
@@ -12,7 +12,7 @@ vi.mock('$lib/server/endpoints/registry', () => ({
 // Stub the feature-catalog registry so the MCP category check has
 // predictable input. v1 registers two built-ins + the categories below
 // for the suite; tests can add more via mockReturnValueOnce when needed.
-vi.mock('$lib/server/feature-catalog', () => ({
+vi.mock('#lib/server/feature-catalog.js', () => ({
 	getRegisteredCategoryIds: () =>
 		new Set(['web', 'personalization', 'code_interpreter', 'mcp:filesystem']),
 }));

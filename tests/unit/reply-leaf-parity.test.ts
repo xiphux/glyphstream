@@ -17,17 +17,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
-import type { ChatMessage, MessagePart } from '$lib/types/api';
+import type { ChatMessage, MessagePart } from '#lib/types/api.js';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', async (orig) => {
-	const real = await orig<typeof import('$lib/server/db/client')>();
+vi.mock('#lib/server/db/client.js', async (orig) => {
+	const real = await orig<typeof import('#lib/server/db/client.js')>();
 	return { ...real, getDb: () => mocks.testDb, closeDb: () => {} };
 });
 
-import { createConversation } from '$lib/server/db/queries/conversations';
-import { appendMessage, resolveReplyLeaf } from '$lib/server/db/queries/messages';
-import { lastReplyMessage } from '$lib/chat-render';
+import { createConversation } from '#lib/server/db/queries/conversations.js';
+import { appendMessage, resolveReplyLeaf } from '#lib/server/db/queries/messages.js';
+import { lastReplyMessage } from '#lib/chat-render.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

@@ -13,10 +13,10 @@
 	outside click, which is a bad place to be editing a paragraph.
 -->
 <script lang="ts">
-	import BaseDialog from '$lib/components/BaseDialog.svelte';
+	import BaseDialog from '#lib/components/BaseDialog.svelte';
 	import ModelPicker from './ModelPicker.svelte';
-	import type { CompareSelection } from '$lib/fanout';
-	import type { ModelEntry } from '$lib/types/api';
+	import type { CompareSelection } from '#lib/fanout.js';
+	import type { ModelEntry } from '#lib/types/api.js';
 
 	interface Props {
 		open: boolean;

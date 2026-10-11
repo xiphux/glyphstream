@@ -14,7 +14,7 @@ import {
 	parseSSEStream,
 	SSEBufferOverflowError,
 	type SSERecord,
-} from '$lib/server/streaming/sse-parser';
+} from '#lib/server/streaming/sse-parser.js';
 
 const MAX_SSE_BUFFER_BYTES = 8 * 1024 * 1024;
 

@@ -25,15 +25,15 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
 
-import { appendMessage, setActiveLeafMessageId } from '$lib/server/db/queries/messages';
-import { createConversation } from '$lib/server/db/queries/conversations';
-import { insertMedia, linkMessageMedia } from '$lib/server/db/queries/media';
-import { media } from '$lib/server/db/schema';
+import { appendMessage, setActiveLeafMessageId } from '#lib/server/db/queries/messages.js';
+import { createConversation } from '#lib/server/db/queries/conversations.js';
+import { insertMedia, linkMessageMedia } from '#lib/server/db/queries/media.js';
+import { media } from '#lib/server/db/schema.js';
 
 // drizzle v1 stores each migration as `<timestamp>_<name>/migration.sql`
 // rather than the old flat `NNNN_<name>.sql`. Resolve by name suffix so the

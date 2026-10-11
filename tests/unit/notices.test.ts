@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONVERSATION_MISSING_NOTICE, noticeMessage } from '$lib/notices';
+import { CONVERSATION_MISSING_NOTICE, noticeMessage } from '#lib/notices.js';
 
 describe('noticeMessage', () => {
 	it('resolves a known notice', () => {

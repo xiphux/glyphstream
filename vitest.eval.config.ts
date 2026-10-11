@@ -9,7 +9,7 @@ import { defineConfig } from 'vitest/config';
  * and measure quality rather than asserting pass/fail. Keeping them out of the
  * hermetic unit suite keeps CI deterministic. Run with `pnpm eval`.
  *
- * sveltekit() is included so the harness resolves `$lib` + `$env/dynamic/private`
+ * sveltekit() is included so the harness resolves `#lib` + `$env/dynamic/private`
  * exactly the way the app does — the eval drives the real retrieval pipeline.
  */
 export default defineConfig({

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isWithinWindow } from '$lib/server/memory/dream-window';
+import { isWithinWindow } from '#lib/server/memory/dream-window.js';
 
 // A fixed UTC instant: 03:00 UTC on a winter date (so America/New_York = UTC-5).
 const AT_0300_UTC = new Date('2026-01-15T03:00:00Z');

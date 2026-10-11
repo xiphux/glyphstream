@@ -30,7 +30,7 @@ import type {
 	GalleryUnitsPage,
 	MediaKind,
 	MediaListItem,
-} from '$lib/types/api';
+} from '#lib/types/api.js';
 
 type GalleryUnitOpts = {
 	kind?: 'image' | 'video';

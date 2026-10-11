@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { raiseAppBadge, syncAppBadge, syncAppBadgeFromWindow } from '$lib/sw/badge';
+import { raiseAppBadge, syncAppBadge, syncAppBadgeFromWindow } from '#lib/sw/badge.js';
 
 /**
  * The badge is derived from the notification tray rather than from a

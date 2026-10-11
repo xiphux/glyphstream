@@ -3,18 +3,18 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
 
-import { createConversation } from '$lib/server/db/queries/conversations';
-import { appendMessage, getMessage, walkActiveBranch } from '$lib/server/db/queries/messages';
-import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
-import { _resetForTests, register } from '$lib/server/tools/registry';
-import { executeToolCalls, executeOneToolCall } from '$lib/server/streaming/tool-execution';
-import type { ChatMessage, MessagePart, StreamEvent } from '$lib/types/api';
-import type { Tool } from '$lib/server/tools/types';
+import { createConversation } from '#lib/server/db/queries/conversations.js';
+import { appendMessage, getMessage, walkActiveBranch } from '#lib/server/db/queries/messages.js';
+import { serializeBranchForUpstream } from '#lib/server/endpoints/serialize-upstream.js';
+import { _resetForTests, register } from '#lib/server/tools/registry.js';
+import { executeToolCalls, executeOneToolCall } from '#lib/server/streaming/tool-execution.js';
+import type { ChatMessage, MessagePart, StreamEvent } from '#lib/types/api.js';
+import type { Tool } from '#lib/server/tools/types.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

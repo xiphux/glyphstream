@@ -15,7 +15,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import DeleteConversationDialog from '$lib/components/DeleteConversationDialog.svelte';
+import DeleteConversationDialog from '#lib/components/DeleteConversationDialog.svelte';
 
 const realFetch = globalThis.fetch;
 

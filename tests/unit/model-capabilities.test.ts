@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { imageAttachment, capabilityPill, acceptsImageInput } from '$lib/model-capabilities';
+import { imageAttachment, capabilityPill, acceptsImageInput } from '#lib/model-capabilities.js';
 
 describe('imageAttachment', () => {
 	// The tri-state from openai-api-bridge/docs/model-capabilities.md. Absence is

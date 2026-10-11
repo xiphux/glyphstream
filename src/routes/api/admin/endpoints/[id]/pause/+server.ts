@@ -1,9 +1,9 @@
 import { error, json } from '@sveltejs/kit';
-import { requireAdmin } from '$lib/server/auth/guard';
-import { ConfigError, type LoadedEndpoint } from '$lib/server/endpoints/config';
-import { pauseResourceGroup } from '$lib/server/endpoints/pause';
-import { getEndpoint } from '$lib/server/endpoints/registry';
-import { getEndpointsStatus } from '$lib/server/endpoints/status';
+import { requireAdmin } from '#lib/server/auth/guard.js';
+import { ConfigError, type LoadedEndpoint } from '#lib/server/endpoints/config.js';
+import { pauseResourceGroup } from '#lib/server/endpoints/pause.js';
+import { getEndpoint } from '#lib/server/endpoints/registry.js';
+import { getEndpointsStatus } from '#lib/server/endpoints/status.js';
 import type { RequestHandler } from './$types';
 
 /**

@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import { generateId } from '../../util/id';
-import type { CustomModel, CustomModelParameters, FeatureCategory } from '$lib/types/api';
+import type { CustomModel, CustomModelParameters, FeatureCategory } from '#lib/types/api.js';
 import { getDb } from '../client';
 import { customModels, media } from '../schema';
 import { parseDisabledFeatures, parseModelParameters } from './json-columns';

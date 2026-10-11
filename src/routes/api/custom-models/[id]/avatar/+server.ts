@@ -16,9 +16,9 @@
  */
 
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { setCustomModelAvatar } from '$lib/server/db/queries/custom-models';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { setCustomModelAvatar } from '#lib/server/db/queries/custom-models.js';
 import type { RequestHandler } from './$types';
 
 interface SetAvatarBody {

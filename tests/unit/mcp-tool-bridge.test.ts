@@ -4,9 +4,9 @@ const mocks = vi.hoisted(() => ({
 	callMcpTool: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 }));
 
-vi.mock('$lib/server/mcp/registry', async () => {
-	const actual = await vi.importActual<typeof import('$lib/server/mcp/registry')>(
-		'$lib/server/mcp/registry',
+vi.mock('#lib/server/mcp/registry.js', async () => {
+	const actual = await vi.importActual<typeof import('#lib/server/mcp/registry.js')>(
+		'#lib/server/mcp/registry.js',
 	);
 	return {
 		...actual,
@@ -14,8 +14,8 @@ vi.mock('$lib/server/mcp/registry', async () => {
 	};
 });
 
-import { buildRegisteredName, flattenMcpResult, mcpToolFor } from '$lib/server/mcp/tool-bridge';
-import type { LoadedMcpServer } from '$lib/server/mcp/config';
+import { buildRegisteredName, flattenMcpResult, mcpToolFor } from '#lib/server/mcp/tool-bridge.js';
+import type { LoadedMcpServer } from '#lib/server/mcp/config.js';
 
 const FAKE_SERVER: LoadedMcpServer = {
 	id: 'fs',

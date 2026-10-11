@@ -7,8 +7,8 @@
  * path in the insertion hot path, and the counter is not security-relevant.
  * The bump itself is still user-scoped, so it can't touch another user's row.
  */
-import { requireUser } from '$lib/server/auth/guard';
-import { bumpSnippetUsage } from '$lib/server/db/queries/prompt-snippets';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { bumpSnippetUsage } from '#lib/server/db/queries/prompt-snippets.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = ({ locals, params }) => {

@@ -8,7 +8,7 @@
  * worth direct coverage. Because the github route shares the dispatcher with
  * every other provider, these also cover the generic callback logic.
  *
- * Pattern: mock `$lib/server/db/client` to hand back an in-memory test DB,
+ * Pattern: mock `#lib/server/db/client.js` to hand back an in-memory test DB,
  * mock the provider registry so `getProvider('github')` returns a stub whose
  * `fetchProfile` is deterministic, construct a minimal fake event, call the
  * handler, and assert on the thrown redirect / DB side effects.
@@ -16,9 +16,9 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isRedirect, type Cookies, type Redirect } from '@sveltejs/kit';
-import { OAuth2RequestError } from '$lib/server/auth/oauth/oauth2';
+import { OAuth2RequestError } from '#lib/server/auth/oauth/oauth2.js';
 import { eq } from 'drizzle-orm';
-import type { OAuthProfile } from '$lib/server/auth/oauth/types';
+import type { OAuthProfile } from '#lib/server/auth/oauth/types.js';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedOAuthAccount, seedUser } from './_helpers/seed';
 
@@ -30,7 +30,7 @@ const mocks = vi.hoisted(() => ({
 	duringProfileFetch: null as (() => void) | null,
 }));
 
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
@@ -38,7 +38,7 @@ vi.mock('$lib/server/db/client', () => ({
 // Stub the registry so the route's getProvider('github') hands back a fake
 // github provider whose fetchProfile is deterministic — keeps the OAuth
 // round-trip out of the test without touching the dispatcher logic.
-vi.mock('$lib/server/auth/oauth/registry', () => ({
+vi.mock('#lib/server/auth/oauth/registry.js', () => ({
 	getProvider: (id: string) => ({
 		id,
 		label: () => id,
@@ -57,7 +57,7 @@ vi.mock('$lib/server/auth/oauth/registry', () => ({
 	}),
 }));
 
-vi.mock('$lib/server/env', () => ({
+vi.mock('#lib/server/env.js', () => ({
 	authSecret: () => 'test-secret-do-not-use-in-prod',
 	// Reached via setSessionCookie when the callback mints a session. False
 	// here so the fake cookie jar sees the same shape a local http:// dev
@@ -68,12 +68,12 @@ vi.mock('$lib/server/env', () => ({
 }));
 
 import { GET } from '../../src/routes/api/auth/github/callback/+server';
-import { LINK_STATE_COOKIE, STATE_COOKIE } from '$lib/server/auth/oauth/cookies';
-import { SETUP_OAUTH_CARRY_COOKIE } from '$lib/server/auth/setup';
-import { JOIN_OAUTH_CARRY_COOKIE } from '$lib/server/auth/join';
-import { createInvite, deleteInvite } from '$lib/server/db/queries/invites';
-import { sign } from '$lib/server/auth/signed-cookies';
-import { invites, oauthAccounts, users } from '$lib/server/db/schema';
+import { LINK_STATE_COOKIE, STATE_COOKIE } from '#lib/server/auth/oauth/cookies.js';
+import { SETUP_OAUTH_CARRY_COOKIE } from '#lib/server/auth/setup.js';
+import { JOIN_OAUTH_CARRY_COOKIE } from '#lib/server/auth/join.js';
+import { createInvite, deleteInvite } from '#lib/server/db/queries/invites.js';
+import { sign } from '#lib/server/auth/signed-cookies.js';
+import { invites, oauthAccounts, users } from '#lib/server/db/schema.js';
 
 function fakeCookies(initial: Record<string, string> = {}) {
 	const store = new Map(Object.entries(initial));

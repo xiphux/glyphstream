@@ -3,26 +3,26 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
 
 // No embeddings — exercise the pure-SQLite ids path (no dense leg to interfere).
-vi.mock('$lib/server/retrieval/embeddings-config', () => ({
+vi.mock('#lib/server/retrieval/embeddings-config.js', () => ({
 	resolveRelevanceConfig: () => undefined,
 }));
 
 // Partial-mock the queries module so we can force the telemetry write to throw
 // while every other query stays real.
 const recordMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/db/queries/memories', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('$lib/server/db/queries/memories')>();
+vi.mock('#lib/server/db/queries/memories.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/server/db/queries/memories.js')>();
 	return { ...actual, recordMemoryRecall: recordMock };
 });
 
-import { recallMemoryTool } from '$lib/server/tools/memory';
-import { createMemory } from '$lib/server/db/queries/memories';
+import { recallMemoryTool } from '#lib/server/tools/memory.js';
+import { createMemory } from '#lib/server/db/queries/memories.js';
 
 const ctx = {
 	userId: '',

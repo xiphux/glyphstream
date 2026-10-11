@@ -6,7 +6,7 @@ import { defineConfig } from 'vitest/config';
 /**
  * Vitest config — kept separate from vite.config.ts so the production
  * build doesn't inherit test-only setup. Includes sveltekit() so test
- * files can import from `$lib/*` aliases the same way runtime code does.
+ * files can import from `#lib/*` aliases the same way runtime code does.
  *
  * svelteTesting() flips resolve.conditions to prefer the 'browser'
  * export of Svelte over its SSR ('node') export, so testing-library's

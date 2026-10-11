@@ -2,10 +2,10 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { DropdownMenu } from 'bits-ui';
 	import { ArchiveRestore, MoreVertical, Trash2 } from '@lucide/svelte';
-	import type { ConversationSummary } from '$lib/types/api';
-	import DeleteConversationDialog from '$lib/components/DeleteConversationDialog.svelte';
-	import { toast } from '$lib/toast.svelte';
-	import { setArchived, deleteConversation } from '$lib/conversation-actions';
+	import type { ConversationSummary } from '#lib/types/api.js';
+	import DeleteConversationDialog from '#lib/components/DeleteConversationDialog.svelte';
+	import { toast } from '#lib/toast.svelte.js';
+	import { setArchived, deleteConversation } from '#lib/conversation-actions.js';
 	import { resolve } from '$app/paths';
 
 	let { data } = $props<{ data: { archivedConversations: ConversationSummary[] } }>();
@@ -61,7 +61,7 @@
 	}
 
 	function openConversation(id: string) {
-		void goto(resolve(`/chat/${id}`));
+		void goto(resolve(`chat/${id}`));
 	}
 </script>
 

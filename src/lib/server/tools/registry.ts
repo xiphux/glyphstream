@@ -42,7 +42,7 @@ export function list(): Tool[] {
  *    connection, ...) isn't present in this deployment.
  *  - `excludeCategories` drops tools whose `metadata.category` is in the
  *    list — the per-conversation opt-out path. See FEATURE_CATEGORIES
- *    in `$lib/types/api`.
+ *    in `#lib/types/api.js`.
  *
  *  Tools that omit either signal default to always-on. Returns an empty
  *  array when nothing remains (callers should treat that as "omit tools

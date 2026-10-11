@@ -27,7 +27,7 @@ import {
 	type MediaRelaySink,
 } from './media-relay';
 import { errorMessage, isAbortError } from './sse-transport';
-import type { StreamErrorEvent, StreamProgressEvent } from '$lib/types/api';
+import type { StreamErrorEvent, StreamProgressEvent } from '#lib/types/api.js';
 
 const DEBUG = logLevel() === 'debug';
 

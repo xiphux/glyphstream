@@ -4,7 +4,7 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
+vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 
 import {
 	createConversation,
@@ -12,16 +12,16 @@ import {
 	listConversationsNeedingSummary,
 	listConversationSummariesForOverview,
 	setConversationSummary,
-} from '$lib/server/db/queries/conversations';
+} from '#lib/server/db/queries/conversations.js';
 import {
 	getConversationOverview,
 	getConversationOverviewMeta,
 	listUsersNeedingOverview,
 	setConversationOverview,
-} from '$lib/server/db/queries/users';
-import { appendMessage } from '$lib/server/db/queries/messages';
-import { searchConversations } from '$lib/server/db/queries/search';
-import { conversations } from '$lib/server/db/schema';
+} from '#lib/server/db/queries/users.js';
+import { appendMessage } from '#lib/server/db/queries/messages.js';
+import { searchConversations } from '#lib/server/db/queries/search.js';
+import { conversations } from '#lib/server/db/schema.js';
 
 const NOW = 10_000_000_000_000;
 const SETTLE = 3_600_000; // 1h

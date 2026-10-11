@@ -19,7 +19,7 @@ import { chatCompletionSync } from '../endpoints/client';
 import type { LoadedEndpoint } from '../endpoints/config';
 import type { ResolvedTaskModel } from './task-model';
 import { sanitizeModelLabel } from './sanitize-label';
-import { truncateEllipsis } from '$lib/text';
+import { truncateEllipsis } from '#lib/text.js';
 
 // Matches the cap the save_memory tool enforces on model-authored topics, so a
 // backfilled label and a tool-authored one render at the same scale.

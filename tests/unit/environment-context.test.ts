@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { composeEnvironmentBlock } from '$lib/server/chat/environment-context';
+import { composeEnvironmentBlock } from '#lib/server/chat/environment-context.js';
 
 describe('composeEnvironmentBlock', () => {
 	it('names the current date', () => {

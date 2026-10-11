@@ -19,12 +19,12 @@ const mocks = vi.hoisted(() => ({
 	verified: [] as string[],
 	passkeysEnabled: true,
 }));
-vi.mock('$lib/server/env', async (importOriginal) => ({
-	...(await importOriginal<typeof import('$lib/server/env')>()),
+vi.mock('#lib/server/env.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/server/env.js')>()),
 	passkeyLoginEnabled: () => mocks.passkeysEnabled,
 }));
-vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
-vi.mock('$lib/server/push/web-push', () => ({
+vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
+vi.mock('#lib/server/push/web-push.js', () => ({
 	sendPushNotification: vi.fn(async (_sub: unknown, payload: string) => {
 		mocks.sendCalls.push(payload);
 		return { ok: true };
@@ -33,8 +33,8 @@ vi.mock('$lib/server/push/web-push', () => ({
 // The WebAuthn signature itself is covered by the passkey tests; here the
 // question is what the app-lock layer does AROUND it — which credential it
 // accepts, and what it writes afterwards.
-vi.mock('$lib/server/auth/passkey', async (importOriginal) => ({
-	...(await importOriginal<typeof import('$lib/server/auth/passkey')>()),
+vi.mock('#lib/server/auth/passkey.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/server/auth/passkey.js')>()),
 	verifyStoredCredentialAssertion: vi.fn(async (_r: unknown, _c: string, cred: { id: string }) => {
 		mocks.verified.push(cred.id);
 	}),
@@ -46,16 +46,16 @@ import {
 	getAppLockTimeout,
 	initialUnlockedUntil,
 	setAppLockTimeout,
-} from '$lib/server/auth/app-lock';
-import { redirectUnauthenticatedPage, requireUser } from '$lib/server/auth/guard';
-import { createSession, validateSessionToken } from '$lib/server/auth/session';
-import { insertCredential } from '$lib/server/db/queries/passkey';
-import { upsertPushSubscription } from '$lib/server/db/queries/push-subscriptions';
-import { setUserPreferences } from '$lib/server/db/queries/user-preferences';
-import { sessions } from '$lib/server/db/schema';
-import { notifyConversationComplete } from '$lib/server/push/notify';
-import { GENERIC_TITLE } from '$lib/sw/notification-copy';
-import { APP_LOCK_TIMEOUTS_MS, appLockKeepAliveMs, safeUnlockReturn } from '$lib/app-lock';
+} from '#lib/server/auth/app-lock.js';
+import { redirectUnauthenticatedPage, requireUser } from '#lib/server/auth/guard.js';
+import { createSession, validateSessionToken } from '#lib/server/auth/session.js';
+import { insertCredential } from '#lib/server/db/queries/passkey.js';
+import { upsertPushSubscription } from '#lib/server/db/queries/push-subscriptions.js';
+import { setUserPreferences } from '#lib/server/db/queries/user-preferences.js';
+import { sessions } from '#lib/server/db/schema.js';
+import { notifyConversationComplete } from '#lib/server/push/notify.js';
+import { GENERIC_TITLE } from '#lib/sw/notification-copy.js';
+import { APP_LOCK_TIMEOUTS_MS, appLockKeepAliveMs, safeUnlockReturn } from '#lib/app-lock.js';
 import { PUT as putAppLock } from '../../src/routes/api/auth/app-lock/+server';
 import { load as loginLoad } from '../../src/routes/(auth)/login/+page.server';
 import { POST as unlockVerify } from '../../src/routes/api/auth/unlock/verify/+server';

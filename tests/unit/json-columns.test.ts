@@ -5,7 +5,7 @@ import {
 	parseDisabledFeatures,
 	parseMessageParts,
 	parseModelParameters,
-} from '$lib/server/db/queries/json-columns';
+} from '#lib/server/db/queries/json-columns.js';
 
 describe('parseMessageParts', () => {
 	it('parses a valid MessagePart array', () => {

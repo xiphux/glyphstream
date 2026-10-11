@@ -18,7 +18,7 @@ import { getMediaStore } from './disk-store';
 import { makeFaststart } from './faststart';
 import { mediaDir } from '../env';
 import { resolve } from 'node:path';
-import { truncateEllipsis } from '$lib/text';
+import { truncateEllipsis } from '#lib/text.js';
 
 const PROMPT_EXCERPT_MAX = 500;
 

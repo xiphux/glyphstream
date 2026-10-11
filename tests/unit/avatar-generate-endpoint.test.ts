@@ -24,11 +24,11 @@ import {
 	getInFlightEntries,
 	registerInFlight,
 	resetInFlight,
-} from '$lib/server/streaming/in-flight';
-import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '$lib/fanout';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
-import type { ImageRelayParams } from '$lib/server/streaming/image-relay';
-import { resetGenerationJobsForTests } from '$lib/server/generation/jobs';
+} from '#lib/server/streaming/in-flight.js';
+import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '#lib/fanout.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
+import type { ImageRelayParams } from '#lib/server/streaming/image-relay.js';
+import { resetGenerationJobsForTests } from '#lib/server/generation/jobs.js';
 
 const mocks = vi.hoisted(() => ({
 	getConversationMeta: vi.fn<(...a: unknown[]) => unknown>(),
@@ -42,19 +42,19 @@ const mocks = vi.hoisted(() => ({
 	notifyFanoutCompleteIfLast: vi.fn<(...a: unknown[]) => void>(),
 }));
 
-vi.mock('$lib/server/db/queries/conversations', () => ({
+vi.mock('#lib/server/db/queries/conversations.js', () => ({
 	getConversationMeta: (...a: unknown[]) => mocks.getConversationMeta(...a),
 	setConversationAvatar: (...a: unknown[]) => mocks.setConversationAvatar(...a),
 	getFanoutParent: (...a: unknown[]) => mocks.getFanoutParent(...a),
 }));
-vi.mock('$lib/server/db/queries/messages', () => ({
+vi.mock('#lib/server/db/queries/messages.js', () => ({
 	getMessage: (...a: unknown[]) => mocks.getMessage(...a),
 	getSiblingAssistants: (...a: unknown[]) => mocks.getSiblingAssistants(...a),
 	appendMessage: () => ({ id: 'appended' }),
 }));
 // The job's row is exercised by the generation-jobs tests; here only the
 // runner's translation of it into relay params is under test.
-vi.mock('$lib/server/db/queries/generation-jobs', () => ({
+vi.mock('#lib/server/db/queries/generation-jobs.js', () => ({
 	insertGenerationJob: () => {},
 	listGenerationJobs: () => [],
 	deleteGenerationJob: () => {},
@@ -64,19 +64,19 @@ vi.mock('$lib/server/db/queries/generation-jobs', () => ({
 	setGenerationJobUpstreamId: () => {},
 	consumeGenerationJob: () => true,
 }));
-vi.mock('$lib/server/endpoints/registry', () => ({
+vi.mock('#lib/server/endpoints/registry.js', () => ({
 	getEndpoint: (...a: unknown[]) => mocks.getEndpoint(...a),
 }));
-vi.mock('$lib/server/endpoints/list-models', () => ({
+vi.mock('#lib/server/endpoints/list-models.js', () => ({
 	listAllModels: (...a: unknown[]) => mocks.listAllModels(...a),
 }));
-vi.mock('$lib/server/streaming/image-relay', () => ({
+vi.mock('#lib/server/streaming/image-relay.js', () => ({
 	runImageRelay: (p: ImageRelayParams) => mocks.runImageRelay(p),
 }));
-vi.mock('$lib/server/messages/fanout-notify', () => ({
+vi.mock('#lib/server/messages/fanout-notify.js', () => ({
 	notifyFanoutCompleteIfLast: (...a: unknown[]) => mocks.notifyFanoutCompleteIfLast(...a),
 }));
-vi.mock('$lib/server/chat/private-seal', () => ({
+vi.mock('#lib/server/chat/private-seal.js', () => ({
 	resolveDisabledFeatures: () => [] as string[],
 }));
 

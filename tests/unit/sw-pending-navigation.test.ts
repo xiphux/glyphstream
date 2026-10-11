@@ -9,7 +9,7 @@ import {
 	forgetPendingNavigation,
 	isClaimable,
 	recordPendingNavigation,
-} from '$lib/sw/pending-navigation';
+} from '#lib/sw/pending-navigation.js';
 
 /** Minimal in-memory Cache Storage — enough of the surface the module uses. */
 function fakeCaches(opts: { failOpen?: boolean } = {}) {

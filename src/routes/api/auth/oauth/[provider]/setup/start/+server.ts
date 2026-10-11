@@ -12,16 +12,16 @@
  * `window.location.href` assignment) aren't policed the same way.
  */
 import { error, json } from '@sveltejs/kit';
-import { getEnabledProvider } from '$lib/server/auth/oauth/registry';
+import { getEnabledProvider } from '#lib/server/auth/oauth/registry.js';
 import {
 	CODE_VERIFIER_COOKIE,
 	STATE_COOKIE,
 	STATE_TTL_SECONDS,
-} from '$lib/server/auth/oauth/cookies';
-import { SETUP_OAUTH_CARRY_COOKIE, setupGate } from '$lib/server/auth/setup';
-import { sign, setCarryCookie } from '$lib/server/auth/signed-cookies';
-import { parseIdentityInput } from '$lib/server/auth/identity-input';
-import { parseJsonBody } from '$lib/server/http';
+} from '#lib/server/auth/oauth/cookies.js';
+import { SETUP_OAUTH_CARRY_COOKIE, setupGate } from '#lib/server/auth/setup.js';
+import { sign, setCarryCookie } from '#lib/server/auth/signed-cookies.js';
+import { parseIdentityInput } from '#lib/server/auth/identity-input.js';
+import { parseJsonBody } from '#lib/server/http.js';
 import type { RequestHandler } from './$types';
 
 const CARRY_TTL_MS = STATE_TTL_SECONDS * 1000;

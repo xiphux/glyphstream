@@ -17,8 +17,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { AlertCircle, X } from '@lucide/svelte';
-	import type { AttachmentStore } from '$lib/attachments.svelte';
-	import FileAttachmentChip from '$lib/components/FileAttachmentChip.svelte';
+	import type { AttachmentStore } from '#lib/attachments.svelte.js';
+	import FileAttachmentChip from '#lib/components/FileAttachmentChip.svelte';
 
 	let {
 		attachments,

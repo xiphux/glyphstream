@@ -7,8 +7,8 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
-import InFlightBubble from '$lib/components/chat/InFlightBubble.svelte';
-import type { RenderBlock } from '$lib/chat-render';
+import InFlightBubble from '#lib/components/chat/InFlightBubble.svelte';
+import type { RenderBlock } from '#lib/chat-render.js';
 
 const base = {
 	assistantLabel: 'gpt-4o',

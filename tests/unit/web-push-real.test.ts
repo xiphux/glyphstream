@@ -32,7 +32,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 const vapid = webpush.generateVAPIDKeys();
 
-vi.mock('$lib/server/endpoints/config', () => ({
+vi.mock('#lib/server/endpoints/config.js', () => ({
 	loadNotificationsConfig: () => ({
 		vapidPublic: vapid.publicKey,
 		vapidPrivate: vapid.privateKey,
@@ -40,7 +40,7 @@ vi.mock('$lib/server/endpoints/config', () => ({
 	}),
 }));
 
-import { _resetWebPushForTest, sendPushNotification } from '$lib/server/push/web-push';
+import { _resetWebPushForTest, sendPushNotification } from '#lib/server/push/web-push.js';
 
 interface Received {
 	method: string;

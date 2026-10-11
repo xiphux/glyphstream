@@ -5,9 +5,9 @@ import { describe, expect, it, vi } from 'vitest';
 // surfaces a spurious trailing mock invocation when such a mock is reset between
 // runs in the same file. One test, no beforeEach, no cross-test reset → clean.
 const embeddingsMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/client', () => ({ embeddings: embeddingsMock }));
+vi.mock('#lib/server/endpoints/client.js', () => ({ embeddings: embeddingsMock }));
 
-import { embedAndRank, type RelevanceConfig } from '$lib/server/retrieval/embed-rank';
+import { embedAndRank, type RelevanceConfig } from '#lib/server/retrieval/embed-rank.js';
 
 const fakeEndpoint = { id: 'e', baseUrl: 'http://e', apiKey: null } as never;
 const cfg: RelevanceConfig = {

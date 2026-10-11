@@ -1,7 +1,7 @@
 // See https://svelte.dev/docs/kit/types#app.d.ts
-import type { SessionUser } from '$lib/server/auth/session';
-import type { AppLockState } from '$lib/server/auth/app-lock';
-import type { ModelEntry } from '$lib/types/api';
+import type { SessionUser } from '#lib/server/auth/session.js';
+import type { AppLockState } from '#lib/server/auth/app-lock.js';
+import type { ModelEntry } from '#lib/types/api.js';
 
 declare global {
 	namespace App {

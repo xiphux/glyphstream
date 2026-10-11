@@ -12,8 +12,8 @@ import {
 	parseRatio,
 	readStickyRatio,
 	writeStickyRatio,
-} from '$lib/aspect-ratio';
-import type { AspectRatioOption, ModelEntry } from '$lib/types/api';
+} from '#lib/aspect-ratio.js';
+import type { AspectRatioOption, ModelEntry } from '#lib/types/api.js';
 
 function model(
 	id: string,

@@ -10,8 +10,8 @@ import {
 	isReleaseStrategy,
 	managementRootFrom,
 	releaseEndpointResources,
-} from '$lib/server/endpoints/release';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+} from '#lib/server/endpoints/release.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 
 function ep(release: LoadedEndpoint['release'] = 'llama-cpp-router'): LoadedEndpoint {
 	return {

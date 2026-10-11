@@ -18,7 +18,7 @@
 import { getFanoutParent } from '../db/queries/conversations';
 import { getMessageRole, getSiblingAssistants } from '../db/queries/messages';
 import { conversationTurnEntries } from '../streaming/in-flight';
-import type { FanoutRecoveryState } from '$lib/types/api';
+import type { FanoutRecoveryState } from '#lib/types/api.js';
 
 export type { FanoutRecoveryState };
 

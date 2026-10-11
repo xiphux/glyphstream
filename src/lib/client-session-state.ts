@@ -13,7 +13,7 @@
  * on a device (a true device preference) must live outside this prefix.
  *
  * Beyond localStorage it also drops the pending-notification-tap record
- * (`$lib/sw/pending-navigation.ts`), which lives in Cache Storage. Same
+ * (`#lib/sw/pending-navigation.ts`), which lives in Cache Storage. Same
  * argument, different store: it names one user's conversation, Cache Storage is
  * scoped to the origin rather than the session, and an unspent record would
  * otherwise be claimable by whoever signs in next on a shared browser.
@@ -23,8 +23,8 @@
  * the browsing session, so they need no wipe here.
  */
 
-import { browser } from '$app/environment';
-import { forgetPendingNavigation } from '$lib/sw/pending-navigation';
+import { browser } from '$app/env';
+import { forgetPendingNavigation } from '#lib/sw/pending-navigation.js';
 
 const PREFIX = 'glyphstream:';
 

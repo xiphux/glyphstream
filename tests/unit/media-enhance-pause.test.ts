@@ -8,7 +8,7 @@
  * a hang.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 
 const enhancer = vi.hoisted(() => ({
 	endpoint: {
@@ -19,10 +19,10 @@ const enhancer = vi.hoisted(() => ({
 	} as unknown as LoadedEndpoint,
 	upstreamId: 'gemma',
 }));
-vi.mock('$lib/server/tasks/image-enhancer-model', () => ({
+vi.mock('#lib/server/tasks/image-enhancer-model.js', () => ({
 	getImageEnhancerModel: () => enhancer,
 }));
-vi.mock('$lib/server/streaming/prompt-enhancer', () => ({
+vi.mock('#lib/server/streaming/prompt-enhancer.js', () => ({
 	enhancePrompt: async ({ prompt }: { prompt: string }) => ({
 		enhanced: `${prompt}, enhanced`,
 		changed: true,
@@ -32,9 +32,9 @@ vi.mock('$lib/server/streaming/prompt-enhancer', () => ({
 import {
 	resetEndpointGatesForTests,
 	setResourceGroupPaused,
-} from '$lib/server/endpoints/concurrency';
-import { runPromptEnhancement } from '$lib/server/streaming/media-enhance';
-import type { StreamProgressEvent } from '$lib/types/api';
+} from '#lib/server/endpoints/concurrency.js';
+import { runPromptEnhancement } from '#lib/server/streaming/media-enhance.js';
+import type { StreamProgressEvent } from '#lib/types/api.js';
 
 afterEach(() => resetEndpointGatesForTests());
 

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // client.ts reads __APP_VERSION__ at import time.
 vi.stubGlobal('__APP_VERSION__', 'test');
 
-import { postOnlyFetch } from '$lib/server/mcp/client';
+import { postOnlyFetch } from '#lib/server/mcp/client.js';
 
 // postOnlyFetch declines the optional server→client GET SSE stream (so the SDK
 // runs POST-only) while passing every other request straight through.

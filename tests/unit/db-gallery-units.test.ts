@@ -4,7 +4,7 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
@@ -15,16 +15,16 @@ import {
 	insertMedia,
 	linkMessageMedia,
 	setMediaFavorite,
-} from '$lib/server/db/queries/media';
+} from '#lib/server/db/queries/media.js';
 import {
 	computeGalleryLayout,
 	listGalleryUnits,
 	listGalleryUnitMembers,
-} from '$lib/server/gallery/layout';
-import type { GalleryUnit } from '$lib/types/api';
-import { createConversation } from '$lib/server/db/queries/conversations';
-import { appendMessage } from '$lib/server/db/queries/messages';
-import { media } from '$lib/server/db/schema';
+} from '#lib/server/gallery/layout.js';
+import type { GalleryUnit } from '#lib/types/api.js';
+import { createConversation } from '#lib/server/db/queries/conversations.js';
+import { appendMessage } from '#lib/server/db/queries/messages.js';
+import { media } from '#lib/server/db/schema.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

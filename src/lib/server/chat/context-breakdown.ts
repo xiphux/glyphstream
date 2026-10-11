@@ -22,9 +22,9 @@ import type {
 	ContextBreakdown,
 	ContextSegment,
 	ContextSegmentKey,
-} from '$lib/types/api';
-import { upstreamBranch, isCompactionSummary } from '$lib/chat-compaction';
-import { REACTION_TOOL_NAME } from '$lib/chat-render';
+} from '#lib/types/api.js';
+import { upstreamBranch, isCompactionSummary } from '#lib/chat-compaction.js';
+import { REACTION_TOOL_NAME } from '#lib/chat-render.js';
 import type { OpenAIToolDefinition } from '../tools/types';
 import type { PersonaPart } from '../db/queries/user-preferences';
 import type { ChatCompletionRequest } from '../endpoints/client';

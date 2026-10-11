@@ -11,8 +11,8 @@
  */
 
 import { error } from '@sveltejs/kit';
-import { isFeatureCategoryString } from '$lib/types/api';
-import type { FeatureCategory } from '$lib/types/api';
+import { isFeatureCategoryString } from '#lib/types/api.js';
+import type { FeatureCategory } from '#lib/types/api.js';
 
 export class FeatureCategoryValidationError extends Error {}
 

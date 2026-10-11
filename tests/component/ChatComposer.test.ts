@@ -9,9 +9,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import ChatComposer from '$lib/components/chat/ChatComposer.svelte';
-import type { AttachmentStore } from '$lib/attachments.svelte';
-import type { ModelEntry } from '$lib/types/api';
+import ChatComposer from '#lib/components/chat/ChatComposer.svelte';
+import type { AttachmentStore } from '#lib/attachments.svelte.js';
+import type { ModelEntry } from '#lib/types/api.js';
 
 function makeStore(overrides: Partial<AttachmentStore> = {}): AttachmentStore {
 	return {

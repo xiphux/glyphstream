@@ -8,9 +8,9 @@ import { error, json } from '@sveltejs/kit';
 import {
 	generateAuthenticationOptionsForUser,
 	setUnlockChallengeCookie,
-} from '$lib/server/auth/passkey';
-import { listCredentialsForUser } from '$lib/server/db/queries/passkey';
-import { passkeyLoginEnabled } from '$lib/server/env';
+} from '#lib/server/auth/passkey.js';
+import { listCredentialsForUser } from '#lib/server/db/queries/passkey.js';
+import { passkeyLoginEnabled } from '#lib/server/env.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, cookies }) => {

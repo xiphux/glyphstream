@@ -5,8 +5,8 @@
  * flows through untouched.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { chatCompletionStream } from '$lib/server/endpoints/client';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+import { chatCompletionStream } from '#lib/server/endpoints/client.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 
 function endpoint(requestTimeoutSeconds: number): LoadedEndpoint {
 	return {

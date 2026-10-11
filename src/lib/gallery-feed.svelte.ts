@@ -1,5 +1,5 @@
 import { SvelteMap } from 'svelte/reactivity';
-import type { GalleryLayout, GalleryUnit, GalleryUnitsPage } from '$lib/types/api';
+import type { GalleryLayout, GalleryUnit, GalleryUnitsPage } from '#lib/types/api.js';
 
 /**
  * Client-side demand loader for the virtualized gallery grid.

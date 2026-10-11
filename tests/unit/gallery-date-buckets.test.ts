@@ -5,7 +5,7 @@ import {
 	groupIntoSections,
 	monthStartMs,
 	nextMonthStartMs,
-} from '$lib/gallery-date-buckets';
+} from '#lib/gallery-date-buckets.js';
 
 // Use local-time constructors throughout so assertions hold regardless of the
 // machine's timezone (bucketing is intentionally local-time).

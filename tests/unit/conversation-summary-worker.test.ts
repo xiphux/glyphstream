@@ -4,32 +4,32 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
+vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 
 const chatMock = vi.hoisted(() => vi.fn());
 // Mock only the network call; keep the REAL UpstreamError + isPermanentRequestError
 // so this worker test exercises the actual classifier it branches on and can't
 // drift from it.
-vi.mock('$lib/server/endpoints/client', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('$lib/server/endpoints/client')>();
+vi.mock('#lib/server/endpoints/client.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/server/endpoints/client.js')>();
 	return { ...actual, chatCompletionSync: chatMock };
 });
 
 const memModelMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/tasks/memory-model', () => ({ getMemoryModel: memModelMock }));
+vi.mock('#lib/server/tasks/memory-model.js', () => ({ getMemoryModel: memModelMock }));
 
 const acquireMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/concurrency', () => ({ acquireEndpointSlot: acquireMock }));
+vi.mock('#lib/server/endpoints/concurrency.js', () => ({ acquireEndpointSlot: acquireMock }));
 
 const listModelsMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/list-models', () => ({ listAllModels: listModelsMock }));
+vi.mock('#lib/server/endpoints/list-models.js', () => ({ listAllModels: listModelsMock }));
 
-import { runSummarySweep } from '$lib/server/memory/conversation-summary';
-import { UpstreamError } from '$lib/server/endpoints/client';
-import { createConversation } from '$lib/server/db/queries/conversations';
-import { getConversationOverview } from '$lib/server/db/queries/users';
-import { appendMessage } from '$lib/server/db/queries/messages';
-import { conversations } from '$lib/server/db/schema';
+import { runSummarySweep } from '#lib/server/memory/conversation-summary.js';
+import { UpstreamError } from '#lib/server/endpoints/client.js';
+import { createConversation } from '#lib/server/db/queries/conversations.js';
+import { getConversationOverview } from '#lib/server/db/queries/users.js';
+import { appendMessage } from '#lib/server/db/queries/messages.js';
+import { conversations } from '#lib/server/db/schema.js';
 
 const NOW = Date.UTC(2026, 0, 1, 12, 0, 0); // noon UTC — a fixed instant for window tests
 const SETTLE = 60 * 60 * 1000;

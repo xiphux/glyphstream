@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
@@ -26,7 +26,7 @@ import {
 	getUserRole,
 	listUsers,
 	setUserDisabled,
-} from '$lib/server/db/queries/users';
+} from '#lib/server/db/queries/users.js';
 import {
 	createInvite,
 	findValidInvite,
@@ -34,10 +34,14 @@ import {
 	hashInviteToken,
 	listInvites,
 	deleteInvite,
-} from '$lib/server/db/queries/invites';
-import { finalizeOAuthJoin, finalizePasskeyJoin, InviteConsumedError } from '$lib/server/auth/join';
-import { findUserByOAuth } from '$lib/server/db/queries/oauth-accounts';
-import { listCredentialsForUser } from '$lib/server/db/queries/passkey';
+} from '#lib/server/db/queries/invites.js';
+import {
+	finalizeOAuthJoin,
+	finalizePasskeyJoin,
+	InviteConsumedError,
+} from '#lib/server/auth/join.js';
+import { findUserByOAuth } from '#lib/server/db/queries/oauth-accounts.js';
+import { listCredentialsForUser } from '#lib/server/db/queries/passkey.js';
 import { users } from '../../src/lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 

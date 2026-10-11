@@ -8,12 +8,12 @@
 <script lang="ts">
 	import ToolBlockShell from './ToolBlockShell.svelte';
 	import ToolResultSection from './ToolResultSection.svelte';
-	import { extractCodeArg, prettyJson, type ToolResultAttachment } from '$lib/chat-render';
+	import { extractCodeArg, prettyJson, type ToolResultAttachment } from '#lib/chat-render.js';
 	import {
 		highlightLiveCode,
 		liveHighlighterReady,
 		resolveLiveLang,
-	} from '$lib/markdown-live-shiki.svelte';
+	} from '#lib/markdown-live-shiki.svelte.js';
 
 	type Status = 'executing' | 'done' | 'error' | 'pending_approval';
 

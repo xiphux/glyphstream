@@ -5,7 +5,7 @@ import {
 	isPermanentRequestError,
 	parseContextOverflow,
 	UpstreamError,
-} from '$lib/server/endpoints/client';
+} from '#lib/server/endpoints/client.js';
 
 describe('extractUpstreamErrorMessage', () => {
 	it('returns null for empty body', () => {

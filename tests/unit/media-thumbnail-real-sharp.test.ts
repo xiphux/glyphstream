@@ -20,12 +20,12 @@ import { photoPng } from './_helpers/photo-png';
 
 const state = vi.hoisted(() => ({ root: '' }));
 
-vi.mock('$lib/server/env', () => ({
+vi.mock('#lib/server/env.js', () => ({
 	mediaDir: () => state.root,
 	derivedDir: () => state.root,
 }));
 
-import { getOrCreateThumbnail } from '$lib/server/media/thumbnail';
+import { getOrCreateThumbnail } from '#lib/server/media/thumbnail.js';
 
 function writeOriginal(storagePath: string, bytes: Buffer) {
 	const abs = resolve(state.root, storagePath);

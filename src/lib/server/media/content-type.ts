@@ -2,7 +2,7 @@
  * Safe-serving decisions for stored media: what a stored content type really
  * is, whether it may be sent inline, and how to spell the attachment header.
  *
- * These live together in `$lib` rather than beside the route because SvelteKit
+ * These live together in `#lib` rather than beside the route because SvelteKit
  * validates route-file exports against a fixed list — two `+server.ts` files
  * can't share a helper directly, and both media routes need the identical
  * rule. Divergence between them was the bug this module exists to prevent.

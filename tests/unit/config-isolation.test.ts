@@ -14,8 +14,8 @@
  * happens to be on the machine running it.
  */
 import { describe, expect, it } from 'vitest';
-import { configPath } from '$lib/server/env';
-import { loadEndpoints } from '$lib/server/endpoints/config';
+import { configPath } from '#lib/server/env.js';
+import { loadEndpoints } from '#lib/server/endpoints/config.js';
 
 describe('config isolation', () => {
 	it("resolves CONFIG_PATH from vitest's env, not the './config.toml' fallback", () => {

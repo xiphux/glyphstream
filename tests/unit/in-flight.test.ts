@@ -8,7 +8,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 import {
 	clearInFlight,
 	conversationFanoutAtCapacity,
@@ -23,8 +23,8 @@ import {
 	getInFlightSince,
 	registerInFlight,
 	resetInFlight,
-} from '$lib/server/streaming/in-flight';
-import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '$lib/fanout';
+} from '#lib/server/streaming/in-flight.js';
+import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '#lib/fanout.js';
 
 function endpoint(id: string): LoadedEndpoint {
 	return {

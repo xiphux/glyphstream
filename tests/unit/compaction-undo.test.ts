@@ -9,14 +9,14 @@ import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
 
-import { createConversation, getConversationMeta } from '$lib/server/db/queries/conversations';
-import { appendMessage, walkActiveBranch } from '$lib/server/db/queries/messages';
-import { undoCompaction } from '$lib/server/chat/compaction';
+import { createConversation, getConversationMeta } from '#lib/server/db/queries/conversations.js';
+import { appendMessage, walkActiveBranch } from '#lib/server/db/queries/messages.js';
+import { undoCompaction } from '#lib/server/chat/compaction.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

@@ -1,10 +1,10 @@
 import { error, json } from '@sveltejs/kit';
-import { requireFound, requireUser } from '$lib/server/auth/guard';
-import { getConversationMeta, getFanoutParent } from '$lib/server/db/queries/conversations';
-import { prepareCompaction, runCompaction, undoCompaction } from '$lib/server/chat/compaction';
-import { streamCompaction } from '$lib/server/streaming/compaction-relay';
-import { sseResponse } from '$lib/server/streaming/sse-transport';
-import { formatUpstreamError, UpstreamError } from '$lib/server/endpoints/client';
+import { requireFound, requireUser } from '#lib/server/auth/guard.js';
+import { getConversationMeta, getFanoutParent } from '#lib/server/db/queries/conversations.js';
+import { prepareCompaction, runCompaction, undoCompaction } from '#lib/server/chat/compaction.js';
+import { streamCompaction } from '#lib/server/streaming/compaction-relay.js';
+import { sseResponse } from '#lib/server/streaming/sse-transport.js';
+import { formatUpstreamError, UpstreamError } from '#lib/server/endpoints/client.js';
 import type { RequestHandler } from './$types';
 
 /**

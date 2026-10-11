@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { stripReasoningTags } from '$lib/server/util/reasoning-tags';
-import { sanitizeTitle } from '$lib/server/tasks/title-generator';
-import { sanitizeEnhanced } from '$lib/server/streaming/prompt-enhancer';
+import { stripReasoningTags } from '#lib/server/util/reasoning-tags.js';
+import { sanitizeTitle } from '#lib/server/tasks/title-generator.js';
+import { sanitizeEnhanced } from '#lib/server/streaming/prompt-enhancer.js';
 
 describe('stripReasoningTags', () => {
 	it('drops a complete block including its contents', () => {

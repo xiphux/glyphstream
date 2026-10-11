@@ -19,7 +19,7 @@ const invalidateAll = vi.fn(async () => {});
 vi.mock('$app/navigation', () => ({ invalidateAll: () => invalidateAll() }));
 
 const toastError = vi.fn<(message: string) => void>();
-vi.mock('$lib/toast.svelte', () => ({
+vi.mock('#lib/toast.svelte.js', () => ({
 	toast: {
 		error: (m: string) => {
 			toastError(m);
@@ -27,7 +27,7 @@ vi.mock('$lib/toast.svelte', () => ({
 	},
 }));
 
-import { AvatarDrawController } from '$lib/avatar-draw-controller.svelte';
+import { AvatarDrawController } from '#lib/avatar-draw-controller.svelte.js';
 
 /** A controller plus a handle on the conversation the "page" is showing. */
 function setup(startOn = 'A', serverDrawSince: number | null = null) {

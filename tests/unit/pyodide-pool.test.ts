@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => ({
 	},
 }));
 const testConfig = mocks.testConfig;
-vi.mock('$lib/server/code-interpreter/config', () => ({
+vi.mock('#lib/server/code-interpreter/config.js', () => ({
 	getCodeInterpreterConfig: () => mocks.testConfig,
 	isCodeInterpreterEnabled: () => mocks.testConfig.enabled,
 	resetCodeInterpreterConfigForTests: () => {},
@@ -37,7 +37,7 @@ import {
 	resetCodeInterpreterPoolForTests,
 	runPython,
 	setWorkerFactoryForTests,
-} from '$lib/server/code-interpreter/pool';
+} from '#lib/server/code-interpreter/pool.js';
 
 // ---------------------------------------------------------------------------
 // Test harness — a MockWorker that fans worker_threads events through an

@@ -30,8 +30,8 @@ import type {
 	EndpointStatus,
 	EndpointsStatusResponse,
 	ModelKind,
-} from '$lib/types/api';
-import { MODEL_KINDS } from '$lib/types/api';
+} from '#lib/types/api.js';
+import { MODEL_KINDS } from '#lib/types/api.js';
 import { ConfigError, type LoadedEndpoint } from './config';
 import { getResourceGroupSnapshot, isResourceGroupPaused, type SlotSnapshot } from './concurrency';
 import { getModelCacheEntry } from './list-models';

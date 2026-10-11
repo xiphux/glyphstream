@@ -1,7 +1,7 @@
 /** Tests for the composer drag/paste helpers. */
 
 import { describe, expect, it } from 'vitest';
-import { dragHasFiles, extractImageFiles } from '$lib/composer';
+import { dragHasFiles, extractImageFiles } from '#lib/composer.js';
 
 function img(name: string): File {
 	return new File(['x'], name, { type: 'image/png' });

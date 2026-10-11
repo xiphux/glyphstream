@@ -7,9 +7,9 @@
  */
 
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { getMcpServerCfg, retryMcpServer } from '$lib/server/mcp/registry';
-import { registerMcpServerTools } from '$lib/server/mcp/tool-bridge';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { getMcpServerCfg, retryMcpServer } from '#lib/server/mcp/registry.js';
+import { registerMcpServerTools } from '#lib/server/mcp/tool-bridge.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ params, locals }) => {

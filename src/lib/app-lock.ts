@@ -1,6 +1,6 @@
 /**
  * App lock — the client-safe half (the timeout choices and the wire status).
- * Enforcement lives in `$lib/server/auth/app-lock.ts`.
+ * Enforcement lives in `#lib/server/auth/app-lock.ts`.
  */
 
 /**

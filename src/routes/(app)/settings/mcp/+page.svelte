@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
+	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
 	import { invalidate } from '$app/navigation';
 	import { Switch } from 'bits-ui';
 	import { CircleCheck, CircleAlert, CircleSlash, Loader2, KeyRound } from '@lucide/svelte';
-	import { toast } from '$lib/toast.svelte';
-	import { errorMessageFromResponse } from '$lib/fetch-error';
+	import { toast } from '#lib/toast.svelte.js';
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
 
 	interface ToolRow {
 		name: string;
@@ -52,9 +52,12 @@
 				toast.error(await errorMessageFromResponse(res));
 				return;
 			}
+
 			const body = (await res.json()) as { state: string; error: string | null };
+
 			if (body.state === 'connected') toast.success(`Connected to ${server.displayName}`);
 			else toast.error(`Saved, but couldn't connect: ${body.error ?? 'unknown error'}`);
+
 			tokenInput[server.id] = '';
 			// Refresh this page's server states AND the (app) layout's composer
 			// capability list, so the now-configured server appears as a toggle.
@@ -158,9 +161,13 @@
 
 <SettingsPage title="MCP servers">
 	{#snippet description()}
-		MCP servers configured in <code class="font-mono">config.toml</code> and the tools they
-		advertise. Per-tool approval lives at
-		<a href={resolve('/settings/permissions')} class="underline hover:text-fg">Permissions</a>.
+		MCP servers configured in
+		<code class="font-mono">config.toml</code>
+		and the tools they advertise. Per-tool approval lives at
+
+		<a href={resolve('settings/permissions')} class="underline hover:text-fg">Permissions</a>
+
+		.
 	{/snippet}
 
 	<div class="mx-auto flex max-w-2xl flex-col gap-3">

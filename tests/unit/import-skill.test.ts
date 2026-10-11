@@ -3,11 +3,11 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
-vi.mock('$lib/server/env', async () => {
+vi.mock('#lib/server/env.js', async () => {
 	const { mkdtempSync } = await import('node:fs');
 	const { tmpdir } = await import('node:os');
 	const { join } = await import('node:path');
@@ -15,10 +15,10 @@ vi.mock('$lib/server/env', async () => {
 	return { skillsDir: () => dir };
 });
 
-import { skillsDir } from '$lib/server/env';
-import { importSkillBundle, normalizeBundleFiles } from '$lib/server/skills/import-skill';
-import { getSkillStore } from '$lib/server/skills/disk-store';
-import { listSkillsForUser } from '$lib/server/db/queries/skills';
+import { skillsDir } from '#lib/server/env.js';
+import { importSkillBundle, normalizeBundleFiles } from '#lib/server/skills/import-skill.js';
+import { getSkillStore } from '#lib/server/skills/disk-store.js';
+import { listSkillsForUser } from '#lib/server/db/queries/skills.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

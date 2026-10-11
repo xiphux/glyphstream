@@ -17,15 +17,15 @@ const mocks = vi.hoisted(() => ({
 	connectImpl: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 }));
 
-vi.mock('$lib/server/mcp/config', () => ({
+vi.mock('#lib/server/mcp/config.js', () => ({
 	loadMcpServers: () => mocks.servers,
 }));
 
 // Partial mock so real exports registry.ts depends on (MAX_CONNECT_ATTEMPTS)
 // stay present. A bare factory omitting them passes right up until something
 // in this file touches one, then fails as a mock error rather than a real one.
-vi.mock('$lib/server/mcp/client', async (importOriginal) => ({
-	...(await importOriginal<typeof import('$lib/server/mcp/client')>()),
+vi.mock('#lib/server/mcp/client.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/server/mcp/client.js')>()),
 	connectMcpServer: (...args: unknown[]) => mocks.connectImpl(...args),
 }));
 
@@ -35,7 +35,7 @@ import {
 	listGlobalServerStates,
 	resetMcpRegistryForTests,
 	retryMcpServer,
-} from '$lib/server/mcp/registry';
+} from '#lib/server/mcp/registry.js';
 
 interface FakeConn {
 	listTools: ReturnType<typeof vi.fn>;

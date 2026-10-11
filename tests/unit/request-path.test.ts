@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { routedPathname } from '$lib/server/util/request-path';
+import { routedPathname } from '#lib/server/util/request-path.js';
 
 describe('routedPathname', () => {
 	it('leaves an ordinary path untouched', () => {

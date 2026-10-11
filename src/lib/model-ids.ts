@@ -9,7 +9,7 @@
  * the catalogue is built to avoid. Two constants that merely happened to agree
  * left that one careless edit away.
  *
- * Client-safe (no `$lib/server` imports), so the route and the store can both
+ * Client-safe (no `#lib/server` imports), so the route and the store can both
  * reach it.
  */
 export const MAX_MODEL_IDS_PER_REQUEST = 200;
@@ -17,8 +17,8 @@ export const MAX_MODEL_IDS_PER_REQUEST = 200;
 /**
  * The endpoint half of an `endpointId::upstreamId` id, or null if it has none.
  *
- * A client-safe twin of `parseModelId` (`$lib/server/endpoints/model-id`), which
- * is the canonical encoder of this grammar but lives under `$lib/server` and so
+ * A client-safe twin of `parseModelId` (`#lib/server/endpoints/model-id.js`), which
+ * is the canonical encoder of this grammar but lives under `#lib/server` and so
  * cannot be reached from browser code. Kept to the same edge cases on purpose —
  * no separator, an empty endpoint half, or a trailing separator all yield null —
  * because the alternative the client reached for was `id.slice(0, id.indexOf(
@@ -73,10 +73,10 @@ export function mediaSourceModelId(
  * upstream `displayName` to be useful — most models embed enough meaning in
  * their slug that the cleaned-up version is fine.
  *
- * Lives here, alongside the grammar it parses, rather than under `$lib/server`
+ * Lives here, alongside the grammar it parses, rather than under `#lib/server`
  * where it started: it is pure string work with no server dependency, and the
  * lightbox renders a media row's `sourceModel` on the client, where a
- * `$lib/server` import is not allowed to go.
+ * `#lib/server` import is not allowed to go.
  */
 export function friendlyModelName(internalId: string): string {
 	const sep = internalId.indexOf('::');

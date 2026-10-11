@@ -10,25 +10,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
-import { register } from '$lib/server/tools/registry';
-import type { Tool, ToolExecution } from '$lib/server/tools/types';
-import { buildPendingApprovals } from '$lib/chat-render';
-import type { ChatMessage, MessagePart, StreamEvent } from '$lib/types/api';
+import { register } from '#lib/server/tools/registry.js';
+import type { Tool, ToolExecution } from '#lib/server/tools/types.js';
+import { buildPendingApprovals } from '#lib/chat-render.js';
+import type { ChatMessage, MessagePart, StreamEvent } from '#lib/types/api.js';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
 
-import { executeToolCalls } from '$lib/server/streaming/tool-execution';
+import { executeToolCalls } from '#lib/server/streaming/tool-execution.js';
 import {
 	appendMessage,
 	getMessage,
 	updateMessageParts,
 	walkActiveBranch,
-} from '$lib/server/db/queries/messages';
-import { createConversation } from '$lib/server/db/queries/conversations';
+} from '#lib/server/db/queries/messages.js';
+import { createConversation } from '#lib/server/db/queries/conversations.js';
 
 const REGISTERED_TOOLS = new Set<string>();
 

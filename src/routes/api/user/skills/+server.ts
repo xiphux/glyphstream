@@ -10,11 +10,11 @@
  * stores the bundle on disk; a duplicate name is a 409.
  */
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { listSkillsForUser } from '$lib/server/db/queries/skills';
-import { importSkillBundle } from '$lib/server/skills/import-skill';
-import type { SkillBundleFile } from '$lib/server/skills/store';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { listSkillsForUser } from '#lib/server/db/queries/skills.js';
+import { importSkillBundle } from '#lib/server/skills/import-skill.js';
+import type { SkillBundleFile } from '#lib/server/skills/store.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals }) => {

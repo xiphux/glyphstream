@@ -1,12 +1,12 @@
 <script lang="ts">
 	import type { LayoutData } from './$types';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 	import { resolve } from '$app/paths';
 	import { onMount, untrack } from 'svelte';
 	import type { Snippet } from 'svelte';
-	import { ModelCatalogue, setModelCatalogue } from '$lib/model-catalogue.svelte';
-	import { reconcileSubscription } from '$lib/push-subscribe';
-	import { syncTimeZone } from '$lib/timezone-sync';
+	import { ModelCatalogue, setModelCatalogue } from '#lib/model-catalogue.svelte.js';
+	import { reconcileSubscription } from '#lib/push-subscribe.js';
+	import { syncTimeZone } from '#lib/timezone-sync.js';
 	import { flip } from 'svelte/animate';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
@@ -14,25 +14,25 @@
 	import { afterNavigate, goto, invalidate, invalidateAll } from '$app/navigation';
 	import { navigating, page } from '$app/state';
 	import { DropdownMenu } from 'bits-ui';
-	import Toaster from '$lib/components/Toaster.svelte';
-	import DeleteConversationDialog from '$lib/components/DeleteConversationDialog.svelte';
-	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-	import { createDoubleActivate } from '$lib/double-activate';
-	import { toast } from '$lib/toast.svelte';
-	import { searchModal } from '$lib/search-modal.svelte';
-	import ScrollPane from '$lib/components/ScrollPane.svelte';
-	import { revealScrollTop } from '$lib/scroll-reveal';
-	import { ConversationUiActions } from '$lib/conversation-ui-actions.svelte';
-	import { syncSurfaceChrome } from '$lib/theme-color';
-	import { FavoritesDrag } from '$lib/favorites-drag.svelte';
-	import { isTitlePending } from '$lib/title-pending.svelte';
+	import Toaster from '#lib/components/Toaster.svelte';
+	import DeleteConversationDialog from '#lib/components/DeleteConversationDialog.svelte';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import { createDoubleActivate } from '#lib/double-activate.js';
+	import { toast } from '#lib/toast.svelte.js';
+	import { searchModal } from '#lib/search-modal.svelte.js';
+	import ScrollPane from '#lib/components/ScrollPane.svelte';
+	import { revealScrollTop } from '#lib/scroll-reveal.js';
+	import { ConversationUiActions } from '#lib/conversation-ui-actions.svelte.js';
+	import { syncSurfaceChrome } from '#lib/theme-color.js';
+	import { FavoritesDrag } from '#lib/favorites-drag.svelte.js';
+	import { isTitlePending } from '#lib/title-pending.svelte.js';
 	import {
 		anyGenerating,
 		generationActivity,
 		markGenerating,
 		reconcileGenerating,
-	} from '$lib/generating-conversations.svelte';
-	import { MAX_CONVERSATION_TITLE_LENGTH } from '$lib/types/api';
+	} from '#lib/generating-conversations.svelte.js';
+	import { MAX_CONVERSATION_TITLE_LENGTH } from '#lib/types/api.js';
 	import {
 		Archive,
 		ChevronDown,
@@ -54,9 +54,9 @@
 		VenetianMask,
 		Video as VideoIcon,
 	} from '@lucide/svelte';
-	import type { GeneratingConversationsResponse, ModelKind } from '$lib/types/api';
-	import { privateView } from '$lib/private-chat.svelte';
-	import { APP_LOCK_KEEPALIVE_PATH, APP_LOCKED_STATUS, appLockKeepAliveMs } from '$lib/app-lock';
+	import type { GeneratingConversationsResponse, ModelKind } from '#lib/types/api.js';
+	import { privateView } from '#lib/private-chat.svelte.js';
+	import { APP_LOCK_KEEPALIVE_PATH, APP_LOCKED_STATUS, appLockKeepAliveMs } from '#lib/app-lock.js';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
@@ -232,9 +232,9 @@
 				// the server's lock redirect first, which carries the right `from`
 				// and unmounts this layout — but not this check, still in flight):
 				// leave it alone. Another hop would only nest `from` inside itself.
-				if (target.pathname === resolve('/unlock')) return;
+				if (target.pathname === resolve('unlock')) return;
 				const from = encodeURIComponent(target.pathname + target.search);
-				await goto(`${resolve('/unlock')}?from=${from}`, { replaceState: true });
+				await goto(`${resolve('unlock')}?from=${from}`, { replaceState: true });
 			} else if (res.ok) {
 				appLockCovered = false;
 			} else if (res.status === 401) {
@@ -409,6 +409,7 @@
 		// it directly without invalidating, so it can be the fresher of the two.
 		const m = document.cookie.match(/(?:^|;\s*)gs-scheme=([^;]+)/);
 		const p = m ? m[1] : 'system';
+
 		document.documentElement.dataset.scheme =
 			p === 'dark' || (p !== 'light' && dark) ? 'dark' : 'light';
 		syncSurfaceChrome();
@@ -649,7 +650,9 @@
 	// `afterNavigate` is the question actually being asked: it runs once per
 	// completed navigation, same-URL ones included, plus once on enter — and
 	// `_invalidate()` never dispatches it.
-	afterNavigate(() => {
+	afterNavigate(({ shallow, type }) => {
+		if (shallow && type === 'goto') return;
+
 		// Held open while a conversation's overflow menu is showing: the menu
 		// portals out of the drawer, so sliding the drawer away mid-navigation
 		// would leave it floating over the page (see `openOverflowFor`). Plain
@@ -710,12 +713,12 @@
 	// dead connection is exactly the case that fails — and it's a plausible one,
 	// since a flaky connection is a reason to open this panel.
 	let debugOpen = $state(false);
-	let DebugPanel = $state<typeof import('$lib/components/DebugPanel.svelte').default | null>(null);
+	let DebugPanel = $state<typeof import('#lib/components/DebugPanel.svelte').default | null>(null);
 
 	const onVersionActivate = createDoubleActivate(() => {
 		void (async () => {
 			try {
-				DebugPanel ??= (await import('$lib/components/DebugPanel.svelte')).default;
+				DebugPanel ??= (await import('#lib/components/DebugPanel.svelte')).default;
 				debugOpen = true;
 			} catch {
 				toast.error('Debug info unavailable offline');
@@ -878,7 +881,7 @@
 				{/if}
 			</button>
 			<a
-				href={resolve('/gallery')}
+				href={resolve('gallery')}
 				title={collapsed ? 'Gallery' : ''}
 				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {galleryActive
 					? 'bg-surface-sunken text-accent'
@@ -888,7 +891,7 @@
 				{#if !collapsed}<span>Gallery</span>{/if}
 			</a>
 			<a
-				href={resolve('/settings/models')}
+				href={resolve('settings/models')}
 				title={collapsed ? 'Custom models' : ''}
 				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {customModelsActive
 					? 'bg-surface-sunken text-accent'
@@ -898,7 +901,7 @@
 				{#if !collapsed}<span>Custom models</span>{/if}
 			</a>
 			<a
-				href={resolve('/archived')}
+				href={resolve('archived')}
 				title={collapsed ? 'Archived' : ''}
 				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {archivedActive
 					? 'bg-surface-sunken text-accent'
@@ -958,7 +961,7 @@
 							>
 								<a
 									draggable="false"
-									href={resolve(`/?model=${encodeURIComponent(fav.value)}`)}
+									href={resolve(`?model=${encodeURIComponent(fav.value)}`)}
 									title={fav.label}
 									class="flex cursor-grab items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition hover:bg-surface-sunken/70 active:cursor-grabbing active:bg-surface-sunken {collapsed
 										? 'sm:justify-center sm:px-0'
@@ -1190,7 +1193,7 @@
 					sessions that never open this menu.
 				-->
 				{#if accountMenuOpen}
-					{#await import('$lib/components/AccountMenuContent.svelte') then { default: AccountMenuContent }}
+					{#await import('#lib/components/AccountMenuContent.svelte') then { default: AccountMenuContent }}
 						<AccountMenuContent {goto} isAdmin={data.user.role === 'admin'} />
 					{/await}
 				{/if}
@@ -1373,7 +1376,7 @@
 	while open, which is when it's actually needed.
 -->
 {#if searchModal.open}
-	{#await import('$lib/components/SearchModal.svelte') then { default: SearchModal }}
+	{#await import('#lib/components/SearchModal.svelte') then { default: SearchModal }}
 		<SearchModal />
 	{/await}
 {/if}
@@ -1391,4 +1394,4 @@
 	onpageshow={onPageShow}
 	onpagehide={coverForAppLock}
 />
-<svelte:document onvisibilitychange={onVisibilityChange} />
+<svelte:document onvisibilitychange={onVisibilityChange}></svelte:document>

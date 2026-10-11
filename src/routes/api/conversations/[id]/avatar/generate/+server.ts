@@ -48,25 +48,25 @@
  */
 
 import { error } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { getConversationMeta, getFanoutParent } from '$lib/server/db/queries/conversations';
-import { getMessage, getSiblingAssistants } from '$lib/server/db/queries/messages';
-import { getEndpoint } from '$lib/server/endpoints/registry';
-import { parseModelId } from '$lib/server/endpoints/model-id';
-import { listAllModels } from '$lib/server/endpoints/list-models';
-import type { ModelEntry } from '$lib/types/api';
-import { submitGenerationJob } from '$lib/server/generation/jobs';
-import { nearestOffered } from '$lib/aspect-ratio';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { getConversationMeta, getFanoutParent } from '#lib/server/db/queries/conversations.js';
+import { getMessage, getSiblingAssistants } from '#lib/server/db/queries/messages.js';
+import { getEndpoint } from '#lib/server/endpoints/registry.js';
+import { parseModelId } from '#lib/server/endpoints/model-id.js';
+import { listAllModels } from '#lib/server/endpoints/list-models.js';
+import type { ModelEntry } from '#lib/types/api.js';
+import { submitGenerationJob } from '#lib/server/generation/jobs.js';
+import { nearestOffered } from '#lib/aspect-ratio.js';
 import {
 	conversationFanoutAtCapacity,
 	conversationTurnEntries,
-} from '$lib/server/streaming/in-flight';
-import { resolveDisabledFeatures } from '$lib/server/chat/private-seal';
-import { sseResponse } from '$lib/server/streaming/sse-transport';
-import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '$lib/fanout';
-import { resolveBranchIndex } from '$lib/server/messages/fanout-dispatch';
-import { partsToText } from '$lib/message-parts';
+} from '#lib/server/streaming/in-flight.js';
+import { resolveDisabledFeatures } from '#lib/server/chat/private-seal.js';
+import { sseResponse } from '#lib/server/streaming/sse-transport.js';
+import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '#lib/fanout.js';
+import { resolveBranchIndex } from '#lib/server/messages/fanout-dispatch.js';
+import { partsToText } from '#lib/message-parts.js';
 import type { RequestHandler } from './$types';
 
 interface GenerateAvatarBody {

@@ -16,7 +16,7 @@ import {
 	markGenerating,
 	reconcileGenerating,
 	resetGenerating,
-} from '$lib/generating-conversations.svelte';
+} from '#lib/generating-conversations.svelte.js';
 
 afterEach(() => {
 	resetGenerating();

@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { isSnippetKind, type SnippetKind } from '$lib/types/api';
+import { isSnippetKind, type SnippetKind } from '#lib/types/api.js';
 import { LINE_BREAKS, normalizeLineBreaks } from './markdown';
 
 /** Same cap custom models use for `name`. */

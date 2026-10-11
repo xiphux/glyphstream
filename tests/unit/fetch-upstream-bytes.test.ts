@@ -8,8 +8,8 @@ vi.mock('node:dns', () => ({
 	promises: { lookup: lookupMock },
 }));
 
-import { fetchUpstreamBytes } from '$lib/server/endpoints/client';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+import { fetchUpstreamBytes } from '#lib/server/endpoints/client.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 
 function endpoint(): LoadedEndpoint {
 	// Only baseUrl / apiKey / requestTimeoutSeconds are read by the fetcher.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildTitlePrompt, sanitizeTitle } from '$lib/server/tasks/title-generator';
+import { buildTitlePrompt, sanitizeTitle } from '#lib/server/tasks/title-generator.js';
 
 describe('buildTitlePrompt', () => {
 	it('includes both user and assistant text for text chats', () => {

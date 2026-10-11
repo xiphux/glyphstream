@@ -12,7 +12,7 @@ import {
 	NIGHT,
 	pickGreeting,
 	preferredFirstName,
-} from '$lib/greeting';
+} from '#lib/greeting.js';
 
 describe('firstName', () => {
 	it('takes the first whitespace-separated token of displayName', () => {

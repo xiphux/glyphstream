@@ -1,24 +1,8 @@
-<!--
-	Spotlight-style search modal. Mounted once in the (app) layout; reads
-	`searchModal.open` from the singleton store and renders an overlaid
-	card with a search input and a results list.
-
-	Same hand-rolled modal scaffold as ConfirmDialog (backdrop, surface-
-	glass card, window-level Escape) — bits-ui's Dialog isn't pulled in
-	just for this one surface.
-
-	Result rows render the FTS5 snippet with {@html} so the `<mark>` tags
-	wrap the matched terms. The snippet content is server-generated from
-	FTS5's snippet() function over the *raw text* we feed the index (not
-	the rendered HTML), and the only HTML it injects is the literal
-	<mark>/</mark> pair we asked for — there's no user-controlled HTML
-	path to worry about.
--->
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { Search as SearchIcon } from '@lucide/svelte';
-	import { searchModal } from '$lib/search-modal.svelte';
+	import { searchModal } from '#lib/search-modal.svelte.js';
 
 	interface SearchResult {
 		conversationId: string;
@@ -125,10 +109,12 @@
 		// layout-scope change anyway, but doing it explicitly avoids
 		// the brief flash).
 		searchModal.hide();
+
 		const href =
 			r.kind === 'message' && r.messageId
-				? resolve(`/chat/${r.conversationId}#msg-${r.messageId}`)
-				: resolve(`/chat/${r.conversationId}`);
+				? resolve(`chat/${r.conversationId}#msg-${r.messageId}`)
+				: resolve(`chat/${r.conversationId}`);
+
 		void goto(href);
 	}
 
@@ -161,6 +147,22 @@
 	}
 </script>
 
+<!--
+	Spotlight-style search modal. Mounted once in the (app) layout; reads
+	`searchModal.open` from the singleton store and renders an overlaid
+	card with a search input and a results list.
+
+	Same hand-rolled modal scaffold as ConfirmDialog (backdrop, surface-
+	glass card, window-level Escape) — bits-ui's Dialog isn't pulled in
+	just for this one surface.
+
+	Result rows render the FTS5 snippet with {@html} so the `<mark>` tags
+	wrap the matched terms. The snippet content is server-generated from
+	FTS5's snippet() function over the *raw text* we feed the index (not
+	the rendered HTML), and the only HTML it injects is the literal
+	<mark>/</mark> pair we asked for — there's no user-controlled HTML
+	path to worry about.
+-->
 <svelte:window onkeydown={onKey} />
 
 {#if searchModal.open}

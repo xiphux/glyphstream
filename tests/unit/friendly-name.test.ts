@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { friendlyModelName } from '$lib/model-ids';
+import { friendlyModelName } from '#lib/model-ids.js';
 
 describe('friendlyModelName', () => {
 	it('strips the endpoint:: prefix', () => {

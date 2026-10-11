@@ -31,10 +31,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { selectRelevant } from '$lib/server/retrieval/select';
-import { chunkArticleHtml } from '$lib/server/retrieval/chunker';
-import { resolveRelevanceConfig } from '$lib/server/retrieval/embeddings-config';
-import { resolveRerankConfig } from '$lib/server/retrieval/rerank-config';
+import { selectRelevant } from '#lib/server/retrieval/select.js';
+import { chunkArticleHtml } from '#lib/server/retrieval/chunker.js';
+import { resolveRelevanceConfig } from '#lib/server/retrieval/embeddings-config.js';
+import { resolveRerankConfig } from '#lib/server/retrieval/rerank-config.js';
 
 // Tight enough that ~1 section survives, so selection pressure is real.
 const BUDGET = 700;

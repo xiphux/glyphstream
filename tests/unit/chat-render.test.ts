@@ -23,8 +23,8 @@ import {
 	type InFlightSegment,
 	type RenderBlock,
 	type ToolResultEntry,
-} from '$lib/chat-render';
-import type { ChatMessage, MessagePart } from '$lib/types/api';
+} from '#lib/chat-render.js';
+import type { ChatMessage, MessagePart } from '#lib/types/api.js';
 
 function msg(
 	role: ChatMessage['role'],

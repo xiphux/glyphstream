@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { observeSentinel } from '$lib/observe-sentinel';
+import { observeSentinel } from '#lib/observe-sentinel.js';
 
 // Minimal IntersectionObserver stand-in: capture the callback + options and let
 // the test fire intersection changes by hand.

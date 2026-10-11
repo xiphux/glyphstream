@@ -16,7 +16,7 @@ import { render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import userEvent from '@testing-library/user-event';
 import Harness from './_helpers/AspectRatioSeedHarness.svelte';
-import type { AspectRatioOption } from '$lib/types/api';
+import type { AspectRatioOption } from '#lib/types/api.js';
 
 const OPTIONS: AspectRatioOption[] = [
 	{ value: '1:1', label: 'Square' },

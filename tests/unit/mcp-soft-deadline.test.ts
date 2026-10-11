@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { withSoftDeadline } from '$lib/server/mcp/registry';
+import { withSoftDeadline } from '#lib/server/mcp/registry.js';
 
 // withSoftDeadline backs the message-send path's bounded MCP connect: a connect
 // that overruns the budget must stop blocking the turn (resolve at the deadline)

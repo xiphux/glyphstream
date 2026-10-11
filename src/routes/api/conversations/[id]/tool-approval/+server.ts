@@ -16,29 +16,29 @@
  */
 
 import { error } from '@sveltejs/kit';
-import { requireFound } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { getConversationMeta } from '$lib/server/db/queries/conversations';
-import { walkActiveBranch, updateMessageParts } from '$lib/server/db/queries/messages';
-import { linkMessageMedia } from '$lib/server/db/queries/media';
-import { getEndpoint } from '$lib/server/endpoints/registry';
-import { listAllModels } from '$lib/server/endpoints/list-models';
-import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
-import { parseModelId } from '$lib/server/endpoints/model-id';
-import { resolveActivatedToolDefs } from '$lib/server/tools';
-import { getMaxToolLoopIterations } from '$lib/server/endpoints/config';
-import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
-import { dedupeToolDefs } from '$lib/server/chat/tool-search-context';
-import { augmentRequestForCanvas, buildChatToolContext } from '$lib/server/chat/tool-context';
-import { resolveDisabledFeatures } from '$lib/server/chat/private-seal';
-import { getUserPreferences, setUserPreferences } from '$lib/server/db/queries/user-preferences';
-import { composePersonaPrompt } from '$lib/server/chat/persona-context';
-import { executeOneToolCall } from '$lib/server/streaming/tool-execution';
-import { clearInFlight, registerInFlight } from '$lib/server/streaming/in-flight';
-import { startStreamingRelay } from '$lib/server/streaming/relay';
-import { mediaIdToDataUrl } from '$lib/server/media/data-url';
-import type { ChatCompletionRequest } from '$lib/server/endpoints/client';
-import type { ChatMessage, MessagePart } from '$lib/types/api';
+import { requireFound } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { getConversationMeta } from '#lib/server/db/queries/conversations.js';
+import { walkActiveBranch, updateMessageParts } from '#lib/server/db/queries/messages.js';
+import { linkMessageMedia } from '#lib/server/db/queries/media.js';
+import { getEndpoint } from '#lib/server/endpoints/registry.js';
+import { listAllModels } from '#lib/server/endpoints/list-models.js';
+import { serializeBranchForUpstream } from '#lib/server/endpoints/serialize-upstream.js';
+import { parseModelId } from '#lib/server/endpoints/model-id.js';
+import { resolveActivatedToolDefs } from '#lib/server/tools/index.js';
+import { getMaxToolLoopIterations } from '#lib/server/endpoints/config.js';
+import { awaitMcpReady } from '#lib/server/mcp/bootstrap.js';
+import { dedupeToolDefs } from '#lib/server/chat/tool-search-context.js';
+import { augmentRequestForCanvas, buildChatToolContext } from '#lib/server/chat/tool-context.js';
+import { resolveDisabledFeatures } from '#lib/server/chat/private-seal.js';
+import { getUserPreferences, setUserPreferences } from '#lib/server/db/queries/user-preferences.js';
+import { composePersonaPrompt } from '#lib/server/chat/persona-context.js';
+import { executeOneToolCall } from '#lib/server/streaming/tool-execution.js';
+import { clearInFlight, registerInFlight } from '#lib/server/streaming/in-flight.js';
+import { startStreamingRelay } from '#lib/server/streaming/relay.js';
+import { mediaIdToDataUrl } from '#lib/server/media/data-url.js';
+import type { ChatCompletionRequest } from '#lib/server/endpoints/client.js';
+import type { ChatMessage, MessagePart } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
 
 interface ApprovalDecision {

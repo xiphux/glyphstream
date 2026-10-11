@@ -28,8 +28,8 @@
  */
 
 import { json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { clearFanoutParent } from '$lib/server/db/queries/conversations';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { clearFanoutParent } from '#lib/server/db/queries/conversations.js';
 import type { RequestHandler } from './$types';
 
 export const DELETE: RequestHandler = ({ locals, params }) => {

@@ -36,7 +36,7 @@
  * content-free payload looks like.
  */
 
-import type { NotifyPushPayload } from '$lib/types/push';
+import type { NotifyPushPayload } from '#lib/types/push.js';
 
 /** Stands in for the thread title in a payload built for a user who opted out
  *  of content. Sent by the server (rather than dropping the field) for the

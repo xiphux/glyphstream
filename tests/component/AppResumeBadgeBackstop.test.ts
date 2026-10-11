@@ -44,10 +44,10 @@ vi.mock('$app/state', async () => {
 	holder.current = createKitStub('http://localhost:3000/');
 	return { page: holder.current.page, navigating: holder.current.navigating };
 });
-vi.mock('$lib/sw/badge', () => ({ syncAppBadgeFromWindow: vi.fn(async () => {}) }));
+vi.mock('#lib/sw/badge.js', () => ({ syncAppBadgeFromWindow: vi.fn(async () => {}) }));
 
 import RootLayout from '../../src/routes/+layout.svelte';
-import { syncAppBadgeFromWindow } from '$lib/sw/badge';
+import { syncAppBadgeFromWindow } from '#lib/sw/badge.js';
 
 const synced = vi.mocked(syncAppBadgeFromWindow);
 

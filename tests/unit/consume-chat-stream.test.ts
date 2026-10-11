@@ -1,8 +1,8 @@
 /** Tests for the SSE event dispatcher used by the chat page. */
 
 import { describe, expect, it, vi } from 'vitest';
-import { consumeChatStream } from '$lib/consume-chat-stream';
-import type { ChatMessage, StreamEvent } from '$lib/types/api';
+import { consumeChatStream } from '#lib/consume-chat-stream.js';
+import type { ChatMessage, StreamEvent } from '#lib/types/api.js';
 
 const TEXT_ENCODER = new TextEncoder();
 

@@ -26,7 +26,7 @@
  * thread I'm watching."
  */
 
-import type { ActiveConversationReport } from '$lib/types/push';
+import type { ActiveConversationReport } from '#lib/types/push.js';
 
 export interface ArbiterPayload {
 	conversationId: string;

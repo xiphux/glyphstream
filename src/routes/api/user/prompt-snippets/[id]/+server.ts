@@ -9,15 +9,15 @@
  * same "materialized at use time" contract custom models have.
  */
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
 import {
 	deletePromptSnippet,
 	getPromptSnippetForUser,
 	promptSnippetExistsByName,
 	updatePromptSnippet,
-} from '$lib/server/db/queries/prompt-snippets';
-import { validateUpdateSnippet } from '$lib/server/prompt-snippets/validate';
+} from '#lib/server/db/queries/prompt-snippets.js';
+import { validateUpdateSnippet } from '#lib/server/prompt-snippets/validate.js';
 import type { RequestHandler } from './$types';
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {

@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
-import { requireFound, requireUser } from '$lib/server/auth/guard';
-import { getConversationMeta } from '$lib/server/db/queries/conversations';
-import { cancelInFlightGenerations } from '$lib/server/streaming/cancel';
+import { requireFound, requireUser } from '#lib/server/auth/guard.js';
+import { getConversationMeta } from '#lib/server/db/queries/conversations.js';
+import { cancelInFlightGenerations } from '#lib/server/streaming/cancel.js';
 import type { RequestHandler } from './$types';
 
 /**

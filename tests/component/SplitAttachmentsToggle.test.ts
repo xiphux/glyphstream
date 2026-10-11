@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { tick } from 'svelte';
-import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
+import SplitAttachmentsToggle from '#lib/components/chat/SplitAttachmentsToggle.svelte';
 
 describe('SplitAttachmentsToggle', () => {
 	it('toggles enabled on click and reflects aria-pressed', async () => {

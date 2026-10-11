@@ -12,10 +12,12 @@ import process from 'node:process';
 import { env } from '$env/dynamic/private';
 
 function readString(name: string, fallback: string): string {
+	// @migration-task Rewrite dynamic env lookup manually.
 	return env[name] ?? fallback;
 }
 
 function requireString(name: string): string {
+	// @migration-task Rewrite dynamic env lookup manually.
 	const v = env[name];
 	if (!v || v.length === 0) {
 		throw new Error(`Required environment variable ${name} is not set`);
@@ -29,6 +31,7 @@ function requireString(name: string): string {
  *  `*_LOGIN_ENABLED` flag is on AND its credentials are present, so a
  *  half-configured provider never shows a button that would 500 on click. */
 function hasString(name: string): boolean {
+	// @migration-task Rewrite dynamic env lookup manually.
 	const v = env[name];
 	return !!v && v.length > 0;
 }
@@ -183,6 +186,7 @@ export function cookiesSecure(): boolean {
 }
 
 function readBool(name: string, fallback: boolean): boolean {
+	// @migration-task Rewrite dynamic env lookup manually.
 	const raw = env[name];
 	if (raw === undefined || raw === '') return fallback;
 	const v = raw.toLowerCase();
@@ -285,6 +289,7 @@ export function validateAuthMethodsEnabled(): void {
 		(githubLoginEnabled() && hasGithubCredentials()) ||
 		(googleLoginEnabled() && hasGoogleCredentials()) ||
 		(oidcLoginEnabled() && hasOidcCredentials());
+
 	const passkey = passkeyLoginEnabled();
 	if (!anyOAuth && !passkey) {
 		throw new Error(
@@ -329,6 +334,7 @@ export function compressDynamicResponses(): boolean {
  * where a misconfiguration that could lock everyone out belongs.
  */
 function readNonNegativeInt(name: string, fallback: number): number {
+	// @migration-task Rewrite dynamic env lookup manually.
 	const raw = env[name];
 	if (raw === undefined || raw.trim() === '') return fallback;
 	const parsed = Number(raw);

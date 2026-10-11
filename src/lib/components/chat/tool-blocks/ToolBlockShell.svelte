@@ -15,8 +15,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { ShieldCheck } from '@lucide/svelte';
-	import FileAttachmentChip from '$lib/components/FileAttachmentChip.svelte';
-	import type { ToolResultAttachment } from '$lib/chat-render';
+	import FileAttachmentChip from '#lib/components/FileAttachmentChip.svelte';
+	import type { ToolResultAttachment } from '#lib/chat-render.js';
 
 	type Status = 'executing' | 'done' | 'error' | 'pending_approval';
 

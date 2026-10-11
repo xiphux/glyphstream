@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { McpConfigError, loadMcpServers } from '$lib/server/mcp/config';
+import { McpConfigError, loadMcpServers } from '#lib/server/mcp/config.js';
 
 const envStub = vi.hoisted(() => ({ values: {} as Record<string, string> }));
 vi.mock('$env/dynamic/private', () => ({

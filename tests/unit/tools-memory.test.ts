@@ -3,18 +3,18 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
 
 // Import the tool module for its side-effect registration in the singleton
 // registry, AND the per-tool exports we want to invoke directly.
-import { saveMemoryTool, updateMemoryTool, forgetMemoryTool } from '$lib/server/tools/memory';
-import { openaiToolDefinitions } from '$lib/server/tools/registry';
-import { MEMORY_MAX_CONTENT_CHARS } from '$lib/server/memory/limits';
-import { listMemoriesForUser } from '$lib/server/db/queries/memories';
-import type { Tool, ToolContext, ToolExecution } from '$lib/server/tools/types';
+import { saveMemoryTool, updateMemoryTool, forgetMemoryTool } from '#lib/server/tools/memory.js';
+import { openaiToolDefinitions } from '#lib/server/tools/registry.js';
+import { MEMORY_MAX_CONTENT_CHARS } from '#lib/server/memory/limits.js';
+import { listMemoriesForUser } from '#lib/server/db/queries/memories.js';
+import type { Tool, ToolContext, ToolExecution } from '#lib/server/tools/types.js';
 
 function ctx(userId: string): ToolContext {
 	return {

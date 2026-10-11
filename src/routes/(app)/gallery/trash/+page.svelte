@@ -2,10 +2,10 @@
 	import { invalidate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { ChevronLeft, ZoomIn } from '@lucide/svelte';
-	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
-	import { confirmDialog } from '$lib/confirm.svelte';
-	import { toast } from '$lib/toast.svelte';
-	import { friendlyModelName } from '$lib/model-ids';
+	import MediaLightbox from '#lib/components/MediaLightbox.svelte';
+	import { confirmDialog } from '#lib/confirm.svelte.js';
+	import { toast } from '#lib/toast.svelte.js';
+	import { friendlyModelName } from '#lib/model-ids.js';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -118,7 +118,7 @@
 	<header class="flex shrink-0 flex-wrap items-center justify-between gap-3 px-4 py-3">
 		<div class="flex min-w-0 items-center gap-2">
 			<a
-				href={resolve('/gallery')}
+				href={resolve('gallery')}
 				class="-ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-sm transition hover:bg-surface-raised"
 				aria-label="Back to gallery"
 			>

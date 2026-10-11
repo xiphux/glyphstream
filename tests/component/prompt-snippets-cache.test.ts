@@ -12,8 +12,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureSnippetsLoaded, invalidateSnippets, snippetList } from '$lib/prompt-snippets.svelte';
-import type { PromptSnippet } from '$lib/types/api';
+import {
+	ensureSnippetsLoaded,
+	invalidateSnippets,
+	snippetList,
+} from '#lib/prompt-snippets.svelte.js';
+import type { PromptSnippet } from '#lib/types/api.js';
 
 function snip(name: string): PromptSnippet {
 	return {

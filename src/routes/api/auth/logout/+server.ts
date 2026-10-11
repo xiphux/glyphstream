@@ -4,7 +4,7 @@ import {
 	invalidateSession,
 	readSessionCookie,
 	validateSessionToken,
-} from '$lib/server/auth/session';
+} from '#lib/server/auth/session.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = ({ cookies }) => {

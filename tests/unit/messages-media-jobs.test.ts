@@ -12,10 +12,10 @@
  * the assertion.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '$lib/fanout';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
-import type { SubmitGenerationJob } from '$lib/server/generation/jobs';
-import { registerInFlight, resetInFlight } from '$lib/server/streaming/in-flight';
+import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '#lib/fanout.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
+import type { SubmitGenerationJob } from '#lib/server/generation/jobs.js';
+import { registerInFlight, resetInFlight } from '#lib/server/streaming/in-flight.js';
 
 const mocks = vi.hoisted(() => ({
 	getConversationMeta: vi.fn<(...a: unknown[]) => unknown>(),
@@ -26,24 +26,24 @@ const mocks = vi.hoisted(() => ({
 	submitGenerationJob: vi.fn<(input: SubmitGenerationJob) => ReadableStream<Uint8Array>>(),
 }));
 
-vi.mock('$lib/server/db/queries/conversations', () => ({
+vi.mock('#lib/server/db/queries/conversations.js', () => ({
 	getConversationMeta: (...a: unknown[]) => mocks.getConversationMeta(...a),
 	updateConversationModel: () => {},
 }));
-vi.mock('$lib/server/db/queries/messages', async (orig) => ({
-	...(await orig<typeof import('$lib/server/db/queries/messages')>()),
+vi.mock('#lib/server/db/queries/messages.js', async (orig) => ({
+	...(await orig<typeof import('#lib/server/db/queries/messages.js')>()),
 	getMessage: (...a: unknown[]) => mocks.getMessage(...a),
 }));
-vi.mock('$lib/server/messages/create-user-message', () => ({
+vi.mock('#lib/server/messages/create-user-message.js', () => ({
 	createUserMessage: (...a: unknown[]) => mocks.createUserMessage(...a),
 }));
-vi.mock('$lib/server/endpoints/registry', () => ({
+vi.mock('#lib/server/endpoints/registry.js', () => ({
 	getEndpoint: (...a: unknown[]) => mocks.getEndpoint(...a),
 }));
-vi.mock('$lib/server/endpoints/list-models', () => ({
+vi.mock('#lib/server/endpoints/list-models.js', () => ({
 	listAllModels: (...a: unknown[]) => mocks.listAllModels(...a),
 }));
-vi.mock('$lib/server/generation/jobs', () => ({
+vi.mock('#lib/server/generation/jobs.js', () => ({
 	submitGenerationJob: (input: SubmitGenerationJob) => mocks.submitGenerationJob(input),
 }));
 

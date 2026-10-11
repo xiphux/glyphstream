@@ -27,13 +27,13 @@ const mocks = vi.hoisted(() => ({
 	upstreamCalls: [] as unknown[],
 }));
 
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
 
-vi.mock('$lib/server/endpoints/client', async (orig) => {
-	const real = await orig<typeof import('$lib/server/endpoints/client')>();
+vi.mock('#lib/server/endpoints/client.js', async (orig) => {
+	const real = await orig<typeof import('#lib/server/endpoints/client.js')>();
 	return {
 		...real,
 		chatCompletionStream: vi.fn(async (_endpoint, body) => {
@@ -45,23 +45,23 @@ vi.mock('$lib/server/endpoints/client', async (orig) => {
 	};
 });
 
-vi.mock('$lib/server/push/notify', () => ({
+vi.mock('#lib/server/push/notify.js', () => ({
 	notifyConversationComplete: vi.fn(async () => {}),
 }));
-vi.mock('$lib/server/tasks/title-task-runner', () => ({
+vi.mock('#lib/server/tasks/title-task-runner.js', () => ({
 	startTitleTaskIfFirstExchange: vi.fn(() => Promise.resolve(null)),
 	raceTitle: vi.fn(async (p: Promise<string | null>) => p),
 }));
 
-import { createConversation } from '$lib/server/db/queries/conversations';
-import { appendMessage, walkActiveBranch } from '$lib/server/db/queries/messages';
-import { _resetForTests, register } from '$lib/server/tools/registry';
-import { reactToMessageTool } from '$lib/server/tools/react';
-import { startStreamingRelay } from '$lib/server/streaming/relay';
-import { resetEndpointGatesForTests } from '$lib/server/endpoints/concurrency';
-import type { ChatCompletionRequest } from '$lib/server/endpoints/client';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
-import type { ChatMessage, StreamDoneEvent, StreamReactionEvent } from '$lib/types/api';
+import { createConversation } from '#lib/server/db/queries/conversations.js';
+import { appendMessage, walkActiveBranch } from '#lib/server/db/queries/messages.js';
+import { _resetForTests, register } from '#lib/server/tools/registry.js';
+import { reactToMessageTool } from '#lib/server/tools/react.js';
+import { startStreamingRelay } from '#lib/server/streaming/relay.js';
+import { resetEndpointGatesForTests } from '#lib/server/endpoints/concurrency.js';
+import type { ChatCompletionRequest } from '#lib/server/endpoints/client.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
+import type { ChatMessage, StreamDoneEvent, StreamReactionEvent } from '#lib/types/api.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

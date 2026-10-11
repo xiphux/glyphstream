@@ -12,7 +12,7 @@ import { eq } from 'drizzle-orm';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
@@ -22,8 +22,8 @@ import {
 	countUsers,
 	createInitialUser,
 	getDisabledAt,
-} from '$lib/server/db/queries/users';
-import { users } from '$lib/server/db/schema';
+} from '#lib/server/db/queries/users.js';
+import { users } from '#lib/server/db/schema.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

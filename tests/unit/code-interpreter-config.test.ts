@@ -7,7 +7,7 @@ import {
 	CodeInterpreterConfigError,
 	loadCodeInterpreterConfig,
 	resetCodeInterpreterConfigForTests,
-} from '$lib/server/code-interpreter/config';
+} from '#lib/server/code-interpreter/config.js';
 
 let tmpDir: string;
 let configPath: string;

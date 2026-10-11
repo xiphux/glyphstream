@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 // Point the store's SKILLS_DIR at a throwaway temp dir for this file. The
 // factory is async so it can create the dir without a hoisting dance.
-vi.mock('$lib/server/env', async () => {
+vi.mock('#lib/server/env.js', async () => {
 	const { mkdtempSync } = await import('node:fs');
 	const { tmpdir } = await import('node:os');
 	const { join } = await import('node:path');
@@ -11,9 +11,9 @@ vi.mock('$lib/server/env', async () => {
 	return { skillsDir: () => dir };
 });
 
-import { skillsDir } from '$lib/server/env';
-import { DiskSkillStore, safeJoin, getSkillStore } from '$lib/server/skills/disk-store';
-import { MAX_BUNDLE_FILES } from '$lib/server/skills/store';
+import { skillsDir } from '#lib/server/env.js';
+import { DiskSkillStore, safeJoin, getSkillStore } from '#lib/server/skills/disk-store.js';
+import { MAX_BUNDLE_FILES } from '#lib/server/skills/store.js';
 
 afterAll(async () => {
 	const { rm } = await import('node:fs/promises');

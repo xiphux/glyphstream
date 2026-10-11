@@ -11,17 +11,17 @@
  * external IdP; a client-driven navigation isn't policed the same way).
  */
 import { error, json } from '@sveltejs/kit';
-import { getEnabledProvider } from '$lib/server/auth/oauth/registry';
+import { getEnabledProvider } from '#lib/server/auth/oauth/registry.js';
 import {
 	CODE_VERIFIER_COOKIE,
 	STATE_COOKIE,
 	STATE_TTL_SECONDS,
-} from '$lib/server/auth/oauth/cookies';
-import { JOIN_OAUTH_CARRY_COOKIE } from '$lib/server/auth/join';
-import { sign, setCarryCookie } from '$lib/server/auth/signed-cookies';
-import { parseIdentityInput } from '$lib/server/auth/identity-input';
-import { parseJsonBody } from '$lib/server/http';
-import { findValidInvite } from '$lib/server/db/queries/invites';
+} from '#lib/server/auth/oauth/cookies.js';
+import { JOIN_OAUTH_CARRY_COOKIE } from '#lib/server/auth/join.js';
+import { sign, setCarryCookie } from '#lib/server/auth/signed-cookies.js';
+import { parseIdentityInput } from '#lib/server/auth/identity-input.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { findValidInvite } from '#lib/server/db/queries/invites.js';
 import type { RequestHandler } from './$types';
 
 const CARRY_TTL_MS = STATE_TTL_SECONDS * 1000;

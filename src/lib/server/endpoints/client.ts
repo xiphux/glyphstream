@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { Readable } from 'node:stream';
 import type { LoadedEndpoint } from './config';
-import type { UpstreamModel } from '$lib/types/api';
+import type { UpstreamModel } from '#lib/types/api.js';
 import { composeSignals } from '../util/abort';
 import { assertHostnameRoutable, assertHttpScheme, UrlPolicyError } from '../tools/url-policy-base';
 

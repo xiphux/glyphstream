@@ -5,7 +5,7 @@ import {
 	buildApprovalDecisionsSnapshot,
 	runApprovalResume,
 	type ApprovalAction,
-} from '$lib/approval-workflow';
+} from '#lib/approval-workflow.js';
 
 describe('buildApprovalDecisionsSnapshot', () => {
 	it('maps each id to its decision, in iteration order', () => {

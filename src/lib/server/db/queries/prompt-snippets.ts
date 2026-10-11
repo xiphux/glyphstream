@@ -1,6 +1,6 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
-import type { PromptSnippet, SnippetKind } from '$lib/types/api';
+import type { PromptSnippet, SnippetKind } from '#lib/types/api.js';
 import { getDb, type Tx } from '../client';
 import { promptSnippets } from '../schema';
 import { parseSnippetKinds, parseSnippetTags } from './json-columns';
@@ -45,7 +45,7 @@ function encodeList(list: readonly string[] | undefined): string | null {
  *
  * This is the raw order the settings page renders. Most-used-first ordering is
  * NOT applied here — the composer's autocomplete re-sorts by `usageCount` in
- * `filterSnippets` (`$lib/prompt-snippet-trigger`), which is the only consumer
+ * `filterSnippets` (`#lib/prompt-snippet-trigger.js`), which is the only consumer
  * that wants it.
  *
  * The `asc(id)` tiebreak is belt-and-braces: `uq_prompt_snippets_user_name`

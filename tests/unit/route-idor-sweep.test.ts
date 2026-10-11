@@ -29,32 +29,32 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB, root: '' }));
-vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
-vi.mock('$lib/server/env', async (importOriginal) => ({
-	...(await importOriginal<typeof import('$lib/server/env')>()),
+vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
+vi.mock('#lib/server/env.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/server/env.js')>()),
 	mediaDir: () => mocks.root,
 	derivedDir: () => mocks.root,
 }));
 // The intruder's own conversation needs a resolvable model, or the send route
 // refuses it ("no valid model") before it ever looks at a message id.
-vi.mock('$lib/server/endpoints/registry', async (importOriginal) => ({
-	...(await importOriginal<typeof import('$lib/server/endpoints/registry')>()),
+vi.mock('#lib/server/endpoints/registry.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/server/endpoints/registry.js')>()),
 	getEndpoint: (id: string) =>
 		id === 'e' ? ({ id: 'e', baseUrl: 'http://127.0.0.1:9/v1' } as never) : undefined,
 }));
 
-import * as schema from '$lib/server/db/schema';
-import { createSession, validateSessionToken } from '$lib/server/auth/session';
-import { createConversation } from '$lib/server/db/queries/conversations';
-import { appendMessage } from '$lib/server/db/queries/messages';
-import { insertMedia, linkMessageMedia } from '$lib/server/db/queries/media';
-import { createCustomModel } from '$lib/server/db/queries/custom-models';
-import { createMemory } from '$lib/server/db/queries/memories';
-import { createPromptSnippet } from '$lib/server/db/queries/prompt-snippets';
-import { createSkill } from '$lib/server/db/queries/skills';
-import { insertCredential } from '$lib/server/db/queries/passkey';
-import { getMediaStore } from '$lib/server/media/disk-store';
-import { createUserMessage } from '$lib/server/messages/create-user-message';
+import * as schema from '#lib/server/db/schema.js';
+import { createSession, validateSessionToken } from '#lib/server/auth/session.js';
+import { createConversation } from '#lib/server/db/queries/conversations.js';
+import { appendMessage } from '#lib/server/db/queries/messages.js';
+import { insertMedia, linkMessageMedia } from '#lib/server/db/queries/media.js';
+import { createCustomModel } from '#lib/server/db/queries/custom-models.js';
+import { createMemory } from '#lib/server/db/queries/memories.js';
+import { createPromptSnippet } from '#lib/server/db/queries/prompt-snippets.js';
+import { createSkill } from '#lib/server/db/queries/skills.js';
+import { insertCredential } from '#lib/server/db/queries/passkey.js';
+import { getMediaStore } from '#lib/server/media/disk-store.js';
+import { createUserMessage } from '#lib/server/messages/create-user-message.js';
 
 const ROUTES = join(__dirname, '../../src/routes');
 

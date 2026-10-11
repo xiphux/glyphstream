@@ -11,7 +11,7 @@
  * write failure we roll back the row we just inserted. `skillExistsByName` stays
  * as a friendly pre-flight 409 for the common re-import case.
  */
-import type { Skill } from '$lib/types/api';
+import type { Skill } from '#lib/types/api.js';
 import {
 	createSkill,
 	deleteSkill,

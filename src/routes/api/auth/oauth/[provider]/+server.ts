@@ -10,13 +10,13 @@
  * misleading 409 instead of 404.
  */
 import { error } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
+import { requireUser } from '#lib/server/auth/guard.js';
 import {
 	deleteOAuthAccount,
 	listOAuthAccountsForUser,
-} from '$lib/server/db/queries/oauth-accounts';
-import { countCredentialsForUser } from '$lib/server/db/queries/passkey';
-import { isProviderEnabled } from '$lib/server/auth/oauth/registry';
+} from '#lib/server/db/queries/oauth-accounts.js';
+import { countCredentialsForUser } from '#lib/server/db/queries/passkey.js';
+import { isProviderEnabled } from '#lib/server/auth/oauth/registry.js';
 import type { RequestHandler } from './$types';
 
 export const DELETE: RequestHandler = ({ locals, params }) => {

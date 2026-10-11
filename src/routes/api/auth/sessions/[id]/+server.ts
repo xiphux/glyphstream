@@ -10,8 +10,8 @@
  * /login when it recognizes that case.
  */
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { clearSessionCookie, revokeSessionForUser } from '$lib/server/auth/session';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { clearSessionCookie, revokeSessionForUser } from '#lib/server/auth/session.js';
 import type { RequestHandler } from './$types';
 
 export const DELETE: RequestHandler = ({ locals, params, cookies }) => {

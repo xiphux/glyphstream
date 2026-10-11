@@ -10,8 +10,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
-import type { AttachedItem, AttachmentStore } from '$lib/attachments.svelte';
+import AttachmentThumbnails from '#lib/components/AttachmentThumbnails.svelte';
+import type { AttachedItem, AttachmentStore } from '#lib/attachments.svelte.js';
 
 function makeItem(overrides: Partial<AttachedItem> = {}): AttachedItem {
 	return {

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // run_skill_script is additionally gated on the code interpreter; control it.
 const mocks = vi.hoisted(() => ({ ci: true }));
-vi.mock('$lib/server/code-interpreter/config', () => ({
+vi.mock('#lib/server/code-interpreter/config.js', () => ({
 	isCodeInterpreterEnabled: () => mocks.ci,
 	getCodeInterpreterConfig: () => ({}),
 	resetCodeInterpreterConfigForTests: () => {},
@@ -13,7 +13,7 @@ import {
 	readSkillFileDefinition,
 	runSkillScriptDefinition,
 	skillToolDefinitions,
-} from '$lib/server/tools/activate-skill';
+} from '#lib/server/tools/activate-skill.js';
 
 beforeEach(() => {
 	mocks.ci = true;

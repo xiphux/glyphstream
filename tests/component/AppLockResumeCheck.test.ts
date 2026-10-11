@@ -57,8 +57,8 @@ vi.mock('$app/navigation', async () => {
 		preloadData: v.fn(async () => ({})),
 	};
 });
-vi.mock('$lib/push-subscribe', () => ({ reconcileSubscription: vi.fn(async () => {}) }));
-vi.mock('$lib/timezone-sync', () => ({ syncTimeZone: vi.fn(async () => {}) }));
+vi.mock('#lib/push-subscribe.js', () => ({ reconcileSubscription: vi.fn(async () => {}) }));
+vi.mock('#lib/timezone-sync.js', () => ({ syncTimeZone: vi.fn(async () => {}) }));
 vi.stubGlobal('__APP_VERSION__', '9.9.9');
 const store = new Map<string, string>();
 vi.stubGlobal('localStorage', {

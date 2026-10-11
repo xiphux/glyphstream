@@ -1,6 +1,6 @@
-import { requireAdmin } from '$lib/server/auth/guard';
-import { listAllModelsWithErrors } from '$lib/server/endpoints/list-models';
-import { getEndpointsStatus } from '$lib/server/endpoints/status';
+import { requireAdmin } from '#lib/server/auth/guard.js';
+import { listAllModelsWithErrors } from '#lib/server/endpoints/list-models.js';
+import { getEndpointsStatus } from '#lib/server/endpoints/status.js';
 import type { PageServerLoad } from './$types';
 
 /**

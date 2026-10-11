@@ -17,7 +17,7 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
@@ -33,8 +33,8 @@ import {
 	readSessionCookie,
 	setSessionCookie,
 	validateSessionToken,
-} from '$lib/server/auth/session';
-import { sessions } from '$lib/server/db/schema';
+} from '#lib/server/auth/session.js';
+import { sessions } from '#lib/server/db/schema.js';
 
 function hash(s: string): string {
 	return createHash('sha256').update(s).digest('hex');
@@ -369,7 +369,7 @@ describe('cookie Secure attribute', () => {
 		// with no Secure attribute and no warning. EXTERNAL_BASE_URL has to be
 		// right already (the WebAuthn RP ID and OAuth redirect both derive
 		// from it), so keying to it fails safe instead.
-		const { cookiesSecure } = await import('$lib/server/env');
+		const { cookiesSecure } = await import('#lib/server/env.js');
 		const previous = process.env.EXTERNAL_BASE_URL;
 		const previousNodeEnv = process.env.NODE_ENV;
 		try {

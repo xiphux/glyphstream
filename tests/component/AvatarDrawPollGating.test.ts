@@ -37,7 +37,7 @@
 
 import { describe, expect, it, afterEach } from 'vitest';
 import { flushSync } from 'svelte';
-import { AvatarDrawController } from '$lib/avatar-draw-controller.svelte';
+import { AvatarDrawController } from '#lib/avatar-draw-controller.svelte.js';
 import { reactiveBox, trackReactive } from './_reactive-probe.svelte';
 
 let dispose: (() => void) | null = null;

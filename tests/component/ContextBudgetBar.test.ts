@@ -6,8 +6,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import ContextBudgetBar from '$lib/components/chat/ContextBudgetBar.svelte';
-import type { ContextBreakdown } from '$lib/types/api';
+import ContextBudgetBar from '#lib/components/chat/ContextBudgetBar.svelte';
+import type { ContextBreakdown } from '#lib/types/api.js';
 
 const noop = () => {};
 

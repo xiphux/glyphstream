@@ -6,9 +6,9 @@ import {
 	serializeBranchForUpstream,
 	serializeMessageForUpstream,
 	truncateToolResult,
-} from '$lib/server/endpoints/serialize-upstream';
-import { MediaNotAvailableError } from '$lib/server/media/data-url';
-import type { ChatMessage, MessagePart } from '$lib/types/api';
+} from '#lib/server/endpoints/serialize-upstream.js';
+import { MediaNotAvailableError } from '#lib/server/media/data-url.js';
+import type { ChatMessage, MessagePart } from '#lib/types/api.js';
 
 /** A full `activate_skill` tool result as `wrapSkillContent` persists it — the
  *  first line is the marker the collapse pass keys on. */

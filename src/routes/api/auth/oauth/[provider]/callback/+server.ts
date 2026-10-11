@@ -8,8 +8,8 @@
  * it must never be double-served here.
  */
 import { error } from '@sveltejs/kit';
-import { getProvider } from '$lib/server/auth/oauth/registry';
-import { handleOAuthCallback } from '$lib/server/auth/oauth/callback-handler';
+import { getProvider } from '#lib/server/auth/oauth/registry.js';
+import { handleOAuthCallback } from '#lib/server/auth/oauth/callback-handler.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ url, cookies, locals, params, request }) => {

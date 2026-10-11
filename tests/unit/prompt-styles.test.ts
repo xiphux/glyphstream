@@ -9,7 +9,7 @@ import {
 	preserveInstruction,
 	PROMPT_STYLES,
 	STYLE_INSTRUCTIONS,
-} from '$lib/server/streaming/prompt-styles';
+} from '#lib/server/streaming/prompt-styles.js';
 
 describe('normalizeStyle', () => {
 	it('passes through the canonical keys', () => {

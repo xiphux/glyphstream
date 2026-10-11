@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseIdentityInput } from '$lib/server/auth/identity-input';
+import { parseIdentityInput } from '#lib/server/auth/identity-input.js';
 
 /** error() throws an HttpError with a numeric `status`. */
 function statusOf(fn: () => unknown): number | undefined {

@@ -22,7 +22,7 @@
 		RotateCcw,
 		Trash2,
 	} from '@lucide/svelte';
-	import type { ChatMessage } from '$lib/types/api';
+	import type { ChatMessage } from '#lib/types/api.js';
 
 	interface Props {
 		message: ChatMessage;

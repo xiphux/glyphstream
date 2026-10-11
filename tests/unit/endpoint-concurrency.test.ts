@@ -12,14 +12,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // The gate calls this when a group changes hands; stubbing it lets the ordering
 // be observed without a backend, and lets a slow release be simulated.
 const releaseMock = vi.hoisted(() => vi.fn(async () => true));
-vi.mock('$lib/server/endpoints/release', () => ({ releaseEndpointResources: releaseMock }));
+vi.mock('#lib/server/endpoints/release.js', () => ({ releaseEndpointResources: releaseMock }));
 import {
 	acquireEndpointSlot,
 	type AcquireOptions,
 	getResourceQueueDepth,
 	resetEndpointGatesForTests,
-} from '$lib/server/endpoints/concurrency';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+} from '#lib/server/endpoints/concurrency.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 
 /**
  * These tests are about QUEUE SEMANTICS — ordering, capacity, aborts, handover

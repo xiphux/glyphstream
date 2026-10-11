@@ -29,7 +29,7 @@
  * truncating the snippet.
  */
 
-import { isSnippetKind, type PromptSnippet, type SnippetKind } from '$lib/types/api';
+import { isSnippetKind, type PromptSnippet, type SnippetKind } from '#lib/types/api.js';
 
 export interface ParsedSnippet {
 	name: string;

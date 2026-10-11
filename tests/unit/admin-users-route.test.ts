@@ -21,22 +21,22 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB, root: '' }));
-vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
-vi.mock('$lib/server/env', async (importOriginal) => ({
-	...(await importOriginal<typeof import('$lib/server/env')>()),
+vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
+vi.mock('#lib/server/env.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/server/env.js')>()),
 	mediaDir: () => mocks.root,
 	derivedDir: () => mocks.root,
 }));
 
 import { DELETE, PATCH } from '../../src/routes/api/admin/users/[id]/+server';
-import { createSession, validateSessionToken } from '$lib/server/auth/session';
-import { createConversation } from '$lib/server/db/queries/conversations';
-import { insertMedia, purgeTrashForUser, trashMediaForUser } from '$lib/server/db/queries/media';
-import { conversations, media, sessions, users } from '$lib/server/db/schema';
-import { getMediaStore } from '$lib/server/media/disk-store';
-import { thumbStoragePath } from '$lib/server/media/thumbnail';
-import { registerInFlight, resetInFlight } from '$lib/server/streaming/in-flight';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+import { createSession, validateSessionToken } from '#lib/server/auth/session.js';
+import { createConversation } from '#lib/server/db/queries/conversations.js';
+import { insertMedia, purgeTrashForUser, trashMediaForUser } from '#lib/server/db/queries/media.js';
+import { conversations, media, sessions, users } from '#lib/server/db/schema.js';
+import { getMediaStore } from '#lib/server/media/disk-store.js';
+import { thumbStoragePath } from '#lib/server/media/thumbnail.js';
+import { registerInFlight, resetInFlight } from '#lib/server/streaming/in-flight.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 
 type Handler = (event: RequestEvent) => Promise<Response> | Response;
 

@@ -3,15 +3,15 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
 
-import { composePersonaPrompt } from '$lib/server/chat/persona-context';
-import { createMemory, MEMORY_INLINE_BUDGET_CHARS } from '$lib/server/db/queries/memories';
-import { setConversationOverview } from '$lib/server/db/queries/users';
-import type { UserPreferences } from '$lib/types/api';
+import { composePersonaPrompt } from '#lib/server/chat/persona-context.js';
+import { createMemory, MEMORY_INLINE_BUDGET_CHARS } from '#lib/server/db/queries/memories.js';
+import { setConversationOverview } from '#lib/server/db/queries/users.js';
+import type { UserPreferences } from '#lib/types/api.js';
 
 const PREFS: UserPreferences = {
 	name: '',

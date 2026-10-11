@@ -1,7 +1,7 @@
 /**
  * Unit tests for the OAuth provider registry. The registry is the single
  * place that decides which providers exist and which are *available* (flag
- * on AND credentials present). We mock `$lib/server/env` so the enable
+ * on AND credentials present). We mock `#lib/server/env.js` so the enable
  * flags + credential presence can be flipped per test without real env.
  */
 
@@ -17,7 +17,7 @@ const envState = vi.hoisted(() => ({
 	oidcDisplayName: 'SSO',
 }));
 
-vi.mock('$lib/server/env', () => ({
+vi.mock('#lib/server/env.js', () => ({
 	githubLoginEnabled: () => envState.githubLoginEnabled,
 	hasGithubCredentials: () => envState.hasGithubCredentials,
 	googleLoginEnabled: () => envState.googleLoginEnabled,
@@ -44,7 +44,7 @@ import {
 	getProvider,
 	isProviderEnabled,
 	listEnabledProviders,
-} from '$lib/server/auth/oauth/registry';
+} from '#lib/server/auth/oauth/registry.js';
 
 beforeEach(() => {
 	envState.githubLoginEnabled = true;

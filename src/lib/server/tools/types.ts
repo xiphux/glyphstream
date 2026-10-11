@@ -39,7 +39,7 @@ export interface ToolContext {
 	 * lives in `'code_interpreter'` — read it here. Always an array
 	 * (possibly empty), never undefined.
 	 */
-	disabledFeatures: ReadonlyArray<import('$lib/types/api').FeatureCategory>;
+	disabledFeatures: ReadonlyArray<import('#lib/types/api.js').FeatureCategory>;
 }
 
 /**
@@ -83,7 +83,7 @@ export interface ToolExecution {
 	 * a live-tick signal — the pane rehydrates from the DB on reload, so this is
 	 * never the durable record. Omitted by every non-canvas tool.
 	 */
-	canvas?: import('$lib/types/api').CanvasVersion;
+	canvas?: import('#lib/types/api.js').CanvasVersion;
 	/**
 	 * The validated emoji a `react_to_message` call settled on. The
 	 * tool-execution stage emits it as a `reaction` StreamEvent so the badge
@@ -104,7 +104,7 @@ export interface ToolExecution {
  * raw name only.
  *
  * `category` groups tools for per-conversation opt-out (see
- * FEATURE_CATEGORIES in `$lib/types/api`). Tools sharing a category are
+ * FEATURE_CATEGORIES in `#lib/types/api.js`). Tools sharing a category are
  * gated together by a single switch — e.g. `web_search` and `fetch_url`
  * both declare 'web' so disabling "Web access" closes the entire egress
  * path, not just one tool. Tools that omit a category are always on
@@ -113,7 +113,7 @@ export interface ToolExecution {
 export interface ToolMetadata {
 	displayLabel?: string;
 	icon?: string;
-	category?: import('$lib/types/api').FeatureCategory;
+	category?: import('#lib/types/api.js').FeatureCategory;
 	/**
 	 * Hidden from the default tool advertisement (`openaiToolDefinitions()` /
 	 * `buildUserMcpToolDefinitions()` drop it), discoverable only via the
@@ -137,7 +137,7 @@ export interface ToolMetadata {
 export interface DeferredToolEntry {
 	name: string;
 	description: string;
-	category?: import('$lib/types/api').FeatureCategory;
+	category?: import('#lib/types/api.js').FeatureCategory;
 	/**
 	 * The tool's bare (un-namespaced) name — `metadata.displayLabel`, e.g.
 	 * `list_undone_tasks_by_time_query` for `mcp__ticktick__list_undone_…`. Used

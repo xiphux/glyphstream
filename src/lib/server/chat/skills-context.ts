@@ -10,7 +10,7 @@
  * the catalog injects even for snapshotted custom-model conversations, because
  * a skill is a capability surface, not personal context.
  */
-import type { FeatureCategory } from '$lib/types/api';
+import type { FeatureCategory } from '#lib/types/api.js';
 import { composeSkillsCatalog, listEnabledSkillsForUser } from '../db/queries/skills';
 import { skillToolDefinitions } from '../tools/activate-skill';
 import type { OpenAIToolDefinition } from '../tools/types';

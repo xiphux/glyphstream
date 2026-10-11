@@ -2,8 +2,8 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { LockKeyhole } from '@lucide/svelte';
-	import { getAppLockAssertion } from '$lib/app-lock-ceremony';
-	import { errorMessageFromResponse } from '$lib/fetch-error';
+	import { getAppLockAssertion } from '#lib/app-lock-ceremony.js';
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();

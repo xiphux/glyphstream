@@ -5,7 +5,7 @@
 	inline.
 -->
 <script lang="ts">
-	import BaseDialog from '$lib/components/BaseDialog.svelte';
+	import BaseDialog from '#lib/components/BaseDialog.svelte';
 
 	let {
 		open = false,

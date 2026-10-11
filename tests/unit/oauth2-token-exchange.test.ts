@@ -23,7 +23,7 @@ import {
 	exchangeAuthorizationCode,
 	generateCodeVerifier,
 	generateState,
-} from '$lib/server/auth/oauth/oauth2';
+} from '#lib/server/auth/oauth/oauth2.js';
 
 const TOKEN_URL = 'https://idp.example.com/token';
 

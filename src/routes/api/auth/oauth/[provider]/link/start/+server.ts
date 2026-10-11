@@ -12,14 +12,14 @@
  * aren't restricted by CSP.
  */
 import { error, redirect } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { getEnabledProvider } from '$lib/server/auth/oauth/registry';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { getEnabledProvider } from '#lib/server/auth/oauth/registry.js';
 import {
 	CODE_VERIFIER_COOKIE,
 	LINK_STATE_COOKIE,
 	STATE_TTL_SECONDS,
-} from '$lib/server/auth/oauth/cookies';
-import { setCarryCookie } from '$lib/server/auth/signed-cookies';
+} from '#lib/server/auth/oauth/cookies.js';
+import { setCarryCookie } from '#lib/server/auth/signed-cookies.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ locals, cookies, params }) => {

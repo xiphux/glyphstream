@@ -4,7 +4,7 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
@@ -14,9 +14,9 @@ import {
 	getUserPreferences,
 	parseUserPreferences,
 	setUserPreferences,
-} from '$lib/server/db/queries/user-preferences';
-import { users } from '$lib/server/db/schema';
-import type { SavedModelSet } from '$lib/types/api';
+} from '#lib/server/db/queries/user-preferences.js';
+import { users } from '#lib/server/db/schema.js';
+import type { SavedModelSet } from '#lib/types/api.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

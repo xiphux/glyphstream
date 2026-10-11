@@ -10,8 +10,8 @@
  */
 
 import { json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { getVapidPublicKey } from '$lib/server/push/web-push';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { getVapidPublicKey } from '#lib/server/push/web-push.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals }) => {

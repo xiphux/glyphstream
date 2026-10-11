@@ -3,7 +3,7 @@ import {
 	classifyUpload,
 	MAX_UPLOAD_BYTES_FILE,
 	MAX_UPLOAD_BYTES_IMAGE,
-} from '$lib/server/uploads/classify';
+} from '#lib/server/uploads/classify.js';
 
 describe('classifyUpload', () => {
 	it('returns kind:image for any image/* MIME', () => {

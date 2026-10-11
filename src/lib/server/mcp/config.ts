@@ -155,6 +155,7 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 	const at = `[[mcp_servers]] #${index} in ${path}`;
 
 	const id = requireString(raw.id, 'id', at);
+
 	if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(id)) {
 		throw new McpConfigError(
 			`${at}: id "${id}" must be 1-64 chars, lowercase alphanumeric or dash, starting with alphanumeric`,
@@ -241,6 +242,8 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 	let apiKey: string | null = null;
 	if (raw.api_key_env !== undefined) {
 		const envName = requireString(raw.api_key_env, 'api_key_env', at);
+
+		// @migration-task Rewrite dynamic env lookup manually.
 		const envValue = env[envName];
 		if (!envValue) {
 			throw new McpConfigError(
@@ -265,6 +268,8 @@ function resolveEnvFrom(raw: unknown, at: string): Record<string, string> {
 	const result: Record<string, string> = {};
 	for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
 		const envName = requireString(value, `env_from.${key}`, at);
+
+		// @migration-task Rewrite dynamic env lookup manually.
 		const envValue = env[envName];
 		if (!envValue) {
 			throw new McpConfigError(

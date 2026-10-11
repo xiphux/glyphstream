@@ -36,7 +36,7 @@
  *
  * Server-only (instruction templates are enhancer internals). The taxonomy
  * itself is pure; if a client picker ever needs it, split the keys/normalizer
- * into a `$lib` module and re-export here rather than importing this from the
+ * into a `#lib` module and re-export here rather than importing this from the
  * browser bundle.
  */
 

@@ -13,11 +13,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
 	videoCancel: vi.fn((): Promise<void> => new Promise(() => {})),
 }));
-vi.mock('$lib/server/endpoints/client', () => ({ videoCancel: mocks.videoCancel }));
+vi.mock('#lib/server/endpoints/client.js', () => ({ videoCancel: mocks.videoCancel }));
 
-import { cancelInFlightGenerations } from '$lib/server/streaming/cancel';
-import { registerInFlight, resetInFlight } from '$lib/server/streaming/in-flight';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+import { cancelInFlightGenerations } from '#lib/server/streaming/cancel.js';
+import { registerInFlight, resetInFlight } from '#lib/server/streaming/in-flight.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 
 const endpoint: LoadedEndpoint = {
 	id: 'bridge',

@@ -44,7 +44,7 @@
  * certainly couldn't either.
  */
 
-import { toLegacyRgb } from '$lib/theme-color';
+import { toLegacyRgb } from '#lib/theme-color.js';
 
 /** Where WebKit probes: the top edge midpoint after `contract({ sampleRectMargin })`. */
 const SAMPLE_RECT_MARGIN = 4;

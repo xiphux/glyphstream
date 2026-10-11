@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ChatMessage, MessageRole } from '$lib/types/api';
+import type { ChatMessage, MessageRole } from '#lib/types/api.js';
 import {
 	arrangeForDisplay,
 	canCompact,
@@ -16,7 +16,7 @@ import {
 	SUMMARY_MIN_TOKENS,
 	summaryMaxTokens,
 	upstreamBranch,
-} from '$lib/chat-compaction';
+} from '#lib/chat-compaction.js';
 
 let seq = 0;
 function msg(

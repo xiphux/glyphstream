@@ -112,13 +112,13 @@ tests/e2e/            # playwright (production-build webServer)
   destination until the moment it queues. It is the one gate record with no
   self-cleaning path, so a declaration is passed to `acquireEndpointSlot` as
   `supersedes` AND settled from the caller's `finally`.
-- Wire types live in `$lib/types/api.ts`, never in a `db/queries/*`
-  module. A DTO imported from `$lib/server` by client-safe code
+- Wire types live in `#lib/types/api.ts`, never in a `db/queries/*`
+  module. A DTO imported from `#lib/server` by client-safe code
   type-checks and ships nothing, so nothing catches it — but it makes the
   browser's contract whatever a `SELECT` happens to project, with no
   boundary at which changing a query registers as changing an API. The
   media/gallery feature did exactly this; no client module imports from
-  `$lib/server` now, and that's worth keeping true.
+  `#lib/server` now, and that's worth keeping true.
 - Per-endpoint secrets use the `*_env` field convention in `config.toml`:
   the field stores the _name_ of an env var, never the secret itself.
 - MCP servers are `auth = "global"` (one shared `api_key_env` token, the
@@ -144,7 +144,7 @@ tests/e2e/            # playwright (production-build webServer)
   _and_ every tab refocus refetch the entire conversation (measured 35 KB → 4 KB
   on a 40-turn thread; megabytes on a long code-heavy one). If you re-add
   `await parent()` there, that regresses silently.
-- **Module singletons under `$lib/*.svelte.ts` may only be written from
+- **Module singletons under `#lib/*.svelte.ts` may only be written from
   effects, event handlers, or functions those call** — never at
   component-init depth. `toast`, `confirmDialog`, `searchModal`,
   `privateView`, `streamPresence`, the `generating` / `title-pending` sets
@@ -431,9 +431,9 @@ exact-match `apple-touch-startup-image` media query.
   is doing it. Read as blanket advice, this bullet used to leave both sides off.
 - **Allowlist by numeric GitHub user ID, not username.** Usernames can be
   deleted and re-registered by someone else.
-- **`schema.ts` must stay `$lib`-free.** It's loaded outside the Vite
+- **`schema.ts` must stay `#lib`-free.** It's loaded outside the Vite
   build — by drizzle-kit, the `import-owui` esbuild bundle, and
-  Playwright's e2e `global-setup.ts` — none of which resolve the `$lib`
+  Playwright's e2e `global-setup.ts` — none of which resolve the `#lib`
   alias. Import shared code into it with a relative path.
 - **`eslint --fix` can silently break type-checking — use `pnpm lint:fix`,
   which type-checks afterwards.** `no-unnecessary-type-assertion` asks

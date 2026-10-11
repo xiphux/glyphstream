@@ -32,14 +32,14 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('$app/navigation', () => ({ invalidateAll: async () => {} }));
-vi.mock('$lib/title-pending.svelte', () => ({
+vi.mock('#lib/title-pending.svelte.js', () => ({
 	markTitlePending: vi.fn(),
 	clearTitlePending: vi.fn(),
 }));
 
-import { FanoutController, type FanoutDeps } from '$lib/fanout-controller.svelte';
+import { FanoutController, type FanoutDeps } from '#lib/fanout-controller.svelte.js';
 import { trackReactive } from './_reactive-probe.svelte';
-import type { ChatMessage } from '$lib/types/api';
+import type { ChatMessage } from '#lib/types/api.js';
 
 function portrait(id: string, modelUsed: string): ChatMessage {
 	return {

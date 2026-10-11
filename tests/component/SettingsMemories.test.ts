@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import type { Memory, DeletedMemory } from '$lib/types/api';
+import type { Memory, DeletedMemory } from '#lib/types/api.js';
 
 const invalidateMock = vi.fn<(key: string) => Promise<void>>();
 vi.mock('$app/navigation', () => ({
@@ -25,8 +25,8 @@ vi.mock('$app/navigation', () => ({
 // not the page's own subtree. Render that host alongside the page in
 // the test so the confirm UI actually appears.
 import MemoriesPage from '../../src/routes/(app)/settings/memories/+page.svelte';
-import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-import { confirmDialog } from '$lib/confirm.svelte';
+import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+import { confirmDialog } from '#lib/confirm.svelte.js';
 
 const fetchMock = vi.fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>();
 

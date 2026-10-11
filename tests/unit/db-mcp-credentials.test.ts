@@ -11,11 +11,11 @@ const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
 	secretKey: 'mcp-master-key-one',
 }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
-vi.mock('$lib/server/env', () => ({
+vi.mock('#lib/server/env.js', () => ({
 	mcpSecretKey: () => mocks.secretKey,
 }));
 
@@ -25,8 +25,8 @@ import {
 	deleteMcpCredential,
 	hasMcpCredential,
 	listConfiguredServerIds,
-} from '$lib/server/db/queries/mcp-credentials';
-import { _resetSecretKeyCacheForTests } from '$lib/server/crypto/secret-box';
+} from '#lib/server/db/queries/mcp-credentials.js';
+import { _resetSecretKeyCacheForTests } from '#lib/server/crypto/secret-box.js';
 import { mcpCredentials } from '../../src/lib/server/db/schema';
 
 beforeEach(() => {

@@ -8,14 +8,14 @@
  * many sessions never touch).
  */
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
 import {
 	createPromptSnippet,
 	listPromptSnippetsForUser,
 	promptSnippetExistsByName,
-} from '$lib/server/db/queries/prompt-snippets';
-import { validateCreateSnippet } from '$lib/server/prompt-snippets/validate';
+} from '#lib/server/db/queries/prompt-snippets.js';
+import { validateCreateSnippet } from '#lib/server/prompt-snippets/validate.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals }) => {

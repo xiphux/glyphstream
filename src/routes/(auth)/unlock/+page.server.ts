@@ -1,5 +1,5 @@
 import { redirect } from '@sveltejs/kit';
-import { safeUnlockReturn } from '$lib/app-lock';
+import { safeUnlockReturn } from '#lib/app-lock.js';
 import type { PageServerLoad } from './$types';
 
 /**

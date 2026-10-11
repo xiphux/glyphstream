@@ -31,7 +31,7 @@ import {
 } from '../db/queries/conversations';
 import { getTaskModel, type ResolvedTaskModel } from './task-model';
 import { sanitizeModelLabel } from './sanitize-label';
-import { truncateEllipsis } from '$lib/text';
+import { truncateEllipsis } from '#lib/text.js';
 
 const DEBUG = logLevel() === 'debug';
 

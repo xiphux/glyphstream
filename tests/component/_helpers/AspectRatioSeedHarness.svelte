@@ -11,8 +11,8 @@
 	the selector whenever no selected model offers ratios.
 -->
 <script lang="ts">
-	import AspectRatioSelector from '$lib/components/chat/AspectRatioSelector.svelte';
-	import type { AspectRatioOption } from '$lib/types/api';
+	import AspectRatioSelector from '#lib/components/chat/AspectRatioSelector.svelte';
+	import type { AspectRatioOption } from '#lib/types/api.js';
 
 	interface Props {
 		options: AspectRatioOption[];

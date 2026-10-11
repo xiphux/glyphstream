@@ -48,7 +48,7 @@ vi.mock('$app/state', async () => {
 
 import SecurityPage from '../../src/routes/(app)/settings/security/+page.svelte';
 import { goto } from '$app/navigation';
-import { toast } from '$lib/toast.svelte';
+import { toast } from '#lib/toast.svelte.js';
 
 const data = {
 	providers: [{ id: 'github', label: 'GitHub', enabled: true }],

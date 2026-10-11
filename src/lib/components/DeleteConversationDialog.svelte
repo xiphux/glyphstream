@@ -21,7 +21,7 @@
 	on cancel / confirm / dismiss.
 -->
 <script lang="ts">
-	import { toast } from '$lib/toast.svelte';
+	import { toast } from '#lib/toast.svelte.js';
 	import BaseDialog from './BaseDialog.svelte';
 
 	type MediaCounts = { images: number; videos: number };

@@ -1,7 +1,7 @@
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { bulkTrashMediaForUser } from '$lib/server/db/queries/media';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { bulkTrashMediaForUser } from '#lib/server/db/queries/media.js';
 import type { RequestHandler } from './$types';
 
 /**

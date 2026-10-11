@@ -33,7 +33,7 @@ import { getDb } from '../db/client';
 import { media, messageMedia } from '../db/schema';
 import { walkActiveBranch } from '../db/queries/messages';
 import { insertMedia } from '../db/queries/media';
-import type { MediaKind } from '$lib/types/api';
+import type { MediaKind } from '#lib/types/api.js';
 import { getMediaStore } from '../media/disk-store';
 import type { RunPythonPreFile, RunPythonPostFile } from './pool';
 

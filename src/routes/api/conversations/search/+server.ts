@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { searchConversations } from '$lib/server/db/queries/search';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { searchConversations } from '#lib/server/db/queries/search.js';
 import type { RequestHandler } from './$types';
 
 /**

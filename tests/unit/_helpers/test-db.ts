@@ -2,12 +2,12 @@
  * Per-test SQLite + Drizzle setup. Each call to `createTestDb()` opens
  * a fresh `:memory:` database, applies the project's migrations, and
  * stows the connection in a module-local slot so the
- * `$lib/server/db/client` mock can hand it back to query helpers.
+ * `#lib/server/db/client.js` mock can hand it back to query helpers.
  *
  * Pattern in test files:
  *
  *   const mocks = vi.hoisted(() => ({ testDb: null as TestDB | null }));
- *   vi.mock('$lib/server/db/client', () => ({
+ *   vi.mock('#lib/server/db/client.js', () => ({
  *     getDb: () => mocks.testDb!,
  *     closeDb: () => {}
  *   }));

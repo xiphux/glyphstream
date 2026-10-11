@@ -4,9 +4,9 @@ import {
 	dedupeByFilename,
 	materializeSkillScript,
 	MAX_SCRIPT_SIBLINGS,
-} from '$lib/server/skills/script-materialize';
-import type { SkillStore } from '$lib/server/skills/store';
-import type { RunPythonPreFile } from '$lib/server/code-interpreter/pool';
+} from '#lib/server/skills/script-materialize.js';
+import type { SkillStore } from '#lib/server/skills/store.js';
+import type { RunPythonPreFile } from '#lib/server/code-interpreter/pool.js';
 
 /** Minimal in-memory SkillStore. `throwOn` makes readFile throw for a path. */
 function fakeStore(files: Record<string, string>, throwOn?: string): SkillStore {

@@ -3,7 +3,7 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
@@ -11,17 +11,17 @@ vi.mock('$lib/server/db/client', () => ({
 // Mock the inference call + the model resolver; let the real generateMemoryTopic,
 // fallbackTopic, and the real DB queries run against the test DB.
 const chatMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/client', () => ({ chatCompletionSync: chatMock }));
+vi.mock('#lib/server/endpoints/client.js', () => ({ chatCompletionSync: chatMock }));
 
 const taskModelMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/tasks/task-model', () => ({ getTaskModel: taskModelMock }));
+vi.mock('#lib/server/tasks/task-model.js', () => ({ getTaskModel: taskModelMock }));
 
-import { runTopicBackfillSweep } from '$lib/server/memory/topic-backfill';
+import { runTopicBackfillSweep } from '#lib/server/memory/topic-backfill.js';
 import {
 	createMemory,
 	listMemoriesNeedingTopic,
 	listMemoryTierRows,
-} from '$lib/server/db/queries/memories';
+} from '#lib/server/db/queries/memories.js';
 
 const MODEL = { endpoint: {}, upstreamId: 'm' };
 

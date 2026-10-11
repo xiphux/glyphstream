@@ -7,7 +7,7 @@
  * registry is clean afterward — not just the HTTP response.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getInFlightEntries, resetInFlight } from '$lib/server/streaming/in-flight';
+import { getInFlightEntries, resetInFlight } from '#lib/server/streaming/in-flight.js';
 
 // ---- hoisted mocks --------------------------------------------------------
 
@@ -20,24 +20,24 @@ const mocks = vi.hoisted(() => ({
 	logLevel: vi.fn<(...a: unknown[]) => string>(),
 }));
 
-vi.mock('$lib/server/db/queries/conversations', () => ({
+vi.mock('#lib/server/db/queries/conversations.js', () => ({
 	getConversationMeta: (...a: unknown[]) => mocks.getConversationMeta(...a),
 	updateConversationModel: (...a: unknown[]) => mocks.updateConversationModel(...a),
 }));
 
-vi.mock('$lib/server/messages/create-user-message', () => ({
+vi.mock('#lib/server/messages/create-user-message.js', () => ({
 	createUserMessage: (...a: unknown[]) => mocks.createUserMessage(...a),
 }));
 
-vi.mock('$lib/server/endpoints/registry', () => ({
+vi.mock('#lib/server/endpoints/registry.js', () => ({
 	getEndpoint: (...a: unknown[]) => mocks.getEndpoint(...a),
 }));
 
-vi.mock('$lib/server/endpoints/list-models', () => ({
+vi.mock('#lib/server/endpoints/list-models.js', () => ({
 	listAllModels: (...a: unknown[]) => mocks.listAllModels(...a),
 }));
 
-vi.mock('$lib/server/env', () => ({
+vi.mock('#lib/server/env.js', () => ({
 	logLevel: (...a: unknown[]) => mocks.logLevel(...a),
 }));
 

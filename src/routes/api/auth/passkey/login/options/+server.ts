@@ -11,8 +11,8 @@ import { error, json } from '@sveltejs/kit';
 import {
 	generateAuthenticationOptionsAny,
 	setLoginChallengeCookie,
-} from '$lib/server/auth/passkey';
-import { passkeyLoginEnabled } from '$lib/server/env';
+} from '#lib/server/auth/passkey.js';
+import { passkeyLoginEnabled } from '#lib/server/env.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ cookies }) => {

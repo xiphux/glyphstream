@@ -1,9 +1,9 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { KeyRound } from '@lucide/svelte';
-	import ProviderIcon from '$lib/components/ProviderIcon.svelte';
-	import { errorMessageFromResponse } from '$lib/fetch-error';
-	import { clearSessionScopedClientState } from '$lib/client-session-state';
+	import ProviderIcon from '#lib/components/ProviderIcon.svelte';
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
+	import { clearSessionScopedClientState } from '#lib/client-session-state.js';
 
 	let { data }: { data: PageData } = $props();
 

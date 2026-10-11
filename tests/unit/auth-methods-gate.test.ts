@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const envStore = vi.hoisted(() => ({}) as Record<string, string | undefined>);
 vi.mock('$env/dynamic/private', () => ({ env: envStore }));
 
-import { validateAuthMethodsEnabled } from '$lib/server/env';
+import { validateAuthMethodsEnabled } from '#lib/server/env.js';
 
 beforeEach(() => {
 	for (const k of Object.keys(envStore)) delete envStore[k];

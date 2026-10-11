@@ -1,5 +1,5 @@
 import { error, redirect } from '@sveltejs/kit';
-import { APP_LOCKED_STATUS } from '$lib/app-lock';
+import { APP_LOCKED_STATUS } from '#lib/app-lock.js';
 import { countUsers } from '../db/queries/users';
 
 /**

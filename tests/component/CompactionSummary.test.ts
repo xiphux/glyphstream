@@ -6,8 +6,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import CompactionSummary from '$lib/components/chat/CompactionSummary.svelte';
-import type { ChatMessage } from '$lib/types/api';
+import CompactionSummary from '#lib/components/chat/CompactionSummary.svelte';
+import type { ChatMessage } from '#lib/types/api.js';
 
 function summaryMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
 	return {

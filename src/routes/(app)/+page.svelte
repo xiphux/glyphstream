@@ -1,51 +1,51 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { onDestroy, untrack } from 'svelte';
-	import { browser } from '$app/environment';
-	import { afterNavigate, goto, replaceState } from '$app/navigation';
+	import { browser } from '$app/env';
+	import { afterNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { ArrowUp, VenetianMask } from '@lucide/svelte';
-	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
-	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
-	import ComposerCore from '$lib/components/chat/ComposerCore.svelte';
-	import OfflineNotice from '$lib/components/chat/OfflineNotice.svelte';
-	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
-	import AspectRatioSelector from '$lib/components/chat/AspectRatioSelector.svelte';
-	import { agreedDefault, offeredRatios } from '$lib/aspect-ratio';
-	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
-	import { getModelCatalogue } from '$lib/model-catalogue.svelte';
-	import { baseIdOf } from '$lib/model-default';
-	import { imageAttachment } from '$lib/model-capabilities';
-	import type { ImageAttachment } from '$lib/model-capabilities';
-	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
+	import ModelPicker from '#lib/components/chat/ModelPicker.svelte';
+	import FeatureTogglesMenu from '#lib/components/FeatureTogglesMenu.svelte';
+	import ComposerCore from '#lib/components/chat/ComposerCore.svelte';
+	import OfflineNotice from '#lib/components/chat/OfflineNotice.svelte';
+	import SplitAttachmentsToggle from '#lib/components/chat/SplitAttachmentsToggle.svelte';
+	import AspectRatioSelector from '#lib/components/chat/AspectRatioSelector.svelte';
+	import { agreedDefault, offeredRatios } from '#lib/aspect-ratio.js';
+	import { AttachmentStore, attachmentsAllowedFor } from '#lib/attachments.svelte.js';
+	import { getModelCatalogue } from '#lib/model-catalogue.svelte.js';
+	import { baseIdOf } from '#lib/model-default.js';
+	import { imageAttachment } from '#lib/model-capabilities.js';
+	import type { ImageAttachment } from '#lib/model-capabilities.js';
+	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '#lib/gallery-launch.js';
 	import {
 		PROMPT_REUSE_KEY,
 		resolveIntentSelection,
 		type PromptReuseIntent,
-	} from '$lib/prompt-reuse';
+	} from '#lib/prompt-reuse.js';
 	import {
 		expandCompareSelections,
 		resolveActiveModelKind,
 		type CompareSelection,
-	} from '$lib/fanout';
-	import { isSnippetKind } from '$lib/types/api';
-	import type { CreateConversationRequest, FeatureCategory, ModelEntry } from '$lib/types/api';
+	} from '#lib/fanout.js';
+	import { isSnippetKind } from '#lib/types/api.js';
+	import type { CreateConversationRequest, FeatureCategory, ModelEntry } from '#lib/types/api.js';
 	import {
 		composeGreeting,
 		greetingContextKey,
 		pickGreeting,
 		preferredFirstName,
-	} from '$lib/greeting';
-	import { errorMessageFromResponse } from '$lib/fetch-error';
-	import { noticeMessage } from '$lib/notices';
-	import { toast } from '$lib/toast.svelte';
-	import { toggleFavoriteModel } from '$lib/favorite-models';
-	import { seedDisabledFeatures } from '$lib/feature-defaults';
-	import { saveModelSet, deleteModelSet } from '$lib/model-sets';
-	import { stripSkillCommand } from '$lib/skill-command';
-	import { pendingFirstMessageKey, type PendingFirstMessage } from '$lib/pending-first-message';
-	import { loadDraft, clearDraft, createDraftWriter } from '$lib/composer-draft';
-	import { privateView } from '$lib/private-chat.svelte';
+	} from '#lib/greeting.js';
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
+	import { noticeMessage } from '#lib/notices.js';
+	import { toast } from '#lib/toast.svelte.js';
+	import { toggleFavoriteModel } from '#lib/favorite-models.js';
+	import { seedDisabledFeatures } from '#lib/feature-defaults.js';
+	import { saveModelSet, deleteModelSet } from '#lib/model-sets.js';
+	import { stripSkillCommand } from '#lib/skill-command.js';
+	import { pendingFirstMessageKey, type PendingFirstMessage } from '#lib/pending-first-message.js';
+	import { loadDraft, clearDraft, createDraftWriter } from '#lib/composer-draft.js';
+	import { privateView } from '#lib/private-chat.svelte.js';
 	import { resolve } from '$app/paths';
 
 	let { data }: { data: PageData } = $props();
@@ -184,7 +184,9 @@
 	// below paints first and this overwrites it, where an effect declared above
 	// it used to win outright. Benign — every `modelId` consumer is idempotent —
 	// but it is why the selection can flip once on arrival.
-	afterNavigate(() => {
+	afterNavigate(({ shallow, type }) => {
+		if (shallow && type === 'goto') return;
+
 		const urlModel = page.url.searchParams.get('model');
 		if (!urlModel) return;
 		if (urlModel.startsWith('custom::')) {
@@ -367,6 +369,7 @@
 			compareMode && fanoutFirstModels.length >= 1
 				? [...new Set(fanoutFirstModels.map((m) => m.modelId))]
 				: [modelId];
+
 		return ids
 			.map((id) => (id.startsWith('custom::') ? resolvedBase : catalogue.entry(id)))
 			.filter((m): m is ModelEntry => m !== undefined);
@@ -578,7 +581,9 @@
 	// and it keeps the prompt out of server logs. Runs from afterNavigate (so
 	// it also catches client-side navs back to this page) and only fills an
 	// empty box, so it never clobbers a gallery-launch regenerate prompt.
-	afterNavigate(() => {
+	afterNavigate(({ shallow, type }) => {
+		if (shallow && type === 'goto') return;
+
 		const hash = window.location.hash;
 		if (!hash) return;
 		const q = new URLSearchParams(hash.slice(1)).get('q');
@@ -600,7 +605,11 @@
 		// without revisiting that.)
 		queueMicrotask(() => {
 			try {
-				replaceState(window.location.pathname + window.location.search, page.state);
+				goto(window.location.pathname + window.location.search, {
+					shallow: true,
+					replace: true,
+					state: page.state,
+				});
 			} catch {
 				/* router not ready / state unserializable — leave the fragment */
 			}
@@ -633,7 +642,9 @@
 	// using `window.location.hash` rather than `page.url`'s: by now the handler
 	// above has stripped the fragment from the bar, and re-injecting it would
 	// re-trigger that handler for nothing.
-	afterNavigate(() => {
+	afterNavigate(({ shallow, type }) => {
+		if (shallow && type === 'goto') return;
+
 		const message = noticeMessage(page.url.searchParams.get('notice'));
 		if (!message) return;
 		toast.error(message);
@@ -725,9 +736,8 @@
 			if (!createRes.ok) {
 				throw new Error(await errorMessageFromResponse(createRes));
 			}
-			const { conversation } = (await createRes.json()) as {
-				conversation: { id: string };
-			};
+
+			const { conversation } = (await createRes.json()) as { conversation: { id: string } };
 
 			// Hand the first message off to the chat page so the streaming
 			// response renders inside the right route lifecycle. Stash in
@@ -749,6 +759,7 @@
 					...(aspectRatio ? { aspectRatio } : {}),
 				} satisfies PendingFirstMessage),
 			);
+
 			attachments.clear();
 			// The prompt is now handed off — drop its saved draft so it can't be
 			// restored into a fresh new-chat box. cancel() drops the pending write;
@@ -756,7 +767,7 @@
 			// would otherwise only clear it on the next debounced commit).
 			draftWriter.cancel();
 			clearDraft(null);
-			await goto(resolve(`/chat/${conversation.id}`), { invalidateAll: true });
+			await goto(resolve(`chat/${conversation.id}`), { invalidateAll: true });
 		} catch (e) {
 			errorMsg = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -770,7 +781,8 @@
 	ononline={() => (isOffline = false)}
 	onfocus={refreshGreeting}
 />
-<svelte:document onvisibilitychange={onGreetingVisibility} />
+
+<svelte:document onvisibilitychange={onGreetingVisibility}></svelte:document>
 
 <div class="zero-state relative flex h-full flex-col items-center overflow-hidden">
 	<!--
@@ -852,9 +864,9 @@
 					stroke-linejoin="round"
 					aria-hidden="true"
 				>
-					<line x1="10.6" y1="7.5" x2="10.6" y2="24.5" />
-					<path d="M 10.6 10 C 20 10, 22.5 18.5, 13.75 18.5" />
-					<line x1="15" y1="22.75" x2="22.25" y2="22.75" />
+					<line x1="10.6" y1="7.5" x2="10.6" y2="24.5"></line>
+					<path d="M 10.6 10 C 20 10, 22.5 18.5, 13.75 18.5"></path>
+					<line x1="15" y1="22.75" x2="22.25" y2="22.75"></line>
 				</svg>
 			</span>
 			<span

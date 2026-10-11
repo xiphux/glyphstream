@@ -14,18 +14,18 @@
  *     post-state against the target's current role/disabled status.
  */
 import { error, json } from '@sveltejs/kit';
-import { requireAdmin } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { unlinkMediaFiles } from '$lib/server/media/disk-store';
-import { cancelInFlightGenerations } from '$lib/server/streaming/cancel';
-import { clearAppLock } from '$lib/server/auth/app-lock';
+import { requireAdmin } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { unlinkMediaFiles } from '#lib/server/media/disk-store.js';
+import { cancelInFlightGenerations } from '#lib/server/streaming/cancel.js';
+import { clearAppLock } from '#lib/server/auth/app-lock.js';
 import {
 	countActiveAdmins,
 	deleteUser,
 	getUserRole,
 	listUsers,
 	setUserDisabled,
-} from '$lib/server/db/queries/users';
+} from '#lib/server/db/queries/users.js';
 import type { RequestHandler } from './$types';
 
 /** True when acting on `targetId` would drop the active-admin count to zero. */

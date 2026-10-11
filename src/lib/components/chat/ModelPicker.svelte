@@ -12,11 +12,11 @@
 		X,
 		Image as ImageIcon,
 	} from '@lucide/svelte';
-	import type { CompareSelection } from '$lib/fanout';
-	import { mergeModelSet } from '$lib/model-sets';
-	import { capabilityPill, acceptsImageInput } from '$lib/model-capabilities';
-	import type { ImageAttachment } from '$lib/model-capabilities';
-	import type { CustomModel, ModelEntry, ModelKind, SavedModelSet } from '$lib/types/api';
+	import type { CompareSelection } from '#lib/fanout.js';
+	import { mergeModelSet } from '#lib/model-sets.js';
+	import { capabilityPill, acceptsImageInput } from '#lib/model-capabilities.js';
+	import type { ImageAttachment } from '#lib/model-capabilities.js';
+	import type { CustomModel, ModelEntry, ModelKind, SavedModelSet } from '#lib/types/api.js';
 
 	interface Props {
 		models: ModelEntry[];

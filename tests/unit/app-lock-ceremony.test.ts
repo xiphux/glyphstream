@@ -5,7 +5,7 @@
  * from `onMount` with nothing above it to catch one.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getAppLockAssertion } from '$lib/app-lock-ceremony';
+import { getAppLockAssertion } from '#lib/app-lock-ceremony.js';
 
 afterEach(() => {
 	vi.unstubAllGlobals();

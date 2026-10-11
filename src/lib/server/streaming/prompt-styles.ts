@@ -24,10 +24,10 @@
  * schema) rides on the freeform per-model `prompt_hint`, appended after the
  * style template. See `prompt-enhancer.ts` for the composition.
  *
- * Server-only (it lives under `$lib/server`, and the instruction templates are
+ * Server-only (it lives under `#lib/server`, and the instruction templates are
  * enhancer internals). The taxonomy itself — `PROMPT_STYLES` / `PromptStyle` /
  * `normalizeStyle` — is pure with no server-only imports, so if a client picker
- * ever needs it, split those into a `$lib/prompt-styles.ts` and re-export them
+ * ever needs it, split those into a `#lib/prompt-styles.ts` and re-export them
  * here rather than importing this module from the browser bundle.
  */
 

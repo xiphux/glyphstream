@@ -1,17 +1,20 @@
-import type { callMemoryModel } from '$lib/server/memory/summarize-util';
+import type { callMemoryModel } from '#lib/server/memory/summarize-util.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock only the model call; keep approxTokens/chunkStrings real so the budgeting
 // (one-shot vs iterative fold) is exercised for real.
 const callMock = vi.hoisted(() => vi.fn<typeof callMemoryModel>());
-vi.mock('$lib/server/memory/summarize-util', async (orig) => ({
-	...(await orig<typeof import('$lib/server/memory/summarize-util')>()),
+vi.mock('#lib/server/memory/summarize-util.js', async (orig) => ({
+	...(await orig<typeof import('#lib/server/memory/summarize-util.js')>()),
 	callMemoryModel: callMock,
 }));
 
-import { buildOverview } from '$lib/server/memory/conversation-overview';
-import { EmptyCompletionError, TruncatedCompletionError } from '$lib/server/memory/summarize-util';
-import { DEFAULT_MEMORY_OVERVIEW_MAX_CHARS } from '$lib/server/endpoints/config';
+import { buildOverview } from '#lib/server/memory/conversation-overview.js';
+import {
+	EmptyCompletionError,
+	TruncatedCompletionError,
+} from '#lib/server/memory/summarize-util.js';
+import { DEFAULT_MEMORY_OVERVIEW_MAX_CHARS } from '#lib/server/endpoints/config.js';
 
 type Model = Parameters<typeof buildOverview>[0];
 

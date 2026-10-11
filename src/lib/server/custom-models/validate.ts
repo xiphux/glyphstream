@@ -1,15 +1,15 @@
 import { error } from '@sveltejs/kit';
-import { getEndpoint } from '$lib/server/endpoints/registry';
-import { getRegisteredCategoryIds } from '$lib/server/feature-catalog';
+import { getEndpoint } from '#lib/server/endpoints/registry.js';
+import { getRegisteredCategoryIds } from '#lib/server/feature-catalog.js';
 import {
 	FeatureCategoryValidationError,
 	validateDisabledFeatures,
-} from '$lib/server/util/validate-features';
+} from '#lib/server/util/validate-features.js';
 import type {
 	CreateCustomModelRequest,
 	CustomModelParameters,
 	FeatureCategory,
-} from '$lib/types/api';
+} from '#lib/types/api.js';
 
 export interface ValidatedCreate {
 	name: string;

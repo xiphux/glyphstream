@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { readSSE, type SSEEventRecord } from '$lib/sse-client';
+import { readSSE, type SSEEventRecord } from '#lib/sse-client.js';
 
 /** Wrap a string (or array of pre-split chunks) as a ReadableStream<Uint8Array>. */
 function streamFrom(input: string | string[]): ReadableStream<Uint8Array> {

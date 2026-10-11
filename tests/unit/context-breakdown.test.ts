@@ -4,9 +4,9 @@ import {
 	dataUrlChars,
 	type ContextBreakdownInput,
 	type MediaSize,
-} from '$lib/server/chat/context-breakdown';
-import type { ChatMessage, ContextSegmentKey, MessagePart } from '$lib/types/api';
-import type { OpenAIToolDefinition } from '$lib/server/tools/types';
+} from '#lib/server/chat/context-breakdown.js';
+import type { ChatMessage, ContextSegmentKey, MessagePart } from '#lib/types/api.js';
+import type { OpenAIToolDefinition } from '#lib/server/tools/types.js';
 
 function msg(
 	role: ChatMessage['role'],

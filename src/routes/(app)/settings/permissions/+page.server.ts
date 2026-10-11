@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
-import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
-import { listServerCatalog } from '$lib/server/mcp/registry';
+import { awaitMcpReady } from '#lib/server/mcp/bootstrap.js';
+import { listServerCatalog } from '#lib/server/mcp/registry.js';
 import type { PageServerLoad } from './$types';
 
 /**

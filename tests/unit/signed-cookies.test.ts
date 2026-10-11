@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/server/env', () => ({
+vi.mock('#lib/server/env.js', () => ({
 	authSecret: () => 'test-secret-do-not-use-in-prod',
 }));
 
-import { sign, verify } from '$lib/server/auth/signed-cookies';
+import { sign, verify } from '#lib/server/auth/signed-cookies.js';
 
 describe('signed-cookies', () => {
 	it('round-trips a payload', () => {

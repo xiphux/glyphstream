@@ -5,8 +5,8 @@
 	 * layout — context flows down, so a test that renders the page on its own
 	 * gets `undefined` back from `getModelCatalogue()` and crashes on first use.
 	 */
-	import { ModelCatalogue, setModelCatalogue } from '$lib/model-catalogue.svelte';
-	import type { ModelEntry } from '$lib/types/api';
+	import { ModelCatalogue, setModelCatalogue } from '#lib/model-catalogue.svelte.js';
+	import type { ModelEntry } from '#lib/types/api.js';
 	import NewChatPage from '../../../src/routes/(app)/+page.svelte';
 
 	let { data }: { data: { models: ModelEntry[] } & Record<string, unknown> } = $props();

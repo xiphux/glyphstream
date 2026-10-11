@@ -57,8 +57,8 @@ vi.mock('$app/navigation', () => ({
 	pushState: vi.fn(),
 	preloadData: vi.fn(async () => ({})),
 }));
-vi.mock('$lib/push-subscribe', () => ({ reconcileSubscription: vi.fn(async () => {}) }));
-vi.mock('$lib/timezone-sync', () => ({ syncTimeZone: vi.fn(async () => {}) }));
+vi.mock('#lib/push-subscribe.js', () => ({ reconcileSubscription: vi.fn(async () => {}) }));
+vi.mock('#lib/timezone-sync.js', () => ({ syncTimeZone: vi.fn(async () => {}) }));
 
 vi.stubGlobal('__APP_VERSION__', '9.9.9');
 
@@ -77,7 +77,7 @@ vi.stubGlobal(
 );
 
 import AppLayout from '../../src/routes/(app)/+layout.svelte';
-import { reconcileGenerating, resetGenerating } from '$lib/generating-conversations.svelte';
+import { reconcileGenerating, resetGenerating } from '#lib/generating-conversations.svelte.js';
 
 function conversation(id: string) {
 	return { id, title: `Conversation ${id}`, updatedAt: 1, private: false };

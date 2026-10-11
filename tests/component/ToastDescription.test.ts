@@ -18,8 +18,8 @@
 import { describe, expect, it, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import { flushSync } from 'svelte';
-import Toaster from '$lib/components/Toaster.svelte';
-import { toast } from '$lib/toast.svelte';
+import Toaster from '#lib/components/Toaster.svelte';
+import { toast } from '#lib/toast.svelte.js';
 
 afterEach(() => {
 	toast.dismiss();

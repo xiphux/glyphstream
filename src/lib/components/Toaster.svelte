@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { AlertCircle, Check, Info, X } from '@lucide/svelte';
-	import { toast } from '$lib/toast.svelte';
+	import { toast } from '#lib/toast.svelte.js';
 
 	// Per-kind affordances. Keeping these in const maps rather than
 	// computing inline so the icon + color choices are easy to skim

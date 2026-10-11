@@ -10,7 +10,7 @@
  * worker came out byte-identical between releases.
  */
 import { describe, expect, it } from 'vitest';
-import { shouldPromptForUpdate } from '$lib/sw/update-prompt';
+import { shouldPromptForUpdate } from '#lib/sw/update-prompt.js';
 
 describe('shouldPromptForUpdate', () => {
 	it('stays quiet when the waiting worker is the build already running', () => {

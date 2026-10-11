@@ -13,21 +13,21 @@ const mocks = vi.hoisted(() => ({
 	chatCompletionSync: vi.fn(),
 }));
 
-vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
-vi.mock('$lib/server/endpoints/client', async (orig) => ({
-	...(await orig<typeof import('$lib/server/endpoints/client')>()),
+vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
+vi.mock('#lib/server/endpoints/client.js', async (orig) => ({
+	...(await orig<typeof import('#lib/server/endpoints/client.js')>()),
 	chatCompletionSync: mocks.chatCompletionSync,
 }));
 
-import { generateConversationTitle } from '$lib/server/tasks/title-generator';
-import { createConversation } from '$lib/server/db/queries/conversations';
-import { appendMessage } from '$lib/server/db/queries/messages';
+import { generateConversationTitle } from '#lib/server/tasks/title-generator.js';
+import { createConversation } from '#lib/server/db/queries/conversations.js';
+import { appendMessage } from '#lib/server/db/queries/messages.js';
 import {
 	acquireEndpointSlot,
 	getResourceQueueDepth,
 	resetEndpointGatesForTests,
-} from '$lib/server/endpoints/concurrency';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+} from '#lib/server/endpoints/concurrency.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

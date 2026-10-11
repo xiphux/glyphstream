@@ -16,7 +16,7 @@
  * (userId-scoped); a disabled/deleted/foreign name is skipped silently rather
  * than surfacing an error block for a stale client cache.
  */
-import type { FeatureCategory, MessagePart } from '$lib/types/api';
+import type { FeatureCategory, MessagePart } from '#lib/types/api.js';
 import { generateId } from '../util/id';
 import { appendMessage } from '../db/queries/messages';
 import { getEnabledSkillByName } from '../db/queries/skills';

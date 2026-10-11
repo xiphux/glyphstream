@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { buildChildrenByParent, deepestDescendant } from '$lib/server/db/queries/messages';
+import { buildChildrenByParent, deepestDescendant } from '#lib/server/db/queries/messages.js';
 
 describe('buildChildrenByParent', () => {
 	it('groups rows by parent id, skipping roots', () => {

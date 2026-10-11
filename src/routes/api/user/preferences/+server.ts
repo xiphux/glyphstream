@@ -11,11 +11,11 @@
  */
 
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { getUserPreferences, setUserPreferences } from '$lib/server/db/queries/user-preferences';
-import { isFeatureCategoryString } from '$lib/types/api';
-import type { ColorScheme, SavedModelSet, ThemeName, UserPreferences } from '$lib/types/api';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { getUserPreferences, setUserPreferences } from '#lib/server/db/queries/user-preferences.js';
+import { isFeatureCategoryString } from '#lib/types/api.js';
+import type { ColorScheme, SavedModelSet, ThemeName, UserPreferences } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
 
 const THEME_NAMES: readonly ThemeName[] = ['glyphstream', 'claude', 'chatgpt'];

@@ -12,9 +12,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import AspectRatioSelector from '$lib/components/chat/AspectRatioSelector.svelte';
+import AspectRatioSelector from '#lib/components/chat/AspectRatioSelector.svelte';
 import Harness from './_helpers/AspectRatioSeedHarness.svelte';
-import type { AspectRatioOption } from '$lib/types/api';
+import type { AspectRatioOption } from '#lib/types/api.js';
 
 const OPTIONS: AspectRatioOption[] = [
 	{ value: '1:1', label: 'Square' },

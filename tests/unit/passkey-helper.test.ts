@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
 	baseUrl: 'https://chat.example.com',
 }));
-vi.mock('$lib/server/env', () => ({
+vi.mock('#lib/server/env.js', () => ({
 	publicBaseUrl: () => mocks.baseUrl,
 	// Derived from the base URL's scheme in the real module; mirroring that
 	// here keeps the challenge-cookie assertions honest about when `Secure`
@@ -43,9 +43,9 @@ import {
 	verifyAuthentication,
 	verifyRegistration,
 	verifyRegistrationCeremony,
-} from '$lib/server/auth/passkey';
-import type { PasskeyCredentialRow } from '$lib/server/db/queries/passkey';
-import type { SessionUser } from '$lib/server/auth/session';
+} from '#lib/server/auth/passkey.js';
+import type { PasskeyCredentialRow } from '#lib/server/db/queries/passkey.js';
+import type { SessionUser } from '#lib/server/auth/session.js';
 import type { Cookies } from '@sveltejs/kit';
 
 beforeEach(() => {

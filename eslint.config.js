@@ -2,7 +2,9 @@ import sveltejs from '@sveltejs/eslint-config';
 import { defineConfig } from 'eslint/config';
 import svelteParser from 'svelte-eslint-parser';
 import ts from 'typescript-eslint';
-import svelteConfig from './svelte.config.js';
+import { loadConfig } from '@sveltejs/load-config';
+
+const svelteConfig = (await loadConfig('./', { traverse: false }))?.config;
 
 /**
  * Shared by the `.ts` and `.svelte` blocks below. `projectService` is what

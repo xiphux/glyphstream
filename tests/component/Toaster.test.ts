@@ -11,8 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import Toaster from '$lib/components/Toaster.svelte';
-import { toast } from '$lib/toast.svelte';
+import Toaster from '#lib/components/Toaster.svelte';
+import { toast } from '#lib/toast.svelte.js';
 
 afterEach(() => {
 	toast.dismiss();

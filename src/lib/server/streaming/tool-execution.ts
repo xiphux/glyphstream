@@ -15,11 +15,11 @@
  * opt-in flag on the Tool interface; we don't need it for v1.
  */
 
-import type { ChatMessage, MessagePart, StreamEvent } from '$lib/types/api';
+import type { ChatMessage, MessagePart, StreamEvent } from '#lib/types/api.js';
 import { appendMessage, setActiveLeafMessageId, updateMessageParts } from '../db/queries/messages';
 import { getMediaForUser, linkMessageMedia } from '../db/queries/media';
 import { get as getTool } from '../tools/registry';
-import { isReactionTool } from '$lib/chat-render';
+import { isReactionTool } from '#lib/chat-render.js';
 import type { Tool, ToolExecution } from '../tools/types';
 
 /**
@@ -48,7 +48,7 @@ export interface ExecuteToolCallsParams {
 	 * honor the same conversation switches the model's tool-list filter
 	 * uses. Defaults to `[]` when omitted.
 	 */
-	disabledFeatures?: ReadonlyArray<import('$lib/types/api').FeatureCategory>;
+	disabledFeatures?: ReadonlyArray<import('#lib/types/api.js').FeatureCategory>;
 	/** SSE writer for executing/result events. Disconnected clients
 	 *  no-op (the underlying writer swallows). */
 	emit: (event: StreamEvent) => void;
@@ -246,7 +246,7 @@ export async function executeOneToolCall(
 	userId: string,
 	conversationId: string,
 	signal: AbortSignal,
-	disabledFeatures: ReadonlyArray<import('$lib/types/api').FeatureCategory>,
+	disabledFeatures: ReadonlyArray<import('#lib/types/api.js').FeatureCategory>,
 ): Promise<ExecuteOneToolCallResult> {
 	const tool = getTool(part.toolName);
 	if (!tool) {

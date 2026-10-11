@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { FeatureCategory } from '$lib/types/api';
+import type { FeatureCategory } from '#lib/types/api.js';
 
 // The seal enumerates the configured MCP server catalog to disable every
 // `mcp:<id>`. Mock it so the test is independent of config.toml.
 const listServerCatalogMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/mcp/registry', () => ({ listServerCatalog: listServerCatalogMock }));
+vi.mock('#lib/server/mcp/registry.js', () => ({ listServerCatalog: listServerCatalogMock }));
 
-import { resolveDisabledFeatures, sealPrivateFeatures } from '$lib/server/chat/private-seal';
+import { resolveDisabledFeatures, sealPrivateFeatures } from '#lib/server/chat/private-seal.js';
 
 function catalog(...ids: string[]) {
 	listServerCatalogMock.mockReturnValue(

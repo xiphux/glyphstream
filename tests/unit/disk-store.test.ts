@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
 	derivedDir: '',
 }));
 
-vi.mock('$lib/server/env', () => ({
+vi.mock('#lib/server/env.js', () => ({
 	mediaDir: () => mocks.mediaDir,
 	derivedDir: () => mocks.derivedDir || mocks.mediaDir,
 	dbPath: () => ':memory:',
@@ -30,7 +30,7 @@ vi.mock('$lib/server/env', () => ({
 	allowedGithubUserIdsRaw: () => '',
 }));
 
-import { DiskMediaStore } from '$lib/server/media/disk-store';
+import { DiskMediaStore } from '#lib/server/media/disk-store.js';
 
 let tmpDirs: string[] = [];
 

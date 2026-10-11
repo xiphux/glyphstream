@@ -15,7 +15,7 @@ Mirror the existing tests in this directory. The shape:
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import MyComponent from '$lib/components/MyComponent.svelte';
+import MyComponent from '#lib/components/MyComponent.svelte';
 
 describe('MyComponent', () => {
 	it('does the thing', async () => {
@@ -35,7 +35,7 @@ What the boilerplate gives you for free:
 - **jest-dom matchers** — `toBeInTheDocument`, `toHaveAttribute`,
   `toHaveTextContent`, etc. are registered globally in
   `tests/component/_setup.ts`.
-- **`$lib/*` alias resolution** — the same sveltekit() vite plugin the
+- **`#lib/*` alias resolution** — the same sveltekit() vite plugin the
   unit suite uses.
 
 ## Gotchas worth knowing

@@ -37,16 +37,20 @@ import { precacheAndRoute } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
-import { CHUNK_CACHE_MAX_ENTRIES, CHUNK_CACHE_NAME, isImmutableAsset } from '$lib/sw/asset-route';
-import { pickAction, type ArbiterPayload } from '$lib/sw/arbiter';
-import { notificationBody, notificationTitle } from '$lib/sw/notification-copy';
+import {
+	CHUNK_CACHE_MAX_ENTRIES,
+	CHUNK_CACHE_NAME,
+	isImmutableAsset,
+} from '#lib/sw/asset-route.js';
+import { pickAction, type ArbiterPayload } from '#lib/sw/arbiter.js';
+import { notificationBody, notificationTitle } from '#lib/sw/notification-copy.js';
 import {
 	CLAIM_PENDING_NAVIGATION,
 	claimPendingNavigation,
 	recordPendingNavigation,
-} from '$lib/sw/pending-navigation';
-import { raiseAppBadge, syncAppBadge } from '$lib/sw/badge';
-import type { ActiveConversationReport, NotifyPushPayload } from '$lib/types/push';
+} from '#lib/sw/pending-navigation.js';
+import { raiseAppBadge, syncAppBadge } from '#lib/sw/badge.js';
+import type { ActiveConversationReport, NotifyPushPayload } from '#lib/types/push.js';
 
 // SW context: redeclare `self` with the correct worker-scope type so
 // addEventListener and clients/registration narrow correctly.

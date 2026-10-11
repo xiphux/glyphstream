@@ -11,8 +11,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
-import type { OpenAIToolDefinition } from '$lib/server/tools/types';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
+import type { OpenAIToolDefinition } from '#lib/server/tools/types.js';
 
 const ENDPOINT: LoadedEndpoint = {
 	id: 'mock',
@@ -46,20 +46,20 @@ const mocks = vi.hoisted(() => ({
 	relayCalls: [] as unknown[],
 }));
 
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
-vi.mock('$lib/server/endpoints/registry', () => ({
+vi.mock('#lib/server/endpoints/registry.js', () => ({
 	getEndpoint: () => ENDPOINT,
 }));
-vi.mock('$lib/server/endpoints/list-models', () => ({
+vi.mock('#lib/server/endpoints/list-models.js', () => ({
 	listAllModels: async () => [],
 }));
-vi.mock('$lib/server/mcp/bootstrap', () => ({
+vi.mock('#lib/server/mcp/bootstrap.js', () => ({
 	awaitMcpReady: async () => {},
 }));
-vi.mock('$lib/server/chat/tool-context', () => ({
+vi.mock('#lib/server/chat/tool-context.js', () => ({
 	buildChatToolContext: async () => ({
 		systemPrompt: null,
 		toolDefs: mocks.toolDefs,
@@ -68,16 +68,16 @@ vi.mock('$lib/server/chat/tool-context', () => ({
 	}),
 	augmentRequestForCanvas: async (body: unknown) => body,
 }));
-vi.mock('$lib/server/chat/persona-context', () => ({
+vi.mock('#lib/server/chat/persona-context.js', () => ({
 	composePersonaPrompt: () => null,
 }));
-vi.mock('$lib/server/streaming/tool-execution', () => ({
+vi.mock('#lib/server/streaming/tool-execution.js', () => ({
 	executeOneToolCall: async () => ({
 		execution: { content: '{"ok":true}', isError: false },
 		mediaParts: [],
 	}),
 }));
-vi.mock('$lib/server/streaming/relay', () => ({
+vi.mock('#lib/server/streaming/relay.js', () => ({
 	startStreamingRelay: async (opts: unknown) => {
 		mocks.relayCalls.push(opts);
 		return new ReadableStream();
@@ -85,9 +85,9 @@ vi.mock('$lib/server/streaming/relay', () => ({
 }));
 
 import { POST } from '../../src/routes/api/conversations/[id]/tool-approval/+server';
-import { createConversation } from '$lib/server/db/queries/conversations';
-import { appendMessage } from '$lib/server/db/queries/messages';
-import { resetInFlight } from '$lib/server/streaming/in-flight';
+import { createConversation } from '#lib/server/db/queries/conversations.js';
+import { appendMessage } from '#lib/server/db/queries/messages.js';
+import { resetInFlight } from '#lib/server/streaming/in-flight.js';
 
 function toolDef(name: string, description = name): OpenAIToolDefinition {
 	return {

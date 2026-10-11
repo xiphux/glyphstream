@@ -6,7 +6,7 @@ import {
 	dot,
 	encodeVector,
 	norm,
-} from '$lib/server/retrieval/vector';
+} from '#lib/server/retrieval/vector.js';
 
 describe('dot / norm', () => {
 	it('computes the dot product', () => {

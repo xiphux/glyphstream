@@ -1,4 +1,4 @@
-import type { chatCompletionSync } from '$lib/server/endpoints/client';
+import type { chatCompletionSync } from '#lib/server/endpoints/client.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // Control the upstream call without touching the network. The fake error class
@@ -8,7 +8,7 @@ const { syncMock, FakeUpstreamError } = vi.hoisted(() => {
 	class FakeUpstreamError extends Error {}
 	return { syncMock: vi.fn<typeof chatCompletionSync>(), FakeUpstreamError };
 });
-vi.mock('$lib/server/endpoints/client', () => ({
+vi.mock('#lib/server/endpoints/client.js', () => ({
 	chatCompletionSync: syncMock,
 	UpstreamError: FakeUpstreamError,
 }));
@@ -18,8 +18,8 @@ import {
 	enhancePrompt,
 	sanitizeEnhanced,
 	trivialNormalize,
-} from '$lib/server/streaming/prompt-enhancer';
-import type { ResolvedImageEnhancerModel } from '$lib/server/tasks/image-enhancer-model';
+} from '#lib/server/streaming/prompt-enhancer.js';
+import type { ResolvedImageEnhancerModel } from '#lib/server/tasks/image-enhancer-model.js';
 
 const model: ResolvedImageEnhancerModel = {
 	// Endpoint is only forwarded to the (mocked) client; its shape is irrelevant here.

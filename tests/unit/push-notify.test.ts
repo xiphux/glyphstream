@@ -9,26 +9,26 @@ const mocks = vi.hoisted(() => ({
 	sendResultsByEndpoint: new Map<string, { ok: boolean; statusCode?: number }>(),
 }));
 
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
 
-vi.mock('$lib/server/push/web-push', () => ({
+vi.mock('#lib/server/push/web-push.js', () => ({
 	sendPushNotification: vi.fn(async (subscription: { endpoint: string }, payload: string) => {
 		mocks.sendCalls.push({ subscription, payload });
 		return mocks.sendResultsByEndpoint.get(subscription.endpoint) ?? mocks.sendResult;
 	}),
 }));
 
-import { buildPreview, notifyConversationComplete } from '$lib/server/push/notify';
-import { GENERIC_TITLE } from '$lib/sw/notification-copy';
+import { buildPreview, notifyConversationComplete } from '#lib/server/push/notify.js';
+import { GENERIC_TITLE } from '#lib/sw/notification-copy.js';
 import {
 	listPushSubscriptionsForUser,
 	upsertPushSubscription,
-} from '$lib/server/db/queries/push-subscriptions';
-import { setUserPreferences } from '$lib/server/db/queries/user-preferences';
-import { recordPresence, resetPresence } from '$lib/server/push/presence';
+} from '#lib/server/db/queries/push-subscriptions.js';
+import { setUserPreferences } from '#lib/server/db/queries/user-preferences.js';
+import { recordPresence, resetPresence } from '#lib/server/push/presence.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

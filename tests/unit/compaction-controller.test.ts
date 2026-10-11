@@ -22,7 +22,7 @@ const toastCalls = vi.hoisted(() => ({
 	error: [] as unknown[],
 	info: [] as unknown[],
 }));
-vi.mock('$lib/toast.svelte', () => ({
+vi.mock('#lib/toast.svelte.js', () => ({
 	toast: {
 		success: (m: string, o?: unknown) => toastCalls.success.push([m, o]),
 		error: (m: string) => toastCalls.error.push(m),
@@ -31,10 +31,10 @@ vi.mock('$lib/toast.svelte', () => ({
 }));
 
 const confirmAsk = vi.hoisted(() => vi.fn(async () => true));
-vi.mock('$lib/confirm.svelte', () => ({ confirmDialog: { ask: confirmAsk } }));
+vi.mock('#lib/confirm.svelte.js', () => ({ confirmDialog: { ask: confirmAsk } }));
 
-import { CompactionController, type CompactionDeps } from '$lib/compaction-controller.svelte';
-import type { ChatMessage } from '$lib/types/api';
+import { CompactionController, type CompactionDeps } from '#lib/compaction-controller.svelte.js';
+import type { ChatMessage } from '#lib/types/api.js';
 
 /**
  * A branch long enough that `compactionWorthwhile` says yes.

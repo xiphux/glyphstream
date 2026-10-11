@@ -17,8 +17,8 @@ import userEvent from '@testing-library/user-event';
 const mocks = vi.hoisted(() => ({ goto: vi.fn() }));
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
 
-import SearchModal from '$lib/components/SearchModal.svelte';
-import { searchModal } from '$lib/search-modal.svelte';
+import SearchModal from '#lib/components/SearchModal.svelte';
+import { searchModal } from '#lib/search-modal.svelte.js';
 
 beforeEach(() => {
 	searchModal.hide();

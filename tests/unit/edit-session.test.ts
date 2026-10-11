@@ -34,7 +34,7 @@ class MockStore {
 	}
 }
 
-vi.mock('$lib/attachments.svelte', () => ({
+vi.mock('#lib/attachments.svelte.js', () => ({
 	AttachmentStore: class {
 		constructor() {
 			const s = new MockStore();
@@ -44,8 +44,8 @@ vi.mock('$lib/attachments.svelte', () => ({
 	},
 }));
 
-import { EditSession, type EditSessionDeps } from '$lib/edit-session.svelte';
-import type { ChatMessage } from '$lib/types/api';
+import { EditSession, type EditSessionDeps } from '#lib/edit-session.svelte.js';
+import type { ChatMessage } from '#lib/types/api.js';
 
 function msg(overrides: Partial<ChatMessage> = {}): ChatMessage {
 	return {

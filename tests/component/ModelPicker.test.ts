@@ -19,8 +19,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
-import type { CustomModel, ModelEntry } from '$lib/types/api';
+import ModelPicker from '#lib/components/chat/ModelPicker.svelte';
+import type { CustomModel, ModelEntry } from '#lib/types/api.js';
 
 function makeModel(overrides: Partial<ModelEntry> = {}): ModelEntry {
 	const endpointId = overrides.endpointId ?? 'bridge';

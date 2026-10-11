@@ -12,7 +12,7 @@
  */
 import { and, asc, eq } from 'drizzle-orm';
 import { generateId } from '../../util/id';
-import type { Skill } from '$lib/types/api';
+import type { Skill } from '#lib/types/api.js';
 import { getDb } from '../client';
 import { skills } from '../schema';
 

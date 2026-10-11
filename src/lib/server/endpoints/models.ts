@@ -7,8 +7,8 @@
  * `kindKnown: false` so the UI can show an "unknown kind" hint if it cares.
  */
 
-import { isModelKind } from '$lib/types/api';
-import type { AspectRatioOption, ModelEntry, ModelKind, UpstreamModel } from '$lib/types/api';
+import { isModelKind } from '#lib/types/api.js';
+import type { AspectRatioOption, ModelEntry, ModelKind, UpstreamModel } from '#lib/types/api.js';
 import type { LoadedEndpoint } from './config';
 import { formatModelId } from './model-id';
 import { normalizeStyle } from '../streaming/prompt-styles';

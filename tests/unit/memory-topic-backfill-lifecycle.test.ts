@@ -5,19 +5,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // non-draining sweep is what exercises the re-arm branch where the generation
 // guard actually matters (a draining sweep nulls the timer regardless of guard).
 const chatMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/client', () => ({ chatCompletionSync: chatMock }));
+vi.mock('#lib/server/endpoints/client.js', () => ({ chatCompletionSync: chatMock }));
 
 const taskModelMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/tasks/task-model', () => ({ getTaskModel: taskModelMock }));
+vi.mock('#lib/server/tasks/task-model.js', () => ({ getTaskModel: taskModelMock }));
 
 const needingMock = vi.hoisted(() => vi.fn());
 const setTopicMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/db/queries/memories', () => ({
+vi.mock('#lib/server/db/queries/memories.js', () => ({
 	listMemoriesNeedingTopic: needingMock,
 	setMemoryTopic: setTopicMock,
 }));
 
-import { startTopicBackfiller, stopTopicBackfiller } from '$lib/server/memory/topic-backfill';
+import { startTopicBackfiller, stopTopicBackfiller } from '#lib/server/memory/topic-backfill.js';
 
 const MODEL = { endpoint: {}, upstreamId: 'm' };
 const ROW = [{ id: 'm1', content: 'note' }];

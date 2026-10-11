@@ -12,10 +12,10 @@ import { isHttpError, type Cookies } from '@sveltejs/kit';
 const getProviderMock = vi.hoisted(() => vi.fn());
 const handleOAuthCallbackMock = vi.hoisted(() => vi.fn());
 
-vi.mock('$lib/server/auth/oauth/registry', () => ({
+vi.mock('#lib/server/auth/oauth/registry.js', () => ({
 	getProvider: getProviderMock,
 }));
-vi.mock('$lib/server/auth/oauth/callback-handler', () => ({
+vi.mock('#lib/server/auth/oauth/callback-handler.js', () => ({
 	handleOAuthCallback: handleOAuthCallbackMock,
 }));
 

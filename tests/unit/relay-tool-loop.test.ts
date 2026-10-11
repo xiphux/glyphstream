@@ -9,13 +9,13 @@ const mocks = vi.hoisted(() => ({
 	upstreamCalls: [] as unknown[],
 }));
 
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
 
-vi.mock('$lib/server/endpoints/client', async (orig) => {
-	const real = await orig<typeof import('$lib/server/endpoints/client')>();
+vi.mock('#lib/server/endpoints/client.js', async (orig) => {
+	const real = await orig<typeof import('#lib/server/endpoints/client.js')>();
 	return {
 		...real,
 		chatCompletionStream: vi.fn(async (_endpoint, body) => {
@@ -31,31 +31,31 @@ vi.mock('$lib/server/endpoints/client', async (orig) => {
 
 // Push and title task subsystems both touch process-global state that
 // isn't worth standing up in this test — stub them as no-ops.
-vi.mock('$lib/server/push/notify', () => ({
+vi.mock('#lib/server/push/notify.js', () => ({
 	notifyConversationComplete: vi.fn(async () => {}),
 }));
-vi.mock('$lib/server/tasks/title-task-runner', () => ({
+vi.mock('#lib/server/tasks/title-task-runner.js', () => ({
 	startTitleTaskIfFirstExchange: vi.fn(() => Promise.resolve(null)),
 	raceTitle: vi.fn(async (p: Promise<string | null>) => p),
 }));
 
-import { createConversation } from '$lib/server/db/queries/conversations';
+import { createConversation } from '#lib/server/db/queries/conversations.js';
 import {
 	appendMessage,
 	getSiblingAssistants,
 	walkActiveBranch,
-} from '$lib/server/db/queries/messages';
-import { _resetForTests, register, resolveActivatedToolDefs } from '$lib/server/tools/registry';
-import { startStreamingRelay } from '$lib/server/streaming/relay';
+} from '#lib/server/db/queries/messages.js';
+import { _resetForTests, register, resolveActivatedToolDefs } from '#lib/server/tools/registry.js';
+import { startStreamingRelay } from '#lib/server/streaming/relay.js';
 import {
 	acquireEndpointSlot,
 	getResourceQueueDepth,
 	resetEndpointGatesForTests,
-} from '$lib/server/endpoints/concurrency';
-import { startTitleTaskIfFirstExchange } from '$lib/server/tasks/title-task-runner';
-import type { ChatCompletionRequest } from '$lib/server/endpoints/client';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
-import type { ChatMessage } from '$lib/types/api';
+} from '#lib/server/endpoints/concurrency.js';
+import { startTitleTaskIfFirstExchange } from '#lib/server/tasks/title-task-runner.js';
+import type { ChatCompletionRequest } from '#lib/server/endpoints/client.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
+import type { ChatMessage } from '#lib/types/api.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();
@@ -583,7 +583,7 @@ describe('deferred tool search activation', () => {
 		const branch = walkActiveBranch(conv.id);
 		const toolMsg = branch.find((m) => m.role === 'tool')!;
 		const part = toolMsg.parts[0] as Extract<
-			import('$lib/types/api').MessagePart,
+			import('#lib/types/api.js').MessagePart,
 			{ type: 'tool_result' }
 		>;
 		expect(part.activatedToolNames).toEqual(['mcp__gh__create_issue']);
@@ -660,7 +660,7 @@ describe('multi-iteration tool loop with needsApproval', () => {
 		expect(branch.map((m) => m.role)).toEqual(['user', 'assistant', 'tool']);
 		const toolMsg = branch[2];
 		const part = toolMsg.parts[0] as Extract<
-			import('$lib/types/api').MessagePart,
+			import('#lib/types/api.js').MessagePart,
 			{ type: 'tool_result' }
 		>;
 		expect(part.status).toBe('pending_approval');

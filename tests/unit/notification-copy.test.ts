@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { GENERIC_TITLE, notificationBody, notificationTitle } from '$lib/sw/notification-copy';
-import type { NotifyPushPayload } from '$lib/types/push';
+import { GENERIC_TITLE, notificationBody, notificationTitle } from '#lib/sw/notification-copy.js';
+import type { NotifyPushPayload } from '#lib/types/push.js';
 
 /** A payload as the server builds it for a user who has opted OUT of content:
  *  no conversationTitle, no preview. */

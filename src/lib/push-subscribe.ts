@@ -16,7 +16,7 @@
  *     synchronously by a click handler.
  */
 
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 
 /**
  * Whether this environment can plausibly subscribe to push. Returns
@@ -68,7 +68,10 @@ export async function loadPushConfig(): Promise<PushConfigResponse | null> {
 
 export type SubscribeResult =
 	| { ok: true }
-	| { ok: false; reason: 'unsupported' | 'permission_denied' | 'no_registration' | 'network' };
+	| {
+			ok: false;
+			reason: 'unsupported' | 'permission_denied' | 'no_registration' | 'network';
+	  };
 
 /**
  * Request permission, create a `PushSubscription` against the SW
@@ -90,6 +93,7 @@ export async function subscribe(vapidPublicKey: string): Promise<SubscribeResult
 	if (!reg) return { ok: false, reason: 'no_registration' };
 
 	const existing = await reg.pushManager.getSubscription();
+
 	const subscription =
 		existing ??
 		(await reg.pushManager.subscribe({

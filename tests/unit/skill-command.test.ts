@@ -4,7 +4,7 @@ import {
 	parseLeadingSkillToken,
 	skillMenuQuery,
 	stripSkillCommand,
-} from '$lib/skill-command';
+} from '#lib/skill-command.js';
 
 const SKILLS = [{ name: 'review' }, { name: 'research-topic' }, { name: 'pdf' }];
 

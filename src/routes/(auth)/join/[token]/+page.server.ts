@@ -1,7 +1,7 @@
 import { redirect } from '@sveltejs/kit';
-import { findValidInvite } from '$lib/server/db/queries/invites';
-import { passkeyLoginEnabled } from '$lib/server/env';
-import { listEnabledProviders } from '$lib/server/auth/oauth/registry';
+import { findValidInvite } from '#lib/server/db/queries/invites.js';
+import { passkeyLoginEnabled } from '#lib/server/env.js';
+import { listEnabledProviders } from '#lib/server/auth/oauth/registry.js';
 import type { PageServerLoad } from './$types';
 
 const ERROR_MESSAGES: Record<string, string> = {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseConsolidation, renderMemories } from '$lib/server/memory/consolidation';
-import { MEMORY_MAX_CONTENT_CHARS } from '$lib/server/memory/limits';
+import { parseConsolidation, renderMemories } from '#lib/server/memory/consolidation.js';
+import { MEMORY_MAX_CONTENT_CHARS } from '#lib/server/memory/limits.js';
 
 const IDS = new Set(['a', 'b', 'c']);
 

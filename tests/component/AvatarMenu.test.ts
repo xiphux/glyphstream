@@ -10,7 +10,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import AvatarMenu from '$lib/components/chat/AvatarMenu.svelte';
+import AvatarMenu from '#lib/components/chat/AvatarMenu.svelte';
 import type { ComponentProps } from 'svelte';
 
 const base: ComponentProps<typeof AvatarMenu> = {

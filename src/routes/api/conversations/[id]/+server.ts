@@ -1,6 +1,6 @@
 import { error, json } from '@sveltejs/kit';
-import { requireFound, requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
+import { requireFound, requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
 import {
 	archiveConversation,
 	deleteConversation,
@@ -10,15 +10,15 @@ import {
 	RenameValidationError,
 	setDisabledFeatures,
 	unarchiveConversation,
-} from '$lib/server/db/queries/conversations';
-import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
+} from '#lib/server/db/queries/conversations.js';
+import { getFanoutRecoveryState } from '#lib/server/messages/fanout-recovery.js';
 import {
 	getAvatarDrawSince,
 	getInFlightGeneratingSince,
 	getInFlightSince,
-} from '$lib/server/streaming/in-flight';
-import { cancelInFlightGenerations } from '$lib/server/streaming/cancel';
-import { validateDisabledFeaturesOrThrow400 } from '$lib/server/util/validate-features';
+} from '#lib/server/streaming/in-flight.js';
+import { cancelInFlightGenerations } from '#lib/server/streaming/cancel.js';
+import { validateDisabledFeaturesOrThrow400 } from '#lib/server/util/validate-features.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals, params, url }) => {

@@ -34,8 +34,8 @@ import {
 	isCompactionSummary,
 	summaryMaxTokens,
 	upstreamBranch,
-} from '$lib/chat-compaction';
-import type { ChatMessage } from '$lib/types/api';
+} from '#lib/chat-compaction.js';
+import type { ChatMessage } from '#lib/types/api.js';
 
 // Task framing for the summarizer. Kept separate from the conversation's own
 // system prompt so the persona doesn't pull the model into "staying in

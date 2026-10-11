@@ -4,10 +4,10 @@
  * open a fresh window on the session. See server/auth/app-lock.ts.
  */
 import { error, json } from '@sveltejs/kit';
-import { verifyUnlockAssertion } from '$lib/server/auth/app-lock';
-import { setSessionUnlockedUntil } from '$lib/server/auth/session';
-import { passkeyLoginEnabled } from '$lib/server/env';
-import { parseJsonBody } from '$lib/server/http';
+import { verifyUnlockAssertion } from '#lib/server/auth/app-lock.js';
+import { setSessionUnlockedUntil } from '#lib/server/auth/session.js';
+import { passkeyLoginEnabled } from '#lib/server/env.js';
+import { parseJsonBody } from '#lib/server/http.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, cookies, request }) => {

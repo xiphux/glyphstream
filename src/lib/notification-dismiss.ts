@@ -21,7 +21,7 @@
  * per-device scope for the same reason.
  */
 
-import { syncAppBadge } from '$lib/sw/badge';
+import { syncAppBadge } from '#lib/sw/badge.js';
 
 export async function dismissConversationNotifications(conversationId: string): Promise<void> {
 	if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;

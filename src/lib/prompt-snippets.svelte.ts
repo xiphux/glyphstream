@@ -16,7 +16,7 @@
  * `depends()`/`invalidate()` load-function wiring is needed.
  */
 
-import type { PromptSnippet } from '$lib/types/api';
+import type { PromptSnippet } from '#lib/types/api.js';
 
 let snippets = $state<PromptSnippet[]>([]);
 let loaded = $state(false);

@@ -21,9 +21,9 @@ const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
 	endpoints: new Map<string, unknown>(),
 }));
-vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
-vi.mock('$lib/server/endpoints/release', () => ({ releaseEndpointResources: async () => true }));
-vi.mock('$lib/server/endpoints/registry', () => ({
+vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
+vi.mock('#lib/server/endpoints/release.js', () => ({ releaseEndpointResources: async () => true }));
+vi.mock('#lib/server/endpoints/registry.js', () => ({
 	getEndpoint: (id: string) => mocks.endpoints.get(id),
 	listEndpoints: () => [...mocks.endpoints.values()],
 }));
@@ -36,15 +36,15 @@ import {
 	type QueuedInfo,
 	resetEndpointGatesForTests,
 	setResourceGroupPaused,
-} from '$lib/server/endpoints/concurrency';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+} from '#lib/server/endpoints/concurrency.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 import {
 	installPersistedPauses,
 	pauseResourceGroup,
 	resetPersistedPausesForTests,
-} from '$lib/server/endpoints/pause';
-import { getEndpointsStatus } from '$lib/server/endpoints/status';
-import { pausedResourceGroups, users } from '$lib/server/db/schema';
+} from '#lib/server/endpoints/pause.js';
+import { getEndpointsStatus } from '#lib/server/endpoints/status.js';
+import { pausedResourceGroups, users } from '#lib/server/db/schema.js';
 import { DELETE, PUT } from '../../src/routes/api/admin/endpoints/[id]/pause/+server';
 
 function acquire(endpoint: LoadedEndpoint, opts: Omit<AcquireOptions, 'work'> = {}) {

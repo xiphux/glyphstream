@@ -18,14 +18,14 @@ vi.mock('$app/navigation', () => ({
 	invalidate: mocks.invalidate,
 }));
 
-vi.mock('$lib/toast.svelte', () => ({
+vi.mock('#lib/toast.svelte.js', () => ({
 	toast: {
 		error: mocks.toastError,
 		success: mocks.toastSuccess,
 	},
 }));
 
-import { reorder, reorderFavoriteModels, toggleFavoriteModel } from '$lib/favorite-models';
+import { reorder, reorderFavoriteModels, toggleFavoriteModel } from '#lib/favorite-models.js';
 
 /** Capture the parsed body of the most recent fetch call. */
 function capturedFavorites(): string[] {

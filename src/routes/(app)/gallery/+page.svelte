@@ -12,14 +12,14 @@
 		Star,
 		Trash2,
 	} from '@lucide/svelte';
-	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
-	import { confirmDialog } from '$lib/confirm.svelte';
-	import GalleryTimelineRail from '$lib/components/GalleryTimelineRail.svelte';
-	import { type Granularity } from '$lib/gallery-date-buckets';
-	import { buildLayoutSections, monthTicksFromLayout } from '$lib/gallery-layout';
-	import { promptRunKey } from '$lib/gallery-stacks';
-	import { GalleryFeed } from '$lib/gallery-feed.svelte';
-	import { computeSectionWindows, type WindowConstants } from '$lib/gallery-window';
+	import MediaLightbox from '#lib/components/MediaLightbox.svelte';
+	import { confirmDialog } from '#lib/confirm.svelte.js';
+	import GalleryTimelineRail from '#lib/components/GalleryTimelineRail.svelte';
+	import { type Granularity } from '#lib/gallery-date-buckets.js';
+	import { buildLayoutSections, monthTicksFromLayout } from '#lib/gallery-layout.js';
+	import { promptRunKey } from '#lib/gallery-stacks.js';
+	import { GalleryFeed } from '#lib/gallery-feed.svelte.js';
+	import { computeSectionWindows, type WindowConstants } from '#lib/gallery-window.js';
 	import type {
 		CustomModel,
 		GalleryLayout,
@@ -27,8 +27,8 @@
 		GalleryUnitsPage,
 		MediaConversationRef,
 		MediaListItem,
-	} from '$lib/types/api';
-	import { toast } from '$lib/toast.svelte';
+	} from '#lib/types/api.js';
+	import { toast } from '#lib/toast.svelte.js';
 
 	let { data } = $props<{
 		data: {
@@ -123,10 +123,8 @@
 		return (await res.json()) as GalleryUnitsPage;
 	}
 
-	const feed = new GalleryFeed({
-		fetchPage: fetchUnitsPage,
-		onError: (m) => (loadError = m),
-	});
+	const feed = new GalleryFeed({ fetchPage: fetchUnitsPage, onError: (m) => (loadError = m) });
+
 	// True until the first browse layout lands (browse isn't SSR'd — see the load
 	// function), so the grid shows a skeleton rather than a false "empty" state.
 	// svelte-ignore state_referenced_locally
@@ -257,7 +255,9 @@
 	let searchInput = $state<HTMLInputElement | null>(null);
 	const searchExpanded = $derived(searchOpen || !!data.q);
 
-	afterNavigate(({ to }) => {
+	afterNavigate(({ to, shallow, type }) => {
+		if (shallow && type === 'goto') return;
+
 		const q = to?.url.searchParams.get('q')?.trim() ?? '';
 		if (q === committedQuery) return;
 		if (queryDebounce) clearTimeout(queryDebounce);
@@ -530,6 +530,7 @@
 			if (lightbox?.id === id) lightbox = { ...lightbox, favorite: value };
 			if (drillItems)
 				drillItems = drillItems.map((m) => (m.id === id ? { ...m, favorite: value } : m));
+
 			searchItems = searchItems.map((m) => (m.id === id ? { ...m, favorite: value } : m));
 		};
 		favoritingId = id;
@@ -865,6 +866,7 @@
 				? (drillItems?.length ?? 0) > 0
 				: feed.totalUnits > 0,
 	);
+
 	const loadedCount = $derived(
 		searching ? searchItems.length : drillUnit ? (drillItems?.length ?? 0) : feed.totalUnits,
 	);
@@ -1047,7 +1049,7 @@
 					     while searching — the one state the 360px bar can't fit it — and
 					     shown with an empty library, which is exactly when you'd look. -->
 					<a
-						href={resolve('/gallery/trash')}
+						href={resolve('gallery/trash')}
 						aria-label="Recently deleted"
 						title="Recently deleted"
 						class="{searchExpanded

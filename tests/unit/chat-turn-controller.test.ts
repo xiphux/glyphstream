@@ -14,13 +14,13 @@ vi.mock('$app/navigation', () => ({
 	invalidateAll: () => invalidateAll(),
 	invalidate: (key: string) => invalidate(key),
 }));
-vi.mock('$lib/title-pending.svelte', () => ({
+vi.mock('#lib/title-pending.svelte.js', () => ({
 	markTitlePending: vi.fn(),
 	clearTitlePending: vi.fn(),
 }));
 
-import { ChatTurnController, type ChatTurnDeps } from '$lib/chat-turn-controller.svelte';
-import type { ChatMessage, ModelKind } from '$lib/types/api';
+import { ChatTurnController, type ChatTurnDeps } from '#lib/chat-turn-controller.svelte.js';
+import type { ChatMessage, ModelKind } from '#lib/types/api.js';
 
 function makeDeps(overrides: Partial<ChatTurnDeps> = {}) {
 	const state = {

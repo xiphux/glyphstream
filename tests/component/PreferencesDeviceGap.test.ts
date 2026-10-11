@@ -16,7 +16,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import type { UserPreferences } from '$lib/types/api';
+import type { UserPreferences } from '#lib/types/api.js';
 
 vi.mock('$app/environment', () => ({ browser: true, dev: false, building: false, version: 't' }));
 

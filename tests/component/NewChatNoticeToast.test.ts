@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/svelte';
 import { flushSync } from 'svelte';
-import type { ModelEntry } from '$lib/types/api';
+import type { ModelEntry } from '#lib/types/api.js';
 import type { createKitStub } from './_helpers/kit-runtime-stub.svelte';
 
 const holder = vi.hoisted(() => ({ current: null as ReturnType<typeof createKitStub> | null }));
@@ -50,7 +50,7 @@ vi.mock('$app/state', async () => {
 
 import Harness from './_helpers/NewChatHarness.svelte';
 import { goto } from '$app/navigation';
-import { toast } from '$lib/toast.svelte';
+import { toast } from '#lib/toast.svelte.js';
 
 const model: ModelEntry = {
 	id: 'bridge::alpha',

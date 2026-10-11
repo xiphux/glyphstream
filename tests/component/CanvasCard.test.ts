@@ -5,7 +5,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
-import CanvasCard from '$lib/components/chat/CanvasCard.svelte';
+import CanvasCard from '#lib/components/chat/CanvasCard.svelte';
 
 const ack = (o: Record<string, unknown>) => JSON.stringify(o);
 

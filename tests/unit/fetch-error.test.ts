@@ -1,7 +1,7 @@
 /** Tests for the client-side fetch-error message extractor. */
 
 import { describe, expect, it } from 'vitest';
-import { errorMessageFromResponse } from '$lib/fetch-error';
+import { errorMessageFromResponse } from '#lib/fetch-error.js';
 
 describe('errorMessageFromResponse', () => {
 	it('returns the JSON body message when present', async () => {

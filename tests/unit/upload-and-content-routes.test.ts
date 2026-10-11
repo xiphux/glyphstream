@@ -19,20 +19,20 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB, root: '' }));
-vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
-vi.mock('$lib/server/env', async (importOriginal) => ({
-	...(await importOriginal<typeof import('$lib/server/env')>()),
+vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
+vi.mock('#lib/server/env.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/server/env.js')>()),
 	mediaDir: () => mocks.root,
 	derivedDir: () => mocks.root,
 }));
 
 import { POST as upload } from '../../src/routes/api/uploads/+server';
 import { GET as content } from '../../src/routes/api/media/[id]/content/+server';
-import { createSession, validateSessionToken } from '$lib/server/auth/session';
-import { insertMedia, purgeTrashForUser, trashMediaForUser } from '$lib/server/db/queries/media';
-import { media } from '$lib/server/db/schema';
-import { getMediaStore } from '$lib/server/media/disk-store';
-import { MAX_UPLOAD_BYTES_FILE, MAX_UPLOAD_BYTES_IMAGE } from '$lib/server/uploads/classify';
+import { createSession, validateSessionToken } from '#lib/server/auth/session.js';
+import { insertMedia, purgeTrashForUser, trashMediaForUser } from '#lib/server/db/queries/media.js';
+import { media } from '#lib/server/db/schema.js';
+import { getMediaStore } from '#lib/server/media/disk-store.js';
+import { MAX_UPLOAD_BYTES_FILE, MAX_UPLOAD_BYTES_IMAGE } from '#lib/server/uploads/classify.js';
 
 type Handler = (event: RequestEvent) => Promise<Response> | Response;
 let user: NonNullable<App.Locals['user']>;

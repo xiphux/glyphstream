@@ -7,9 +7,9 @@
  * `import-snippets.ts`; this handler only marshals and maps the result.
  */
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { importSnippets } from '$lib/server/prompt-snippets/import-snippets';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { importSnippets } from '#lib/server/prompt-snippets/import-snippets.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, request }) => {

@@ -3,7 +3,7 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
@@ -11,12 +11,18 @@ vi.mock('$lib/server/db/client', () => ({
 // The semantic leg pulls config + the query embedding from these; mock both so
 // we control whether/what the dense leg ranks against (no real endpoint).
 const resolveMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/retrieval/embeddings-config', () => ({ resolveRelevanceConfig: resolveMock }));
+vi.mock('#lib/server/retrieval/embeddings-config.js', () => ({
+	resolveRelevanceConfig: resolveMock,
+}));
 const embedQueryMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/retrieval/embed-rank', () => ({ embedQuery: embedQueryMock }));
+vi.mock('#lib/server/retrieval/embed-rank.js', () => ({ embedQuery: embedQueryMock }));
 
-import { insertMedia, searchMediaForUser, setMediaEmbedding } from '$lib/server/db/queries/media';
-import { encodeVector } from '$lib/server/retrieval/vector';
+import {
+	insertMedia,
+	searchMediaForUser,
+	setMediaEmbedding,
+} from '#lib/server/db/queries/media.js';
+import { encodeVector } from '#lib/server/retrieval/vector.js';
 
 const MODEL = 'embed-v1';
 const CFG = {

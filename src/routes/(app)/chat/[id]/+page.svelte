@@ -1,55 +1,55 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { navigating } from '$app/state';
-	import { getModelCatalogue } from '$lib/model-catalogue.svelte';
-	import { observeSentinel } from '$lib/observe-sentinel';
-	import { FanoutController } from '$lib/fanout-controller.svelte';
-	import { ChatTurnController } from '$lib/chat-turn-controller.svelte';
-	import { preferredFirstName } from '$lib/greeting';
-	import { ensureLiveMarkdown, renderLiveMarkdown } from '$lib/markdown-live';
-	import { ensureLiveHighlighter } from '$lib/markdown-live-shiki.svelte';
-	import { buildApprovalDecisionsSnapshot, type ApprovalAction } from '$lib/approval-workflow';
-	import { errorMessageFromResponse } from '$lib/fetch-error';
-	import { toggleFavoriteModel } from '$lib/favorite-models';
-	import { imageAttachment } from '$lib/model-capabilities';
-	import { saveModelSet, deleteModelSet } from '$lib/model-sets';
-	import { pendingFirstMessageKey } from '$lib/pending-first-message';
-	import { dismissConversationNotifications } from '$lib/notification-dismiss';
-	import { NotificationAck } from '$lib/notification-ack';
+	import { getModelCatalogue } from '#lib/model-catalogue.svelte.js';
+	import { observeSentinel } from '#lib/observe-sentinel.js';
+	import { FanoutController } from '#lib/fanout-controller.svelte.js';
+	import { ChatTurnController } from '#lib/chat-turn-controller.svelte.js';
+	import { preferredFirstName } from '#lib/greeting.js';
+	import { ensureLiveMarkdown, renderLiveMarkdown } from '#lib/markdown-live.js';
+	import { ensureLiveHighlighter } from '#lib/markdown-live-shiki.svelte.js';
+	import { buildApprovalDecisionsSnapshot, type ApprovalAction } from '#lib/approval-workflow.js';
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
+	import { toggleFavoriteModel } from '#lib/favorite-models.js';
+	import { imageAttachment } from '#lib/model-capabilities.js';
+	import { saveModelSet, deleteModelSet } from '#lib/model-sets.js';
+	import { pendingFirstMessageKey } from '#lib/pending-first-message.js';
+	import { dismissConversationNotifications } from '#lib/notification-dismiss.js';
+	import { NotificationAck } from '#lib/notification-ack.js';
 	import {
 		deriveReuseModels,
 		upgradeToPresetModelId,
 		PROMPT_REUSE_KEY,
 		type PromptReuseIntent,
-	} from '$lib/prompt-reuse';
-	import { loadDraft, clearDraft, createDraftWriter } from '$lib/composer-draft';
-	import { confirmDialog } from '$lib/confirm.svelte';
-	import ChatComposer from '$lib/components/chat/ChatComposer.svelte';
-	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
-	import { AVATAR_DESCRIPTION_PROMPT, extractAvatarPrompt } from '$lib/avatar-prompt';
-	import AvatarDrawDialog from '$lib/components/chat/AvatarDrawDialog.svelte';
-	import { CanvasController } from '$lib/canvas-controller.svelte';
-	import { CompactionController } from '$lib/compaction-controller.svelte';
-	import { EditSession } from '$lib/edit-session.svelte';
-	import { privateView } from '$lib/private-chat.svelte';
-	import { streamPresence } from '$lib/stream-presence.svelte';
+	} from '#lib/prompt-reuse.js';
+	import { loadDraft, clearDraft, createDraftWriter } from '#lib/composer-draft.js';
+	import { confirmDialog } from '#lib/confirm.svelte.js';
+	import ChatComposer from '#lib/components/chat/ChatComposer.svelte';
+	import ChatHeader from '#lib/components/chat/ChatHeader.svelte';
+	import { AVATAR_DESCRIPTION_PROMPT, extractAvatarPrompt } from '#lib/avatar-prompt.js';
+	import AvatarDrawDialog from '#lib/components/chat/AvatarDrawDialog.svelte';
+	import { CanvasController } from '#lib/canvas-controller.svelte.js';
+	import { CompactionController } from '#lib/compaction-controller.svelte.js';
+	import { EditSession } from '#lib/edit-session.svelte.js';
+	import { privateView } from '#lib/private-chat.svelte.js';
+	import { streamPresence } from '#lib/stream-presence.svelte.js';
 	import {
 		clearGenerating,
 		isGenerating,
 		markGenerating,
 		type GenerationActivity,
-	} from '$lib/generating-conversations.svelte';
-	import EditMessageForm from '$lib/components/chat/EditMessageForm.svelte';
-	import InFlightBubble from '$lib/components/chat/InFlightBubble.svelte';
-	import MessageActions from '$lib/components/chat/MessageActions.svelte';
-	import MessageBubble from '$lib/components/chat/MessageBubble.svelte';
-	import ScrollToBottomButton from '$lib/components/chat/ScrollToBottomButton.svelte';
+	} from '#lib/generating-conversations.svelte.js';
+	import EditMessageForm from '#lib/components/chat/EditMessageForm.svelte';
+	import InFlightBubble from '#lib/components/chat/InFlightBubble.svelte';
+	import MessageActions from '#lib/components/chat/MessageActions.svelte';
+	import MessageBubble from '#lib/components/chat/MessageBubble.svelte';
+	import ScrollToBottomButton from '#lib/components/chat/ScrollToBottomButton.svelte';
 	import {
 		assistantIdentityForMessage,
 		buildRenderedConversation,
@@ -61,18 +61,18 @@
 		splitCanvasCards,
 		type AssistantIdentity,
 		type RenderBlock,
-	} from '$lib/chat-render';
-	import { displayContextTokens, isCompactionSummary } from '$lib/chat-compaction';
-	import CompactionSummary from '$lib/components/chat/CompactionSummary.svelte';
-	import CompactionSummaryStreaming from '$lib/components/chat/CompactionSummaryStreaming.svelte';
-	import ContextBudgetBar from '$lib/components/chat/ContextBudgetBar.svelte';
-	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
+	} from '#lib/chat-render.js';
+	import { displayContextTokens, isCompactionSummary } from '#lib/chat-compaction.js';
+	import CompactionSummary from '#lib/components/chat/CompactionSummary.svelte';
+	import CompactionSummaryStreaming from '#lib/components/chat/CompactionSummaryStreaming.svelte';
+	import ContextBudgetBar from '#lib/components/chat/ContextBudgetBar.svelte';
+	import { AttachmentStore, attachmentsAllowedFor } from '#lib/attachments.svelte.js';
 	import { resolve } from '$app/paths';
-	import { stripSkillCommand } from '$lib/skill-command';
-	import { hasCopyableText, partsToText } from '$lib/message-parts';
-	import { AvatarDrawController } from '$lib/avatar-draw-controller.svelte';
-	import { consumeChatStream } from '$lib/consume-chat-stream';
-	import FanoutColumns from '$lib/components/chat/FanoutColumns.svelte';
+	import { stripSkillCommand } from '#lib/skill-command.js';
+	import { hasCopyableText, partsToText } from '#lib/message-parts.js';
+	import { AvatarDrawController } from '#lib/avatar-draw-controller.svelte.js';
+	import { consumeChatStream } from '#lib/consume-chat-stream.js';
+	import FanoutColumns from '#lib/components/chat/FanoutColumns.svelte';
 	import {
 		applyDisplayOrder,
 		canDiscardColumn,
@@ -85,16 +85,16 @@
 		type CompareSelection,
 		type FanoutColumn,
 		type FanoutModel,
-	} from '$lib/fanout';
-	import { toast } from '$lib/toast.svelte';
-	import { isSnippetKind } from '$lib/types/api';
+	} from '#lib/fanout.js';
+	import { toast } from '#lib/toast.svelte.js';
+	import { isSnippetKind } from '#lib/types/api.js';
 	import type {
 		ChatMessage,
 		ConversationMediaRef,
 		FeatureCategory,
 		MediaListItem,
 		ModelKind,
-	} from '$lib/types/api';
+	} from '#lib/types/api.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -623,6 +623,7 @@
 			? (data.customModels?.find((cm) => cm.id === data.conversation.customModelId) ?? null)
 			: null,
 	);
+
 	const activePresetModelId = $derived(
 		activePreset ? `${activePreset.baseEndpointId}::${activePreset.baseModelId}` : null,
 	);
@@ -686,8 +687,8 @@
 	// it as initial content (no intro). A stable {#if} makes the slide reliable.
 	let CanvasPaneComp = $state<
 		| import('svelte').Component<{
-				doc: import('$lib/types/api').CanvasVersion;
-				docs: Array<import('$lib/types/api').CanvasVersion>;
+				doc: import('#lib/types/api.js').CanvasVersion;
+				docs: Array<import('#lib/types/api.js').CanvasVersion>;
 				changed: boolean;
 				onClose: () => void;
 				onSwitch: (artifactId: string) => void;
@@ -697,7 +698,7 @@
 	>(null);
 	$effect(() => {
 		if (canvas.docs.length > 0 && !CanvasPaneComp) {
-			void import('$lib/components/chat/CanvasPane.svelte').then(
+			void import('#lib/components/chat/CanvasPane.svelte').then(
 				(m) => (CanvasPaneComp = m.default),
 			);
 		}
@@ -2027,7 +2028,11 @@
 		const skillsActive = modelKind === 'chat' && !disabledFeatures.includes('skills');
 		const { text, activatedSkillNames } = skillsActive
 			? stripSkillCommand(composerText.trim(), data.enabledSkills)
-			: { text: composerText.trim(), activatedSkillNames: [] as string[] };
+			: {
+					text: composerText.trim(),
+					activatedSkillNames: [] as string[],
+				};
+
 		if ((!text && attachments.items.length === 0) || generating || compaction.compacting) return;
 		if (attachments.isBusy) return;
 		// Offline: block the send before anything is cleared. The button is
@@ -2343,10 +2348,7 @@
 		// fan-out siblings today — see ROADMAP "An edit resend should inherit its own
 		// message's aspect ratio".
 		send: (text, mediaIds, editedMessageId) =>
-			turn.send(text, mediaIds, {
-				editedMessageId,
-				...(aspectRatio ? { aspectRatio } : {}),
-			}),
+			turn.send(text, mediaIds, { editedMessageId, ...(aspectRatio ? { aspectRatio } : {}) }),
 	});
 	onDestroy(() => edit.destroy());
 
@@ -2548,7 +2550,8 @@
 </script>
 
 <svelte:window onoffline={onOffline} ononline={onOnline} onpageshow={onPageShow} />
-<svelte:document onvisibilitychange={onVisibilityChange} />
+
+<svelte:document onvisibilitychange={onVisibilityChange}></svelte:document>
 
 <div class="flex h-full min-w-0">
 	<div class="relative flex h-full min-w-0 flex-1 flex-col">
@@ -2966,7 +2969,7 @@
 />
 
 {#if lightbox}
-	{#await import('$lib/components/MediaLightbox.svelte') then { default: MediaLightbox }}
+	{#await import('#lib/components/MediaLightbox.svelte') then { default: MediaLightbox }}
 		<MediaLightbox
 			media={lightbox}
 			onClose={() => (lightbox = null)}

@@ -21,7 +21,7 @@ import { getImageEnhancerModel } from '../tasks/image-enhancer-model';
 import { enhancePrompt, type EnhancerMedium } from './prompt-enhancer';
 import { normalizeStyle } from './prompt-styles';
 import { normalizeVideoStyle } from './prompt-styles-video';
-import type { StreamProgressEvent } from '$lib/types/api';
+import type { StreamProgressEvent } from '#lib/types/api.js';
 
 export interface MediaEnhanceInput {
 	/** The user's raw prompt. */

@@ -3,7 +3,7 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
@@ -16,9 +16,9 @@ import {
 	renameConversation,
 	setConversationTitle,
 	setConversationTitleIfFallback,
-} from '$lib/server/db/queries/conversations';
-import { appendMessage, setActiveLeafMessageId } from '$lib/server/db/queries/messages';
-import { messages } from '$lib/server/db/schema';
+} from '#lib/server/db/queries/conversations.js';
+import { appendMessage, setActiveLeafMessageId } from '#lib/server/db/queries/messages.js';
+import { messages } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 
 beforeEach(() => {

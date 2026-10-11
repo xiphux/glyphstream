@@ -1,17 +1,17 @@
 <script lang="ts">
-	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
+	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
 	import { afterNavigate, goto, invalidate, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Check, KeyRound, Laptop, Pencil, Plus, Trash2, X } from '@lucide/svelte';
-	import ProviderIcon from '$lib/components/ProviderIcon.svelte';
-	import type { OAuthAccountSummary } from '$lib/server/db/queries/oauth-accounts';
-	import type { PasskeySummary } from '$lib/server/db/queries/passkey';
-	import type { SessionSummary } from '$lib/server/auth/session';
-	import { confirmDialog } from '$lib/confirm.svelte';
-	import { toast } from '$lib/toast.svelte';
-	import { errorMessageFromResponse } from '$lib/fetch-error';
-	import { APP_LOCK_TIMEOUTS_MS, describeAppLockTimeout } from '$lib/app-lock';
-	import { getAppLockAssertion } from '$lib/app-lock-ceremony';
+	import ProviderIcon from '#lib/components/ProviderIcon.svelte';
+	import type { OAuthAccountSummary } from '#lib/server/db/queries/oauth-accounts.js';
+	import type { PasskeySummary } from '#lib/server/db/queries/passkey.js';
+	import type { SessionSummary } from '#lib/server/auth/session.js';
+	import { confirmDialog } from '#lib/confirm.svelte.js';
+	import { toast } from '#lib/toast.svelte.js';
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
+	import { APP_LOCK_TIMEOUTS_MS, describeAppLockTimeout } from '#lib/app-lock.js';
+	import { getAppLockAssertion } from '#lib/app-lock-ceremony.js';
 
 	interface ProviderInfo {
 		id: string;
@@ -68,7 +68,9 @@
 	// guard at all, so calling it before `initialize()` sets `started` re-enters
 	// that function and mounts a SECOND app root — silently, in production, not
 	// only in dev. By the next microtask `started` is true.
-	afterNavigate(() => {
+	afterNavigate(({ shallow, type }) => {
+		if (shallow && type === 'goto') return;
+
 		const result = page.url.searchParams.get('link');
 		if (!result) return;
 		if (result === 'success') toast.success('Provider linked.');
@@ -171,6 +173,7 @@
 						: /Linux/.test(ua)
 							? 'Linux'
 							: null;
+
 		// Order matters: Edge and Chrome both claim "Chrome", Safari claims
 		// none of the others.
 		const browser = /Edg\//.test(ua)
@@ -182,6 +185,7 @@
 					: /Safari\//.test(ua)
 						? 'Safari'
 						: null;
+
 		if (os && browser) return `${browser} on ${os}`;
 		return browser ?? os ?? 'Unknown device';
 	}
@@ -233,7 +237,9 @@
 				toast.error(`Couldn't sign out: ${await errorMessageFromResponse(res)}`);
 				return;
 			}
+
 			const { revoked } = (await res.json()) as { revoked: number };
+
 			toast.success(
 				revoked === 0
 					? 'No other devices were signed in.'
@@ -343,10 +349,10 @@
 				addError = await errorMessageFromResponse(optionsRes);
 				return;
 			}
+
 			const optionsJSON = (await optionsRes.json()) as Parameters<
 				typeof startRegistration
 			>[0]['optionsJSON'];
-
 			let regResponse;
 			try {
 				regResponse = await startRegistration({ optionsJSON });

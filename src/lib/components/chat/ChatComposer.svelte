@@ -10,23 +10,23 @@
 -->
 <script lang="ts">
 	import { ArrowUp, Square } from '@lucide/svelte';
-	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
-	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
-	import ComposerCore from '$lib/components/chat/ComposerCore.svelte';
-	import OfflineNotice from '$lib/components/chat/OfflineNotice.svelte';
-	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
-	import AspectRatioSelector from '$lib/components/chat/AspectRatioSelector.svelte';
-	import { agreedDefault, offeredRatios } from '$lib/aspect-ratio';
-	import { stripSkillCommand } from '$lib/skill-command';
-	import { isSnippetKind } from '$lib/types/api';
-	import { imageAttachment } from '$lib/model-capabilities';
-	import type { ImageAttachment } from '$lib/model-capabilities';
-	import type { AttachmentStore } from '$lib/attachments.svelte';
+	import FeatureTogglesMenu from '#lib/components/FeatureTogglesMenu.svelte';
+	import ModelPicker from '#lib/components/chat/ModelPicker.svelte';
+	import ComposerCore from '#lib/components/chat/ComposerCore.svelte';
+	import OfflineNotice from '#lib/components/chat/OfflineNotice.svelte';
+	import SplitAttachmentsToggle from '#lib/components/chat/SplitAttachmentsToggle.svelte';
+	import AspectRatioSelector from '#lib/components/chat/AspectRatioSelector.svelte';
+	import { agreedDefault, offeredRatios } from '#lib/aspect-ratio.js';
+	import { stripSkillCommand } from '#lib/skill-command.js';
+	import { isSnippetKind } from '#lib/types/api.js';
+	import { imageAttachment } from '#lib/model-capabilities.js';
+	import type { ImageAttachment } from '#lib/model-capabilities.js';
+	import type { AttachmentStore } from '#lib/attachments.svelte.js';
 	import {
 		expandCompareSelections,
 		resolveActiveModelKind,
 		type CompareSelection,
-	} from '$lib/fanout';
+	} from '#lib/fanout.js';
 	import type {
 		EnterBehavior,
 		FeatureCategory,
@@ -34,7 +34,7 @@
 		ModelEntry,
 		ModelKind,
 		SavedModelSet,
-	} from '$lib/types/api';
+	} from '#lib/types/api.js';
 
 	interface Props {
 		composerText: string;

@@ -32,42 +32,42 @@ const mocks = vi.hoisted(() => ({
 	enhancePrompt: vi.fn(),
 	notifyFanout: vi.fn(),
 	unlinkMediaFiles: vi.fn(async () => {}),
-	endpoint: null as unknown as import('$lib/server/endpoints/config').LoadedEndpoint | undefined,
+	endpoint: null as unknown as import('#lib/server/endpoints/config.js').LoadedEndpoint | undefined,
 }));
 
-vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
-vi.mock('$lib/server/endpoints/client', async (orig) => ({
-	...(await orig<typeof import('$lib/server/endpoints/client')>()),
+vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
+vi.mock('#lib/server/endpoints/client.js', async (orig) => ({
+	...(await orig<typeof import('#lib/server/endpoints/client.js')>()),
 	imageGeneration: mocks.imageGeneration,
 	videoCreate: mocks.videoCreate,
 	videoStatus: mocks.videoStatus,
 	videoFetchContent: mocks.videoFetchContent,
 	videoCancel: mocks.videoCancel,
 }));
-vi.mock('$lib/server/endpoints/registry', () => ({
+vi.mock('#lib/server/endpoints/registry.js', () => ({
 	getEndpoint: (id: string) => (mocks.endpoint?.id === id ? mocks.endpoint : undefined),
 }));
-vi.mock('$lib/server/media/persister', () => ({
+vi.mock('#lib/server/media/persister.js', () => ({
 	persistGeneratedImage: mocks.persistGeneratedImage,
 	persistGeneratedVideo: mocks.persistGeneratedVideo,
 }));
-vi.mock('$lib/server/db/queries/media', async (orig) => ({
-	...(await orig<typeof import('$lib/server/db/queries/media')>()),
+vi.mock('#lib/server/db/queries/media.js', async (orig) => ({
+	...(await orig<typeof import('#lib/server/db/queries/media.js')>()),
 	linkMessageMedia: mocks.linkMessageMedia,
 }));
-vi.mock('$lib/server/push/notify', () => ({ notifyConversationComplete: mocks.notify }));
-vi.mock('$lib/server/media/disk-store', () => ({ unlinkMediaFiles: mocks.unlinkMediaFiles }));
-vi.mock('$lib/server/messages/fanout-notify', () => ({
+vi.mock('#lib/server/push/notify.js', () => ({ notifyConversationComplete: mocks.notify }));
+vi.mock('#lib/server/media/disk-store.js', () => ({ unlinkMediaFiles: mocks.unlinkMediaFiles }));
+vi.mock('#lib/server/messages/fanout-notify.js', () => ({
 	notifyFanoutCompleteIfLast: mocks.notifyFanout,
 }));
-vi.mock('$lib/server/tasks/title-task-runner', () => ({
+vi.mock('#lib/server/tasks/title-task-runner.js', () => ({
 	startTitleTaskIfFirstExchange: vi.fn(() => Promise.resolve(null)),
 	raceTitle: vi.fn(async (p: Promise<string | null>) => p),
 }));
-vi.mock('$lib/server/tasks/image-enhancer-model', () => ({
+vi.mock('#lib/server/tasks/image-enhancer-model.js', () => ({
 	getImageEnhancerModel: mocks.getImageEnhancerModel,
 }));
-vi.mock('$lib/server/streaming/prompt-enhancer', () => ({
+vi.mock('#lib/server/streaming/prompt-enhancer.js', () => ({
 	enhancePrompt: mocks.enhancePrompt,
 }));
 
@@ -75,17 +75,17 @@ import {
 	createConversation,
 	deleteConversation,
 	setFanoutParent,
-} from '$lib/server/db/queries/conversations';
-import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
-import { appendMessage, getSiblingAssistants } from '$lib/server/db/queries/messages';
-import { conversations, generationJobs, media } from '$lib/server/db/schema';
-import { insertMedia } from '$lib/server/db/queries/media';
-import { insertGenerationJob } from '$lib/server/db/queries/generation-jobs';
+} from '#lib/server/db/queries/conversations.js';
+import { getFanoutRecoveryState } from '#lib/server/messages/fanout-recovery.js';
+import { appendMessage, getSiblingAssistants } from '#lib/server/db/queries/messages.js';
+import { conversations, generationJobs, media } from '#lib/server/db/schema.js';
+import { insertMedia } from '#lib/server/db/queries/media.js';
+import { insertGenerationJob } from '#lib/server/db/queries/generation-jobs.js';
 import {
 	resetEndpointGatesForTests,
 	setResourceGroupPaused,
-} from '$lib/server/endpoints/concurrency';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+} from '#lib/server/endpoints/concurrency.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 import {
 	resetGenerationJobsForTests,
 	resumeGenerationJobs,
@@ -93,8 +93,8 @@ import {
 	stopGenerationJobResume,
 	submitGenerationJob,
 	type SubmitGenerationJob,
-} from '$lib/server/generation/jobs';
-import { cancelInFlightGenerations } from '$lib/server/streaming/cancel';
+} from '#lib/server/generation/jobs.js';
+import { cancelInFlightGenerations } from '#lib/server/streaming/cancel.js';
 import {
 	registerInFlight,
 	getInFlightEntries,
@@ -102,9 +102,9 @@ import {
 	getAvatarDrawSince,
 	getInFlightSince,
 	resetInFlight,
-} from '$lib/server/streaming/in-flight';
-import { UpstreamError } from '$lib/server/endpoints/client';
-import type { StreamEvent } from '$lib/types/api';
+} from '#lib/server/streaming/in-flight.js';
+import { UpstreamError } from '#lib/server/endpoints/client.js';
+import type { StreamEvent } from '#lib/types/api.js';
 
 function endpoint(maxConcurrent = 1): LoadedEndpoint {
 	return {
@@ -499,8 +499,8 @@ describe('after a restart', () => {
 		resumeGenerationJobs();
 
 		vi.resetModules();
-		const fresh = await import('$lib/server/generation/jobs');
-		const freshInFlight = await import('$lib/server/streaming/in-flight');
+		const fresh = await import('#lib/server/generation/jobs.js');
+		const freshInFlight = await import('#lib/server/streaming/in-flight.js');
 		fresh.resumeGenerationJobs();
 		// The job is still this process's live one — not taken back a second time.
 		expect(freshInFlight.getInFlightEntries(s.conv.id)).toEqual([]);

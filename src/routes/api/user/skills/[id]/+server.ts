@@ -8,10 +8,10 @@
  * is the source of truth for name/description), so there is no body-edit PATCH.
  */
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { deleteSkill, setSkillEnabled } from '$lib/server/db/queries/skills';
-import { getSkillStore } from '$lib/server/skills/disk-store';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { deleteSkill, setSkillEnabled } from '#lib/server/db/queries/skills.js';
+import { getSkillStore } from '#lib/server/skills/disk-store.js';
 import type { RequestHandler } from './$types';
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {

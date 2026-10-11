@@ -20,49 +20,49 @@ import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 	dbFileBytes: () => ({ main: null, wal: null }),
 	mmapBytes: () => null,
 }));
-vi.mock('$lib/server/env', async (importOriginal) => ({
-	...(await importOriginal<typeof import('$lib/server/env')>()),
+vi.mock('#lib/server/env.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/server/env.js')>()),
 	validateAuthMethodsEnabled: () => {},
 	compressDynamicResponses: () => false,
 	authRateLimitMax: () => 3,
 	authRateLimitWindowSeconds: () => 60,
 }));
-vi.mock('$lib/server/media/purger', () => ({
+vi.mock('#lib/server/media/purger.js', () => ({
 	startMediaPurger: vi.fn(),
 	stopMediaPurger: vi.fn(),
 }));
-vi.mock('$lib/server/memory/embedding-backfill', () => ({
+vi.mock('#lib/server/memory/embedding-backfill.js', () => ({
 	startEmbeddingBackfiller: vi.fn(),
 	stopEmbeddingBackfiller: vi.fn(),
 }));
-vi.mock('$lib/server/memory/topic-backfill', () => ({
+vi.mock('#lib/server/memory/topic-backfill.js', () => ({
 	startTopicBackfiller: vi.fn(),
 	stopTopicBackfiller: vi.fn(),
 }));
-vi.mock('$lib/server/memory/dreaming', () => ({
+vi.mock('#lib/server/memory/dreaming.js', () => ({
 	startDreamingWorker: vi.fn(),
 	stopDreamingWorker: vi.fn(),
 }));
-vi.mock('$lib/server/memory/conversation-summary', () => ({
+vi.mock('#lib/server/memory/conversation-summary.js', () => ({
 	startConversationSummaryWorker: vi.fn(),
 	stopConversationSummaryWorker: vi.fn(),
 }));
-vi.mock('$lib/server/mcp/bootstrap', () => ({ bootstrapMcp: vi.fn(async () => {}) }));
-vi.mock('$lib/server/mcp/registry', () => ({ stopMcp: vi.fn(async () => {}) }));
-vi.mock('$lib/server/endpoints/list-models', () => ({ listAllModels: vi.fn(async () => []) }));
-vi.mock('$lib/server/code-interpreter/pool', () => ({ stopPool: vi.fn(async () => {}) }));
+vi.mock('#lib/server/mcp/bootstrap.js', () => ({ bootstrapMcp: vi.fn(async () => {}) }));
+vi.mock('#lib/server/mcp/registry.js', () => ({ stopMcp: vi.fn(async () => {}) }));
+vi.mock('#lib/server/endpoints/list-models.js', () => ({ listAllModels: vi.fn(async () => []) }));
+vi.mock('#lib/server/code-interpreter/pool.js', () => ({ stopPool: vi.fn(async () => {}) }));
 
 import { handle } from '../../src/hooks.server';
-import { createSession } from '$lib/server/auth/session';
-import { setAppLockTimeout } from '$lib/server/auth/app-lock';
-import { resetRateLimits } from '$lib/server/rate-limit';
-import { sessions } from '$lib/server/db/schema';
+import { createSession } from '#lib/server/auth/session.js';
+import { setAppLockTimeout } from '#lib/server/auth/app-lock.js';
+import { resetRateLimits } from '#lib/server/rate-limit.js';
+import { sessions } from '#lib/server/db/schema.js';
 
 const ORIGIN = 'https://chat.example.test';
 const SESSION_COOKIE = 'glyphstream_session';

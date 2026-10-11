@@ -6,7 +6,7 @@
  * can sit next to it (JSON has no comments, and several of these were wrong
  * once). vite.config.ts also imports it, to hash it into the service worker's
  * precache list — so it must stay import-free: that file is loaded by Vite's
- * config loader, which resolves no `$lib` alias.
+ * config loader, which resolves no `#lib` alias.
  */
 const manifest = {
 	name: 'GlyphStream',

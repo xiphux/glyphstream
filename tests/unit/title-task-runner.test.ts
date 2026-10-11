@@ -30,21 +30,21 @@ const mocks = vi.hoisted(() => ({
 		vi.fn<(id: string, userId: string) => Promise<{ title: string; persisted: boolean } | null>>(),
 }));
 
-vi.mock('$lib/server/tasks/task-model', () => ({
+vi.mock('#lib/server/tasks/task-model.js', () => ({
 	getTaskModel: mocks.getTaskModel,
 	isTaskModelPrivate: mocks.isTaskModelPrivate,
 }));
 
-vi.mock('$lib/server/db/queries/conversations', () => ({
+vi.mock('#lib/server/db/queries/conversations.js', () => ({
 	getConversationTitleSource: mocks.getConversationTitleSource,
 	getConversationMeta: mocks.getConversationMeta,
 }));
 
-vi.mock('$lib/server/tasks/title-generator', () => ({
+vi.mock('#lib/server/tasks/title-generator.js', () => ({
 	generateConversationTitle: mocks.generateConversationTitle,
 }));
 
-import { raceTitle, startTitleTaskIfFirstExchange } from '$lib/server/tasks/title-task-runner';
+import { raceTitle, startTitleTaskIfFirstExchange } from '#lib/server/tasks/title-task-runner.js';
 
 beforeEach(() => {
 	mocks.getTaskModel.mockReset();

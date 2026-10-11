@@ -6,8 +6,8 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
-import CanvasPane from '$lib/components/chat/CanvasPane.svelte';
-import type { CanvasVersion } from '$lib/types/api';
+import CanvasPane from '#lib/components/chat/CanvasPane.svelte';
+import type { CanvasVersion } from '#lib/types/api.js';
 
 function doc(overrides: Partial<CanvasVersion> = {}): CanvasVersion {
 	return {

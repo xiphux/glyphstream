@@ -28,7 +28,7 @@ import {
 	DEFAULT_MEMORY_MODEL_MAX_TOKENS,
 	DEFAULT_MEMORY_MODEL_TEMPERATURE,
 	DEFAULT_MEMORY_OVERVIEW_MAX_CHARS,
-} from '$lib/server/endpoints/config';
+} from '#lib/server/endpoints/config.js';
 
 // Stub $env/dynamic/private so we can control api_key_env resolution
 // without touching the real process env.

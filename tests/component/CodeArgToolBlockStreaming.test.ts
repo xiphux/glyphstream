@@ -10,7 +10,7 @@
  * body by default while `status === 'executing'`, so the lazy-body gate that
  * spares other blocks is open exactly when this is worst.
  *
- * Lives in its own file because the assertion needs `$lib/markdown-live-shiki`
+ * Lives in its own file because the assertion needs `#lib/markdown-live-shiki`
  * mocked at module scope — mocking it partway through ToolCallBlock.test.ts
  * would mean re-importing the component into an already-running Svelte runtime.
  */
@@ -20,7 +20,7 @@ import { tick } from 'svelte';
 import { render } from '@testing-library/svelte';
 
 const highlighted: string[] = [];
-vi.mock('$lib/markdown-live-shiki.svelte', () => ({
+vi.mock('#lib/markdown-live-shiki.svelte.js', () => ({
 	liveHighlighterReady: { value: true },
 	resolveLiveLang: () => 'python',
 	highlightLiveCode: (code: string) => {
@@ -29,7 +29,7 @@ vi.mock('$lib/markdown-live-shiki.svelte', () => ({
 	},
 }));
 
-import ToolCallBlock from '$lib/components/ToolCallBlock.svelte';
+import ToolCallBlock from '#lib/components/ToolCallBlock.svelte';
 
 async function expandDetails(container: HTMLElement) {
 	const details = container.querySelector('details')!;

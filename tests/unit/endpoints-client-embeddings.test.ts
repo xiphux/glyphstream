@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { embeddings, UpstreamError } from '$lib/server/endpoints/client';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+import { embeddings, UpstreamError } from '#lib/server/endpoints/client.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 
 const realFetch = globalThis.fetch;
 afterEach(() => {

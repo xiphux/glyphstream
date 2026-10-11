@@ -1,6 +1,6 @@
-import type { embeddings } from '$lib/server/endpoints/client';
+import type { embeddings } from '#lib/server/endpoints/client.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { FetchResult } from '$lib/server/tools/fetch-url';
+import type { FetchResult } from '#lib/server/tools/fetch-url.js';
 
 // Mock node:dns BEFORE importing the tool so the module picks up the mock.
 const lookupMock = vi.hoisted(() => vi.fn());
@@ -15,22 +15,22 @@ vi.mock('node:dns', () => ({
 const loadEmbeddingsConfigMock = vi.hoisted(() => vi.fn());
 const getEndpointMock = vi.hoisted(() => vi.fn());
 const embeddingsMock = vi.hoisted(() => vi.fn<typeof embeddings>());
-vi.mock('$lib/server/endpoints/config', async (orig) => ({
-	...(await orig<typeof import('$lib/server/endpoints/config')>()),
+vi.mock('#lib/server/endpoints/config.js', async (orig) => ({
+	...(await orig<typeof import('#lib/server/endpoints/config.js')>()),
 	loadEmbeddingsConfig: loadEmbeddingsConfigMock,
 }));
-vi.mock('$lib/server/endpoints/registry', async (orig) => ({
-	...(await orig<typeof import('$lib/server/endpoints/registry')>()),
+vi.mock('#lib/server/endpoints/registry.js', async (orig) => ({
+	...(await orig<typeof import('#lib/server/endpoints/registry.js')>()),
 	getEndpoint: getEndpointMock,
 }));
-vi.mock('$lib/server/endpoints/client', async (orig) => ({
-	...(await orig<typeof import('$lib/server/endpoints/client')>()),
+vi.mock('#lib/server/endpoints/client.js', async (orig) => ({
+	...(await orig<typeof import('#lib/server/endpoints/client.js')>()),
 	embeddings: embeddingsMock,
 }));
 
-import { fetchUrlTool, isPrivateIp, extractTextFromHtml } from '$lib/server/tools/fetch-url';
-import { _resetEmbeddingsConfigCacheForTests } from '$lib/server/retrieval/embeddings-config';
-import type { ToolContext } from '$lib/server/tools/types';
+import { fetchUrlTool, isPrivateIp, extractTextFromHtml } from '#lib/server/tools/fetch-url.js';
+import { _resetEmbeddingsConfigCacheForTests } from '#lib/server/retrieval/embeddings-config.js';
+import type { ToolContext } from '#lib/server/tools/types.js';
 
 function ctx(): ToolContext {
 	return {

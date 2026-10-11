@@ -19,7 +19,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSweeper } from '$lib/server/util/sweeper';
+import { createSweeper } from '#lib/server/util/sweeper.js';
 
 /** A sweep whose completion the test controls, so "in flight" is a real state. */
 function deferredSweep() {

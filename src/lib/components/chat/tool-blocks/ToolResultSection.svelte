@@ -4,7 +4,7 @@
 	(still executing) omits it.
 -->
 <script lang="ts">
-	import { prettyJson } from '$lib/chat-render';
+	import { prettyJson } from '#lib/chat-render.js';
 
 	interface Props {
 		result?: string;

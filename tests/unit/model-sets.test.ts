@@ -6,7 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SavedModelSet } from '$lib/types/api';
+import type { SavedModelSet } from '#lib/types/api.js';
 
 const mocks = vi.hoisted(() => ({
 	invalidate: vi.fn(async (_key: string) => {}),
@@ -18,14 +18,14 @@ vi.mock('$app/navigation', () => ({
 	invalidate: mocks.invalidate,
 }));
 
-vi.mock('$lib/toast.svelte', () => ({
+vi.mock('#lib/toast.svelte.js', () => ({
 	toast: {
 		error: mocks.toastError,
 		success: mocks.toastSuccess,
 	},
 }));
 
-import { deleteModelSet, mergeModelSet, saveModelSet } from '$lib/model-sets';
+import { deleteModelSet, mergeModelSet, saveModelSet } from '#lib/model-sets.js';
 
 /** Capture the parsed modelSets body of the most recent fetch call. */
 function capturedSets(): SavedModelSet[] {

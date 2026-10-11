@@ -1,5 +1,8 @@
-import { listDistinctSourceModelsForUser, searchMediaForUser } from '$lib/server/db/queries/media';
-import { friendlyModelName } from '$lib/model-ids';
+import {
+	listDistinctSourceModelsForUser,
+	searchMediaForUser,
+} from '#lib/server/db/queries/media.js';
+import { friendlyModelName } from '#lib/model-ids.js';
 import type { PageServerLoad } from './$types';
 
 /**

@@ -4,19 +4,19 @@
 	import type { Snippet } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import favicon from '$lib/assets/favicon.svg';
-	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
-	import { toast } from '$lib/toast.svelte';
-	import { streamPresence } from '$lib/stream-presence.svelte';
-	import { syncAppBadgeFromWindow } from '$lib/sw/badge';
-	import { shouldPromptForUpdate } from '$lib/sw/update-prompt';
-	import { askWorkerBuild } from '$lib/sw/ask-build';
-	import { askPendingNavigation } from '$lib/sw/pending-navigation';
-	import { notificationBody, notificationTitle } from '$lib/sw/notification-copy';
-	import { syncSurfaceChrome } from '$lib/theme-color';
-	import type { ActiveConversationReport, SwClientMessage } from '$lib/types/push';
+	import favicon from '#lib/assets/favicon.svg';
+	import UpdateBanner from '#lib/components/UpdateBanner.svelte';
+	import { toast } from '#lib/toast.svelte.js';
+	import { streamPresence } from '#lib/stream-presence.svelte.js';
+	import { syncAppBadgeFromWindow } from '#lib/sw/badge.js';
+	import { shouldPromptForUpdate } from '#lib/sw/update-prompt.js';
+	import { askWorkerBuild } from '#lib/sw/ask-build.js';
+	import { askPendingNavigation } from '#lib/sw/pending-navigation.js';
+	import { notificationBody, notificationTitle } from '#lib/sw/notification-copy.js';
+	import { syncSurfaceChrome } from '#lib/theme-color.js';
+	import type { ActiveConversationReport, SwClientMessage } from '#lib/types/push.js';
 	import { resolve } from '$app/paths';
-	import { isStandaloneDisplay } from '$lib/app-lock';
+	import { isStandaloneDisplay } from '#lib/app-lock.js';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -166,7 +166,7 @@
 	// the pre-gate keeps browser tabs from fetching the chunk at all.
 	$effect(() => {
 		if (!isStandaloneDisplay()) return;
-		void import('$lib/status-bar-probe').then((m) => m.captureColdLaunchProbe());
+		void import('#lib/status-bar-probe.js').then((m) => m.captureColdLaunchProbe());
 	});
 
 	// When a new SW is waiting, $lib/sw/register.ts fires onNeedRefresh and
@@ -215,7 +215,7 @@
 		// cache a dev server's chunks). Dynamic import keeps workbox-window out
 		// of the initial load.
 		if ('serviceWorker' in navigator && import.meta.env.PROD) {
-			const { registerServiceWorker } = await import('$lib/sw/register');
+			const { registerServiceWorker } = await import('#lib/sw/register.js');
 			const activate = registerServiceWorker({
 				onNeedRefresh() {
 					return waitingWorkerNeedsPrompt().then((needsPrompt) => {
@@ -299,11 +299,14 @@
 					// the body never rendered at all.
 					toast.info(notificationTitle(data.payload), {
 						description: notificationBody(data.payload),
-						action: { label: 'Open', handler: () => goto(resolve(`/chat/${conversationId}`)) },
+						action: {
+							label: 'Open',
+							handler: () => goto(resolve(`chat/${conversationId}`)),
+						},
 						duration: 6000,
 					});
 				} else if (data.kind === 'navigate_to_conversation') {
-					void goto(resolve(`/chat/${data.conversationId}`));
+					void goto(resolve(`chat/${data.conversationId}`));
 					// Reaching this branch proves a listener was attached when the tap
 					// fired, so the cold-launch record the worker also wrote is redundant.
 					// Spend it. Nothing else would: a warm tap navigates without
@@ -328,7 +331,7 @@
 	 * Take the pending tap target from the worker, consuming it. Resolves null
 	 * when there is nothing pending or no worker to ask.
 	 *
-	 * `getRegistration()`, not `ready` — the same choice `$lib/sw/badge.ts`
+	 * `getRegistration()`, not `ready` — the same choice `#lib/sw/badge.ts`
 	 * documents, and for the same reason: `ready` never settles when no service
 	 * worker is registered (dev builds, where registration is skipped), so it would
 	 * park a promise per page load instead of resolving null and being done.
@@ -355,7 +358,7 @@
 	async function honourPendingNotificationTap(): Promise<void> {
 		const conversationId = await takePendingNotificationTap();
 		if (!conversationId || page.params.id === conversationId) return;
-		await goto(resolve(`/chat/${conversationId}`));
+		await goto(resolve(`chat/${conversationId}`));
 	}
 
 	/**
@@ -373,7 +376,8 @@
 </script>
 
 <svelte:window onpagehide={onPresencePageHide} onpageshow={onAppResumePageShow} />
-<svelte:document onvisibilitychange={onAppResume} />
+
+<svelte:document onvisibilitychange={onAppResume}></svelte:document>
 
 <svelte:head>
 	<link rel="icon" href={favicon} />

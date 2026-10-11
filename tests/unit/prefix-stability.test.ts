@@ -16,10 +16,10 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { buildUserMcpToolDefinitions } from '$lib/server/mcp/tool-bridge';
-import { collapseSupersededSkillActivations } from '$lib/server/endpoints/serialize-upstream';
-import type { UserServerState } from '$lib/server/mcp/registry';
-import type { LoadedMcpServer } from '$lib/server/mcp/config';
+import { buildUserMcpToolDefinitions } from '#lib/server/mcp/tool-bridge.js';
+import { collapseSupersededSkillActivations } from '#lib/server/endpoints/serialize-upstream.js';
+import type { UserServerState } from '#lib/server/mcp/registry.js';
+import type { LoadedMcpServer } from '#lib/server/mcp/config.js';
 
 const SERVER: LoadedMcpServer = {
 	id: 'fastmail',
@@ -32,9 +32,9 @@ const SERVER: LoadedMcpServer = {
 	deferTools: false,
 } as LoadedMcpServer;
 
-vi.mock('$lib/server/mcp/registry', async () => {
-	const actual = await vi.importActual<typeof import('$lib/server/mcp/registry')>(
-		'$lib/server/mcp/registry',
+vi.mock('#lib/server/mcp/registry.js', async () => {
+	const actual = await vi.importActual<typeof import('#lib/server/mcp/registry.js')>(
+		'#lib/server/mcp/registry.js',
 	);
 	return { ...actual, getMcpServerCfg: () => SERVER };
 });

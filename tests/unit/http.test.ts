@@ -1,7 +1,7 @@
 /** Tests for the server-side request-body parser. */
 
 import { describe, expect, it } from 'vitest';
-import { parseJsonBody } from '$lib/server/http';
+import { parseJsonBody } from '#lib/server/http.js';
 
 function jsonRequest(body: string): Request {
 	return new Request('http://localhost/api/x', { method: 'POST', body });

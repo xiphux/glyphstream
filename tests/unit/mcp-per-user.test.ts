@@ -13,17 +13,17 @@ const mocks = vi.hoisted(() => ({
 	credentials: new Map<string, string>(), // `${userId}:${serverId}` -> token
 }));
 
-vi.mock('$lib/server/mcp/config', () => ({
+vi.mock('#lib/server/mcp/config.js', () => ({
 	loadMcpServers: () => mocks.servers,
 }));
 // Partial mock so real exports registry.ts depends on (MAX_CONNECT_ATTEMPTS)
 // stay present. A bare factory omitting them passes right up until something
 // in this file touches one, then fails as a mock error rather than a real one.
-vi.mock('$lib/server/mcp/client', async (importOriginal) => ({
-	...(await importOriginal<typeof import('$lib/server/mcp/client')>()),
+vi.mock('#lib/server/mcp/client.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/server/mcp/client.js')>()),
 	connectMcpServer: (...args: unknown[]) => mocks.connectImpl(...args),
 }));
-vi.mock('$lib/server/db/queries/mcp-credentials', () => ({
+vi.mock('#lib/server/db/queries/mcp-credentials.js', () => ({
 	getMcpCredential: (userId: string, serverId: string) =>
 		mocks.credentials.get(`${userId}:${serverId}`) ?? null,
 }));
@@ -34,7 +34,7 @@ import {
 	getUserServerStates,
 	reapUserConnectionForTests,
 	resetMcpRegistryForTests,
-} from '$lib/server/mcp/registry';
+} from '#lib/server/mcp/registry.js';
 
 function fakeConnection(label: string) {
 	return {

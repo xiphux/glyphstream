@@ -5,10 +5,10 @@
  * means revoking and minting a new one.
  */
 import { error, json } from '@sveltejs/kit';
-import { requireAdmin } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { createInvite } from '$lib/server/db/queries/invites';
-import type { UserRole } from '$lib/server/db/queries/users';
+import { requireAdmin } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { createInvite } from '#lib/server/db/queries/invites.js';
+import type { UserRole } from '#lib/server/db/queries/users.js';
 import type { RequestHandler } from './$types';
 
 // 7-day default window — long enough to share an invite and have it redeemed,

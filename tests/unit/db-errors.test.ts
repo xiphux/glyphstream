@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
-import { isUniqueViolation } from '$lib/server/db/errors';
+import { isUniqueViolation } from '#lib/server/db/errors.js';
 
 /** Run `sql` against a fresh in-memory DB and return what node:sqlite throws. */
 function sqliteError(setup: string, sql: string): unknown {

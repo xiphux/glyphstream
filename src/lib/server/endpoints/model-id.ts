@@ -7,8 +7,8 @@
  * that needs to split or build an internal model id routes through here so
  * the separator and its edge cases stay defined exactly once.
  *
- * Browser code cannot reach this module (it lives under `$lib/server`), so
- * `endpointIdOf` in `$lib/model-ids.ts` is a deliberate client-safe twin,
+ * Browser code cannot reach this module (it lives under `#lib/server`), so
+ * `endpointIdOf` in `#lib/model-ids.ts` is a deliberate client-safe twin,
  * held to the same edge cases. Change one, change the other.
  *
  * Lives in its own module (rather than registry.ts) so config.ts can

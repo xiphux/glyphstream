@@ -1,9 +1,12 @@
 import { json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { createCustomModel, listCustomModelsForUser } from '$lib/server/db/queries/custom-models';
-import { validateCreateInput } from '$lib/server/custom-models/validate';
-import type { CreateCustomModelRequest } from '$lib/types/api';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import {
+	createCustomModel,
+	listCustomModelsForUser,
+} from '#lib/server/db/queries/custom-models.js';
+import { validateCreateInput } from '#lib/server/custom-models/validate.js';
+import type { CreateCustomModelRequest } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals }) => {

@@ -9,7 +9,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import GalleryTimelineRail from '$lib/components/GalleryTimelineRail.svelte';
+import GalleryTimelineRail from '#lib/components/GalleryTimelineRail.svelte';
 
 const periods = [
 	{ key: '2026-06', count: 5 },

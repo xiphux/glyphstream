@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { countOrphanMediaInConversation } from '$lib/server/db/queries/media';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { countOrphanMediaInConversation } from '#lib/server/db/queries/media.js';
 import type { RequestHandler } from './$types';
 
 /**

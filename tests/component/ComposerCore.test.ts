@@ -13,8 +13,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { createRawSnippet } from 'svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import ComposerCore from '$lib/components/chat/ComposerCore.svelte';
-import type { AttachmentStore } from '$lib/attachments.svelte';
+import ComposerCore from '#lib/components/chat/ComposerCore.svelte';
+import type { AttachmentStore } from '#lib/attachments.svelte.js';
 
 function makeStore(overrides: Partial<AttachmentStore> = {}): AttachmentStore {
 	return {

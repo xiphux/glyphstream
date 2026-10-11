@@ -12,7 +12,7 @@
  * state is zero requests: this runs on every (app) page mount, and a PATCH per
  * navigation would be a silly price for a string that changes a few times a year.
  */
-import type { UserPreferences } from '$lib/types/api';
+import type { UserPreferences } from '#lib/types/api.js';
 
 /** The browser's zone, or null where `Intl` can't resolve one. */
 export function detectTimeZone(): string | null {

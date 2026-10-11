@@ -3,11 +3,11 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
-vi.mock('$lib/server/env', async () => {
+vi.mock('#lib/server/env.js', async () => {
 	const { mkdtempSync } = await import('node:fs');
 	const { tmpdir } = await import('node:os');
 	const { join } = await import('node:path');
@@ -19,13 +19,13 @@ vi.mock('$lib/server/env', async () => {
 });
 
 // Register the activate_skill tool so executeToolCalls can resolve it.
-import '$lib/server/tools/activate-skill';
-import { skillsDir } from '$lib/server/env';
-import { createConversation } from '$lib/server/db/queries/conversations';
-import { appendMessage, walkActiveBranch } from '$lib/server/db/queries/messages';
-import { createSkill, setSkillEnabled, skillStoragePath } from '$lib/server/db/queries/skills';
-import { getSkillStore } from '$lib/server/skills/disk-store';
-import { synthesizeSkillActivations } from '$lib/server/chat/synthesize-skill-activation';
+import '#lib/server/tools/activate-skill.js';
+import { skillsDir } from '#lib/server/env.js';
+import { createConversation } from '#lib/server/db/queries/conversations.js';
+import { appendMessage, walkActiveBranch } from '#lib/server/db/queries/messages.js';
+import { createSkill, setSkillEnabled, skillStoragePath } from '#lib/server/db/queries/skills.js';
+import { getSkillStore } from '#lib/server/skills/disk-store.js';
+import { synthesizeSkillActivations } from '#lib/server/chat/synthesize-skill-activation.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();

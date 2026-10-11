@@ -12,9 +12,9 @@
  */
 
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { setConversationAvatar } from '$lib/server/db/queries/conversations';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { setConversationAvatar } from '#lib/server/db/queries/conversations.js';
 import type { RequestHandler } from './$types';
 
 interface SetAvatarBody {

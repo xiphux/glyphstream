@@ -19,13 +19,13 @@
  */
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { renderMarkdown } from '$lib/server/markdown/render';
+import { renderMarkdown } from '#lib/server/markdown/render.js';
 import {
 	ensureLiveHighlighter,
 	highlightLiveCode,
 	liveHighlighterReady,
 	resetLiveHighlighterForTests,
-} from '$lib/markdown-live-shiki.svelte';
+} from '#lib/markdown-live-shiki.svelte.js';
 
 const PYTHON = [
 	'import math',

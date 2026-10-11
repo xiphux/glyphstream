@@ -20,8 +20,8 @@
  */
 
 import { invalidate } from '$app/navigation';
-import { errorMessageFromResponse } from '$lib/fetch-error';
-import { toast } from '$lib/toast.svelte';
+import { errorMessageFromResponse } from '#lib/fetch-error.js';
+import { toast } from '#lib/toast.svelte.js';
 
 async function setFavoriteModels(next: readonly string[]): Promise<void> {
 	try {

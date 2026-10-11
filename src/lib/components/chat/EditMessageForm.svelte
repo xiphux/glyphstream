@@ -12,12 +12,12 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { Plus } from '@lucide/svelte';
-	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
-	import SnippetAutocomplete from '$lib/components/chat/SnippetAutocomplete.svelte';
-	import { autoResizeTextarea } from '$lib/composer';
-	import { composerEnterHandler } from '$lib/composer-keys';
-	import { ATTACHMENT_ACCEPT, type AttachmentStore } from '$lib/attachments.svelte';
-	import type { EnterBehavior, SnippetKind } from '$lib/types/api';
+	import AttachmentThumbnails from '#lib/components/AttachmentThumbnails.svelte';
+	import SnippetAutocomplete from '#lib/components/chat/SnippetAutocomplete.svelte';
+	import { autoResizeTextarea } from '#lib/composer.js';
+	import { composerEnterHandler } from '#lib/composer-keys.js';
+	import { ATTACHMENT_ACCEPT, type AttachmentStore } from '#lib/attachments.svelte.js';
+	import type { EnterBehavior, SnippetKind } from '#lib/types/api.js';
 
 	interface Props {
 		editText: string;

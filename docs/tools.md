@@ -259,7 +259,7 @@ with `supports_tools = true`. Tools backed by optional config (like
 `web_search` is by `[search]`) can implement `isAvailable()` to hide
 themselves when their backend isn't present. Tools that should be reachable
 from the per-conversation opt-out panel declare a `category` in their
-`metadata` (see `BUILTIN_FEATURE_CATEGORIES` in `$lib/types/api`).
+`metadata` (see `BUILTIN_FEATURE_CATEGORIES` in `#lib/types/api.js`).
 
 For one-off custom logic, an in-tree tool is the right level. If the
 capability you want is generic enough that other people would also want

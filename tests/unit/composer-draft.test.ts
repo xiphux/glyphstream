@@ -19,7 +19,7 @@ const localStorageShim: Storage = {
 };
 vi.stubGlobal('localStorage', localStorageShim);
 
-import { loadDraft, saveDraft, clearDraft, createDraftWriter } from '$lib/composer-draft';
+import { loadDraft, saveDraft, clearDraft, createDraftWriter } from '#lib/composer-draft.js';
 
 const key = (conv: string | null) => `glyphstream:composerDraft:${conv ?? 'new'}`;
 

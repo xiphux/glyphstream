@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const rerankClientMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/client', () => ({ rerank: rerankClientMock }));
+vi.mock('#lib/server/endpoints/client.js', () => ({ rerank: rerankClientMock }));
 
-import { rerankDocs, type RerankConfig } from '$lib/server/retrieval/rerank';
+import { rerankDocs, type RerankConfig } from '#lib/server/retrieval/rerank.js';
 
 const cfg: RerankConfig = {
 	endpoint: { id: 'e', baseUrl: 'http://e', apiKey: null } as never,

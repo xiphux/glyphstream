@@ -3,10 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // Control the config loader + endpoint registry without touching disk.
 const loadMock = vi.hoisted(() => vi.fn());
 const getEndpointMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/config', () => ({ loadMemoryModelConfig: loadMock }));
-vi.mock('$lib/server/endpoints/registry', () => ({ getEndpoint: getEndpointMock }));
+vi.mock('#lib/server/endpoints/config.js', () => ({ loadMemoryModelConfig: loadMock }));
+vi.mock('#lib/server/endpoints/registry.js', () => ({ getEndpoint: getEndpointMock }));
 
-import { getMemoryModel, resetMemoryModel } from '$lib/server/tasks/memory-model';
+import { getMemoryModel, resetMemoryModel } from '#lib/server/tasks/memory-model.js';
 
 const loaded = {
 	model: 'gpu::qwen-32b',

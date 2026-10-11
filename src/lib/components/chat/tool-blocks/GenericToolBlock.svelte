@@ -7,8 +7,8 @@
 	import { Check, ShieldCheck, ShieldX } from '@lucide/svelte';
 	import ToolBlockShell from './ToolBlockShell.svelte';
 	import ToolResultSection from './ToolResultSection.svelte';
-	import { prettyJson, type ToolResultAttachment } from '$lib/chat-render';
-	import type { ApprovalAction } from '$lib/approval-workflow';
+	import { prettyJson, type ToolResultAttachment } from '#lib/chat-render.js';
+	import type { ApprovalAction } from '#lib/approval-workflow.js';
 
 	type Status = 'executing' | 'done' | 'error' | 'pending_approval';
 

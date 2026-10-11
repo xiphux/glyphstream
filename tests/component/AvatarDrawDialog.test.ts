@@ -11,9 +11,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import AvatarDrawDialog from '$lib/components/chat/AvatarDrawDialog.svelte';
+import AvatarDrawDialog from '#lib/components/chat/AvatarDrawDialog.svelte';
 import type { ComponentProps } from 'svelte';
-import type { ModelEntry } from '$lib/types/api';
+import type { ModelEntry } from '#lib/types/api.js';
 
 function imageModel(): ModelEntry {
 	return {

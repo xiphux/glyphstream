@@ -9,8 +9,8 @@
  * rows. Revocation is the only thing that needs an endpoint.
  */
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { revokeOtherSessionsForUser } from '$lib/server/auth/session';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { revokeOtherSessionsForUser } from '#lib/server/auth/session.js';
 import type { RequestHandler } from './$types';
 
 export const DELETE: RequestHandler = ({ locals }) => {

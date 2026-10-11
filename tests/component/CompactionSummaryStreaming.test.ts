@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
-import CompactionSummaryStreaming from '$lib/components/chat/CompactionSummaryStreaming.svelte';
+import CompactionSummaryStreaming from '#lib/components/chat/CompactionSummaryStreaming.svelte';
 
 describe('CompactionSummaryStreaming', () => {
 	it('shows the summarizing header', () => {

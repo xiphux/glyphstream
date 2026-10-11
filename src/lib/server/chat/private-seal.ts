@@ -32,8 +32,8 @@
  * anywhere) and `skills` (static context pulled IN, nothing sent out).
  */
 import { listServerCatalog } from '../mcp/registry';
-import { PRIVATE_SEALED_BUILTIN_CATEGORIES } from '$lib/types/api';
-import type { FeatureCategory } from '$lib/types/api';
+import { PRIVATE_SEALED_BUILTIN_CATEGORIES } from '#lib/types/api.js';
+import type { FeatureCategory } from '#lib/types/api.js';
 
 /**
  * The effective disabled-feature set for a private conversation: its base opt-outs

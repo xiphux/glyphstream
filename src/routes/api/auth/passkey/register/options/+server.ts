@@ -9,13 +9,13 @@
  * and clears it as a single-use nonce.
  */
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
+import { requireUser } from '#lib/server/auth/guard.js';
 import {
 	generateRegistrationOptionsForUser,
 	setRegistrationChallengeCookie,
-} from '$lib/server/auth/passkey';
-import { listCredentialsForUser } from '$lib/server/db/queries/passkey';
-import { passkeyLoginEnabled } from '$lib/server/env';
+} from '#lib/server/auth/passkey.js';
+import { listCredentialsForUser } from '#lib/server/db/queries/passkey.js';
+import { passkeyLoginEnabled } from '#lib/server/env.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, cookies }) => {

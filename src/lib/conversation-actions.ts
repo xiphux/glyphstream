@@ -6,8 +6,8 @@
  * navigation and Undo orchestration.
  */
 
-import { errorMessageFromResponse } from '$lib/fetch-error';
-import { dismissConversationNotifications } from '$lib/notification-dismiss';
+import { errorMessageFromResponse } from '#lib/fetch-error.js';
+import { dismissConversationNotifications } from '#lib/notification-dismiss.js';
 
 /** Archive or unarchive a conversation. */
 export async function setArchived(id: string, archived: boolean): Promise<void> {

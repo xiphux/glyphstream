@@ -27,7 +27,7 @@
  */
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
-import type { Memory, DeletedMemory } from '$lib/types/api';
+import type { Memory, DeletedMemory } from '#lib/types/api.js';
 import { getDb } from '../client';
 import { memories, users } from '../schema';
 

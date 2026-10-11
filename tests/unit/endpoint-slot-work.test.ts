@@ -13,15 +13,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const releaseMock = vi.hoisted(() => vi.fn(async () => true));
-vi.mock('$lib/server/endpoints/release', () => ({ releaseEndpointResources: releaseMock }));
+vi.mock('#lib/server/endpoints/release.js', () => ({ releaseEndpointResources: releaseMock }));
 import {
 	acquireEndpointSlot,
 	declarePendingWork,
 	getResourceGroupSnapshot,
 	getResourceQueueDepth,
 	resetEndpointGatesForTests,
-} from '$lib/server/endpoints/concurrency';
-import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+} from '#lib/server/endpoints/concurrency.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 
 function ep(
 	id: string,

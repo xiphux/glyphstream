@@ -15,10 +15,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRawSnippet } from 'svelte';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import ComposerCore from '$lib/components/chat/ComposerCore.svelte';
-import { invalidateSnippets } from '$lib/prompt-snippets.svelte';
-import type { AttachmentStore } from '$lib/attachments.svelte';
-import type { PromptSnippet } from '$lib/types/api';
+import ComposerCore from '#lib/components/chat/ComposerCore.svelte';
+import { invalidateSnippets } from '#lib/prompt-snippets.svelte.js';
+import type { AttachmentStore } from '#lib/attachments.svelte.js';
+import type { PromptSnippet } from '#lib/types/api.js';
 
 function snip(over: Partial<PromptSnippet> & { name: string }): PromptSnippet {
 	return {

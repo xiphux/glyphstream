@@ -21,7 +21,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$lib/server/env', () => ({
+vi.mock('#lib/server/env.js', () => ({
 	publicBaseUrl: () => 'http://localhost:5173',
 	githubClientId: () => 'gh-id',
 	githubClientSecret: () => 'gh-sec',
@@ -29,7 +29,7 @@ vi.mock('$lib/server/env', () => ({
 	hasGithubCredentials: () => true,
 }));
 
-import { githubProvider } from '$lib/server/auth/oauth/github';
+import { githubProvider } from '#lib/server/auth/oauth/github.js';
 
 const TOKEN_URL = 'https://github.com/login/oauth/access_token';
 const AUTHORIZE_URL = 'https://github.com/login/oauth/authorize';

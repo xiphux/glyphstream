@@ -1,10 +1,10 @@
 <script lang="ts">
-	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
+	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
 	import { invalidateAll } from '$app/navigation';
-	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
+	import ModelPicker from '#lib/components/chat/ModelPicker.svelte';
 	import { ImagePlus } from '@lucide/svelte';
-	import { errorMessageFromResponse } from '$lib/fetch-error';
-	import { confirmDialog } from '$lib/confirm.svelte';
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
+	import { confirmDialog } from '#lib/confirm.svelte.js';
 	import {
 		featureCategoryAppliesToModelKind,
 		type CreateCustomModelRequest,
@@ -13,7 +13,7 @@
 		type FeatureCategory,
 		type FeatureCategoryEntry,
 		type ModelEntry,
-	} from '$lib/types/api';
+	} from '#lib/types/api.js';
 
 	let { data } = $props<{
 		data: {

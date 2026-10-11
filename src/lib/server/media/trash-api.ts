@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { TrashedMediaRow } from '../db/queries/media';
-import type { TrashedMediaItem } from '$lib/types/api';
+import type { TrashedMediaItem } from '#lib/types/api.js';
 import { TRASH_RETENTION_MS } from './trash';
 
 /** Same ceiling as the gallery's bulk delete, so "select everything, restore"

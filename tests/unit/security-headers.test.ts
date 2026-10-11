@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applySecurityHeaders, MEDIA_CSP } from '$lib/server/security-headers';
+import { applySecurityHeaders, MEDIA_CSP } from '#lib/server/security-headers.js';
 
 function apply(pathname: string): Headers {
 	return applySecurityHeaders(new Response('body'), pathname).headers;

@@ -1,58 +1,59 @@
+import type { Handle, HandleServerError } from '@sveltejs/kit/hooks';
 import process from 'node:process';
-import type { Handle, HandleServerError } from '@sveltejs/kit';
+
 import {
 	readSessionCookie,
 	setSessionCookie,
 	setSessionUnlockedUntil,
 	validateSessionToken,
-} from '$lib/server/auth/session';
+} from '#lib/server/auth/session.js';
 import {
 	evaluateAppLock,
 	readInstalledAppCookie,
 	type AppLockState,
-} from '$lib/server/auth/app-lock';
-import { APP_LOCK_KEEPALIVE_PATH } from '$lib/app-lock';
-import { maybeCompressResponse } from '$lib/server/compression';
-import { applySecurityHeaders } from '$lib/server/security-headers';
-import { consumeRateLimitToken } from '$lib/server/rate-limit';
-import { routedPathname } from '$lib/server/util/request-path';
+} from '#lib/server/auth/app-lock.js';
+import { APP_LOCK_KEEPALIVE_PATH } from '#lib/app-lock.js';
+import { maybeCompressResponse } from '#lib/server/compression.js';
+import { applySecurityHeaders } from '#lib/server/security-headers.js';
+import { consumeRateLimitToken } from '#lib/server/rate-limit.js';
+import { routedPathname } from '#lib/server/util/request-path.js';
 import {
 	compressDynamicResponses,
 	passkeyLoginEnabled,
 	validateAuthMethodsEnabled,
-} from '$lib/server/env';
-import { ensureAdminBootstrap } from '$lib/server/db/queries/users';
-import { startMediaPurger, stopMediaPurger } from '$lib/server/media/purger';
+} from '#lib/server/env.js';
+import { ensureAdminBootstrap } from '#lib/server/db/queries/users.js';
+import { startMediaPurger, stopMediaPurger } from '#lib/server/media/purger.js';
 import {
 	startEmbeddingBackfiller,
 	stopEmbeddingBackfiller,
-} from '$lib/server/memory/embedding-backfill';
-import { startTopicBackfiller, stopTopicBackfiller } from '$lib/server/memory/topic-backfill';
-import { startDreamingWorker, stopDreamingWorker } from '$lib/server/memory/dreaming';
+} from '#lib/server/memory/embedding-backfill.js';
+import { startTopicBackfiller, stopTopicBackfiller } from '#lib/server/memory/topic-backfill.js';
+import { startDreamingWorker, stopDreamingWorker } from '#lib/server/memory/dreaming.js';
 import {
 	startConversationSummaryWorker,
 	stopConversationSummaryWorker,
-} from '$lib/server/memory/conversation-summary';
-import { bootstrapMcp } from '$lib/server/mcp/bootstrap';
-import { listAllModels } from '$lib/server/endpoints/list-models';
-import { installPersistedPauses } from '$lib/server/endpoints/pause';
+} from '#lib/server/memory/conversation-summary.js';
+import { bootstrapMcp } from '#lib/server/mcp/bootstrap.js';
+import { listAllModels } from '#lib/server/endpoints/list-models.js';
+import { installPersistedPauses } from '#lib/server/endpoints/pause.js';
 import {
 	resumeGenerationJobs,
 	scheduleGenerationJobResume,
 	stopGenerationJobResume,
-} from '$lib/server/generation/jobs';
-import { stopMcp } from '$lib/server/mcp/registry';
-import { stopPool } from '$lib/server/code-interpreter/pool';
-import { maxLoopLagSince, startLoopLagSampler } from '$lib/server/util/loop-lag';
-import { swapBytes } from '$lib/server/util/proc-swap';
-import { dbFileBytes, mmapBytes } from '$lib/server/db/client';
+} from '#lib/server/generation/jobs.js';
+import { stopMcp } from '#lib/server/mcp/registry.js';
+import { stopPool } from '#lib/server/code-interpreter/pool.js';
+import { maxLoopLagSince, startLoopLagSampler } from '#lib/server/util/loop-lag.js';
+import { swapBytes } from '#lib/server/util/proc-swap.js';
+import { dbFileBytes, mmapBytes } from '#lib/server/db/client.js';
 import {
 	HEADER_BUDGET_RESERVE_BYTES,
 	PROXY_HEADER_BUFFER_BYTES,
 	TRANSPORT_OVERHEAD_BYTES,
 	headerBlockBytes,
 	trimToBudget,
-} from '$lib/server/util/header-budget';
+} from '#lib/server/util/header-budget.js';
 
 // Refuse to start if the auth-method toggles leave no way in. Better to
 // crash at boot with a clear message than serve a /login page with zero
@@ -624,9 +625,12 @@ export const handle: Handle = async ({ event, resolve }) => {
  */
 export const handleError: HandleServerError = ({ error, event, status }) => {
 	if (status < 500) return undefined;
+
 	const stack = error instanceof Error ? (error.stack ?? error.message) : String(error);
+
 	console.error(
 		`[server error] ${event.request.method} ${event.url.pathname} → ${status}:\n${stack}`,
 	);
+
 	return undefined;
 };

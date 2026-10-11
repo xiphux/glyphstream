@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
-import { requireAdmin } from '$lib/server/auth/guard';
-import { getEndpointsStatus } from '$lib/server/endpoints/status';
+import { requireAdmin } from '#lib/server/auth/guard.js';
+import { getEndpointsStatus } from '#lib/server/endpoints/status.js';
 import type { RequestHandler } from './$types';
 
 /**

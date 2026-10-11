@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
-import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
-import { getUserServerStates } from '$lib/server/mcp/registry';
-import { buildRegisteredName } from '$lib/server/mcp/tool-bridge';
+import { awaitMcpReady } from '#lib/server/mcp/bootstrap.js';
+import { getUserServerStates } from '#lib/server/mcp/registry.js';
+import { buildRegisteredName } from '#lib/server/mcp/tool-bridge.js';
 import type { PageServerLoad } from './$types';
 
 /**

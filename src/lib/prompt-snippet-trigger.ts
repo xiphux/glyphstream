@@ -16,7 +16,7 @@
  * participants) to reuse without misleading users.
  */
 
-import type { PromptSnippet, SnippetKind } from '$lib/types/api';
+import type { PromptSnippet, SnippetKind } from '#lib/types/api.js';
 
 export const SNIPPET_TRIGGER = ';';
 

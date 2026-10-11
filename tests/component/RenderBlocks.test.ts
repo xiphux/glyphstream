@@ -7,8 +7,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import RenderBlocks from '$lib/components/chat/RenderBlocks.svelte';
-import type { RenderBlock } from '$lib/chat-render';
+import RenderBlocks from '#lib/components/chat/RenderBlocks.svelte';
+import type { RenderBlock } from '#lib/chat-render.js';
 
 function renderBlocks(
 	blocks: RenderBlock[],

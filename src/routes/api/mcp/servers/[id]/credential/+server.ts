@@ -9,10 +9,10 @@
  * whether the token actually works and (on success) register the user's tools.
  */
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
-import { dropUserConnection, getMcpServerCfg, retryMcpServer } from '$lib/server/mcp/registry';
-import { deleteMcpCredential, setMcpCredential } from '$lib/server/db/queries/mcp-credentials';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
+import { dropUserConnection, getMcpServerCfg, retryMcpServer } from '#lib/server/mcp/registry.js';
+import { deleteMcpCredential, setMcpCredential } from '#lib/server/db/queries/mcp-credentials.js';
 import type { RequestHandler } from './$types';
 
 function requirePerUserServer(id: string): void {

@@ -335,6 +335,7 @@ export function loadNotificationsConfig(path = configPath()): LoadedNotification
 
 	const vapidPublic = requireString(block.vapid_public, 'vapid_public', at);
 	const vapidSubject = requireString(block.vapid_subject, 'vapid_subject', at);
+
 	if (!/^mailto:.+@.+$/.test(vapidSubject) && !/^https?:\/\//.test(vapidSubject)) {
 		throw new ConfigError(
 			`${at}: vapid_subject "${vapidSubject}" must be a mailto: or http(s):// URL`,
@@ -342,6 +343,8 @@ export function loadNotificationsConfig(path = configPath()): LoadedNotification
 	}
 
 	const envName = requireString(block.vapid_private_env, 'vapid_private_env', at);
+
+	// @migration-task Rewrite dynamic env lookup manually.
 	const envValue = env[envName];
 	if (!envValue) {
 		throw new ConfigError(
@@ -582,6 +585,7 @@ export function loadMemoryModelConfig(path = configPath()): LoadedMemoryModelCon
 	let activeHours = '';
 	if (block.active_hours !== undefined) {
 		activeHours = requireString(block.active_hours, 'active_hours', at);
+
 		if (!/^\d{2}:\d{2}-\d{2}:\d{2}$/.test(activeHours)) {
 			throw new ConfigError(
 				`${at}: 'active_hours' must be "HH:MM-HH:MM" (24-hour), e.g. "02:00-06:00"`,
@@ -891,6 +895,8 @@ export function loadSearchConfig(path = configPath()): LoadedSearchConfig | null
 	let apiKey: string | null = null;
 	if (block.api_key_env !== undefined) {
 		const envName = requireString(block.api_key_env, 'api_key_env', at);
+
+		// @migration-task Rewrite dynamic env lookup manually.
 		const envValue = env[envName];
 		if (!envValue) {
 			throw new ConfigError(
@@ -1052,6 +1058,7 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 	const at = `[[endpoints]] #${index} in ${path}`;
 
 	const id = requireString(raw.id, 'id', at);
+
 	if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(id)) {
 		throw new ConfigError(
 			`${at}: id "${id}" must be 1-64 chars, lowercase alphanumeric or dash, starting with alphanumeric`,
@@ -1069,6 +1076,8 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 	let apiKey: string | null = null;
 	if (raw.api_key_env !== undefined) {
 		const envName = requireString(raw.api_key_env, 'api_key_env', at);
+
+		// @migration-task Rewrite dynamic env lookup manually.
 		// Read via SvelteKit's $env/dynamic/private so .env values picked up
 		// in dev (Vite doesn't populate process.env from .env). In production
 		// adapter-node both `env` and process.env reflect the host env.

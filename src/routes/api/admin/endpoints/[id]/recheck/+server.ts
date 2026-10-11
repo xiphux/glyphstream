@@ -1,7 +1,7 @@
 import { error, json } from '@sveltejs/kit';
-import { requireAdmin } from '$lib/server/auth/guard';
-import { recheckEndpoint } from '$lib/server/endpoints/list-models';
-import { getEndpointsStatus } from '$lib/server/endpoints/status';
+import { requireAdmin } from '#lib/server/auth/guard.js';
+import { recheckEndpoint } from '#lib/server/endpoints/list-models.js';
+import { getEndpointsStatus } from '#lib/server/endpoints/status.js';
 import type { RequestHandler } from './$types';
 
 /**

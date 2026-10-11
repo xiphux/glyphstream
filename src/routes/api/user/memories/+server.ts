@@ -8,8 +8,8 @@
  * only, no manual add/edit from the UI.
  */
 import { json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { listMemoriesForUser } from '$lib/server/db/queries/memories';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { listMemoriesForUser } from '#lib/server/db/queries/memories.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals }) => {

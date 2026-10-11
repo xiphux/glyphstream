@@ -4,7 +4,7 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('$lib/server/db/client', () => ({
+vi.mock('#lib/server/db/client.js', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
 }));
@@ -15,12 +15,15 @@ import {
 	searchConversationsTool,
 	timeRangeToCutoff,
 	excerptAround,
-} from '$lib/server/tools/conversation-search';
-import { openaiToolDefinitions } from '$lib/server/tools/registry';
-import { createConversation, setConversationSummary } from '$lib/server/db/queries/conversations';
-import { appendMessage } from '$lib/server/db/queries/messages';
-import { conversations } from '$lib/server/db/schema';
-import type { Tool, ToolContext, ToolExecution } from '$lib/server/tools/types';
+} from '#lib/server/tools/conversation-search.js';
+import { openaiToolDefinitions } from '#lib/server/tools/registry.js';
+import {
+	createConversation,
+	setConversationSummary,
+} from '#lib/server/db/queries/conversations.js';
+import { appendMessage } from '#lib/server/db/queries/messages.js';
+import { conversations } from '#lib/server/db/schema.js';
+import type { Tool, ToolContext, ToolExecution } from '#lib/server/tools/types.js';
 
 function ctx(userId: string, conversationId = 'current'): ToolContext {
 	return { userId, conversationId, signal: new AbortController().signal, disabledFeatures: [] };

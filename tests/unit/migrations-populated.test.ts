@@ -30,7 +30,7 @@ import { migrate } from 'drizzle-orm/node-sqlite/migrator';
 import { getTableConfig, type SQLiteTable } from 'drizzle-orm/sqlite-core';
 import { is, Table } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
-import * as schema from '$lib/server/db/schema';
+import * as schema from '#lib/server/db/schema.js';
 
 const MIGRATIONS = resolve('./drizzle');
 const ROWS_PER_TABLE = 3;

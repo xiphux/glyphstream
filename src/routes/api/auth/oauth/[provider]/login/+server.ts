@@ -6,13 +6,13 @@
  * top-level navigations aren't policed the same way.
  */
 import { error, redirect } from '@sveltejs/kit';
-import { getEnabledProvider } from '$lib/server/auth/oauth/registry';
+import { getEnabledProvider } from '#lib/server/auth/oauth/registry.js';
 import {
 	CODE_VERIFIER_COOKIE,
 	STATE_COOKIE,
 	STATE_TTL_SECONDS,
-} from '$lib/server/auth/oauth/cookies';
-import { setCarryCookie } from '$lib/server/auth/signed-cookies';
+} from '#lib/server/auth/oauth/cookies.js';
+import { setCarryCookie } from '#lib/server/auth/signed-cookies.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ cookies, params }) => {

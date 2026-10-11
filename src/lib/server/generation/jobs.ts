@@ -78,7 +78,7 @@ import {
 	type PreparedPrompt,
 } from '../streaming/media-relay';
 import { errorMessage, sseWriter } from '../streaming/sse-transport';
-import type { StreamErrorEvent } from '$lib/types/api';
+import type { StreamErrorEvent } from '#lib/types/api.js';
 
 /**
  * What a generation is for. Decides everything the submitting route used to

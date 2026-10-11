@@ -41,9 +41,9 @@
  */
 
 import { json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { awaitMcpReady, isMcpReady } from '$lib/server/mcp/bootstrap';
-import { healthyBootstrapBudgetMs, withSoftDeadline } from '$lib/server/mcp/registry';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { awaitMcpReady, isMcpReady } from '#lib/server/mcp/bootstrap.js';
+import { healthyBootstrapBudgetMs, withSoftDeadline } from '#lib/server/mcp/registry.js';
 import type { RequestHandler } from './$types';
 
 /**

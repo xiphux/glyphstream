@@ -20,14 +20,14 @@
  */
 
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
 import {
 	getConversationMeta,
 	getFanoutParent,
 	setConversationAvatar,
-} from '$lib/server/db/queries/conversations';
-import { getMessage, selectBranch } from '$lib/server/db/queries/messages';
+} from '#lib/server/db/queries/conversations.js';
+import { getMessage, selectBranch } from '#lib/server/db/queries/messages.js';
 import type { RequestHandler } from './$types';
 
 interface PickAvatarBody {

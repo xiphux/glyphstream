@@ -17,7 +17,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { buildSendRequestBody, buildFanoutBranchBody } from '$lib/chat-send-body';
+import { buildSendRequestBody, buildFanoutBranchBody } from '#lib/chat-send-body.js';
 
 const BASE = {
 	text: 'hello world',

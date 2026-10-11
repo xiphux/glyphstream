@@ -16,8 +16,8 @@
 	per-device by nature).
 -->
 <script lang="ts">
-	import { buildDebugSections, readDebugSources, type DebugSection } from '$lib/debug-info';
-	import { toast } from '$lib/toast.svelte';
+	import { buildDebugSections, readDebugSources, type DebugSection } from '#lib/debug-info.js';
+	import { toast } from '#lib/toast.svelte.js';
 	import BaseDialog from './BaseDialog.svelte';
 
 	let { open, onClose }: { open: boolean; onClose: () => void } = $props();

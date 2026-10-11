@@ -1,16 +1,16 @@
 import { error } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
+import { requireUser } from '#lib/server/auth/guard.js';
 import { createReadStream } from 'node:fs';
 import { Readable } from 'node:stream';
-import { getMediaForUser } from '$lib/server/db/queries/media';
-import { getMediaStore } from '$lib/server/media/disk-store';
-import { servableForRequest } from '$lib/server/media/trash';
-import { getOrCreateThumbnail } from '$lib/server/media/thumbnail';
+import { getMediaForUser } from '#lib/server/db/queries/media.js';
+import { getMediaStore } from '#lib/server/media/disk-store.js';
+import { servableForRequest } from '#lib/server/media/trash.js';
+import { getOrCreateThumbnail } from '#lib/server/media/thumbnail.js';
 import {
 	attachmentDisposition,
 	isNeverInlineType,
 	normalizeContentType,
-} from '$lib/server/media/content-type';
+} from '#lib/server/media/content-type.js';
 import type { RequestHandler } from './$types';
 
 /**

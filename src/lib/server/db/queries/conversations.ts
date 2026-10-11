@@ -1,13 +1,13 @@
 import { and, asc, desc, eq, gt, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
-import { MAX_CONVERSATION_TITLE_LENGTH } from '$lib/types/api';
+import { MAX_CONVERSATION_TITLE_LENGTH } from '#lib/types/api.js';
 import type {
 	ConversationDetail,
 	ConversationSummary,
 	CustomModelParameters,
 	FeatureCategory,
 	ModelKind,
-} from '$lib/types/api';
+} from '#lib/types/api.js';
 import { getDb } from '../client';
 import { conversations, media, messages } from '../schema';
 import { reconcileOverviewAfterConversationDelete } from './users';

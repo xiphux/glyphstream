@@ -15,15 +15,15 @@
  * be allowed to delete its sole credential. Mirrors the OAuth-unlink sibling.
  */
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
-import { getAppLockTimeout } from '$lib/server/auth/app-lock';
+import { requireUser } from '#lib/server/auth/guard.js';
+import { getAppLockTimeout } from '#lib/server/auth/app-lock.js';
 import {
 	deleteCredential,
 	listCredentialSummariesForUser,
 	renameCredential,
-} from '$lib/server/db/queries/passkey';
-import { listOAuthAccountsForUser } from '$lib/server/db/queries/oauth-accounts';
-import { isProviderEnabled } from '$lib/server/auth/oauth/registry';
+} from '#lib/server/db/queries/passkey.js';
+import { listOAuthAccountsForUser } from '#lib/server/db/queries/oauth-accounts.js';
+import { isProviderEnabled } from '#lib/server/auth/oauth/registry.js';
 import type { RequestHandler } from './$types';
 
 const MAX_NAME_LENGTH = 60;

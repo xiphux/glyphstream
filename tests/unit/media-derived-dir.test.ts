@@ -10,7 +10,7 @@
  * big slow volume MEDIA_DIR may point at, and the right thing to keep local.
  *
  * These tests drive the REAL env module (mocking `$env/dynamic/private` rather
- * than `$lib/server/env`) against real temp directories, because the wiring is
+ * than `#lib/server/env.js`) against real temp directories, because the wiring is
  * the whole feature — a module that resolved the wrong root would still pass
  * every test that mocks `derivedDir()` alongside `mediaDir()`.
  *
@@ -33,14 +33,14 @@ import { photoPng } from './_helpers/photo-png';
 
 const e = vi.hoisted(() => ({ vars: {} as Record<string, string | undefined> }));
 vi.mock('$env/dynamic/private', () => ({ env: e.vars }));
-vi.mock('$lib/server/endpoints/config', () => ({
+vi.mock('#lib/server/endpoints/config.js', () => ({
 	getVisionConfig: () => ({ maxImageDim: 1568, imageQuality: 82 }),
 }));
 
-const { derivedDir, mediaDir } = await import('$lib/server/env');
-const { getOrCreateThumbnail, thumbStoragePath } = await import('$lib/server/media/thumbnail');
-const { getVisionVariant, visionStoragePath } = await import('$lib/server/media/vision-variant');
-const { DiskMediaStore } = await import('$lib/server/media/disk-store');
+const { derivedDir, mediaDir } = await import('#lib/server/env.js');
+const { getOrCreateThumbnail, thumbStoragePath } = await import('#lib/server/media/thumbnail.js');
+const { getVisionVariant, visionStoragePath } = await import('#lib/server/media/vision-variant.js');
+const { DiskMediaStore } = await import('#lib/server/media/disk-store.js');
 
 const STORAGE_PATH = 'ab/cd/original.png';
 

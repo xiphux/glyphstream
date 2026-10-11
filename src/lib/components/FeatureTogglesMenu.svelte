@@ -29,7 +29,7 @@
 		type FeatureCategory,
 		type FeatureCategoryEntry,
 		type ModelKind,
-	} from '$lib/types/api';
+	} from '#lib/types/api.js';
 
 	interface Props {
 		disabledFeatures: readonly FeatureCategory[];

@@ -18,7 +18,7 @@ const localStorageShim: Storage = {
 };
 vi.stubGlobal('localStorage', localStorageShim);
 
-import { clearSessionScopedClientState } from '$lib/client-session-state';
+import { clearSessionScopedClientState } from '#lib/client-session-state.js';
 
 beforeEach(() => {
 	localStorage.clear();

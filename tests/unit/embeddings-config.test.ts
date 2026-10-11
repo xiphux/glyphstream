@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // Control what the underlying config loader does without touching disk.
 const loadMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/config', () => ({ loadEmbeddingsConfig: loadMock }));
+vi.mock('#lib/server/endpoints/config.js', () => ({ loadEmbeddingsConfig: loadMock }));
 
 import {
 	resolveRelevanceConfig,
 	_resetEmbeddingsConfigCacheForTests,
-} from '$lib/server/retrieval/embeddings-config';
+} from '#lib/server/retrieval/embeddings-config.js';
 
 afterEach(() => {
 	_resetEmbeddingsConfigCacheForTests();

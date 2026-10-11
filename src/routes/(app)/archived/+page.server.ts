@@ -1,4 +1,4 @@
-import { listArchivedConversations } from '$lib/server/db/queries/conversations';
+import { listArchivedConversations } from '#lib/server/db/queries/conversations.js';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, parent }) => {

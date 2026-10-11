@@ -1,17 +1,17 @@
 import { error, json } from '@sveltejs/kit';
-import { requireFound, requireUser } from '$lib/server/auth/guard';
-import { parseJsonBody } from '$lib/server/http';
+import { requireFound, requireUser } from '#lib/server/auth/guard.js';
+import { parseJsonBody } from '#lib/server/http.js';
 import {
 	deleteCustomModel,
 	getCustomModelForUser,
 	updateCustomModel,
-} from '$lib/server/db/queries/custom-models';
+} from '#lib/server/db/queries/custom-models.js';
 import {
 	validateDefaultDisabledFeatures,
 	validateParameters,
-} from '$lib/server/custom-models/validate';
-import { getEndpoint } from '$lib/server/endpoints/registry';
-import type { UpdateCustomModelRequest } from '$lib/types/api';
+} from '#lib/server/custom-models/validate.js';
+import { getEndpoint } from '#lib/server/endpoints/registry.js';
+import type { UpdateCustomModelRequest } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals, params }) => {
