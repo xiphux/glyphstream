@@ -10,7 +10,7 @@
  * filled synchronously, so ids, names and transports are right immediately,
  * and only `toolCount` and `available` need the boot handshakes. The layout
  * reports `mcpSettled` so the client can re-pull once those land — see
- * isMcpReady in $lib/server/mcp/bootstrap.
+ * isMcpReady in #lib/server/mcp/bootstrap.
  */
 
 import {

@@ -131,7 +131,7 @@ describe('iOS launch-image colours', () => {
 	});
 
 	// The manifest's two colours are the SAME token again, hand-copied into
-	// $lib/web-manifest.ts (vite.config.ts, when the PWA plugin generated it). background_color was corrected to the real dark surface
+	// #lib/web-manifest.ts (vite.config.ts, when the PWA plugin generated it). background_color was corrected to the real dark surface
 	// when the splash drift was found; theme_color sat one line above it and was
 	// missed, so the manifest went on declaring the brand navy while app.html
 	// declared the light surface and the launch screen painted a third value.
@@ -150,7 +150,7 @@ describe('iOS launch-image colours', () => {
 			const expected = `#${oklchToRgb(l, c, h)
 				.map((v) => v.toString(16).padStart(2, '0'))
 				.join('')}`;
-			expect(declared, `set the manifest's ${field} to '${expected}' in $lib/web-manifest.ts`).toBe(
+			expect(declared, `set the manifest's ${field} to '${expected}' in #lib/web-manifest.ts`).toBe(
 				expected,
 			);
 		},

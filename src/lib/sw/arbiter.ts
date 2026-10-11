@@ -19,7 +19,7 @@
  * window that SPA-navigated to /chat/{id} can still report its original
  * load URL — which would make the SW notify the user about the very
  * thread they're watching. Instead the SW asks each window what route
- * it's actually on; see ActiveConversationReport in $lib/types/push.
+ * it's actually on; see ActiveConversationReport in #lib/types/push.
  *
  * Same-thread suppression happens even when foregroundToast is false:
  * "don't toast me about other threads" doesn't imply "spam me on the

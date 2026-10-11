@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 // conversation-ui-actions imports $app/navigation transitively (via
 // fetch-error / errorMessageFromResponse → none, actually it imports
-// $lib/toast directly). Mock toast to keep the module loadable.
+// #lib/toast directly). Mock toast to keep the module loadable.
 vi.mock('#lib/toast.svelte.js', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 const { shouldCommitRename } = await import('#lib/conversation-ui-actions.svelte.js');

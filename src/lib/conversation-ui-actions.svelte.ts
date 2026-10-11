@@ -2,7 +2,7 @@
  * Sidebar conversation mutation orchestration: the busy-state, toasts,
  * navigation, Undo flow, inline-rename state machine, and delete-
  * confirmation handoff that wrap the low-level fetches in
- * $lib/conversation-actions.
+ * #lib/conversation-actions.
  *
  * Lives separately from the (app) layout so the rename state machine
  * (renamingId, renameDraft, renameOriginal, focus management) and the

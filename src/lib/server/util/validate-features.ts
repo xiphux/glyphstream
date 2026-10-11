@@ -1,6 +1,6 @@
 /**
  * Validate a request-body `disabledFeatures` payload (per-conversation
- * feature opt-out, see FEATURE_CATEGORIES in $lib/types/api).
+ * feature opt-out, see FEATURE_CATEGORIES in #lib/types/api).
  *
  * Accepts unknown / null / undefined → `[]` (no opt-outs); an array of
  * known FeatureCategory strings → that array, with duplicates removed.

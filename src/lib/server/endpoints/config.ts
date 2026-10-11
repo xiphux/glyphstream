@@ -1076,7 +1076,7 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 		const envName = requireString(raw.api_key_env, 'api_key_env', at);
 
 		// A runtime name, so process.env rather than a Kit env module — see the
-		// note at the top of $lib/server/env.ts.
+		// note at the top of #lib/server/env.ts.
 		const envValue = process.env[envName];
 		if (!envValue) {
 			throw new ConfigError(

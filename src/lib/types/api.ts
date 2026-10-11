@@ -787,7 +787,7 @@ export interface UserPreferences {
 	 * that a service worker cached from before this gate doesn't pass
 	 * `undefined` to `showNotification`; do NOT read the field's presence as
 	 * meaning content was included. Consumers promote the modality/count line to
-	 * the heading and drop the body (see $lib/sw/notification-copy).
+	 * the heading and drop the body (see #lib/sw/notification-copy).
 	 */
 	notificationsShowContent: boolean;
 	/**

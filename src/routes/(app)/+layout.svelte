@@ -1049,7 +1049,7 @@
 									>
 										{#if activity === 'active'}
 											<!-- A generation is running for this conversation right
-											 now (see $lib/generating-conversations). Takes the
+											 now (see #lib/generating-conversations). Takes the
 											 leading slot ahead of both the title spinner and the
 											 private mask: on a first exchange all three compete,
 											 and "a response is coming" is the one worth the pixel.
@@ -1082,7 +1082,7 @@
 										{:else if isTitlePending(c.id)}
 											<!-- Subtle spinner while the background auto-title
 											 task is still generating this conversation's
-											 title (see $lib/title-pending). -->
+											 title (see #lib/title-pending). -->
 											<span
 												class="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-border-focus border-t-transparent"
 												aria-hidden="true"

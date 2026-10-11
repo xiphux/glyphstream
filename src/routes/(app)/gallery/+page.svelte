@@ -83,7 +83,7 @@
 	// --- Browse feed (layout-driven virtualization) -------------------------
 	// The server owns stacking + counts (see computeGalleryLayout / listGalleryUnits);
 	// the feed reserves exact height from the per-day unit counts and streams thin
-	// unit descriptors for the visible range. See $lib/gallery-feed.
+	// unit descriptors for the visible range. See #lib/gallery-feed.
 	let stacking = $state(true);
 	let granularity = $state<Granularity>('month');
 
@@ -716,7 +716,7 @@
 	// --- Grid virtualization (windowing) ------------------------------------
 	// Only the rows near the viewport render; the rest are reserved as padding on
 	// each section's grid. Pure arithmetic because every tile is a constant height
-	// (caption overlay + aspect-square). See $lib/gallery-window.
+	// (caption overlay + aspect-square). See #lib/gallery-window.
 	let scrollContainer = $state<HTMLElement | null>(null);
 	let gridMetrics = $state<WindowConstants | null>(null);
 	let scrollTop = $state(0);

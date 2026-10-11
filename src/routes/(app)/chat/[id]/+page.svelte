@@ -675,7 +675,7 @@
 	// Side-by-side canvas pane. The server is authoritative; this holds the
 	// live doc + open state. Seeded from the page load, updated by
 	// canvas_version stream events during a turn (see ChatTurnController's
-	// #runChatStream in $lib/chat-turn-controller.svelte, via the applyCanvas dep).
+	// #runChatStream in #lib/chat-turn-controller.svelte, via the applyCanvas dep).
 	const canvas = new CanvasController();
 	// svelte-ignore state_referenced_locally
 	canvas.hydrate(data.canvases);
@@ -788,7 +788,7 @@
 	// Single-turn orchestration (send/edit/retry streaming, approval-resume,
 	// server-truth recovery) + its shared render state — the in-flight bubble,
 	// `busy`, `activeAbort`, `streamedMessageId`, the approval-resume latch, and
-	// the suspend/offline flags — extracted to $lib/chat-turn-controller for
+	// the suspend/offline flags — extracted to #lib/chat-turn-controller for
 	// testability. Constructed up here (ahead of the fan-out controller) because
 	// the approval-pending derivations below read `turn.inFlightSegments`. The
 	// page owns the composer/picker bindings, the higher-level send() dispatch,
@@ -1004,7 +1004,7 @@
 
 	// Per-page attachment store. The store eagerly POSTs to /api/uploads
 	// as files are picked, so by send-time `readyMediaIds()` is just a
-	// state read. See $lib/attachments.svelte.ts.
+	// state read. See #lib/attachments.svelte.ts.
 	const attachments = new AttachmentStore();
 	const allowAttachments = $derived(attachmentsAllowedFor(modelKind));
 	// Snippet filtering for the inline editor. The conversation's own kind, not
@@ -1450,7 +1450,7 @@
 	let isOffline = $derived(browser && !navigator.onLine);
 
 	// Multi-model fan-out controller (state + orchestration extracted to
-	// $lib/fanout-controller for testability). The page owns the composer/picker
+	// #lib/fanout-controller for testability). The page owns the composer/picker
 	// bindings + a few effects that delegate here; the controller reaches shared
 	// page state through these getters/setters.
 	const fanout: FanoutController = new FanoutController({
@@ -2335,7 +2335,7 @@
 
 	// Inline message editing. The bubble for `edit.messageId` re-renders as an
 	// in-place editor and the bottom composer hides, so it's unambiguous which
-	// message is being edited. See $lib/edit-session.
+	// message is being edited. See #lib/edit-session.
 	const edit = new EditSession({
 		generating: () => generating,
 		// The ratio rides an edit for the same reason it rides a retry — except the
@@ -2360,7 +2360,7 @@
 	// an open edit session (whose target message doesn't exist in the new
 	// conversation) would hide the composer with no inline editor to replace
 	// it, leaving no way to type. Drafts are per-conversation, so each switch
-	// loads its own (usually empty); see $lib/composer-draft. Guarded on a real
+	// loads its own (usually empty); see #lib/composer-draft. Guarded on a real
 	// id change so a same-conversation invalidateAll() can't wipe a draft
 	// mid-compose.
 	let composerResetConvId: string | undefined;

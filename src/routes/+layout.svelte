@@ -169,7 +169,7 @@
 		void import('#lib/status-bar-probe.js').then((m) => m.captureColdLaunchProbe());
 	});
 
-	// When a new SW is waiting, $lib/sw/register.ts fires onNeedRefresh and
+	// When a new SW is waiting, #lib/sw/register.ts fires onNeedRefresh and
 	// returns an activate() we can call when the user opts in. We surface
 	// the prompt via UpdateBanner rather than silently reloading the page —
 	// silent reloads can yank in-flight streams or unsaved drafts out from
@@ -322,7 +322,7 @@
 			// PWA before dispatching notificationclick, so the SW posted
 			// navigate_to_conversation into this window while it was still parsing
 			// its bundle, and nothing was listening yet. The worker also wrote the
-			// target down for exactly this pull. See $lib/sw/pending-navigation.ts.
+			// target down for exactly this pull. See #lib/sw/pending-navigation.ts.
 			void honourPendingNotificationTap();
 		}
 	});
@@ -336,7 +336,7 @@
 	 * worker is registered (dev builds, where registration is skipped), so it would
 	 * park a promise per page load instead of resolving null and being done.
 	 *
-	 * Named apart from `claimPendingNavigation` in $lib/sw/pending-navigation.ts,
+	 * Named apart from `claimPendingNavigation` in #lib/sw/pending-navigation.ts,
 	 * which is the worker-side Cache Storage read this reaches by message.
 	 */
 	async function takePendingNotificationTap(): Promise<string | null> {

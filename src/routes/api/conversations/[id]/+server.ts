@@ -79,7 +79,7 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
  *   - `{ title: string }` — rename (sets title_source='user', locking
  *      the title against future AI overwrite)
  *   - `{ disabledFeatures: string[] }` — per-conversation feature opt-outs
- *      (see FEATURE_CATEGORIES in $lib/types/api)
+ *      (see FEATURE_CATEGORIES in #lib/types/api)
  *
  * Discriminated body: exactly one of the three fields must be present.
  * Combining them in one request is rejected to keep the semantics
