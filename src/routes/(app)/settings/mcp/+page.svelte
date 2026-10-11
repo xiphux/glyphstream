@@ -161,13 +161,9 @@
 
 <SettingsPage title="MCP servers">
 	{#snippet description()}
-		MCP servers configured in
-		<code class="font-mono">config.toml</code>
-		and the tools they advertise. Per-tool approval lives at
-
-		<a href={resolve('settings/permissions')} class="underline hover:text-fg">Permissions</a>
-
-		.
+		MCP servers configured in <code class="font-mono">config.toml</code> and the tools they
+		advertise. Per-tool approval lives at
+		<a href={resolve('settings/permissions')} class="underline hover:text-fg">Permissions</a>.
 	{/snippet}
 
 	<div class="mx-auto flex max-w-2xl flex-col gap-3">

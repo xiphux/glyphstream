@@ -15,10 +15,11 @@ import { defineConfig } from 'vitest/config';
  * available on the server`.
  *
  * Its `autoCleanup` is off, and the component project lists the cleanup
- * file itself: the plugin adds that file to the ROOT config's setupFiles,
- * and since vitest 5 a setup file added that way no longer reaches the
- * projects below. Every component test then rendered into the leftovers of
- * the one before it (400 "Found multiple elements" failures).
+ * file itself. The plugin used to sit in the ROOT config, where it added
+ * that file to the root's setupFiles — which since vitest 5 no longer reach
+ * the projects below, so every component test rendered into the leftovers
+ * of the one before it (400 "Found multiple elements" failures). Listing it
+ * explicitly keeps cleanup independent of where the plugin is installed.
  */
 export default defineConfig({
 	plugins: [sveltekit(sveltekitOptions)],

@@ -17,14 +17,10 @@
 		"strict": true,
 		"skipLibCheck": true,
 		"resolveJsonModule": true,
-		"allowJs": true,
-		// service-worker.ts imports through `$lib`. SvelteKit's generated
-		// tsconfig maps it, but that config excludes the service worker, so the
-		// mapping has to be repeated here or its imports resolve to `any`.
-		"baseUrl": ".",
-		"paths": {
-			"$lib": ["./src/lib"],
-			"$lib/*": ["./src/lib/*"]
-		}
+		// service-worker.ts imports through `#lib`, which resolves from
+		// package.json `imports` under "bundler" resolution — no `paths`
+		// mapping needed (the `$lib` one that used to sit here went with
+		// SvelteKit 2).
+		"allowJs": true
 	}
 }
