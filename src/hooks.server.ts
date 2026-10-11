@@ -617,15 +617,24 @@ export const handle: Handle = async ({ event, resolve }) => {
  * status with a generic message body. Default SvelteKit behavior
  * swallows errors silently which makes CI debugging painful.
  *
- * Gate on status >= 500 — handleError fires for every error including
- * routine 404s (stale Open WebUI socket.io reconnects, bot scanners,
- * old service workers hitting moved paths). Those are client problems,
- * not server problems; logging them is noise that drowns out the
- * actual 5xx events worth attention.
+ * Log only what's actually a server fault. handleError fires for every error,
+ * including routine 404s (stale Open WebUI socket.io reconnects, bot scanners,
+ * old service workers hitting moved paths) — client problems, whose logging is
+ * noise that drowns out the 5xx events worth attention. SvelteKit 3 reports a
+ * `kind` instead of a status, so:
+ *   - `unknown`: an unexpected throw, i.e. a 500. Log it.
+ *   - `framework`: SvelteKit's own errors. Log only a 5xx; a 404 is the noise.
+ *   - `app` / `validation`: a deliberate `error(...)` or a rejected argument.
+ *     Skipped — the code that raised it already decided what it meant, and
+ *     SvelteKit 2 never sent these here at all, so logging them now would only
+ *     add lines the logs never had.
  */
-export const handleError: HandleServerError = ({ error, event, status }) => {
+export const handleError: HandleServerError = (input) => {
+	if (input.kind === 'app' || input.kind === 'validation') return undefined;
+	const status = input.kind === 'framework' ? input.error.status : 500;
 	if (status < 500) return undefined;
 
+	const { error, event } = input;
 	const stack = error instanceof Error ? (error.stack ?? error.message) : String(error);
 
 	console.error(
