@@ -13,7 +13,7 @@
 	<p class="text-5xl font-semibold tracking-tight text-fg-muted">{page.status}</p>
 	<p class="text-fg">{page.error?.message ?? 'Something went wrong.'}</p>
 	<a
-		href={resolve('/')}
+		href={resolve('/(app)')}
 		class="mt-2 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg transition hover:opacity-90"
 	>
 		Back to GlyphStream

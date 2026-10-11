@@ -520,7 +520,7 @@
 			aspectRatio: m.aspectRatio,
 		});
 		onClose();
-		await goto(resolve('/'));
+		await goto(resolve('/(app)'));
 	}
 
 	async function useAsStartingImage(m: MediaListItem) {
@@ -534,7 +534,7 @@
 			sourceModelId: sourceModelIdFor(m),
 		});
 		onClose();
-		await goto(resolve('/'));
+		await goto(resolve('/(app)'));
 	}
 
 	// Whether to route saving through the native share sheet. iOS Safari

@@ -592,27 +592,28 @@
 		// Drop the fragment so a manual refresh won't re-prefill an
 		// already-sent message. Deferred a microtask because on the initial
 		// load afterNavigate fires just *before* SvelteKit flags the router
-		// "started", and replaceState throws until then; by the next microtask
-		// it's safe. Best-effort — a lingering fragment is harmless.
+		// "started", and a shallow update fails until then; by the next
+		// microtask it's safe. Best-effort — a lingering fragment is harmless.
 		//
-		// `replaceState` and not a `goto`, unlike the `?notice=` strip below,
-		// and the difference is this handler's FIRST line. Kit's `replaceState`
-		// records the page's pre-strip URL in the history entry, so a later Back
+		// A SHALLOW update (SvelteKit 3's replacement for `replaceState`), not a
+		// navigation like the `?notice=` strip below, and the difference is this
+		// handler's FIRST line. A shallow update records the page's pre-strip
+		// URL in the history entry, so a later Back
 		// onto it restores `page.url` with the fragment still attached while the
 		// address bar stays clean — and what this reads is the address bar. A
 		// navigation would buy nothing and cost a focus reset on every
 		// share-sheet entry. (Nothing here may start reading `page.url.hash`
 		// without revisiting that.)
 		queueMicrotask(() => {
-			try {
-				goto(window.location.pathname + window.location.search, {
-					shallow: true,
-					replace: true,
-					state: page.state,
-				});
-			} catch {
+			// `.catch`, not try/catch: `goto` reports failure by rejecting, where
+			// `replaceState` threw synchronously.
+			goto(window.location.pathname + window.location.search, {
+				shallow: true,
+				replace: true,
+				state: page.state,
+			}).catch(() => {
 				/* router not ready / state unserializable — leave the fragment */
-			}
+			});
 		});
 	});
 
@@ -635,8 +636,8 @@
 	//
 	// A navigation writes a fresh entry with no `PAGE_URL_KEY` at all, and
 	// updates `page.url`. It is cheap here: nothing on this route reads `url` in
-	// a way that invalidates a node, so no `__data.json` is fetched. `keepFocus`
-	// is load-bearing, not decoration — the composer's autofocus is a MOUNT
+	// a way that invalidates a node, so no `__data.json` is fetched. `reset: false`
+	// (keep focus and scroll) is load-bearing, not decoration — the composer's autofocus is a MOUNT
 	// effect and won't re-run on a same-route navigation, so without it the goto
 	// would blur the box this page exists to put the cursor in. The target keeps
 	// using `window.location.hash` rather than `page.url`'s: by now the handler
@@ -648,14 +649,13 @@
 		const message = noticeMessage(page.url.searchParams.get('notice'));
 		if (!message) return;
 		toast.error(message);
-		const params = new URLSearchParams(page.url.searchParams);
+		const params = new URLSearchParams(page.url.search);
 		params.delete('notice');
 		const query = params.size > 0 ? `?${params}` : '';
 		queueMicrotask(() => {
 			void goto(page.url.pathname + query + window.location.hash, {
-				replaceState: true,
-				noScroll: true,
-				keepFocus: true,
+				replace: true,
+				reset: false,
 			}).catch(() => {
 				/* same-origin and started by now — belt-and-braces */
 			});

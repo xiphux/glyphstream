@@ -112,8 +112,14 @@ describe('new-chat page — ?notice= from a redirect', () => {
 		await vi.waitFor(() =>
 			expect(vi.mocked(goto)).toHaveBeenCalledWith(
 				'/',
-				expect.objectContaining({ replaceState: true, keepFocus: true }),
+				expect.objectContaining({ replace: true, reset: false }),
 			),
+		);
+		// Since SvelteKit 3 a shallow update is a `goto` too, so "a goto was
+		// called" no longer rules one out on its own.
+		expect(vi.mocked(goto)).not.toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ shallow: true }),
 		);
 	});
 
@@ -126,7 +132,7 @@ describe('new-chat page — ?notice= from a redirect', () => {
 		await vi.waitFor(() =>
 			expect(vi.mocked(goto)).toHaveBeenCalledWith(
 				'/?model=bridge%3A%3Aalpha',
-				expect.objectContaining({ replaceState: true }),
+				expect.objectContaining({ replace: true }),
 			),
 		);
 	});

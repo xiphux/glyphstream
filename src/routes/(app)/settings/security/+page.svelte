@@ -81,13 +81,12 @@
 		else toast.error(`Link failed (${result}).`);
 		// Strip the query so a reload — or a Back onto this entry — doesn't
 		// replay the toast.
-		const next = new URL(page.url);
+		const next = new URL(page.url.href);
 		next.searchParams.delete('link');
 		queueMicrotask(() => {
 			void goto(next.pathname + next.search + next.hash, {
-				replaceState: true,
-				noScroll: true,
-				keepFocus: true,
+				replace: true,
+				reset: false,
 			}).catch(() => {
 				/* same-origin and started by now — belt-and-braces */
 			});

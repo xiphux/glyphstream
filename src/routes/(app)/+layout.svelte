@@ -802,7 +802,7 @@
 					 "you have to be looking for it" affordance for confirming
 					 a service-worker refresh or which build is loaded. -->
 				<div class="flex items-baseline gap-1.5">
-					<a href={resolve('/')} class="font-semibold tracking-tight">GlyphStream</a>
+					<a href={resolve('/(app)')} class="font-semibold tracking-tight">GlyphStream</a>
 					<!-- Double-activate for the debug panel ("stats for nerds").
 						 A button, not the old span: it's interactive now, and that
 						 keeps it focusable so two quick Enter presses reach the
@@ -848,7 +848,7 @@
 
 		<div class="px-2">
 			<a
-				href={resolve('/')}
+				href={resolve('/(app)')}
 				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {newChatPending
 					? 'bg-surface-sunken text-accent'
 					: 'hover:bg-surface-sunken/70'} {collapsed ? 'sm:justify-center sm:px-0' : ''}"
@@ -1265,7 +1265,7 @@
 			</button>
 			<!-- A link, matching the sidebar's title on desktop. The visible New chat
 				 button below is the real affordance; this is for whoever tries it. -->
-			<a href={resolve('/')} class="text-sm font-semibold tracking-tight">GlyphStream</a>
+			<a href={resolve('/(app)')} class="text-sm font-semibold tracking-tight">GlyphStream</a>
 			<!-- Private-chat control, shared with the hamburger row so it isn't
 				 stranded on its own line (and, in an open chat, doesn't eat the
 				 title's width). New-chat screen → an interactive toggle; an open
@@ -1299,7 +1299,7 @@
 				 are and the private-chat toggle wants the slot. -->
 				{#if currentPath !== '/'}
 					<a
-						href={resolve('/')}
+						href={resolve('/(app)')}
 						aria-label="New chat"
 						class="rounded-md p-1.5 transition hover:bg-surface-raised {newChatPending
 							? 'text-accent'

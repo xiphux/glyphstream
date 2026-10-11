@@ -216,17 +216,17 @@
 	);
 
 	function setKind(k: 'image' | 'video' | null) {
-		const url = new URL(page.url);
+		const url = new URL(page.url.href);
 		if (k) url.searchParams.set('kind', k);
 		else url.searchParams.delete('kind');
-		void goto(url, { keepFocus: true, noScroll: true, replaceState: false });
+		void goto(url, { reset: false, replace: false });
 	}
 
 	function setModel(m: string | null) {
-		const url = new URL(page.url);
+		const url = new URL(page.url.href);
 		if (m) url.searchParams.set('model', m);
 		else url.searchParams.delete('model');
-		void goto(url, { keepFocus: true, noScroll: true, replaceState: false });
+		void goto(url, { reset: false, replace: false });
 	}
 
 	// A URL param like the other facets rather than local state, so Favorites
@@ -234,10 +234,10 @@
 	// linkable — and so the page load can narrow the model facet counts to the
 	// starred set the grid is actually showing.
 	function setFavorite(on: boolean) {
-		const url = new URL(page.url);
+		const url = new URL(page.url.href);
 		if (on) url.searchParams.set('fav', '1');
 		else url.searchParams.delete('fav');
-		void goto(url, { keepFocus: true, noScroll: true, replaceState: false });
+		void goto(url, { reset: false, replace: false });
 	}
 
 	// --- Prompt search box --------------------------------------------------
@@ -273,12 +273,12 @@
 		if (!queryText.trim() && !data.q) searchOpen = false;
 	}
 	function commitQuery(q: string) {
-		const url = new URL(page.url);
+		const url = new URL(page.url.href);
 		const trimmed = q.trim();
 		committedQuery = trimmed;
 		if (trimmed) url.searchParams.set('q', trimmed);
 		else url.searchParams.delete('q');
-		void goto(url, { keepFocus: true, noScroll: true, replaceState: true });
+		void goto(url, { reset: false, replace: true });
 	}
 	function onQueryInput() {
 		if (queryDebounce) clearTimeout(queryDebounce);

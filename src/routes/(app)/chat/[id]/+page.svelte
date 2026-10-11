@@ -2447,7 +2447,7 @@
 			// opens an ordinary new chat, which beats an onclick that throws and
 			// leaves the user on a button that appears to do nothing.
 		}
-		void goto(resolve('/'));
+		void goto(resolve('/(app)'));
 	}
 
 	/**

@@ -105,8 +105,9 @@ describe('security page — ?link= result toast', () => {
 		stub().enter();
 		flushSync();
 
-		// Deliberately a `goto`, not `replaceState`. Kit's `replaceState` is the
-		// shallow-routing API: it records the page's REAL url — `?link=` and all
+		// Deliberately a real navigation, not a shallow update (SvelteKit 3's
+		// `goto(…, { shallow: true })`, formerly `replaceState`). A shallow update
+		// records the page's REAL url — `?link=` and all
 		// — in the history entry, so a Back onto it once another navigation has
 		// moved the navigation index replays that navigation and announces the
 		// link a second time. Only a real navigation takes the param off
@@ -114,8 +115,14 @@ describe('security page — ?link= result toast', () => {
 		await vi.waitFor(() =>
 			expect(vi.mocked(goto)).toHaveBeenCalledWith(
 				'/settings/security',
-				expect.objectContaining({ replaceState: true }),
+				expect.objectContaining({ replace: true, reset: false }),
 			),
+		);
+		// Since SvelteKit 3 a shallow update is a `goto` too, so "a goto was
+		// called" no longer rules one out on its own.
+		expect(vi.mocked(goto)).not.toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ shallow: true }),
 		);
 	});
 
