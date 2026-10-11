@@ -333,16 +333,30 @@ describe('gallery units: cache invalidation on mutation', () => {
 		const a = makeGen(u.id, at(2024, 6, 15), { promptFull: 'a', originalPrompt: null });
 		const b = makeGen(u.id, at(2024, 6, 14), { promptFull: 'b', originalPrompt: null });
 		makeGen(u.id, at(2024, 6, 13), { promptFull: 'c', originalPrompt: null });
-		trashMediaForUser(b, u.id);
 
-		const leaders = () =>
-			listGalleryUnits(u.id, { ...TZ, offset: 0, limit: 500 }).units.map((x) => x.leaderId);
-		expect(leaders()).not.toContain(b);
+		// The clock is pinned per trash. What tells the two sets apart now is the sum
+		// of their `deleted_at` stamps, and both trashes below run in well under a
+		// millisecond — so on a real clock they shared a stamp about one run in
+		// three, the signature didn't move, and the stale list was (correctly, by
+		// the fingerprint's rules) served. Two requests a person makes never land in
+		// the same millisecond; two lines of a test routinely do.
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			vi.setSystemTime(1_000);
+			trashMediaForUser(b, u.id);
 
-		trashMediaForUser(a, u.id);
-		restoreMediaForUser([b], u.id);
-		expect(leaders()).toContain(b);
-		expect(leaders()).not.toContain(a);
+			const leaders = () =>
+				listGalleryUnits(u.id, { ...TZ, offset: 0, limit: 500 }).units.map((x) => x.leaderId);
+			expect(leaders()).not.toContain(b);
+
+			vi.setSystemTime(2_000);
+			trashMediaForUser(a, u.id);
+			restoreMediaForUser([b], u.id);
+			expect(leaders()).toContain(b);
+			expect(leaders()).not.toContain(a);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('a favorites-filtered read is never served the unfiltered cached library', () => {
