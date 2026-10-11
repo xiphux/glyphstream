@@ -1,5 +1,5 @@
 /**
- * Keeps the CSP `script-src` hash in svelte.config.js in step with the inline
+ * Keeps the CSP `script-src` hash in sveltekit.config.ts in step with the inline
  * `<script>` in src/app.html.
  *
  * SvelteKit nonces the scripts it injects but does not hash a user-authored
@@ -33,11 +33,11 @@ describe('CSP inline-script pin', () => {
 		expect(inline, 'no inline <script> found in app.html').not.toBeNull();
 
 		const expected = `sha256-${createHash('sha256').update(inline![1], 'utf-8').digest('base64')}`;
-		const pinned = /'(sha256-[A-Za-z0-9+/=]+)'/.exec(read('../../svelte.config.js'))?.[1];
+		const pinned = /'(sha256-[A-Za-z0-9+/=]+)'/.exec(read('../../sveltekit.config.ts'))?.[1];
 
 		expect(
 			pinned,
-			`CSP hash is stale. Paste this into svelte.config.js script-src: ${expected}`,
+			`CSP hash is stale. Paste this into sveltekit.config.ts script-src: ${expected}`,
 		).toBe(expected);
 	});
 

@@ -1,4 +1,5 @@
 import { sveltekit } from '@sveltejs/kit/vite';
+import { sveltekitOptions } from './sveltekit.config.ts';
 import { defineConfig } from 'vitest/config';
 
 /**
@@ -9,11 +10,12 @@ import { defineConfig } from 'vitest/config';
  * and measure quality rather than asserting pass/fail. Keeping them out of the
  * hermetic unit suite keeps CI deterministic. Run with `pnpm eval`.
  *
- * sveltekit() is included so the harness resolves `#lib` + `$env/dynamic/private`
- * exactly the way the app does — the eval drives the real retrieval pipeline.
+ * sveltekit() is included, with the app's own options (sveltekit.config.ts), so
+ * the harness resolves modules exactly the way the app does — the eval drives
+ * the real retrieval pipeline.
  */
 export default defineConfig({
-	plugins: [sveltekit()],
+	plugins: [sveltekit(sveltekitOptions)],
 	test: {
 		include: ['tests/eval/**/*.eval.ts'],
 		environment: 'node',

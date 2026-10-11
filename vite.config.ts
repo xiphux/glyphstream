@@ -1,8 +1,8 @@
-import adapter from '@sveltejs/adapter-node';
 import process from 'node:process';
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { sveltekitOptions } from './sveltekit.config.ts';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig, type PluginOption } from 'vite';
 import { visualizer } from 'rollup-plugin-visualizer';
@@ -46,6 +46,7 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 // list — see the note at the end of this block. Between them those are
 // the only two routes the SW registers, so /api/*, SSE streams and
 // SSR'd HTML pass straight through to the network.
+//
 // Deliberately NOT `client/**` over js/css. That swept in every hashed
 // chunk — ~380 KB gzip across ~89 entries, including the markdown-it
 // and shiki chunks the route-lazy design exists to defer, and the
@@ -54,9 +55,11 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 // change rehashed many chunks and a large fraction of that re-installed
 // on every deploy, competing with foreground traffic
 // (registration starts right after page load).
+//
 // And there's no navigation fallback here by design — an offline
 // navigation needs SSR HTML that isn't precached either way — so
 // precached JS couldn't make a cold offline load work regardless.
+//
 // This block used to close by saying it bought very little, because
 // `/_app/immutable/*` is content-hashed and already served
 // `max-age=31536000, immutable`, so the browser's own HTTP cache would
@@ -68,6 +71,7 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 // cache-first RUNTIME route in src/service-worker.ts, which stores only
 // what the app actually fetched and so avoids every cost catalogued
 // above. Precaching is still the wrong tool; caching was not.
+//
 // Revisions are content hashes, so the list — and with it the worker's bytes —
 // changes only when an icon or the manifest does. (Something else has to make
 // the worker differ between releases; see the build stamp in the worker.)
@@ -101,85 +105,7 @@ export default defineConfig({
 	},
 	plugins: [
 		tailwindcss(),
-		sveltekit({
-			compilerOptions: {
-				runes: ({ filename }) =>
-					filename.split(/[/\\]/).includes('node_modules') ? undefined : true,
-			},
-
-			// precompress: build-time gzip + brotli for every static asset.
-			// adapter-node's sirv serves the right one based on Accept-Encoding,
-			// no per-request CPU cost. A reverse proxy in front (Caddy/Nginx)
-			// can also pick up the .gz/.br variants directly via try_files.
-			adapter: adapter({ precompress: true }),
-
-			// SvelteKit builds src/service-worker.ts, but registration is ours:
-			// $lib/sw/register.ts, from the root layout. Kit's own registration is
-			// a bare `register()` in every page's inline script, with none of the
-			// update-prompt wiring, so left on it would race ours for the same URL.
-			serviceWorker: { register: false },
-			// Content-Security-Policy — defense in depth against any XSS that
-			// slips past our explicit sinks (markdown-it runs with `html: false`
-			// and the three `{@html}` sites all hold server-controlled HTML,
-			// but a real CSP raises the cost of any future mistake by an order
-			// of magnitude).
-			//
-			// mode: 'auto' — SvelteKit scans the rendered HTML for inline
-			// <script>/<style> blocks and adds their hashes (for prerendered
-			// routes) or per-response nonces (for dynamic SSR). That covers
-			// SvelteKit's own hydration script AND the IIFEs in app.html that
-			// resolve color scheme / GPU blur pre-paint.
-			// 'unsafe-inline' on style-src is required because of three inline
-			// `style="..."` attributes (composer padding, two safe-area
-			// insets) plus the `style="display: contents"` wrapper app.html
-			// puts around %sveltekit.body%. Inline style ATTRIBUTES can't be
-			// hashed or nonced — only `<style>` blocks can — so 'unsafe-inline'
-			// is unavoidable without a refactor for marginal gain. Style-based
-			// XSS is a narrow class (mostly CSS exfiltration via :target /
-			// attribute selectors); the script-src lockdown is the
-			// load-bearing protection here.
-			// connect-src 'self': every API call (streaming SSE included) is
-			// same-origin — outbound calls to upstream LLMs / search go through
-			// the server's relay, not direct from the browser. img-src adds
-			// `data:` (cheap future-proofing) and `blob:` (the composer's
-			// `URL.createObjectURL` previews of attachments before upload).
-			// media-src adds `blob:` for the same composer preview path on
-			// videos. frame-ancestors 'none' pairs with the X-Frame-Options:
-			// DENY header set in hooks.server.ts.
-			csp: {
-				mode: 'auto',
-				directives: {
-					'default-src': ['self'],
-					// The sha256 below pins the inline <script> in src/app.html
-					// (the pre-paint color-scheme + GPU-blur IIFEs). SvelteKit's
-					// CSP nonces its own injected scripts but does NOT
-					// auto-hash user-authored inline scripts in app.html, so
-					// without this pin the dev server refuses to execute it
-					// (and dropping it to an external file would cost a
-					// render-blocking request and reintroduce a FOUC window).
-					//
-					// If you edit that inline script, this hash goes stale and the
-					// script is silently BLOCKED — the page still works, because the
-					// layout re-applies the scheme after hydration, so the only
-					// symptom is the FOUC this pin exists to prevent, plus a blur
-					// probe that never runs. It went stale once exactly that way.
-					// `tests/unit/csp-inline-script-hash.test.ts` recomputes it from
-					// app.html and fails with the value to paste here.
-					'script-src': ['self', 'sha256-Ar3Hg1mVpvhki2BhDuALtdbJXW94wX8y3ugNbQnpA3A='],
-					'style-src': ['self', 'unsafe-inline'],
-					'img-src': ['self', 'data:', 'blob:'],
-					'media-src': ['self', 'blob:'],
-					'connect-src': ['self'],
-					'font-src': ['self', 'data:'],
-					'worker-src': ['self'],
-					'object-src': ['none'],
-					'base-uri': ['self'],
-					'form-action': ['self'],
-					'frame-ancestors': ['none'],
-					'frame-src': ['none'],
-				},
-			},
-		}),
+		sveltekit(sveltekitOptions),
 
 		analyze &&
 			(visualizer({
