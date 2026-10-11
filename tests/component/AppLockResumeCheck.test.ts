@@ -52,7 +52,6 @@ vi.mock('$app/navigation', async () => {
 		afterNavigate: (cb: Parameters<ReturnType<typeof createKitStub>['afterNavigate']>[0]) =>
 			stub().afterNavigate(cb),
 		beforeNavigate: v.fn(),
-		replaceState: v.fn(),
 		pushState: v.fn(),
 		preloadData: v.fn(async () => ({})),
 	};
@@ -180,7 +179,7 @@ describe('app-lock resume check', () => {
 		checks[0].respond(423);
 		await settle();
 		expect(nav.goto).toHaveBeenCalledWith(expect.stringMatching(/^\/unlock\?from=/), {
-			replaceState: true,
+			replace: true,
 		});
 		expect(covered()).toBe(true);
 	});
@@ -202,7 +201,7 @@ describe('app-lock resume check', () => {
 		checks[0].respond(423);
 		await settle();
 		expect(nav.goto).toHaveBeenCalledWith(`/unlock?from=${encodeURIComponent('/chat/tapped')}`, {
-			replaceState: true,
+			replace: true,
 		});
 	});
 

@@ -234,7 +234,7 @@
 				// leave it alone. Another hop would only nest `from` inside itself.
 				if (target.pathname === resolve('unlock')) return;
 				const from = encodeURIComponent(target.pathname + target.search);
-				await goto(`${resolve('unlock')}?from=${from}`, { replaceState: true });
+				await goto(`${resolve('unlock')}?from=${from}`, { replace: true });
 			} else if (res.ok) {
 				appLockCovered = false;
 			} else if (res.status === 401) {
