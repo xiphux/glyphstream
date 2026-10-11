@@ -230,7 +230,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// uses), so a tab that went stale before it was parked never learns of it. That
 	// lasts as long as the comparison goes unresolved rather than as long as a
 	// generation runs. Refusing is also what repairs it: the 409 rides
-	// reportFailure → reconcile → invalidateAll, so that tab is told why AND shown
+	// reportFailure → reconcile → refreshAll, so that tab is told why AND shown
 	// the comparison it didn't know about.
 	//
 	// Read here rather than earlier so it stays synchronous with registerInFlight

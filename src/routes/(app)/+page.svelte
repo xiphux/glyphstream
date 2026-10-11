@@ -771,7 +771,7 @@
 			// would otherwise only clear it on the next debounced commit).
 			draftWriter.cancel();
 			clearDraft(null);
-			await goto(resolve(`chat/${conversation.id}`), { invalidateAll: true });
+			await goto(resolve(`chat/${conversation.id}`), { refreshAll: true });
 		} catch (e) {
 			errorMsg = e instanceof Error ? e.message : String(e);
 		} finally {

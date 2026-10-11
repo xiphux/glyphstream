@@ -48,7 +48,7 @@ vi.mock('$app/navigation', async () => {
 	return {
 		goto: nav.goto,
 		invalidate: v.fn(async () => {}),
-		invalidateAll: v.fn(async () => {}),
+		refreshAll: v.fn(async () => {}),
 		afterNavigate: (cb: Parameters<ReturnType<typeof createKitStub>['afterNavigate']>[0]) =>
 			stub().afterNavigate(cb),
 		beforeNavigate: v.fn(),

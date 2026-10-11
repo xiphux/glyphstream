@@ -49,7 +49,7 @@ vi.mock('$app/state', async () => {
 vi.mock('$app/navigation', () => ({
 	goto: vi.fn(async () => {}),
 	invalidate: vi.fn(async () => {}),
-	invalidateAll: vi.fn(async () => {}),
+	refreshAll: vi.fn(async () => {}),
 	afterNavigate: (callback: Parameters<ReturnType<typeof createKitStub>['afterNavigate']>[0]) =>
 		stub().afterNavigate(callback),
 	beforeNavigate: vi.fn(),

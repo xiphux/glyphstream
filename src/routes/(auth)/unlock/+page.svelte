@@ -31,7 +31,7 @@
 				return;
 			}
 			// `data.from` is restricted to a same-origin path server-side.
-			await goto(data.from, { replaceState: true, invalidateAll: true });
+			await goto(data.from, { replaceState: true, refreshAll: true });
 		} finally {
 			busy = false;
 		}

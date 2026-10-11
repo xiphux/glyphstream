@@ -8,10 +8,10 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const invalidateAll = vi.fn(async () => {});
+const refreshAll = vi.fn(async () => {});
 const invalidate = vi.fn(async (_key: string) => {});
 vi.mock('$app/navigation', () => ({
-	invalidateAll: () => invalidateAll(),
+	refreshAll: () => refreshAll(),
 	invalidate: (key: string) => invalidate(key),
 }));
 vi.mock('#lib/title-pending.svelte.js', () => ({
@@ -124,7 +124,7 @@ function sseResponse(events: unknown[]): Response {
 }
 
 beforeEach(() => {
-	invalidateAll.mockClear();
+	refreshAll.mockClear();
 	invalidate.mockClear();
 });
 
@@ -159,7 +159,7 @@ describe('ChatTurnController — send', () => {
 		// `onStart` swapped in the canonical user row, `onDone` appended the reply —
 		// so it must NOT re-read the conversation. Only the sidebar is refreshed,
 		// for the generated title and the updated_at re-sort.
-		expect(invalidateAll).not.toHaveBeenCalled();
+		expect(refreshAll).not.toHaveBeenCalled();
 		expect(invalidate).toHaveBeenCalledWith('app:conversations');
 		vi.unstubAllGlobals();
 	});
@@ -218,11 +218,11 @@ describe('ChatTurnController — send', () => {
 		await turn.send('use a tool', []);
 
 		// sawToolCalls → the done row is NOT appended; only the user message is here,
-		// the intermediate + final rows come back via invalidateAll.
+		// the intermediate + final rows come back via refreshAll.
 		expect(state.messages.map((m) => m.id)).toEqual(['u1']);
 		expect(turn.streamedMessageId).toBe('a-final');
 		expect(turn.inFlightOpen).toBe(false);
-		expect(invalidateAll).toHaveBeenCalled();
+		expect(refreshAll).toHaveBeenCalled();
 		vi.unstubAllGlobals();
 	});
 
@@ -251,7 +251,7 @@ describe('ChatTurnController — send', () => {
 		await turn.send('hello', []);
 
 		expect(state.error).toBe('network down');
-		expect(invalidateAll).not.toHaveBeenCalled();
+		expect(refreshAll).not.toHaveBeenCalled();
 		vi.unstubAllGlobals();
 	});
 
@@ -269,7 +269,7 @@ describe('ChatTurnController — send', () => {
 		await turn.send('hello', []);
 
 		expect(state.error).toBeNull();
-		expect(invalidateAll).toHaveBeenCalled();
+		expect(refreshAll).toHaveBeenCalled();
 		expect(turn.inFlightOpen).toBe(false);
 		vi.unstubAllGlobals();
 	});
@@ -425,7 +425,7 @@ describe('ChatTurnController — approval resume', () => {
 		expect(turn.approvalSubmitting).toBe(false);
 		// Guard held (still on c1): the resume's inner post-stream invalidate ran,
 		// plus submitApproval's outer one — two invalidations.
-		expect(invalidateAll).toHaveBeenCalledTimes(2);
+		expect(refreshAll).toHaveBeenCalledTimes(2);
 		vi.unstubAllGlobals();
 	});
 
@@ -455,7 +455,7 @@ describe('ChatTurnController — approval resume', () => {
 		// invalidate runs. Regression guard: the old inline runApprovalStream took a
 		// `convId` param that shadowed the reactive one, making this check
 		// permanently true (dead abandon-on-switch guard); it would invalidate twice.
-		expect(invalidateAll).toHaveBeenCalledTimes(1);
+		expect(refreshAll).toHaveBeenCalledTimes(1);
 		vi.unstubAllGlobals();
 	});
 
@@ -624,11 +624,11 @@ describe('ChatTurnController — stop / recovery / teardown', () => {
 			expect(urls).toEqual(['/api/conversations/c1?fanout=1']);
 			// Registry still populated → keep polling, even though no message list
 			// was consulted at all.
-			expect(invalidateAll).not.toHaveBeenCalled();
+			expect(refreshAll).not.toHaveBeenCalled();
 
 			inFlightSince = null;
 			await vi.advanceTimersByTimeAsync(4000);
-			expect(invalidateAll).toHaveBeenCalledTimes(1);
+			expect(refreshAll).toHaveBeenCalledTimes(1);
 
 			// Terminated: no further ticks once it has resolved.
 			const seen = urls.length;
@@ -693,7 +693,7 @@ describe('ChatTurnController — stop / recovery / teardown', () => {
 
 	it('recovery poll leaves the start time alone on the terminating tick', async () => {
 		// The last tick reads both fields null, but the rest of the page's recovery
-		// state only updates when the invalidateAll it fires lands. Nulling the
+		// state only updates when the refreshAll it fires lands. Nulling the
 		// start time early would read as queued for that whole reload: a finishing
 		// turn flashing back to "Queued" with its timer gone.
 		vi.useFakeTimers();
@@ -715,7 +715,7 @@ describe('ChatTurnController — stop / recovery / teardown', () => {
 		const stop = turn.startRecoveryPoll();
 		try {
 			await vi.advanceTimersByTimeAsync(4000);
-			expect(invalidateAll).toHaveBeenCalled();
+			expect(refreshAll).toHaveBeenCalled();
 			expect(state.serverGeneratingSince).toBe(7000);
 			expect(turn.recoveredQueued).toBe(false);
 		} finally {
@@ -739,7 +739,7 @@ describe('ChatTurnController — stop / recovery / teardown', () => {
 			'/api/conversations/c1/cancel',
 			expect.objectContaining({ method: 'POST' }),
 		);
-		expect(invalidateAll).toHaveBeenCalled();
+		expect(refreshAll).toHaveBeenCalled();
 		vi.unstubAllGlobals();
 	});
 

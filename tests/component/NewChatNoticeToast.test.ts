@@ -35,7 +35,7 @@ vi.mock('$app/navigation', () => ({
 	// The strip is a replacing goto with a `.catch`, so this returns a thenable.
 	goto: vi.fn(async () => {}),
 	invalidate: vi.fn(async () => {}),
-	invalidateAll: vi.fn(async () => {}),
+	refreshAll: vi.fn(async () => {}),
 	afterNavigate: (callback: Parameters<ReturnType<typeof createKitStub>['afterNavigate']>[0]) =>
 		stub().afterNavigate(callback),
 	beforeNavigate: vi.fn(),

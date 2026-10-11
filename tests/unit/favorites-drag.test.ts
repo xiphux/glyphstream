@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 // favorite-models — stub it out so the import resolves in the node
 // vitest environment.
 vi.mock('$app/navigation', () => ({
-	invalidateAll: vi.fn(async () => {}),
+	refreshAll: vi.fn(async () => {}),
 }));
 vi.mock('#lib/toast.svelte.js', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 

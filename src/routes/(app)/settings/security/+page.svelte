@@ -1,6 +1,6 @@
 <script lang="ts">
 	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
-	import { afterNavigate, goto, invalidate, invalidateAll } from '$app/navigation';
+	import { afterNavigate, goto, invalidate, refreshAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Check, KeyRound, Laptop, Pencil, Plus, Trash2, X } from '@lucide/svelte';
 	import ProviderIcon from '#lib/components/ProviderIcon.svelte';
@@ -323,11 +323,11 @@
 			}
 			toast.success(timeoutMs === null ? 'App lock turned off.' : 'App lock updated.');
 		} finally {
-			// invalidateAll because the setting lives on the (app) layout's data,
+			// refreshAll because the setting lives on the (app) layout's data,
 			// which also starts or stops the keep-alive. Then put the select back
 			// on the saved value by hand: after a cancelled or failed change the
 			// data is unchanged, so the one-way `value` binding never re-applies.
-			await invalidateAll();
+			await refreshAll();
 			select.value = savedAppLockValue();
 			appLockBusy = false;
 		}

@@ -21,7 +21,7 @@
  */
 
 import { tick } from 'svelte';
-import { invalidate, invalidateAll } from '$app/navigation';
+import { invalidate, refreshAll } from '$app/navigation';
 import { isAbortError } from './abort';
 import type { ApprovalDecision } from './approval-workflow';
 import { runApprovalResume } from './approval-workflow';
@@ -456,7 +456,7 @@ export class ChatTurnController {
 			},
 			onTitle: (newTitle) => {
 				// Task-model auto-title arrived ahead of `done`. Update the chat-page
-				// header immediately; the sidebar refreshes via invalidateAll after
+				// header immediately; the sidebar refreshes via refreshAll after
 				// the stream closes.
 				this.#deps.setTitle(newTitle);
 			},
@@ -467,7 +467,7 @@ export class ChatTurnController {
 				//
 				// Multi-iteration turn (sawToolCalls): `done` carries only the FINAL
 				// iteration's row; the intermediate assistant + role:'tool' rows live
-				// in the DB and come back via invalidateAll once the stream closes.
+				// in the DB and come back via refreshAll once the stream closes.
 				// Keep the in-flight bubble visible until then so the user doesn't
 				// stare at a blank gap.
 				this.streamedMessageId = assistantMessage.id;
@@ -503,7 +503,7 @@ export class ChatTurnController {
 	#handleSendError(e: unknown, turnConvId: string): void {
 		if (this.#deps.convId() !== turnConvId) return;
 		if (isAbortError(e) || this.interrupted) {
-			void invalidateAll();
+			void refreshAll();
 		} else {
 			this.#deps.setError(e instanceof Error ? e.message : String(e));
 		}
@@ -543,7 +543,7 @@ export class ChatTurnController {
 		// descendants on the active branch) out of the visible list so the
 		// in-flight bubble visually takes the retried message's slot. Otherwise
 		// the user briefly sees the old response above the streaming new one until
-		// invalidateAll runs after 'done'.
+		// refreshAll runs after 'done'.
 		const isRetry = !!options.retryFromMessageId;
 		let optimisticId: string | null = null;
 		let sawToolCalls: boolean;
@@ -647,7 +647,7 @@ export class ChatTurnController {
 					// Await the reload so the in-flight bubble (still visible for
 					// multi-iteration tool turns — see the `done` handler) only clears
 					// once the canonical message rows are in `messages`.
-					await invalidateAll();
+					await refreshAll();
 				} else {
 					// Plain single-iteration append: both new rows are already canonical
 					// in `messages` — `onStart` swapped the optimistic user bubble for
@@ -702,19 +702,19 @@ export class ChatTurnController {
 		try {
 			await this.#runApprovalStream(this.#deps.convId(), decisions);
 			this.#deps.clearApprovalDecisions();
-			await invalidateAll();
+			await refreshAll();
 		} catch (e) {
 			// AbortError from clicking Stop mid-resume is expected and shouldn't
 			// surface as a red banner — same convention as the initial-send path.
 			// The server-side recorder will have committed whatever partial text it
-			// had; invalidateAll on the way out picks that up.
+			// had; refreshAll on the way out picks that up.
 			if (!isAbortError(e)) {
 				this.#deps.setApprovalError(e instanceof Error ? e.message : String(e));
 			}
-			await invalidateAll();
+			await refreshAll();
 		} finally {
 			// Only clear if we still own the latch — a thread switch (teardown) or a
-			// newer resume may have taken it while we were parked on invalidateAll().
+			// newer resume may have taken it while we were parked on refreshAll().
 			if (this.#approvalSubmitToken === token) this.approvalSubmitting = false;
 		}
 	}
@@ -745,7 +745,7 @@ export class ChatTurnController {
 				}),
 			);
 			if (this.#deps.convId() === turnConvId) {
-				await invalidateAll();
+				await refreshAll();
 				if (sawToolCalls) {
 					this.inFlightOpen = false;
 					this.#resetInFlightSegments();
@@ -782,7 +782,7 @@ export class ChatTurnController {
 			// Recovered case: nothing local to abort. Re-sync so the cancelled state
 			// lands; the recovery poll backstops this if the server hasn't finished
 			// tearing down yet.
-			void invalidateAll();
+			void refreshAll();
 		}
 	}
 
@@ -791,7 +791,7 @@ export class ChatTurnController {
 	 * recovered bubble — the local fetch died to an iOS suspension or dropped
 	 * connection), poll so the "Generating…" bubble resolves the moment the
 	 * generation finishes — even if the user just stays in the app.
-	 * invalidateAll() is too heavy to poll (it re-fetches every endpoint's model
+	 * refreshAll() is too heavy to poll (it re-fetches every endpoint's model
 	 * list). Returns a cleanup fn for the caller's $effect.
 	 *
 	 * Rides the `?fanout=1` variant, which returns `inFlightSince` without
@@ -822,7 +822,7 @@ export class ChatTurnController {
 				//
 				// Only while the turn is still registered. The terminating tick reads
 				// both fields null, and `serverInFlightSince` (+ the message list) stay
-				// as they were until the `invalidateAll` below lands — so nulling this
+				// as they were until the `refreshAll` below lands — so nulling this
 				// one early makes `recoveredQueued` true for that whole reload, flashing
 				// a finishing turn back to "Queued" with its timer gone. The re-seed
 				// clears all of them together instead. Nothing is hidden by skipping
@@ -843,7 +843,7 @@ export class ChatTurnController {
 					clearInterval(interval);
 					// One full reload to pull in the finished message, the AI title, and
 					// the now-cleared in-flight state.
-					await invalidateAll();
+					await refreshAll();
 				}
 			} catch {
 				// Transient — the next tick retries.

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { Trash2, Upload, Download, Pencil, Plus, X } from '@lucide/svelte';
 	import { SNIPPET_KINDS, type PromptSnippet, type SnippetKind } from '#lib/types/api.js';
 	import { SNIPPET_TRIGGER, snippetAppliesToKind } from '#lib/prompt-snippet-trigger.js';
@@ -75,7 +75,7 @@
 	 *  edit here is reflected in the autocomplete without a full reload. */
 	async function refresh() {
 		invalidateSnippets();
-		await invalidateAll();
+		await refreshAll();
 	}
 
 	function openCreate() {

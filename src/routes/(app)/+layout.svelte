@@ -11,7 +11,7 @@
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
 	import { MediaQuery } from 'svelte/reactivity';
-	import { afterNavigate, goto, invalidate, invalidateAll } from '$app/navigation';
+	import { afterNavigate, goto, invalidate, refreshAll } from '$app/navigation';
 	import { navigating, page } from '$app/state';
 	import { DropdownMenu } from 'bits-ui';
 	import Toaster from '#lib/components/Toaster.svelte';
@@ -239,7 +239,7 @@
 				appLockCovered = false;
 			} else if (res.status === 401) {
 				// Session gone entirely — let the layout load send us to /login.
-				await invalidateAll();
+				await refreshAll();
 			}
 		} catch {
 			// Offline, unreachable, timed out or superseded: stay covered.
@@ -282,7 +282,7 @@
 	//
 	// Once, at mount, not on every `data` refresh: mid-session the client's own
 	// marks are the authoritative, immediate signal, so re-reading server state
-	// on each `invalidateAll` would be redundant work that can only lag them.
+	// on each `refreshAll` would be redundant work that can only lag them.
 	//
 	// The conversation being *displayed* is skipped because the chat page owns a
 	// strictly better signal for it — `recoveredInFlight` qualifies the same
@@ -315,7 +315,7 @@
 	// Gated on a boolean rather than the set itself so one of several
 	// conversations finishing doesn't restart the timer, and self-terminating:
 	// the last dot clearing stops the interval.
-	// `/api/conversations?generating=1` returns bare ids — invalidateAll would
+	// `/api/conversations?generating=1` returns bare ids — refreshAll would
 	// re-fetch every endpoint's model list, far too heavy for an interval.
 	const GENERATING_POLL_MS = 5000;
 	const generatingActive = $derived(anyGenerating());
@@ -588,7 +588,7 @@
 	const convUi = new ConversationUiActions({
 		getPathname: () => page.url.pathname,
 		goto,
-		invalidateAll,
+		refreshAll,
 		invalidateConversations: () => invalidate('app:conversations'),
 	});
 

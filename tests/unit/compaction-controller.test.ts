@@ -14,8 +14,8 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const invalidateAll = vi.fn(async () => {});
-vi.mock('$app/navigation', () => ({ invalidateAll: () => invalidateAll() }));
+const refreshAll = vi.fn(async () => {});
+vi.mock('$app/navigation', () => ({ refreshAll: () => refreshAll() }));
 
 const toastCalls = vi.hoisted(() => ({
 	success: [] as unknown[],
@@ -109,7 +109,7 @@ function sseCompactOk(summaryId = 's1'): Response {
 }
 
 beforeEach(() => {
-	invalidateAll.mockClear();
+	refreshAll.mockClear();
 	confirmAsk.mockClear();
 	confirmAsk.mockResolvedValue(true);
 	toastCalls.success.length = 0;
@@ -178,7 +178,7 @@ describe('manual compaction', () => {
 		const outcome = await c.compact();
 
 		expect(outcome).toEqual({ status: 'compacted' });
-		expect(invalidateAll).toHaveBeenCalled();
+		expect(refreshAll).toHaveBeenCalled();
 		expect(toastCalls.success).toHaveLength(1);
 		// The page — not the controller — owns the scroll/highlight.
 		expect(state.compactedWith).toEqual(['summary-42']);
@@ -257,7 +257,7 @@ describe('undo', () => {
 		const { deps } = makeDeps();
 		const c = new CompactionController(deps);
 		vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }));
-		invalidateAll.mockRejectedValueOnce(new Error('load failed'));
+		refreshAll.mockRejectedValueOnce(new Error('load failed'));
 
 		await c.undo();
 

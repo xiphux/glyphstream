@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('$app/navigation', () => ({
 	invalidate: (key: string) => mocks.invalidate(key),
-	invalidateAll: vi.fn(async () => {}),
+	refreshAll: vi.fn(async () => {}),
 	goto: vi.fn(async () => {}),
 	afterNavigate: vi.fn(),
 	beforeNavigate: vi.fn(),

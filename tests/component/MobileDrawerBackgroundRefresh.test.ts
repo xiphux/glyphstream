@@ -55,7 +55,7 @@ vi.mock('$app/state', async () => {
 vi.mock('$app/navigation', () => ({
 	goto: vi.fn(async () => {}),
 	invalidate: vi.fn(async () => {}),
-	invalidateAll: vi.fn(async () => {}),
+	refreshAll: vi.fn(async () => {}),
 	// Registered against the same stub, so `navigate()` below dispatches to the
 	// layout's real callback while `refreshData()` deliberately does not.
 	afterNavigate: (callback: Parameters<ReturnType<typeof createKitStub>['afterNavigate']>[0]) =>

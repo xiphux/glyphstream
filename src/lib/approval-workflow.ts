@@ -6,7 +6,7 @@
  *
  * ChatTurnController owns the surrounding state machine (the
  * approvalSubmitting latch, the in-flight resume stream, post-resume
- * invalidateAll); the chat page only forwards decisions via
+ * refreshAll); the chat page only forwards decisions via
  * turn.submitApproval(...) and reads turn.approvalSubmitting for UI guards.
  * What lives here is the type that previously duplicated across five
  * component files, the pure decision-snapshot builder (default-to-reject is

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import ModelPicker from '#lib/components/chat/ModelPicker.svelte';
 	import { ImagePlus } from '@lucide/svelte';
 	import { errorMessageFromResponse } from '#lib/fetch-error.js';
@@ -271,14 +271,14 @@
 					// The preset itself is already saved. Flip the form into edit mode
 					// before rethrowing so a retry PATCHes that row instead of POSTing a
 					// second one — nothing enforces name uniqueness (see the index note
-					// on `custom_models` in schema.ts), and with `invalidateAll` skipped
+					// on `custom_models` in schema.ts), and with `refreshAll` skipped
 					// below the list doesn't show the first one either, so a duplicate
 					// looks like the retry working.
 					editingId = savedId;
 					throw e;
 				}
 				resetForm();
-				await invalidateAll();
+				await refreshAll();
 			},
 		);
 	}
@@ -298,7 +298,7 @@
 					throw new Error(await errorMessageFromResponse(res));
 				}
 				if (editingId === m.id) resetForm();
-				await invalidateAll();
+				await refreshAll();
 			},
 		);
 	}

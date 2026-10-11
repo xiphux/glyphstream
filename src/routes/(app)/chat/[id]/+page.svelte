@@ -5,7 +5,7 @@
 	import { fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, refreshAll } from '$app/navigation';
 	import { navigating } from '$app/state';
 	import { getModelCatalogue } from '#lib/model-catalogue.svelte.js';
 	import { observeSentinel } from '#lib/observe-sentinel.js';
@@ -158,7 +158,7 @@
 	 * of "the model drew its own portrait", and the reason the action is offered
 	 * on the chat surface at all and not just in the gallery.
 	 *
-	 * `invalidateAll()` on purpose, despite this page's careful avoidance of it
+	 * `refreshAll()` on purpose, despite this page's careful avoidance of it
 	 * elsewhere: the avatar shown in the bubbles comes from THIS page's load
 	 * (`assistantAvatarMediaId`), not the layout's preset list, so a targeted
 	 * `invalidate('app:conversations')` would refresh the picker's checkmarks
@@ -188,7 +188,7 @@
 				target.kind === 'conversation'
 					? 'this conversation'
 					: data.customModels.find((c) => c.id === target.id)?.name;
-			await invalidateAll();
+			await refreshAll();
 			toast.success(name ? `Avatar set for ${name}` : 'Avatar set');
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : 'Failed to set avatar');
@@ -544,7 +544,7 @@
 			// telling them its avatar changed — would be noise about someone else's
 			// thread. Navigating back re-runs the load anyway.
 			if (convId === cid) {
-				await invalidateAll();
+				await refreshAll();
 				if (drew) toast.success('Avatar updated');
 			}
 		} catch (e) {
@@ -725,7 +725,7 @@
 	 * calling effect. A mid-turn `create_canvas`/`update_canvas` mutates
 	 * `canvas.docs`, which would then re-fire the seeding effect and reset
 	 * `messages` back to the (pre-turn) load data, making the user's just-sent
-	 * prompt bubble vanish until the end-of-turn invalidateAll.
+	 * prompt bubble vanish until the end-of-turn refreshAll.
 	 */
 	function maybeAutoOpenCanvas(): void {
 		untrack(() => {
@@ -743,7 +743,7 @@
 	// page load, i.e. a pre-turn snapshot: re-seeding from it would wipe the
 	// messages this turn just appended and clobber a live-streamed title back to
 	// null. Comparing identity re-seeds on a genuine page-data change (entering
-	// another conversation, or the post-tool-turn invalidateAll) and skips the
+	// another conversation, or the post-tool-turn refreshAll) and skips the
 	// layout-only refresh.
 	// svelte-ignore state_referenced_locally
 	let seededFromConversation: unknown = data.conversation;
@@ -760,7 +760,7 @@
 		serverGeneratingSince = data.inFlightGeneratingSince;
 		avatarDraw.syncFromServer(data.avatarDrawSince);
 		// Re-seed the canvas ONLY when switching conversations. A mid-turn
-		// invalidateAll refreshes `data` with the same id — re-hydrating then
+		// refreshAll refreshes `data` with the same id — re-hydrating then
 		// would reopen a pane the user closed and clobber the just-applied live
 		// state, which already matches the persisted content.
 		if (data.conversation.id !== hydratedCanvasConvId) {
@@ -1139,7 +1139,7 @@
 	// Compared against the last id rather than just read: touching
 	// `data.conversation` makes the whole `data` prop a dependency, so this fired
 	// on *any* invalidation, not just a conversation change. It was invisible
-	// while every turn ended in `invalidateAll()` — the clear was immediately
+	// while every turn ended in `refreshAll()` — the clear was immediately
 	// followed by a re-seeded `messages`, which re-ran the auto-attach effect and
 	// put the image back — but it meant each turn needlessly tore down and
 	// rebuilt the composer's attachments, and a layout-only invalidation would
@@ -1627,10 +1627,10 @@
 			// grid (losing the QUEUED badge + timer). If the connections actually
 			// died (iOS suspend), the branch fetches error and runBranch hands the
 			// fan-out off to recovery itself.
-			void invalidateAll();
+			void refreshAll();
 		} else {
 			// A draw reconciles through the cheap probe, not a reload: a turn is over
-			// in seconds, a draw takes minutes, and a full `invalidateAll()` per
+			// in seconds, a draw takes minutes, and a full `refreshAll()` per
 			// refocus across those minutes re-downloads a branch that cannot have
 			// changed. The controller owns the scoping and the no-clear-here rule —
 			// see `reconcileIfOwed`.
@@ -1653,7 +1653,7 @@
 	 *
 	 * Only the acknowledgment rides this, not the reconciliation in the visible
 	 * branch above: that path already self-heals through the recovery polls and
-	 * `syncFromServer`, and its `invalidateAll()` is the expensive refetch this
+	 * `syncFromServer`, and its `refreshAll()` is the expensive refetch this
 	 * route goes out of its way to avoid. `becameVisible()` re-reads visibility
 	 * and the pending navigation when its timer fires, and dismissal is
 	 * idempotent, so a platform that fires BOTH events costs one extra string
@@ -1674,7 +1674,7 @@
 		isOffline = false;
 		// Same reasoning as the visibility path — don't pre-emptively abort a
 		// live fan-out; an actually-dropped branch fetch recovers via runBranch.
-		if (turn.wasOfflineDuringFetch) void invalidateAll();
+		if (turn.wasOfflineDuringFetch) void refreshAll();
 		else avatarDraw.reconcileIfOwed();
 	}
 
@@ -1980,7 +1980,7 @@
 	// recovered bubble — the local fetch died to an iOS suspension or dropped
 	// connection), the controller polls the in-flight registry so the
 	// "Generating…" bubble resolves the moment the generation finishes — even
-	// if the user just stays in the app. invalidateAll() is too heavy to poll (it
+	// if the user just stays in the app. refreshAll() is too heavy to poll (it
 	// re-fetches every endpoint's model list); see startRecoveryPoll for why it
 	// rides the branch-walk-free `?fanout=1` variant.
 	$effect(() => {
@@ -2361,7 +2361,7 @@
 	// conversation) would hide the composer with no inline editor to replace
 	// it, leaving no way to type. Drafts are per-conversation, so each switch
 	// loads its own (usually empty); see #lib/composer-draft. Guarded on a real
-	// id change so a same-conversation invalidateAll() can't wipe a draft
+	// id change so a same-conversation refreshAll() can't wipe a draft
 	// mid-compose.
 	let composerResetConvId: string | undefined;
 	$effect(() => {
@@ -2489,7 +2489,7 @@
 			if (!res.ok) {
 				throw new Error(await errorMessageFromResponse(res));
 			}
-			await invalidateAll();
+			await refreshAll();
 			// Wait one microtask for the messages-sync $effect to apply the
 			// new data and the DOM to reflect it, then scroll the sibling
 			// into the middle of the viewport.
@@ -2542,7 +2542,7 @@
 			if (!res.ok && res.status !== 404) {
 				throw new Error(await errorMessageFromResponse(res));
 			}
-			await invalidateAll();
+			await refreshAll();
 		} catch (e) {
 			errorMsg = `Couldn't delete branch: ${e instanceof Error ? e.message : String(e)}`;
 		}

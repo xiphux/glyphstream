@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, refreshAll } from '$app/navigation';
 	import { DropdownMenu } from 'bits-ui';
 	import { ArchiveRestore, MoreVertical, Trash2 } from '@lucide/svelte';
 	import type { ConversationSummary } from '#lib/types/api.js';
@@ -29,7 +29,7 @@
 		busyId = id;
 		try {
 			await setArchived(id, false);
-			await invalidateAll();
+			await refreshAll();
 		} catch (e) {
 			toast.error(`Couldn't unarchive: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
@@ -52,7 +52,7 @@
 		busyId = id;
 		try {
 			await deleteConversation(id, deleteMedia);
-			await invalidateAll();
+			await refreshAll();
 		} catch (e) {
 			toast.error(`Couldn't delete: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {

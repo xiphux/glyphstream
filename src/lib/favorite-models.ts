@@ -7,7 +7,7 @@
  * trigger `invalidate('app:prefs')` so the layout reloads `data.prefs` and
  * every place that reads it (sidebar favorites section, picker favorites
  * group, star fill state on each row) re-renders consistently. Scoped to the
- * layout's key rather than `invalidateAll()` — starring a model shouldn't
+ * layout's key rather than `refreshAll()` — starring a model shouldn't
  * re-run the open page's load, which on the chat route means re-serializing
  * the whole conversation to move one star. We don't
  * optimistically update — the model picker's star fill is derived from
