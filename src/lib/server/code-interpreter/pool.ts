@@ -229,6 +229,10 @@ export async function runPython(params: RunPythonParams): Promise<WorkerRunResul
 			try {
 				return await new Promise<WorkerRunResult>((resolve, reject) => {
 					let settled = false;
+					// Declared before `finish` and the abort path, both of which
+					// clear it: a signal that is already aborted settles the call
+					// before the timer is armed.
+					let timeoutHandle: ReturnType<typeof setTimeout> | undefined = undefined;
 					const finish = (err: Error | null, value?: WorkerRunResult) => {
 						if (settled) return;
 						settled = true;
@@ -267,7 +271,7 @@ export async function runPython(params: RunPythonParams): Promise<WorkerRunResul
 						params.ctxSignal.addEventListener('abort', onAbort);
 					}
 
-					const timeoutHandle = setTimeout(() => {
+					timeoutHandle = setTimeout(() => {
 						// Same ordering reason as onAbort: settle the promise with the
 						// authoritative timeout error before terminating, so the
 						// 'exit' handler can't race in and overwrite it with a less

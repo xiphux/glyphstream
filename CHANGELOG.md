@@ -16,6 +16,12 @@ arrived.
   start other programs, or open network connections of its own; its web
   requests go through the server's network policy as before.
 
+### Fixed
+
+- Stopping a reply while the Python interpreter was still preparing could
+  leave that conversation's interpreter stuck until the server restarted, and
+  enough of them would stop new interpreters from starting.
+
 ## v0.44.1
 
 ### Fixed

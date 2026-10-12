@@ -657,6 +657,42 @@ describe('ctxSignal — abort terminates the worker', () => {
 		await expect(p).rejects.toThrow(/aborted/);
 		expect(createdWorkers[0].terminated).toBe(true);
 	});
+
+	it('handles a signal that is already aborted when the call is dispatched', async () => {
+		// Stop pressed while run_python was still gathering files: the signal
+		// is aborted before the pool reaches the abort check. The call must
+		// reject with the abort (not a ReferenceError from the timeout handle
+		// not existing yet) and must not leave a phantom in-flight call
+		// holding the worker.
+		const ctrl = new AbortController();
+		ctrl.abort();
+		await expect(
+			runPython({
+				conversationId: 'pre-aborted',
+				userId: 'u-pre',
+				code: '1',
+				disabledFeatures: [],
+				ctxSignal: ctrl.signal,
+			}),
+		).rejects.toThrow(/run_python: aborted by caller/);
+		expect(createdWorkers[0].terminated).toBe(true);
+		expect(createdWorkers[0].posts.some((m) => (m as { type: string }).type === 'run')).toBe(false);
+
+		// The conversation gets a fresh interpreter on the next call.
+		setWorkerFactoryForTests(() => {
+			const w = new MockWorker();
+			w.onRun = ({ callId }) => replyOk(w, callId, 'ok');
+			createdWorkers.push(w);
+			return w;
+		});
+		const next = await runPython({
+			conversationId: 'pre-aborted',
+			userId: 'u-pre',
+			code: '1',
+			disabledFeatures: [],
+		});
+		expect(next.result).toBe('ok');
+	});
 });
 
 // ---------------------------------------------------------------------------
