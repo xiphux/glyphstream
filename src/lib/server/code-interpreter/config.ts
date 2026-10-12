@@ -33,8 +33,8 @@ export interface LoadedCodeInterpreterConfig {
 	/** Wall-clock budget per individual `runPython` call. On overrun the
 	 *  worker is terminated and the entry transitions to 'failed'. */
 	callTimeoutSeconds: number;
-	/** V8 old-space cap for each worker, in megabytes. Sets
-	 *  `resourceLimits.maxOldGenerationSizeMb` on the spawned Worker. */
+	/** V8 heap cap for each worker process, in megabytes. Sets
+	 *  `--max-old-space-size` on the spawned child process. */
 	workerMemoryMb: number;
 	/** Optional override for Pyodide's `indexURL`. Empty string = resolve
 	 *  from the installed `pyodide` package's `node_modules` location.

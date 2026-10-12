@@ -1,157 +1,149 @@
 /**
  * Pyodide code-interpreter worker.
  *
- * Runs inside a `worker_threads.Worker` spawned by the pool. Loads Pyodide
- * lazily on first `run` message, installs a `globalThis.fetch` shim that
- * routes every outbound HTTP call through the shared URL-policy module,
- * then executes user code against a persistent Python interpreter.
+ * Runs as a CHILD PROCESS spawned by the pool (spawn.ts) under Node's
+ * permission model: no environment, fs read limited to this bundle and the
+ * Pyodide package, no fs write, no network, no child processes. Loads
+ * Pyodide on `init`, then executes model-written code against one persistent
+ * interpreter per conversation.
  *
- * Message protocol:
+ * Message protocol (IPC, structured-clone serialization):
  *  - host → worker
- *      { type: 'init', indexURL?: string }
- *      { type: 'run', callId: number, code: string, disabledFeatures: string[] }
+ *      { type: 'init', indexURL?: string, pyodideModuleUrl: string }
+ *      { type: 'run', callId, code, preFiles }
+ *      { type: 'fetch-result', fetchId, response } | { type: 'fetch-result', fetchId, error }
  *  - worker → host
  *      { type: 'ready' }
- *      { type: 'result', callId: number, stdout: string, stderr: string,
- *        result: unknown }
- *      { type: 'error', callId: number, message: string }
+ *      { type: 'result', callId, stdout, stderr, result, newFiles }
+ *      { type: 'error', callId, message }
+ *      { type: 'fetch', fetchId, request }
+ *      { type: 'cache-package', path, bytes }
  *
- * Stage 3 ships the shim, the message loop, and the Pyodide bootstrap.
- * The shim already consults stage 2's `assertHttpScheme` /
- * `assertNotConfiguredBackend` / `assertHostnameRoutable`; the `web`
- * feature-category check (`disabledFeatures.has('web')`) is honored
- * here too, ready for stage 4 to populate `disabledFeatures` from the
- * conversation. With no caller wired in yet, any incoming `run` is a
- * test fixture or stage-4 plumbing — the network shim still applies.
- *
- * Why a global `fetch` override: Pyodide's `pyfetch` (and therefore
- * `urllib`, `requests`, `micropip`) resolves to whatever `fetch` exists
- * on the global at call time. Replacing it once before `loadPyodide`
- * is enough to gate every Python network call through one chokepoint.
+ * Networking: Pyodide's `pyfetch` (and so `urllib`, `requests`, `micropip`)
+ * resolves to whatever `fetch` exists on the global at call time. That is
+ * replaced below with a shim that sends the request to the host, which owns
+ * the whole URL policy (net-proxy.ts). The shim is a convenience, not the
+ * boundary — the process has no network permission, so anything that slips
+ * past it (Pyodide's socket transport, `getBuiltinModule('net')`) fails.
  */
 
-import { parentPort } from 'node:worker_threads';
 import { createHash } from 'node:crypto';
-import { loadPyodide, type PyodideInterface } from 'pyodide';
-import { assertHostnameRoutable, assertHttpScheme, UrlPolicyError } from '../tools/url-policy-base';
+import { constants as fsConstants } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+import { dirname } from 'node:path';
+import process from 'node:process';
+import { fileURLToPath } from 'node:url';
+import type { PyodideInterface } from 'pyodide';
 
-// `parentPort` is non-null inside a worker_threads worker. If it's null
-// we've been imported by the main thread (test, dev tooling) — bail
-// politely rather than installing global shims into the host process.
-if (!parentPort) {
-	throw new Error('code-interpreter/worker.ts must be loaded inside a worker_threads worker');
+if (typeof process.send !== 'function') {
+	throw new Error('code-interpreter/worker must be spawned as a child process with an IPC channel');
+}
+const sendToHost = (msg: unknown): void => {
+	process.send?.(msg);
+};
+// The host died or dropped us: don't linger as an orphan interpreter.
+process.on('disconnect', () => process.exit(0));
+
+// Pyodide's NODEFS static init reads `process.binding("constants").fs`, and
+// the permission model refuses `process.binding` outright. Answer that one
+// lookup from the public `fs.constants`; everything else stays refused.
+{
+	const proc = process as unknown as { binding: (name: string) => unknown };
+	const realBinding = proc.binding.bind(process);
+	proc.binding = (name: string) => (name === 'constants' ? { fs: fsConstants } : realBinding(name));
 }
 
-type DisabledFeatures = ReadonlySet<string>;
-const NETWORK_FEATURE = 'web';
+/**
+ * Pyodide caches a wheel it downloaded from its CDN by writing it into its
+ * own package directory, and treats a failed write as a failed import. This
+ * process has no write permission, so a denied write under that directory is
+ * handed to the host, which caches the wheel only if it matches Pyodide's
+ * lockfile (package-cache.ts), and the import carries on with the bytes it
+ * already has. Every other write keeps failing as before.
+ */
+function routePackageCacheWritesToHost(packageDir: string): void {
+	const fsp = process.getBuiltinModule('node:fs/promises');
+	const realWriteFile = fsp.writeFile;
+	const prefix = packageDir.endsWith('/') ? packageDir : `${packageDir}/`;
+	(fsp as { writeFile: typeof realWriteFile }).writeFile = async (file, data, options) => {
+		try {
+			await realWriteFile(file, data, options);
+		} catch (err) {
+			const denied = (err as { code?: unknown }).code === 'ERR_ACCESS_DENIED';
+			if (!denied || typeof file !== 'string' || !file.startsWith(prefix)) throw err;
+			if (!(data instanceof Uint8Array)) throw err;
+			sendToHost({ type: 'cache-package', path: file, bytes: data });
+		}
+	};
+	// Pyodide imports `node:fs/promises` as an ES module; propagate the
+	// replacement into that namespace.
+	syncBuiltinESMExports();
+}
 
 interface CurrentCall {
-	disabledFeatures: DisabledFeatures;
+	callId: number;
 }
 
-// Per-call closure. The fetch shim reads this; the run handler stamps
-// it before executing user code and clears it after. Network calls
-// outside an authorized run (e.g. background Pyodide internals fetching
-// stdlib chunks AFTER the initial load) are refused.
+// Set while a `run` is executing. The fetch shim refuses outside a run, so
+// background Pyodide internals can't reach the host proxy between calls.
 let currentCall: CurrentCall | null = null;
 
-// Configured-backend host set, supplied by the pool at init time. The
-// worker can't read config.toml itself (it lives outside Vite's
-// transform pipeline and has no env layer in the bundled standalone
-// build), so the host snapshots the policy and ships it across the
-// message channel — same protection, no shared dependency on the
-// SvelteKit env runtime.
-let forbiddenHosts: ReadonlySet<string> = new Set();
-
-function assertNotForbiddenHost(url: URL): void {
-	const host = url.hostname.toLowerCase();
-	if (forbiddenHosts.has(host)) {
-		throw new UrlPolicyError(
-			`Refused: ${host} is a configured backend (an upstream LLM or search endpoint); the model is not allowed to reach it through tool calls.`,
-		);
-	}
+interface FetchResponseWire {
+	status: number;
+	statusText: string;
+	headers: Array<[string, string]>;
+	body: Uint8Array<ArrayBuffer>;
+	url: string;
 }
+type FetchResultMessage =
+	| { type: 'fetch-result'; fetchId: number; response: FetchResponseWire }
+	| { type: 'fetch-result'; fetchId: number; error: string };
 
-const realFetch = globalThis.fetch.bind(globalThis);
-const MAX_REDIRECTS = 3;
+let nextFetchId = 1;
+const pendingFetches = new Map<number, (msg: FetchResultMessage) => void>();
+const NULL_BODY_STATUSES = new Set([101, 103, 204, 205, 304]);
 
 globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
 	if (!currentCall) {
-		throw new UrlPolicyError('Refused: network call outside an authorized run_python invocation.');
+		throw new Error('Refused: network call outside an authorized run_python invocation.');
 	}
+	const request = new Request(input, init);
+	const body = request.body ? new Uint8Array(await request.arrayBuffer()) : null;
+	const headers: Array<[string, string]> = [];
+	request.headers.forEach((value, key) => headers.push([key, value]));
 
-	let target: URL;
-	if (input instanceof URL) {
-		target = new URL(input.href);
-	} else if (typeof input === 'string') {
-		target = new URL(input);
-	} else {
-		target = new URL(input.url);
-	}
+	const fetchId = nextFetchId++;
+	const reply = new Promise<FetchResultMessage>((resolve) => pendingFetches.set(fetchId, resolve));
+	sendToHost({
+		type: 'fetch',
+		fetchId,
+		request: { url: request.url, method: request.method, headers, body },
+	});
+	const msg = await reply;
+	if ('error' in msg) throw new Error(msg.error);
 
-	return followWithRevalidation(target, init, currentCall);
+	const r = msg.response;
+	const response = new Response(NULL_BODY_STATUSES.has(r.status) ? null : r.body, {
+		status: r.status,
+		statusText: r.statusText,
+		headers: r.headers,
+	});
+	Object.defineProperty(response, 'url', { value: r.url });
+	return response;
 };
-
-async function followWithRevalidation(
-	initial: URL,
-	init: RequestInit | undefined,
-	call: CurrentCall,
-): Promise<Response> {
-	let current = initial;
-	const lastBodyInit = init?.body;
-	for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-		assertHttpScheme(current);
-		assertNotForbiddenHost(current);
-		if (call.disabledFeatures.has(NETWORK_FEATURE)) {
-			throw new UrlPolicyError(
-				'Refused: web access is disabled for this conversation; Python network calls (including pyfetch / micropip) are blocked.',
-			);
-		}
-		await assertHostnameRoutable(current.hostname);
-
-		// `redirect: 'manual'` so the policy re-runs on every hop. Body is
-		// only forwarded on the first hop (a redirect that wants a body
-		// would normally use 307/308 anyway; we don't replay it because
-		// preserving body semantics across hops is its own can of worms).
-		const res = await realFetch(current, {
-			...init,
-			redirect: 'manual',
-			body: hop === 0 ? lastBodyInit : undefined,
-		});
-
-		if (res.status >= 300 && res.status < 400) {
-			const loc = res.headers.get('location');
-			await res.body?.cancel().catch(() => {});
-			if (!loc) {
-				throw new UrlPolicyError(
-					`HTTP ${res.status} redirect from ${current.hostname} without a Location header.`,
-				);
-			}
-			if (hop >= MAX_REDIRECTS) {
-				throw new UrlPolicyError(`Refused: exceeded ${MAX_REDIRECTS} redirects.`);
-			}
-			try {
-				current = new URL(loc, current);
-			} catch {
-				throw new UrlPolicyError(`Redirect Location "${loc}" is not a valid URL.`);
-			}
-			continue;
-		}
-
-		return res;
-	}
-	throw new UrlPolicyError(`Refused: exceeded ${MAX_REDIRECTS} redirects.`);
-}
 
 // --- Pyodide bootstrap + message loop -------------------------------------
 
 let pyodide: PyodideInterface | null = null;
 let pyodideInitPromise: Promise<PyodideInterface> | null = null;
 
-async function getPyodide(indexURL?: string): Promise<PyodideInterface> {
+async function getPyodide(moduleUrl?: string, indexURL?: string): Promise<PyodideInterface> {
 	if (pyodide) return pyodide;
 	if (pyodideInitPromise) return pyodideInitPromise;
+	if (!moduleUrl) throw new Error('code-interpreter worker: init did not supply pyodideModuleUrl');
 	pyodideInitPromise = (async () => {
+		routePackageCacheWritesToHost(dirname(fileURLToPath(moduleUrl)));
+		const { loadPyodide } = (await import(moduleUrl)) as typeof import('pyodide');
 		// loadPyodide accepts an explicit indexURL; absent, it discovers
 		// the package directory next to its own bundled JS, which works
 		// for the `pyodide` npm package's normal install layout.
@@ -178,31 +170,32 @@ interface RunMessage {
 	type: 'run';
 	callId: number;
 	code: string;
-	disabledFeatures: string[];
 	preFiles: PreFile[];
 }
 
 interface InitMessage {
 	type: 'init';
 	indexURL?: string;
-	/** Hostnames whose model-controlled fetches should be refused. Comes
-	 *  from `listForbiddenHosts()` on the host side at worker creation. */
-	forbiddenHosts?: readonly string[];
+	pyodideModuleUrl?: string;
 }
 
-type HostMessage = RunMessage | InitMessage;
+type HostMessage = RunMessage | InitMessage | FetchResultMessage;
 
-parentPort.on('message', async (msg: HostMessage) => {
-	if (!parentPort) return;
+process.on('message', (raw: unknown) => void handleHostMessage(raw as HostMessage));
+
+async function handleHostMessage(msg: HostMessage): Promise<void> {
+	if (msg.type === 'fetch-result') {
+		const resolve = pendingFetches.get(msg.fetchId);
+		pendingFetches.delete(msg.fetchId);
+		resolve?.(msg);
+		return;
+	}
 	if (msg.type === 'init') {
 		try {
-			if (msg.forbiddenHosts) {
-				forbiddenHosts = new Set(msg.forbiddenHosts.map((h) => h.toLowerCase()));
-			}
-			await getPyodide(msg.indexURL);
-			parentPort.postMessage({ type: 'ready' });
+			await getPyodide(msg.pyodideModuleUrl, msg.indexURL);
+			sendToHost({ type: 'ready' });
 		} catch (err) {
-			parentPort.postMessage({
+			sendToHost({
 				type: 'error',
 				callId: -1,
 				message: err instanceof Error ? err.message : String(err),
@@ -214,7 +207,7 @@ parentPort.on('message', async (msg: HostMessage) => {
 	if (msg.type === 'run') {
 		try {
 			const py = await getPyodide();
-			currentCall = { disabledFeatures: new Set(msg.disabledFeatures) };
+			currentCall = { callId: msg.callId };
 
 			// Mount the conversation's attached files into the Pyodide VFS
 			// under /workspace/ — per-worker manifest lets us skip files
@@ -268,7 +261,7 @@ parentPort.on('message', async (msg: HostMessage) => {
 			// conversation media.
 			const newFiles = diffWorkspace(py, preSnapshot);
 
-			parentPort.postMessage({
+			sendToHost({
 				type: 'result',
 				callId: msg.callId,
 				stdout,
@@ -277,14 +270,14 @@ parentPort.on('message', async (msg: HostMessage) => {
 				newFiles,
 			});
 		} catch (err) {
-			parentPort.postMessage({
+			sendToHost({
 				type: 'error',
 				callId: msg.callId,
 				message: err instanceof Error ? err.message : String(err),
 			});
 		}
 	}
-});
+}
 
 // --- VFS file-round-trip helpers ------------------------------------------
 

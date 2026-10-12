@@ -1,15 +1,18 @@
 # Code interpreter (Python)
 
 The `run_python` tool gives the model a sandboxed Python 3 interpreter
-backed by [Pyodide](https://pyodide.org/) running in a Node `worker_threads`
-worker. One persistent interpreter per active conversation: variables,
+backed by [Pyodide](https://pyodide.org/) running in its own Node child
+process. One persistent interpreter per active conversation: variables,
 imports, and user-defined functions stay resident across turns, so a
 follow-up like _"now plot the residuals"_ just works without re-loading the
 dataframe. Workers are reaped after 5 minutes of idle (configurable) and
 re-spawn on the next call.
 
 Pre-installed scientific stack: `numpy`, `pandas`, `matplotlib`, `scipy`,
-`sympy`, `scikit-learn` (loaded on first use). The standard library is
+`sympy`, `scikit-learn` (loaded on first use). The first use of a package
+downloads it from Pyodide's CDN through the same network policy; the server
+then caches the wheel next to the Pyodide package, but only after checking it
+against Pyodide's lockfile, so later interpreters start warm. The standard library is
 available except `subprocess`, sockets, threads, and native C extensions
 Pyodide doesn't ship. `micropip` is available for pure-Python wheels and
 rides the same network gate (see below).
@@ -25,10 +28,24 @@ images and videos render inline in the tool block, everything else (`.csv`,
 `.xlsx`, `.pdf`, …) shows as a download chip. The next turn re-mounts those
 generated files, so the model can build on its own previous outputs.
 
+## Isolation
+
+Each interpreter is a separate process started under Node's
+[permission model](https://nodejs.org/api/permissions.html). It gets no
+environment variables, can read only its own code and the Pyodide package,
+cannot write files, cannot start processes or threads, and cannot open
+network connections. That boundary is enforced by Node, not by the
+interpreter, so it holds even for code that reaches past Python into the
+JavaScript runtime underneath. Files reach the interpreter only by being
+copied into its in-memory `/workspace/` (see below), and come back the same
+way.
+
 ## Network reach
 
-Pyodide's `pyfetch` and the stdlib `urllib` / `requests` shim all funnel
-through one `globalThis.fetch` chokepoint that:
+Because the interpreter can't open connections, Pyodide's `pyfetch` and the
+stdlib `urllib` / `requests` shim all funnel through a `fetch` that hands the
+request to the server, which applies the policy and makes the request on the
+interpreter's behalf:
 
 1. Honors the conversation's **Web access** toggle — turning it off in the
    composer popover blocks `pyfetch`, `urllib`, and `micropip.install`
@@ -44,9 +61,8 @@ through one `globalThis.fetch` chokepoint that:
 Each call has a wall-clock budget (default 30 s); on overrun the worker is
 terminated and the entry transitions to "failed", so the next call re-spawns
 fresh (with prior in-memory state gone — documented to the model in the
-tool's description). Each worker carries a V8 old-space cap (default
-512 MB); a runaway allocation exits cleanly and the model gets a
-`memory-cap` error instead of taking the Node process down. A pool cap
+tool's description). Each worker process carries a V8 heap cap (default
+512 MB; see the caveat below). A pool cap
 (default 10) LRU-evicts the least-recently-used idle interpreter when an
 11th conversation lights up.
 
@@ -61,7 +77,7 @@ enabled = true                  # master switch — false hides run_python entir
 pool_max = 10                   # max concurrent live workers (LRU-evicted past this)
 idle_timeout_seconds = 300      # 5 min of inactivity → worker reaped
 call_timeout_seconds = 30       # wall-clock per call → terminate on overrun
-worker_memory_mb = 512          # V8 old-space cap per worker
+worker_memory_mb = 512          # V8 heap cap per worker process
 # pyodide_index_url = ""        # leave empty to resolve from node_modules
 ```
 
@@ -76,7 +92,7 @@ of it (minimum 1), so one account running Python in many conversations at
 once can't hold every slot and lock everyone else out.
 
 > **`worker_memory_mb` does not bound what Python can allocate.** It sets
-> `maxOldGenerationSizeMb` on the worker thread, which caps the V8 heap — but
+> `--max-old-space-size` on the worker process, which caps the V8 heap — but
 > Pyodide's Python heap is WebAssembly linear memory, allocated outside that
 > budget. A worker capped at 64 MB can still commit a gigabyte of WASM memory,
 > and `call_timeout_seconds` doesn't catch it because a large allocation is

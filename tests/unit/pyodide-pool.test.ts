@@ -40,7 +40,7 @@ import {
 } from '#lib/server/code-interpreter/pool.js';
 
 // ---------------------------------------------------------------------------
-// Test harness — a MockWorker that fans worker_threads events through an
+// Test harness — a MockWorker that fans worker events through an
 // EventEmitter and exposes hooks for tests to drive replies.
 // ---------------------------------------------------------------------------
 
@@ -48,7 +48,7 @@ class MockWorker extends EventEmitter implements ManagedWorker {
 	posts: unknown[] = [];
 	terminated = false;
 	/** Set by the test to control how each `run` message is answered. */
-	onRun?: (msg: { callId: number; code: string; disabledFeatures: string[] }) => void;
+	onRun?: (msg: { callId: number; code: string }) => void;
 	/** Set by the test to delay the `ready` reply during init. */
 	readyDelayMs = 0;
 
@@ -58,14 +58,13 @@ class MockWorker extends EventEmitter implements ManagedWorker {
 			type: string;
 			callId?: number;
 			code?: string;
-			disabledFeatures?: string[];
 		};
 		if (msg.type === 'init') {
 			const ack = () => this.emit('message', { type: 'ready' });
 			if (this.readyDelayMs > 0) setTimeout(ack, this.readyDelayMs);
 			else queueMicrotask(ack);
 		} else if (msg.type === 'run' && this.onRun) {
-			this.onRun(msg as { callId: number; code: string; disabledFeatures: string[] });
+			this.onRun(msg as { callId: number; code: string });
 		}
 	}
 
@@ -133,16 +132,10 @@ describe('runPython — happy path + isolation', () => {
 		expect(result.result).toEqual({ x: 42 });
 		expect(createdWorkers).toHaveLength(1);
 		const worker = createdWorkers[0];
-		// The init message also carries the configured-backend host set
-		// (from `listForbiddenHosts`), which varies by config.toml.
-		// Match the shape but not the host list — that's covered in
-		// url-policy.test.ts.
 		expect(worker.posts[0]).toMatchObject({ type: 'init' });
-		expect(worker.posts[1]).toMatchObject({
-			type: 'run',
-			code: 'x = 42',
-			disabledFeatures: [],
-		});
+		expect(worker.posts[1]).toMatchObject({ type: 'run', code: 'x = 42' });
+		// The network policy stays on the host; the worker isn't told it.
+		expect(worker.posts[1]).not.toHaveProperty('disabledFeatures');
 	});
 
 	it('terminates the worker when Pyodide init fails (no thread leak)', async () => {
@@ -760,5 +753,57 @@ describe('stale entry recovery — B5', () => {
 		expect(createdWorkers).toHaveLength(2);
 		expect(createdWorkers[0].terminated).toBe(false);
 		expect(createdWorkers[1].terminated).toBe(false);
+	});
+});
+
+describe('runPython — worker network requests', () => {
+	const fetchReply = (worker: MockWorker, fetchId: number) =>
+		vi.waitFor(() => {
+			const r = worker.posts.find(
+				(p) =>
+					(p as { type?: string; fetchId?: number }).type === 'fetch-result' &&
+					(p as { fetchId?: number }).fetchId === fetchId,
+			);
+			if (!r) throw new Error('no fetch-result yet');
+			return r as { response?: unknown; error?: string };
+		});
+
+	const request = { url: 'https://example.com/', method: 'GET', headers: [], body: null };
+
+	it('refuses a request that arrives outside a run', async () => {
+		await runPython({ conversationId: 'n1', userId: 'u', code: '1', disabledFeatures: [] }).catch(
+			() => {},
+		);
+		const worker = createdWorkers[0];
+		worker.emit('message', { type: 'fetch', fetchId: 7, request });
+		expect((await fetchReply(worker, 7)).error).toMatch(/outside an authorized run_python/);
+	});
+
+	it("applies the in-flight call's web toggle on the host", async () => {
+		setWorkerFactoryForTests(() => {
+			const w = new MockWorker();
+			w.onRun = ({ callId }) => {
+				w.emit('message', { type: 'fetch', fetchId: 1, request });
+				void fetchReply(w, 1).then(() => replyOk(w, callId));
+			};
+			createdWorkers.push(w);
+			return w;
+		});
+		await runPython({ conversationId: 'n2', userId: 'u', code: '1', disabledFeatures: ['web'] });
+		expect((await fetchReply(createdWorkers[0], 1)).error).toMatch(/web access is disabled/);
+	});
+
+	it('refuses a malformed request without fetching', async () => {
+		setWorkerFactoryForTests(() => {
+			const w = new MockWorker();
+			w.onRun = ({ callId }) => {
+				w.emit('message', { type: 'fetch', fetchId: 2, request: { url: 42 } });
+				void fetchReply(w, 2).then(() => replyOk(w, callId));
+			};
+			createdWorkers.push(w);
+			return w;
+		});
+		await runPython({ conversationId: 'n3', userId: 'u', code: '1', disabledFeatures: [] });
+		expect((await fetchReply(createdWorkers[0], 2)).error).toMatch(/malformed/);
 	});
 });

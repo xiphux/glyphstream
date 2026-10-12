@@ -10,14 +10,15 @@
  *    (`isCodeInterpreterEnabled`)
  *  - per-conversation visibility is the existing `code_interpreter`
  *    feature-category filter on the request-build tool list
- *  - Python NETWORK is gated by the conversation's `web` toggle (the
- *    worker's globalThis.fetch shim honors `disabledFeatures.has('web')`)
- *    and by stage 2's url-policy (SSRF + configured-backend block).
- *    micropip rides on the same gate.
+ *  - Python NETWORK is gated by the conversation's `web` toggle and by the
+ *    url-policy (SSRF + configured-backend block), both applied on the host:
+ *    the interpreter process has no network permission and its fetches are
+ *    proxied (code-interpreter/net-proxy.ts). micropip rides the same gate.
  *
- * Approval: none (built-in tool; sandboxed by construction via WASM
- * memory isolation + per-worker memory cap + wall-clock timeout +
- * the network shim above).
+ * Approval: none. The interpreter runs as a separate process under Node's
+ * permission model — no environment, no host files beyond Pyodide's own, no
+ * child processes, no sockets (code-interpreter/spawn.ts) — plus a wall-clock
+ * timeout per call.
  */
 
 import { register } from './registry';

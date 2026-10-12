@@ -9,6 +9,13 @@ arrived.
 
 ## Unreleased
 
+### Security
+
+- The Python code interpreter now runs as a separate, locked-down process. Code
+  it runs can no longer see the server's environment variables or files,
+  start other programs, or open network connections of its own; its web
+  requests go through the server's network policy as before.
+
 ## v0.44.1
 
 ### Fixed

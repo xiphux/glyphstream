@@ -14,8 +14,10 @@
  * after `idleTimeoutSeconds`, LRU-evicted when the pool fills past
  * `poolMax`, terminated on per-call wall-clock overrun, and reaped on
  * SIGINT/SIGTERM. The lifecycle is decoupled from the message loop
- * inside `worker.ts` — the pool only sees the `Worker` handle and the
- * shape of the messages.
+ * inside `worker.ts` — the pool only sees the `ManagedWorker` handle and
+ * the shape of the messages. Each worker is a restricted child process
+ * (spawn.ts); the pool answers its network requests (net-proxy.ts) and
+ * its package-cache writes (package-cache.ts).
  *
  * Stage 3 ships the pool with a mockable Worker factory so unit tests
  * cover the state machine without spinning up real Pyodide (which is
@@ -23,29 +25,25 @@
  * wires `run_python` to the public API surface here.
  */
 
-import { Worker as NodeWorker } from 'node:worker_threads';
+import { isAbsolute } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { getCodeInterpreterConfig } from './config';
 import { listForbiddenHosts } from '../tools/url-policy';
+import { proxyInterpreterFetch, type ProxyFetchRequest } from './net-proxy';
+import { cachePyodideWheel } from './package-cache';
+import { pyodideModuleUrl, spawnInterpreterProcess, type ManagedWorker } from './spawn';
+
+export type { ManagedWorker } from './spawn';
 
 // ---------------------------------------------------------------------------
 // Worker factory — abstracted so tests can swap in a fake.
 // ---------------------------------------------------------------------------
 
-/**
- * Minimum surface area the pool requires from a worker handle. The real
- * implementation is `worker_threads.Worker`; tests pass a stub that
- * implements the same shape.
- */
-export interface ManagedWorker {
-	postMessage(value: unknown): void;
-	on(event: 'message', listener: (value: unknown) => void): void;
-	on(event: 'error', listener: (err: Error) => void): void;
-	on(event: 'exit', listener: (code: number) => void): void;
-	terminate(): Promise<number>;
-}
-
 export interface WorkerFactoryArgs {
 	memoryMb: number;
+	/** Read-only paths beyond the worker bundle and the Pyodide package,
+	 *  e.g. a local `pyodide_index_url`. */
+	extraReadPaths?: readonly string[];
 }
 export type WorkerFactory = (args: WorkerFactoryArgs) => ManagedWorker;
 
@@ -58,9 +56,11 @@ export type WorkerFactory = (args: WorkerFactoryArgs) => ManagedWorker;
 // `setWorkerFactoryForTests`.
 const defaultWorkerUrl = new URL('./worker.js', import.meta.url);
 
-const defaultWorkerFactory: WorkerFactory = ({ memoryMb }) =>
-	new NodeWorker(defaultWorkerUrl, {
-		resourceLimits: { maxOldGenerationSizeMb: memoryMb },
+const defaultWorkerFactory: WorkerFactory = ({ memoryMb, extraReadPaths }) =>
+	spawnInterpreterProcess({
+		workerPath: fileURLToPath(defaultWorkerUrl),
+		memoryMb,
+		extraReadPaths,
 	});
 
 let workerFactory: WorkerFactory = defaultWorkerFactory;
@@ -103,6 +103,17 @@ interface ReadyEntry {
 	lastUsedAt: number;
 	idleTimerId: ReturnType<typeof setTimeout> | null;
 	pendingResolvers: Map<number, PendingResolver>;
+	/** The call currently executing, if any. The worker has no network of
+	 *  its own; its fetches are answered on the host only while a call is
+	 *  in flight, under that call's `web` toggle. */
+	activeCall: ActiveCall | null;
+}
+
+interface ActiveCall {
+	callId: number;
+	webDisabled: boolean;
+	/** Aborted when the call settles, cancelling its outstanding fetches. */
+	abort: AbortController;
 }
 
 interface IdleEntry {
@@ -224,6 +235,10 @@ export async function runPython(params: RunPythonParams): Promise<WorkerRunResul
 						clearTimeout(timeoutHandle);
 						if (params.ctxSignal) params.ctxSignal.removeEventListener('abort', onAbort);
 						entry.pendingResolvers.delete(callId);
+						if (entry.activeCall?.callId === callId) {
+							entry.activeCall.abort.abort();
+							entry.activeCall = null;
+						}
 						if (err) reject(err);
 						else resolve(value!);
 					};
@@ -272,11 +287,15 @@ export async function runPython(params: RunPythonParams): Promise<WorkerRunResul
 						(timeoutHandle as { unref: () => void }).unref();
 					}
 
+					entry.activeCall = {
+						callId,
+						webDisabled: params.disabledFeatures.includes('web'),
+						abort: new AbortController(),
+					};
 					entry.worker.postMessage({
 						type: 'run',
 						callId,
 						code: params.code,
-						disabledFeatures: [...params.disabledFeatures],
 						preFiles: params.preFiles ? [...params.preFiles] : [],
 					});
 					entry.lastUsedAt = Date.now();
@@ -376,7 +395,10 @@ async function doStart(
 	let workerHandle: ManagedWorker | undefined;
 	try {
 		onStatus?.('Starting Python interpreter…');
-		const worker = workerFactory({ memoryMb: cfg.workerMemoryMb });
+		const worker = workerFactory({
+			memoryMb: cfg.workerMemoryMb,
+			extraReadPaths: localIndexPath(cfg.pyodideIndexUrl),
+		});
 		workerHandle = worker;
 		const pendingResolvers = new Map<number, PendingResolver>();
 
@@ -391,7 +413,20 @@ async function doStart(
 				result?: unknown;
 				message?: string;
 				newFiles?: RunPythonPostFile[];
+				fetchId?: unknown;
+				request?: unknown;
 			};
+			if (msg.type === 'fetch') {
+				void answerWorkerFetch(conversationId, worker, msg.fetchId, msg.request);
+				return;
+			}
+			if (msg.type === 'cache-package') {
+				const m = raw as { path?: unknown; bytes?: unknown };
+				if (typeof m.path === 'string' && m.bytes instanceof Uint8Array) {
+					void cachePyodideWheel(m.path, m.bytes);
+				}
+				return;
+			}
 			if (msg.type === 'result' && typeof msg.callId === 'number') {
 				const resolver = pendingResolvers.get(msg.callId);
 				resolver?.resolve({
@@ -447,12 +482,9 @@ async function doStart(
 			worker.postMessage({
 				type: 'init',
 				indexURL: cfg.pyodideIndexUrl || undefined,
-				// Snapshot the configured-backend host list and ship it
-				// across the message channel. The worker is bundled
-				// standalone and has no access to SvelteKit's env / config
-				// layer, so we apply the same policy by handing it the
-				// resolved set up front.
-				forbiddenHosts: listForbiddenHosts(),
+				// The worker can't resolve the bare `pyodide` specifier under
+				// its fs grant, so it imports the entry by absolute URL.
+				pyodideModuleUrl: pyodideModuleUrl(),
 			});
 		});
 		onStatus?.('Python interpreter ready');
@@ -466,6 +498,7 @@ async function doStart(
 			lastUsedAt: Date.now(),
 			idleTimerId: null,
 			pendingResolvers,
+			activeCall: null,
 		};
 		return ready;
 	} catch (err) {
@@ -474,6 +507,66 @@ async function doStart(
 		const msg = err instanceof Error ? err.message : String(err);
 		return { state: 'failed', conversationId, error: msg };
 	}
+}
+
+/** A local `pyodide_index_url` needs its own read grant in the worker. */
+function localIndexPath(indexUrl: string): string[] {
+	if (!indexUrl) return [];
+	if (indexUrl.startsWith('file:')) return [fileURLToPath(indexUrl)];
+	return isAbsolute(indexUrl) ? [indexUrl] : [];
+}
+
+const OUTSIDE_RUN = 'Refused: network call outside an authorized run_python invocation.';
+
+/**
+ * Answer a `fetch` the worker asked the host to make. The request comes from
+ * model-controlled code in the child, so its shape is checked before use, and
+ * the policy is applied here rather than trusted from the child.
+ */
+async function answerWorkerFetch(
+	conversationId: string,
+	worker: ManagedWorker,
+	fetchId: unknown,
+	request: unknown,
+): Promise<void> {
+	if (typeof fetchId !== 'number') return;
+	const reply = (body: { response: unknown } | { error: string }) =>
+		worker.postMessage({ type: 'fetch-result', fetchId, ...body });
+
+	if (!isProxyFetchRequest(request)) {
+		reply({ error: 'Refused: malformed network request.' });
+		return;
+	}
+	const entry = entries.get(conversationId);
+	const call = entry?.state === 'ready' && entry.worker === worker ? entry.activeCall : null;
+	if (!call) {
+		reply({ error: OUTSIDE_RUN });
+		return;
+	}
+	try {
+		const response = await proxyInterpreterFetch(request, {
+			webDisabled: call.webDisabled,
+			forbiddenHosts: new Set(listForbiddenHosts().map((h) => h.toLowerCase())),
+			signal: call.abort.signal,
+		});
+		reply({ response });
+	} catch (err) {
+		reply({ error: err instanceof Error ? err.message : String(err) });
+	}
+}
+
+function isProxyFetchRequest(value: unknown): value is ProxyFetchRequest {
+	if (!value || typeof value !== 'object') return false;
+	const r = value as Record<string, unknown>;
+	return (
+		typeof r.url === 'string' &&
+		typeof r.method === 'string' &&
+		Array.isArray(r.headers) &&
+		r.headers.every(
+			(h) => Array.isArray(h) && h.length === 2 && h.every((x) => typeof x === 'string'),
+		) &&
+		(r.body === null || r.body instanceof Uint8Array)
+	);
 }
 
 /**
