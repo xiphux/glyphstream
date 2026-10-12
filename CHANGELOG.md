@@ -21,6 +21,8 @@ arrived.
 - Stopping a reply while the Python interpreter was still preparing could
   leave that conversation's interpreter stuck until the server restarted, and
   enough of them would stop new interpreters from starting.
+- A Python interpreter that crashed while starting up now fails the call right
+  away instead of leaving it waiting for the full tool timeout.
 
 ## v0.44.1
 

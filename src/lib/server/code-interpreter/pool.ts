@@ -405,6 +405,11 @@ async function doStart(
 		});
 		workerHandle = worker;
 		const pendingResolvers = new Map<number, PendingResolver>();
+		// Set while waiting for the worker's `ready`. A worker that crashes
+		// or exits during Pyodide's load never posts one, so the error/exit
+		// handlers below fail the init through this instead of leaving it
+		// pending until the caller's outer timeout.
+		let failInit: ((err: Error) => void) | null = null;
 
 		// Wire the message → resolver routing once per worker.
 		worker.on('message', (raw: unknown) => {
@@ -446,10 +451,12 @@ async function doStart(
 		});
 
 		worker.on('error', (err: Error) => {
+			failInit?.(err);
 			markFailed(conversationId, err.message);
 		});
 
 		worker.on('exit', (code: number) => {
+			failInit?.(new Error(`Python interpreter exited during startup (code ${code})`));
 			// Non-zero exit (OOM, terminate(), crash). Any in-flight call
 			// gets a clean rejection so the caller sees an actionable error
 			// rather than hanging forever.
@@ -473,6 +480,7 @@ async function doStart(
 		// Init the Pyodide instance inside the worker. The promise resolves
 		// when the worker confirms it's ready.
 		await new Promise<void>((resolve, reject) => {
+			failInit = reject;
 			const onReady = (raw: unknown) => {
 				if (!raw || typeof raw !== 'object') return;
 				const m = raw as { type?: string; message?: string };
@@ -491,6 +499,7 @@ async function doStart(
 				pyodideModuleUrl: pyodideModuleUrl(),
 			});
 		});
+		failInit = null;
 		onStatus?.('Python interpreter ready');
 
 		const ready: ReadyEntry = {

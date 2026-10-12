@@ -138,6 +138,26 @@ describe('runPython — happy path + isolation', () => {
 		expect(worker.posts[1]).not.toHaveProperty('disabledFeatures');
 	});
 
+	it('fails fast when the worker dies during startup instead of hanging', async () => {
+		// An interpreter that crashes while loading Pyodide (OOM, missing
+		// worker bundle) never posts `ready` or `error`. The call must fail as
+		// soon as the process is gone, not wait out the caller's timeout.
+		setWorkerFactoryForTests(() => {
+			const w = new MockWorker();
+			w.postMessage = (value: unknown) => {
+				w.posts.push(value);
+				if ((value as { type: string }).type === 'init') queueMicrotask(() => w.emit('exit', 134));
+			};
+			createdWorkers.push(w);
+			return w;
+		});
+		const started = Date.now();
+		await expect(
+			runPython({ conversationId: 'crash', userId: 'u-crash', code: '1', disabledFeatures: [] }),
+		).rejects.toThrow(/exited during startup \(code 134\)/);
+		expect(Date.now() - started).toBeLessThan(1000);
+	});
+
 	it('terminates the worker when Pyodide init fails (no thread leak)', async () => {
 		setWorkerFactoryForTests(() => {
 			const w = new MockWorker();
