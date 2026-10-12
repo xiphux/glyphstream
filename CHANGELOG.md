@@ -23,6 +23,10 @@ arrived.
   enough of them would stop new interpreters from starting.
 - A Python interpreter that crashed while starting up now fails the call right
   away instead of leaving it waiting for the full tool timeout.
+- An image or video generation whose request to the model server timed out
+  now shows the error and keeps it in the conversation. It used to end as if
+  you had pressed Stop, leaving nothing behind (and, for prompt enhancement,
+  cancelling the generation instead of falling back to your original prompt).
 
 ## v0.44.1
 

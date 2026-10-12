@@ -48,8 +48,8 @@ describe('isAbortError', () => {
 		expect(isAbortError(e)).toBe(true);
 	});
 
-	it('detects an error whose message mentions "aborted"', () => {
-		expect(isAbortError(new Error('The operation was aborted'))).toBe(true);
+	it('does not match on message text — a timeout says "aborted" too', () => {
+		expect(isAbortError(new Error('The operation was aborted due to timeout'))).toBe(false);
 	});
 
 	it('is false for unrelated errors and non-errors', () => {

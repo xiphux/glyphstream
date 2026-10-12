@@ -147,9 +147,25 @@ async function doFetch(
 	try {
 		return await fetch(url, init);
 	} catch (e) {
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new UpstreamError(`${networkErrorPrefix}: ${cause}`, null, null);
+		wrapFetchFailure(e, networkErrorPrefix, null);
 	}
+}
+
+/**
+ * Re-throw a failed fetch / body read as an UpstreamError — except a real
+ * abort, which stays an `AbortError` so `isAbortError` (by name) still sees
+ * the user's Stop. A timeout is worded as one: the platform's own message
+ * ("The operation was aborted due to timeout") reads like a Stop.
+ */
+function wrapFetchFailure(e: unknown, prefix: string, status: number | null): never {
+	if (e instanceof Error && e.name === 'AbortError') throw e;
+	const cause =
+		e instanceof Error && e.name === 'TimeoutError'
+			? 'request timed out'
+			: e instanceof Error
+				? e.message
+				: String(e);
+	throw new UpstreamError(`${prefix}: ${cause}`, status, null);
 }
 
 /**
@@ -172,8 +188,7 @@ async function parseJson<T>(res: Response, nonJsonMessage: string): Promise<T> {
 	try {
 		return (await res.json()) as T;
 	} catch (e) {
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new UpstreamError(`${nonJsonMessage}: ${cause}`, 200, null);
+		wrapFetchFailure(e, nonJsonMessage, 200);
 	}
 }
 

@@ -38,14 +38,16 @@ export function errorMessage(e: unknown): string {
  * True when `e` is an abort — the shape thrown when the user clicks Stop
  * and the upstream fetch's AbortSignal fires. Relays treat this as "end
  * here", not as an error to surface to the user.
+ *
+ * By NAME only. It used to also match any message containing "aborted",
+ * which a request timeout's ("The operation was aborted due to timeout")
+ * does — so a timed-out generation was reported as "Cancelled" and left no
+ * error row. The endpoint client keeps a real abort an `AbortError` and
+ * words a timeout as one (endpoints/client.ts `wrapFetchFailure`), and the
+ * relays also check their own abort signal, which covers a Stop that
+ * surfaces in any other shape.
  */
-export function isAbortError(e: unknown): boolean {
-	if (e instanceof DOMException && e.name === 'AbortError') return true;
-	if (e instanceof Error && (e.name === 'AbortError' || /aborted/i.test(e.message))) {
-		return true;
-	}
-	return false;
-}
+export { isAbortError } from '../../abort';
 
 /**
  * Wrap a relay's SSE body stream in a Response with the standard event-stream
