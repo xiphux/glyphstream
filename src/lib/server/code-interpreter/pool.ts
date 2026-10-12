@@ -116,11 +116,6 @@ interface ActiveCall {
 	abort: AbortController;
 }
 
-interface IdleEntry {
-	state: 'idle';
-	conversationId: string;
-}
-
 interface FailedEntry {
 	state: 'failed';
 	conversationId: string;
@@ -134,7 +129,7 @@ interface StartingEntry {
 	promise: Promise<ReadyEntry | FailedEntry>;
 }
 
-type Entry = ReadyEntry | IdleEntry | FailedEntry | StartingEntry;
+type Entry = ReadyEntry | FailedEntry | StartingEntry;
 
 interface PendingResolver {
 	resolve: (value: WorkerRunResult) => void;
@@ -353,7 +348,7 @@ async function ensureReady(
 		if (settled.state === 'ready') return settled;
 		throw new Error(`code_interpreter: failed to start worker: ${settled.error}`);
 	}
-	// 'idle' or 'failed' or absent: try to (re)spawn. Concurrent callers
+	// 'failed' or absent (never started, or idle-reaped): try to (re)spawn. Concurrent callers
 	// coalesce via a single `starting` entry.
 	return startWorker(conversationId, userId, onStatus);
 }
@@ -678,7 +673,10 @@ function reapIfIdle(conversationId: string): void {
 		scheduleIdleReap(conversationId);
 		return;
 	}
-	entries.set(conversationId, { state: 'idle', conversationId });
+	// Drop the entry outright: an absent entry already means "spawn on next
+	// call", so keeping an idle placeholder only grew the map by one entry
+	// per conversation that ever ran Python.
+	entries.delete(conversationId);
 	void entry.worker.terminate().catch(() => {});
 }
 

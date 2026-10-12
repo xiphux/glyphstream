@@ -33,6 +33,7 @@ vi.mock('#lib/server/code-interpreter/config.js', () => ({
 }));
 
 import {
+	listWorkerStates,
 	type ManagedWorker,
 	resetCodeInterpreterPoolForTests,
 	runPython,
@@ -445,6 +446,8 @@ describe('idle reaper', () => {
 		expect(createdWorkers[0].terminated).toBe(false);
 		await vi.advanceTimersByTimeAsync(61_000);
 		expect(createdWorkers[0].terminated).toBe(true);
+		// The reaped conversation leaves nothing behind in the pool.
+		expect(listWorkerStates()).toEqual([]);
 
 		vi.useRealTimers();
 	});
