@@ -525,7 +525,8 @@ async function runChatTurn(
 			if (
 				!params.suppressNotify &&
 				!stoppedFinal &&
-				finalAssistantMessage.finishReason !== 'cancelled'
+				finalAssistantMessage.finishReason !== 'cancelled' &&
+				finalAssistantMessage.finishReason !== 'error'
 			) {
 				void notifyConversationComplete({
 					userId: params.userId,
@@ -746,6 +747,10 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 	let tokensIn: number | null = null;
 	let tokensOut: number | null = null;
 	let stopped = false;
+	// Set when the upstream stream fails for any reason other than a Stop —
+	// the idle watchdog on a stalled model, a dropped connection. Whatever
+	// arrived before that is kept on the row with this alongside it.
+	let streamError: string | null = null;
 	// Throughput timing: wall-clock of the first and last content (text or
 	// reasoning) delta. We measure first→last rather than request→last so the
 	// rate excludes time-to-first-token (prefill/queue latency). Tool-call
@@ -776,7 +781,9 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 		if (isAbortError(e) || params.abortSignal?.aborted) {
 			stopped = true;
 		} else {
-			throw e;
+			// Same wording as the client branch's frame for the same failure, so
+			// the persisted row and the live banner say the same thing.
+			streamError = `Upstream stream failed: ${errorMessage(e)}`;
 		}
 	}
 	applyDeltas(norm.flush().deltas);
@@ -805,7 +812,7 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 	// stream keeps reading past the finish-reason chunk (usage, llama.cpp
 	// timings), so an abort landing in that window leaves `finishReason` already
 	// `'tool_calls'` while the tools never run.
-	const neverExecuted = stopped || finishReason !== 'tool_calls';
+	const neverExecuted = stopped || streamError !== null || finishReason !== 'tool_calls';
 	// Disabled + no text is deliberately NOT dropped here. The tool refuses at
 	// execute time, the loop keeps going because there's no reply yet, and the
 	// refetch that follows carries the isError result the renderer already knows
@@ -815,8 +822,12 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 		(params.disabledFeatures ?? []).includes('reactions') && textBuf.trim().length > 0;
 	const dropUnhonouredReactions = neverExecuted || refusedWithReply;
 
-	const parts: MessagePart[] = [{ type: 'text', text: textBuf }];
-	for (const tc of toolCallAccum.values()) {
+	const parts: MessagePart[] =
+		streamError === null || textBuf.length > 0 ? [{ type: 'text', text: textBuf }] : [];
+	// A stream that broke off can't be trusted to have delivered whole tool
+	// calls (their arguments arrive in fragments), and they won't run anyway.
+	const toolCalls = streamError === null ? [...toolCallAccum.values()] : [];
+	for (const tc of toolCalls) {
 		if (dropUnhonouredReactions && isReactionTool(tc.name)) continue;
 		// For tools whose primary argument is source code (today:
 		// run_python's `code` parameter), pre-render that code through
@@ -847,6 +858,7 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 			? lastContentAt - firstContentAt
 			: null;
 	const genMs = upstreamGenMs !== null ? Math.round(upstreamGenMs) : wallClockGenMs;
+	if (streamError !== null) parts.push({ type: 'error', message: streamError });
 	const assistantMessage = appendMessage({
 		conversationId: params.conversationId,
 		parentMessageId,
@@ -854,7 +866,7 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 		parts,
 		contentHtml,
 		reasoningText: reasoningBuf || null,
-		finishReason: stopped ? 'cancelled' : finishReason,
+		finishReason: stopped ? 'cancelled' : streamError !== null ? 'error' : finishReason,
 		modelUsed: params.storedModelId,
 		tokensIn,
 		tokensOut,

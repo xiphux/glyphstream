@@ -27,6 +27,9 @@ arrived.
   now shows the error and keeps it in the conversation. It used to end as if
   you had pressed Stop, leaving nothing behind (and, for prompt enhancement,
   cancelling the generation instead of falling back to your original prompt).
+- When the model server stalls or drops the connection part-way through a
+  reply, the part you already saw is now kept, with the error shown under it.
+  It used to be thrown away and replaced by two error messages.
 
 ## v0.44.1
 
