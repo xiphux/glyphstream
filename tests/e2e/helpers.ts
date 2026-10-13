@@ -632,3 +632,31 @@ export function mintLockedSession(userId: string): BrowserContextOptions['storag
 		origins: [],
 	};
 }
+
+/** Set a conversation's per-conversation feature opt-outs. */
+export function setConversationDisabledFeatures(conversationId: string, features: string[]): void {
+	const db = new DatabaseSync(DB_PATH);
+	db.exec('PRAGMA busy_timeout = 5000');
+	try {
+		db.prepare('UPDATE conversations SET disabled_features = ? WHERE id = ?').run(
+			JSON.stringify(features),
+			conversationId,
+		);
+	} finally {
+		db.close();
+	}
+}
+
+/** Read a conversation's stored feature opt-outs. */
+export function readConversationDisabledFeatures(conversationId: string): string[] {
+	const db = new DatabaseSync(DB_PATH);
+	db.exec('PRAGMA busy_timeout = 5000');
+	try {
+		const row = db
+			.prepare('SELECT disabled_features AS j FROM conversations WHERE id = ?')
+			.get(conversationId) as { j: string | null } | undefined;
+		return row?.j ? (JSON.parse(row.j) as string[]) : [];
+	} finally {
+		db.close();
+	}
+}

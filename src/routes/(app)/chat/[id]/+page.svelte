@@ -766,6 +766,12 @@
 		if (data.conversation.id !== hydratedCanvasConvId) {
 			hydratedCanvasConvId = data.conversation.id;
 			canvas.hydrate(data.canvases);
+			// Feature toggles are per conversation and this component is reused
+			// across a switch, so without this the next conversation showed (and
+			// its first toggle saved back) the previous one's list. Same id gate
+			// as the canvas: a same-conversation refresh must not overwrite an
+			// optimistic toggle whose PATCH is still in flight.
+			disabledFeatures = [...data.conversation.disabledFeatures];
 		}
 		maybeAutoOpenCanvas();
 	});

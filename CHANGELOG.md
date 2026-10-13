@@ -27,6 +27,10 @@ arrived.
 
 ### Fixed
 
+- Switching conversations from the sidebar now shows the new conversation's
+  feature toggles (web access, personalization, …). It kept showing the
+  previous conversation's, and changing one saved that list onto the new
+  conversation.
 - Stopping a reply while the Python interpreter was still preparing could
   leave that conversation's interpreter stuck until the server restarted, and
   enough of them would stop new interpreters from starting.
