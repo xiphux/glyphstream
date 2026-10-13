@@ -37,6 +37,9 @@ arrived.
   opening another conversation no longer shows the comparison, its error, or
   the picked model in the conversation you opened.
 - The gallery loads its contents once when opened, instead of twice.
+- An image attached just before sending is either sent or held until it is
+  ready; it no longer goes missing from that message and then turns up
+  attached to the next one.
 - After switching away from a conversation while it was replying, coming back
   to the tab no longer re-downloads the whole conversation every time, only
   the first time.

@@ -271,31 +271,41 @@ export class AttachmentStore {
 		const isVideo = file.type.startsWith('video/');
 		const kind: AttachmentKind = isImage ? 'image' : isVideo ? 'video' : 'file';
 
-		// Resize (image-only). Skipped for video and document kinds — they
-		// shouldn't be transformed in the browser. Image resize is bounded
-		// by image decode + canvas draw — typically <300ms even on a slow
-		// phone for a multi-MB photo. If a future us cares about showing
-		// progress here, the move would be to push a "decoding" status
-		// item first then swap it for the resized version.
-		const uploadFile = isImage ? await maybeResize(file) : file;
-
-		const clientId = crypto.randomUUID();
-		// For file kinds we don't render a thumbnail, but createObjectURL
-		// is still harmless and gives us a no-op handle to revoke
-		// uniformly on remove(). The chip UI ignores objectUrl for
+		// The placeholder goes in FIRST, before the resize await. Added after
+		// it, the file was invisible while it resized: `isBusy` read false so a
+		// send went out without it, and a clear() in that window (a send, a
+		// conversation switch) didn't see it — so it reappeared afterwards, already
+		// uploading, in the next message's strip. For file kinds we don't render
+		// a thumbnail, but createObjectURL is still harmless and gives a handle
+		// to revoke uniformly on remove(); the chip UI ignores objectUrl for
 		// `kind: 'file'`.
-		const objectUrl = URL.createObjectURL(uploadFile);
+		const clientId = crypto.randomUUID();
 		const initial: AttachedItem = {
 			clientId,
 			mediaId: null,
-			objectUrl,
-			contentType: uploadFile.type,
-			byteSize: uploadFile.size,
+			objectUrl: URL.createObjectURL(file),
+			contentType: file.type,
+			byteSize: file.size,
 			kind,
-			filename: kind === 'file' ? uploadFile.name : null,
+			filename: kind === 'file' ? file.name : null,
 			status: 'uploading',
 		};
 		this.items = [...this.items, initial];
+
+		// Resize (image-only). Skipped for video and document kinds — they
+		// shouldn't be transformed in the browser. Image resize is bounded
+		// by image decode + canvas draw — typically <300ms even on a slow
+		// phone for a multi-MB photo.
+		const uploadFile = isImage ? await maybeResize(file) : file;
+		// Removed or cleared while it resized: drop it before uploading anything.
+		if (!this.items.some((it) => it.clientId === clientId)) return;
+		if (uploadFile !== file) {
+			this.items = this.items.map((it) =>
+				it.clientId === clientId
+					? { ...it, contentType: uploadFile.type, byteSize: uploadFile.size }
+					: it,
+			);
+		}
 
 		try {
 			const fd = new FormData();
