@@ -80,6 +80,9 @@ export class CompactionController {
 		this.#deps = deps;
 	}
 
+	/** A send is parked on the compaction-failed prompt. Not rendered, so plain. */
+	#awaitingConfirm = false;
+
 	/**
 	 * The shared precondition for all three flows. Kept private and consulted by
 	 * each rather than duplicated — an early return that drifts between the three
@@ -237,6 +240,12 @@ export class CompactionController {
 	 * deal with it (e.g. retry, or compact manually) — false means they backed out.
 	 */
 	async maybeAutoCompact(): Promise<boolean> {
+		// A send is already waiting on the "could not be compacted" prompt. The
+		// dialog doesn't take focus, so Enter in the composer lands here again;
+		// without this it re-ran the compaction and stacked a second prompt.
+		// False = "don't send", which leaves the composer as it is; the first
+		// send goes ahead or not on the user's answer.
+		if (this.#awaitingConfirm) return false;
 		if (!this.#deps.autoCompactionEnabled() || this.#blocked) return true;
 		if (
 			!shouldAutoCompact({
@@ -250,12 +259,17 @@ export class CompactionController {
 		}
 		const result = await this.compact({ silent: true });
 		if (result.status !== 'error') return true;
-		return confirmDialog.ask({
-			title: 'Context could not be compacted',
-			message:
-				`Automatic compaction failed: ${result.error} Send your message anyway with the ` +
-				'full conversation? That may exceed the model’s context limit.',
-			confirmLabel: 'Send anyway',
-		});
+		this.#awaitingConfirm = true;
+		try {
+			return await confirmDialog.ask({
+				title: 'Context could not be compacted',
+				message:
+					`Automatic compaction failed: ${result.error} Send your message anyway with the ` +
+					'full conversation? That may exceed the model’s context limit.',
+				confirmLabel: 'Send anyway',
+			});
+		} finally {
+			this.#awaitingConfirm = false;
+		}
 	}
 }

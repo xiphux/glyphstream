@@ -308,6 +308,27 @@ describe('auto-compaction before a send', () => {
 		vi.restoreAllMocks();
 	});
 
+	it('ignores a second send while the first waits on the compaction-failed prompt', async () => {
+		// The prompt doesn't take focus, so Enter in the composer sends again.
+		// That must not compact again or stack a second prompt.
+		const { deps, state } = makeDeps();
+		state.contextWindow = 7000;
+		const c = new CompactionController(deps);
+		const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('upstream down'));
+		let answer!: (v: boolean) => void;
+		confirmAsk.mockImplementationOnce(() => new Promise<boolean>((r) => (answer = r)));
+
+		const first = c.maybeAutoCompact();
+		await vi.waitFor(() => expect(confirmAsk).toHaveBeenCalledTimes(1));
+		expect(await c.maybeAutoCompact()).toBe(false);
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(confirmAsk).toHaveBeenCalledTimes(1);
+
+		answer(true);
+		expect(await first).toBe(true);
+		vi.restoreAllMocks();
+	});
+
 	it('asks before sending when the compaction fails, and honors a cancel', async () => {
 		// A failed compaction means the full context ships — which may blow the
 		// window — so this must not be swallowed.

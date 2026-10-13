@@ -38,6 +38,8 @@ arrived.
 
 ### Fixed
 
+- Pressing Enter while the "Context could not be compacted" prompt is open no
+  longer retries the compaction and opens a second prompt behind the first.
 - Pressing Escape in the image viewer's "Set as avatar" menu now closes just
   the menu. It used to close the image viewer as well.
 - Switching light/dark mode or theme no longer occasionally flips back a
