@@ -282,8 +282,9 @@ compaction can't reclaim it until that turn is old enough to fold away.
 GlyphStream caps what goes upstream at 16384 characters (~4k tokens) by default,
 with a note saying how much was dropped.
 
-**The full result is always stored and always shown to you in the UI.** This caps
-only the copy the model is re-sent.
+**The full result is stored and shown to you in the UI** (up to a million
+characters, past which its middle is dropped as well). This caps only the copy
+the model is re-sent.
 
 ```toml
 [tools]

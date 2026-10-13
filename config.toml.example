@@ -48,8 +48,8 @@
 # Default 8. Raise it if you use many high-tool-count or deferred (defer_tools)
 # servers and complex turns hit the cap; lower it to bound worst-case latency on
 # a small local model. Hitting the cap surfaces a visible error, not silent
-# truncation. (As a table header, this must sit ABOVE every [[endpoints]] block,
-# like [search]/[embeddings] below.)
+# truncation. ([tools] is a table header: put it anywhere outside an
+# [[endpoints]] block. Keys below a header belong to it until the next one.)
 #
 # max_tool_result_chars — ceiling on a single tool result sent back to the
 # model. Tool results are re-sent verbatim on EVERY later turn of the
@@ -57,9 +57,9 @@
 # it's permanent rent on the context window. Default 16384 (~4k tokens). Most
 # tool results are JSON, so the cap is applied STRUCTURALLY (shorten the bulky
 # fields, or drop trailing records, then re-serialize) — the model still gets
-# valid JSON with its ids and structure intact, not a half-cut record. The FULL
-# result is always stored and always shown to you in the UI; this caps only the
-# copy the model is re-sent.
+# valid JSON with its ids and structure intact, not a half-cut record. The full
+# result (up to a million characters) is stored and shown to you in the UI; this
+# caps only the copy the model is re-sent.
 #
 # Must be 0 (disabled) or at least 1024: below a few hundred characters there
 # isn't room for even a minimal structured result, and the cap would have to fall
@@ -86,7 +86,7 @@
 # any other value must be at least 256, below which an image is downscaled into
 # uselessness and the model reads a smudge with nothing to explain why.
 # image_quality — JPEG quality, 1-100. Default 82.
-# (Table header — must sit ABOVE every [[endpoints]] block, like [tools].)
+# (Table header — anywhere outside an [[endpoints]] block, like [tools].)
 # [vision]
 # max_image_dim = 1568
 # image_quality = 82
@@ -104,7 +104,7 @@
 # model wants which style is set per-model via
 # [endpoints.model_prompt_styles] (below) or the bridge's meta.json. See
 # docs/configuration.md#prompt-enhancement-image_enhancement.
-# (Top-level block — like [tools], must sit ABOVE every [[endpoints]] block.)
+# (Table header — anywhere outside an [[endpoints]] block, like [tools].)
 # [image_enhancement]
 # model = "groq::llama-3.3-70b-versatile"   # endpoint_id::upstream_model_id
 # max_tokens = 1000                          # cap per rewrite (default fits a JSON prompt)
@@ -127,7 +127,7 @@
 # quiet window (24-hour, interpreted in `timezone`; overnight ranges like
 # "22:00-06:00" are fine), and it also queues behind live chats on the endpoint.
 # See docs/configuration.md#memory-consolidation-memory_model.
-# (Top-level block — like [tools], must sit ABOVE every [[endpoints]] block.)
+# (Table header — anywhere outside an [[endpoints]] block, like [tools].)
 # The same model also writes the per-conversation summaries and the
 # conversation-topics map that powers `search_conversations`.
 # [memory_model]
