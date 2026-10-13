@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { onDestroy, untrack } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { browser } from '$app/env';
 	import { afterNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -10,7 +10,6 @@
 	import ComposerCore from '#lib/components/chat/ComposerCore.svelte';
 	import OfflineNotice from '#lib/components/chat/OfflineNotice.svelte';
 	import SplitAttachmentsToggle from '#lib/components/chat/SplitAttachmentsToggle.svelte';
-	import AspectRatioSelector from '#lib/components/chat/AspectRatioSelector.svelte';
 	import { agreedDefault, offeredRatios } from '#lib/aspect-ratio.js';
 	import { AttachmentStore, attachmentsAllowedFor } from '#lib/attachments.svelte.js';
 	import { getModelCatalogue } from '#lib/model-catalogue.svelte.js';
@@ -393,6 +392,15 @@
 	});
 
 	let ratioRef = $state<{ flushDetection: () => void } | null>(null);
+	// The selector shows only for models that advertise ratios, so it loads on
+	// demand rather than with the route. It is also requested once on mount: a
+	// send flushes its prompt-ratio detection through `ratioRef`, and that has
+	// to be there by the time someone has picked an image model and typed.
+	const loadAspectRatioSelector = () =>
+		import('#lib/components/chat/AspectRatioSelector.svelte').then((m) => m.default);
+	onMount(() => {
+		void loadAspectRatioSelector();
+	});
 	// See ChatComposer's copy. Note this page never clears the box, so the pending
 	// debounce here RACES the create round-trip rather than being cancelled by it —
 	// the flush is what makes the outcome independent of how long that POST takes.
@@ -971,17 +979,19 @@
 				<!-- Only for models that advertise ratios; absence means "offer no
 				     selector", never "one fixed ratio". -->
 				{#if ratioOptions.length > 0}
-					<AspectRatioSelector
-						bind:this={ratioRef}
-						options={ratioOptions}
-						defaultValue={ratioDefault}
-						{pickerContentWidth}
-						promptText={text}
-						bind:seed={seedAspectRatio}
-						bind:value={aspectRatio}
-						bind:dismissedRatio
-						disabled={busy}
-					/>
+					{#await loadAspectRatioSelector() then AspectRatioSelector}
+						<AspectRatioSelector
+							bind:this={ratioRef}
+							options={ratioOptions}
+							defaultValue={ratioDefault}
+							{pickerContentWidth}
+							promptText={text}
+							bind:seed={seedAspectRatio}
+							bind:value={aspectRatio}
+							bind:dismissedRatio
+							disabled={busy}
+						/>
+					{/await}
 				{/if}
 				<!--
 					Inline model selector: rendered as a borderless dropdown so

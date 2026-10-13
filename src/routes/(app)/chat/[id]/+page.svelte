@@ -33,7 +33,6 @@
 	import ChatComposer from '#lib/components/chat/ChatComposer.svelte';
 	import ChatHeader from '#lib/components/chat/ChatHeader.svelte';
 	import { AVATAR_DESCRIPTION_PROMPT, extractAvatarPrompt } from '#lib/avatar-prompt.js';
-	import AvatarDrawDialog from '#lib/components/chat/AvatarDrawDialog.svelte';
 	import { CanvasController } from '#lib/canvas-controller.svelte.js';
 	import { CompactionController } from '#lib/compaction-controller.svelte.js';
 	import { EditSession } from '#lib/edit-session.svelte.js';
@@ -2974,25 +2973,35 @@
 	~100-200 ms after the tap — easily long enough for the import chunk
 	to land in parallel on the first open.
 -->
-<AvatarDrawDialog
-	open={avatarDrawOpen}
-	prompt={avatarPrompt}
-	models={imageModels}
-	loading={catalogue.status === 'loading'}
-	loadError={catalogue.loadFailed}
-	modelId={avatarModelId}
-	canCompare={canCompareAvatar}
-	compareBlockedReason="Comparing several models needs the description to be the latest thing in the thread."
-	bind:compareSelections={avatarCompareSelections}
-	bind:compareMode={avatarCompareMode}
-	enhance={avatarEnhance}
-	status={avatarStatus}
-	onPromptChange={(v: string) => (avatarPrompt = v)}
-	onEnhanceChange={(v: boolean) => (avatarEnhance = v)}
-	onModelChange={onAvatarModelChange}
-	onDraw={() => void generateAvatar()}
-	onCancel={() => (avatarDrawOpen = false)}
-/>
+<!--
+	The avatar draw dialog loads on first open, like the lightbox below: it's
+	opened from the avatar menu, and most sessions never do. It holds no state of
+	its own (everything is bound to this page), so unmounting it on close loses
+	nothing.
+-->
+{#if avatarDrawOpen}
+	{#await import('#lib/components/chat/AvatarDrawDialog.svelte') then { default: AvatarDrawDialog }}
+		<AvatarDrawDialog
+			open
+			prompt={avatarPrompt}
+			models={imageModels}
+			loading={catalogue.status === 'loading'}
+			loadError={catalogue.loadFailed}
+			modelId={avatarModelId}
+			canCompare={canCompareAvatar}
+			compareBlockedReason="Comparing several models needs the description to be the latest thing in the thread."
+			bind:compareSelections={avatarCompareSelections}
+			bind:compareMode={avatarCompareMode}
+			enhance={avatarEnhance}
+			status={avatarStatus}
+			onPromptChange={(v: string) => (avatarPrompt = v)}
+			onEnhanceChange={(v: boolean) => (avatarEnhance = v)}
+			onModelChange={onAvatarModelChange}
+			onDraw={() => void generateAvatar()}
+			onCancel={() => (avatarDrawOpen = false)}
+		/>
+	{/await}
+{/if}
 
 {#if lightbox}
 	{#await import('#lib/components/MediaLightbox.svelte') then { default: MediaLightbox }}

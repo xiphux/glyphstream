@@ -9,13 +9,13 @@
 	canonical draft + per-turn model selection.
 -->
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { ArrowUp, Square } from '@lucide/svelte';
 	import FeatureTogglesMenu from '#lib/components/FeatureTogglesMenu.svelte';
 	import ModelPicker from '#lib/components/chat/ModelPicker.svelte';
 	import ComposerCore from '#lib/components/chat/ComposerCore.svelte';
 	import OfflineNotice from '#lib/components/chat/OfflineNotice.svelte';
 	import SplitAttachmentsToggle from '#lib/components/chat/SplitAttachmentsToggle.svelte';
-	import AspectRatioSelector from '#lib/components/chat/AspectRatioSelector.svelte';
 	import { agreedDefault, offeredRatios } from '#lib/aspect-ratio.js';
 	import { stripSkillCommand } from '#lib/skill-command.js';
 	import { isSnippetKind } from '#lib/types/api.js';
@@ -288,6 +288,15 @@
 	});
 
 	let ratioRef = $state<{ flushDetection: () => void } | null>(null);
+	// The selector shows only for models that advertise ratios, so it loads on
+	// demand rather than with the route. It is also requested once on mount: a
+	// send flushes its prompt-ratio detection through `ratioRef`, and that has
+	// to be there by the time someone has picked an image model and typed.
+	const loadAspectRatioSelector = () =>
+		import('#lib/components/chat/AspectRatioSelector.svelte').then((m) => m.default);
+	onMount(() => {
+		void loadAspectRatioSelector();
+	});
 	/**
 	 * The send reads `aspectRatio` synchronously, and the selector only publishes a
 	 * ratio once its debounce has caught up — so a shape typed in the last breath
@@ -357,16 +366,18 @@
 			<!-- Only for models that advertise ratios; absence means "offer no
 			     selector", never "one fixed ratio". -->
 			{#if ratioOptions.length > 0}
-				<AspectRatioSelector
-					bind:this={ratioRef}
-					options={ratioOptions}
-					defaultValue={ratioDefault}
-					{pickerContentWidth}
-					promptText={composerText}
-					bind:value={aspectRatio}
-					bind:dismissedRatio
-					disabled={generating}
-				/>
+				{#await loadAspectRatioSelector() then AspectRatioSelector}
+					<AspectRatioSelector
+						bind:this={ratioRef}
+						options={ratioOptions}
+						defaultValue={ratioDefault}
+						{pickerContentWidth}
+						promptText={composerText}
+						bind:value={aspectRatio}
+						bind:dismissedRatio
+						disabled={generating}
+					/>
+				{/await}
 			{/if}
 			<!--
 				Per-turn model picker: defaulted to the conversation's current
