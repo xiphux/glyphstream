@@ -47,8 +47,7 @@
 
 import {
 	claimExpiredTrash,
-	findPurgeCandidates,
-	markHardDeleted,
+	claimAbandonedUploads,
 	stampOrphanedZeroRefRows,
 	type PurgeCandidate,
 } from '../db/queries/media';
@@ -68,9 +67,9 @@ const PURGE_CONCURRENCY = 8;
 let running = false;
 
 /**
- * Unlink each candidate's bytes, then `mark` the row — only rows whose bytes
- * actually went are marked, so a failed unlink is retried next tick (for a
- * caller whose `mark` is what takes the row out of its candidate query).
+ * Unlink each claimed candidate's bytes. The rows were already stamped by the
+ * claim, so nothing is written here; a failed unlink is logged and leaks the
+ * file.
  *
  * Concurrent rather than one candidate at a time. Each delete is three unlinks
  * (original + .thumb.jpg + .vision.jpg), so a full 500-row batch was up to 1500
@@ -79,35 +78,21 @@ let running = false;
  * Bounded so a large batch can't saturate the filesystem queue against
  * foreground media reads.
  */
-async function unlinkAndMark(
-	candidates: PurgeCandidate[],
-	mark: (id: string) => void,
-): Promise<number> {
+async function unlinkAll(candidates: PurgeCandidate[]): Promise<void> {
 	const store = getMediaStore();
-	let done = 0;
 	for (let i = 0; i < candidates.length; i += PURGE_CONCURRENCY) {
 		const slice = candidates.slice(i, i + PURGE_CONCURRENCY);
-		const outcomes = await Promise.all(
+		await Promise.all(
 			slice.map(async (c) => {
 				try {
 					await store.delete(c.storagePath);
-					return c;
 				} catch (e) {
 					// Log and continue — one bad row shouldn't block the batch.
 					console.warn(`[purger] failed to delete bytes of ${c.id}:`, e);
-					return null;
 				}
 			}),
 		);
-		// Row updates stay sequential and on this thread: they're synchronous
-		// SQLite writes.
-		for (const c of outcomes) {
-			if (!c) continue;
-			mark(c.id);
-			done++;
-		}
 	}
-	return done;
 }
 
 /**
@@ -125,16 +110,14 @@ export async function runPurgeSweep(): Promise<{
 	try {
 		const stamped = stampOrphanedZeroRefRows();
 		const now = Date.now();
-		const hardDeleted = await unlinkAndMark(
-			findPurgeCandidates(now - GRACE_PERIOD_MS, BATCH_SIZE),
-			markHardDeleted,
-		);
-		// Already stamped purged by the claim (see `claimExpiredTrash` for why
-		// it can't mark after the unlink like the upload phase does), so there's
-		// nothing to mark; this only borrows the bounded-concurrency unlink. A
-		// failed unlink is logged and leaks the file.
+		// Both phases claim (stamp) their rows synchronously and only then
+		// unlink — see `claimAbandonedUploads` / `claimExpiredTrash` for why a
+		// mark after the awaited unlink was a race.
+		const uploads = claimAbandonedUploads(now - GRACE_PERIOD_MS, BATCH_SIZE);
+		await unlinkAll(uploads);
+		const hardDeleted = uploads.length;
 		const claimed = claimExpiredTrash(now - TRASH_RETENTION_MS, BATCH_SIZE);
-		await unlinkAndMark(claimed, () => {});
+		await unlinkAll(claimed);
 		const trashExpired = claimed.length;
 
 		if (stamped > 0 || hardDeleted > 0 || trashExpired > 0) {

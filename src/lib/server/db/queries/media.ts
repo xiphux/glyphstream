@@ -1520,14 +1520,17 @@ export interface PurgeCandidate {
  * go through the trash, which the purger expires via `claimExpiredTrash`.
  * This query's job is reaping uploads the user picked but never sent.
  *
- * Deliberately NOT user-scoped: this (and `markHardDeleted` /
+ * Deliberately NOT user-scoped: this (and `claimAbandonedUploads` /
  * `stampOrphanedZeroRefRows`) are trusted background-maintenance queries
  * run by the purger over the whole media table, not request-driven paths.
  * A user_id predicate here would be wrong — the purger sweeps every user.
  */
-export function findPurgeCandidates(olderThanMs: number, limit = 500): PurgeCandidate[] {
-	const db = getDb();
-	return db
+export function findPurgeCandidates(
+	olderThanMs: number,
+	limit = 500,
+	reader: Tx | ReturnType<typeof getDb> = getDb(),
+): PurgeCandidate[] {
+	return reader
 		.select({ id: media.id, storagePath: media.storagePath })
 		.from(media)
 		.where(
@@ -1550,12 +1553,38 @@ export function findPurgeCandidates(olderThanMs: number, limit = 500): PurgeCand
 		.all();
 }
 
-/** Mark an abandoned upload deleted AND purged (post file unlink) — an upload
- *  never passes through the trash. */
-export function markHardDeleted(mediaId: string): void {
-	const db = getDb();
-	const now = Date.now();
-	db.update(media).set({ deletedAt: now, purgedAt: now }).where(eq(media.id, mediaId)).run();
+/**
+ * Claim abandoned uploads for deletion: in one synchronous transaction, select
+ * what `findPurgeCandidates` would return and stamp it deleted AND purged (an
+ * upload never passes through the trash), returning the storage paths for the
+ * caller to unlink AFTER this commits.
+ *
+ * Claim-then-unlink, like `claimExpiredTrash`. The purger used to unlink first
+ * and mark afterwards, and during that awaited unlink the row still read as
+ * live: a message attaching it right then linked it (clearing nothing the mark
+ * looked at), and the mark then tombstoned a row a message now referenced, with
+ * no file behind it — every later send of that conversation failed on it. Now
+ * an attach lands either before the claim (the link clears
+ * `unreferenced_since`, so the row no longer qualifies) or after it (it sees a
+ * deleted row and is refused). A failed unlink leaks the file instead of
+ * being retried — the same trade `claimExpiredTrash` makes.
+ */
+export function claimAbandonedUploads(olderThanMs: number, limit = 500): PurgeCandidate[] {
+	return getDb().transaction((tx) => {
+		const rows = findPurgeCandidates(olderThanMs, limit, tx);
+		if (rows.length === 0) return [];
+		const now = Date.now();
+		tx.update(media)
+			.set({ deletedAt: now, purgedAt: now })
+			.where(
+				inArray(
+					media.id,
+					rows.map((r) => r.id),
+				),
+			)
+			.run();
+		return rows;
+	});
 }
 
 /**

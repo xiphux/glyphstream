@@ -37,6 +37,9 @@ arrived.
   opening another conversation no longer shows the comparison, its error, or
   the picked model in the conversation you opened.
 - The gallery loads its contents once when opened, instead of twice.
+- A file attached at the moment the background cleanup removed it as
+  abandoned could leave its conversation unable to send. Cleanup now claims a
+  file before deleting it, so the attach is refused instead.
 - Photos taken in portrait on a phone now get upright thumbnails, and are sent
   to vision models upright. (Thumbnails already made before this change keep
   their old orientation.)

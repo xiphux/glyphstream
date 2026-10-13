@@ -125,6 +125,38 @@ describe('runPurgeSweep', () => {
 		expect(row?.purgedAt).not.toBeNull();
 	});
 
+	it('claims an abandoned upload before deleting its file', async () => {
+		// Unlink-then-mark left a window: while the file delete was awaited, the
+		// row still read as live, so a message attaching it right then linked a
+		// row that was marked deleted moments later — with no file behind it.
+		// The claim has to be visible before the sweep touches the disk.
+		const u = seedUser();
+		const storagePath = 'aa/bb/claimed.png';
+		writeMediaFile(storagePath);
+		const { id } = insertMedia({
+			userId: u.id,
+			storagePath,
+			contentType: 'image/png',
+			byteSize: 10,
+			kind: 'image',
+			sourceEndpointId: null,
+			sourceModel: null,
+			promptExcerpt: null,
+			origin: 'uploaded',
+		});
+		mocks.testDb
+			.update(media)
+			.set({ unreferencedSince: Date.now() - 24 * 60 * 60 * 1000 })
+			.where(eq(media.id, id))
+			.run();
+
+		const sweep = runPurgeSweep();
+		const claimed = mocks.testDb.select().from(media).where(eq(media.id, id)).get();
+		expect(claimed?.deletedAt).not.toBeNull();
+		expect(claimed?.purgedAt).not.toBeNull();
+		await sweep;
+	});
+
 	it('does NOT hard-delete rows still inside the grace window', async () => {
 		const u = seedUser();
 		const storagePath = 'aa/bb/recent.png';
