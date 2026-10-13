@@ -29,6 +29,7 @@ import type {
 import { type Cookies, error } from '@sveltejs/kit';
 import { cookiesSecure, publicBaseUrl } from '../env';
 import type { SessionUser } from './session';
+import { clearAuthCookie } from './signed-cookies';
 import {
 	pickKnownTransports,
 	updateCredentialCounterAndLastUsed,
@@ -346,7 +347,7 @@ export function readRegistrationChallengeCookie(cookies: Cookies): string | unde
 }
 
 export function clearRegistrationChallengeCookie(cookies: Cookies): void {
-	cookies.delete(REGISTRATION_COOKIE, { path: '/' });
+	clearAuthCookie(cookies, REGISTRATION_COOKIE);
 }
 
 export function setLoginChallengeCookie(cookies: Cookies, challenge: string): void {
@@ -358,7 +359,7 @@ export function readLoginChallengeCookie(cookies: Cookies): string | undefined {
 }
 
 export function clearLoginChallengeCookie(cookies: Cookies): void {
-	cookies.delete(LOGIN_COOKIE, { path: '/' });
+	clearAuthCookie(cookies, LOGIN_COOKIE);
 }
 
 export function setUnlockChallengeCookie(cookies: Cookies, challenge: string): void {
@@ -370,5 +371,5 @@ export function readUnlockChallengeCookie(cookies: Cookies): string | undefined 
 }
 
 export function clearUnlockChallengeCookie(cookies: Cookies): void {
-	cookies.delete(UNLOCK_COOKIE, { path: '/' });
+	clearAuthCookie(cookies, UNLOCK_COOKIE);
 }

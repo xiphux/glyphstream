@@ -9,7 +9,7 @@
 import { error } from '@sveltejs/kit';
 import { verifyRegistrationCeremony } from '#lib/server/auth/passkey.js';
 import { SETUP_PASSKEY_CARRY_COOKIE, setupGate } from '#lib/server/auth/setup.js';
-import { verify } from '#lib/server/auth/signed-cookies.js';
+import { clearAuthCookie, verify } from '#lib/server/auth/signed-cookies.js';
 import { createSession, setSessionCookie } from '#lib/server/auth/session.js';
 import { insertCredential } from '#lib/server/db/queries/passkey.js';
 import { createInitialUser } from '#lib/server/db/queries/users.js';
@@ -34,7 +34,7 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 	// Read the carry state before the ceremony (which throws on a missing
 	// challenge first); both short-lived cookies are cleared either way.
 	const carrySigned = cookies.get(SETUP_PASSKEY_CARRY_COOKIE);
-	cookies.delete(SETUP_PASSKEY_CARRY_COOKIE, { path: '/' });
+	clearAuthCookie(cookies, SETUP_PASSKEY_CARRY_COOKIE);
 	const carry = verify<CarryPayload>(carrySigned);
 	if (!carry) error(400, 'Missing or expired setup state');
 

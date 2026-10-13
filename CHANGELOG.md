@@ -15,6 +15,11 @@ arrived.
   it runs can no longer see the server's environment variables or files,
   start other programs, or open network connections of its own; its web
   requests go through the server's network policy as before.
+- On a server reached over plain http (by IP address or LAN name rather than
+  `localhost`), sign-in cookies are now actually cleared when they should be.
+  Signing out left the dead session cookie behind, and the one-time cookies
+  used during passkey and GitHub/Google/OIDC sign-in outlived the step that
+  used them.
 
 ### Fixed
 

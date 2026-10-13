@@ -3,6 +3,7 @@ import { and, desc, eq, gt, isNull, ne } from 'drizzle-orm';
 import type { Cookies } from '@sveltejs/kit';
 import { getDb } from '../db/client';
 import { cookiesSecure } from '../env';
+import { clearAuthCookie } from './signed-cookies';
 import { sessions, users } from '../db/schema';
 
 const SESSION_COOKIE = 'glyphstream_session';
@@ -278,7 +279,7 @@ export function setSessionCookie(cookies: Cookies, token: string, expiresAt: num
 }
 
 export function clearSessionCookie(cookies: Cookies): void {
-	cookies.delete(SESSION_COOKIE, { path: '/' });
+	clearAuthCookie(cookies, SESSION_COOKIE);
 }
 
 export function readSessionCookie(cookies: Cookies): string | undefined {

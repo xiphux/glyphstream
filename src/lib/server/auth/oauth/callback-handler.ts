@@ -25,7 +25,7 @@ import type { Cookies } from '@sveltejs/kit';
 import { OAuth2RequestError } from './oauth2';
 import { SETUP_OAUTH_CARRY_COOKIE } from '../setup';
 import { JOIN_OAUTH_CARRY_COOKIE, InviteConsumedError, finalizeOAuthJoin } from '../join';
-import { verify } from '../signed-cookies';
+import { clearAuthCookie, verify } from '../signed-cookies';
 import { createSession, setSessionCookie } from '../session';
 import { getAppLockTimeout, initialUnlockedUntil } from '../app-lock';
 import {
@@ -90,11 +90,11 @@ export async function handleOAuthCallback(
 	const linkState = cookies.get(LINK_STATE_COOKIE);
 	const loginState = cookies.get(STATE_COOKIE);
 	const codeVerifier = cookies.get(CODE_VERIFIER_COOKIE) ?? null;
-	cookies.delete(SETUP_OAUTH_CARRY_COOKIE, { path: '/' });
-	cookies.delete(JOIN_OAUTH_CARRY_COOKIE, { path: '/' });
-	cookies.delete(LINK_STATE_COOKIE, { path: '/' });
-	cookies.delete(STATE_COOKIE, { path: '/' });
-	cookies.delete(CODE_VERIFIER_COOKIE, { path: '/' });
+	clearAuthCookie(cookies, SETUP_OAUTH_CARRY_COOKIE);
+	clearAuthCookie(cookies, JOIN_OAUTH_CARRY_COOKIE);
+	clearAuthCookie(cookies, LINK_STATE_COOKIE);
+	clearAuthCookie(cookies, STATE_COOKIE);
+	clearAuthCookie(cookies, CODE_VERIFIER_COOKIE);
 
 	if (setupCarrySigned) {
 		return handleSetup({

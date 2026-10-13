@@ -82,3 +82,19 @@ export function setCarryCookie(
 		maxAge: maxAgeSeconds,
 	});
 }
+
+/**
+ * Clear an auth cookie set by this module, session.ts or passkey.ts.
+ *
+ * Always use this instead of a bare `cookies.delete(name, { path })`. Kit's
+ * delete is a `set('', maxAge 0)` that fills unspecified attributes with its
+ * own defaults, and its default `secure` is true outside dev unless the host
+ * is literally `localhost`. Our cookies are set with `secure` keyed to
+ * EXTERNAL_BASE_URL, so on a plain-http deployment reached by IP or LAN name
+ * the clearing cookie carried `Secure` over http and the browser ignored it:
+ * logout left the session cookie behind, and the single-use passkey
+ * challenge and OAuth state cookies survived the step that consumed them.
+ */
+export function clearAuthCookie(cookies: Cookies, name: string): void {
+	cookies.delete(name, { path: '/', httpOnly: true, sameSite: 'lax', secure: cookiesSecure() });
+}

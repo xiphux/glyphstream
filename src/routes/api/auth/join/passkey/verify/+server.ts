@@ -13,7 +13,7 @@ import {
 	InviteConsumedError,
 	finalizePasskeyJoin,
 } from '#lib/server/auth/join.js';
-import { verify } from '#lib/server/auth/signed-cookies.js';
+import { clearAuthCookie, verify } from '#lib/server/auth/signed-cookies.js';
 import { createSession, setSessionCookie } from '#lib/server/auth/session.js';
 import { findValidInvite } from '#lib/server/db/queries/invites.js';
 import { passkeyLoginEnabled } from '#lib/server/env.js';
@@ -32,7 +32,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	// Read the carry state before the ceremony (which throws on a missing
 	// challenge first); both short-lived cookies are cleared either way.
 	const carrySigned = cookies.get(JOIN_PASSKEY_CARRY_COOKIE);
-	cookies.delete(JOIN_PASSKEY_CARRY_COOKIE, { path: '/' });
+	clearAuthCookie(cookies, JOIN_PASSKEY_CARRY_COOKIE);
 	const carry = verify<CarryPayload>(carrySigned);
 	if (!carry) error(400, 'Missing or expired join state');
 
