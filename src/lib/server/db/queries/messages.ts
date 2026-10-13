@@ -834,6 +834,27 @@ export function setActiveLeafMessageId(conversationId: string, messageId: string
 }
 
 /**
+ * Point the active leaf back at `restoreTo`, but only if it is still
+ * `expected` — i.e. nothing was appended or selected since `expected` was set.
+ * A retry uses this to undo its rewind when the attempt persists no reply.
+ * Returns whether the leaf moved.
+ */
+export function restoreActiveLeafIfUnchanged(
+	conversationId: string,
+	expected: string,
+	restoreTo: string,
+): boolean {
+	const res = getDb()
+		.update(conversations)
+		.set({ activeLeafMessageId: restoreTo })
+		.where(
+			and(eq(conversations.id, conversationId), eq(conversations.activeLeafMessageId, expected)),
+		)
+		.run();
+	return Number(res.changes) > 0;
+}
+
+/**
  * "Edit" v1 behavior: set the conversation's active_leaf to the parent of
  * `messageId`, orphaning the descendants on what was the active branch.
  * Rows are NOT deleted — they remain reachable as alternate-branch siblings

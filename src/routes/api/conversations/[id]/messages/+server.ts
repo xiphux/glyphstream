@@ -9,6 +9,7 @@ import {
 	appendMessage,
 	findUserMessageAncestor,
 	getMessage,
+	restoreActiveLeafIfUnchanged,
 	setActiveLeafMessageId,
 	walkActiveBranch,
 } from '#lib/server/db/queries/messages.js';
@@ -211,11 +212,11 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		if (!userMessage) {
 			error(400, 'Retry target has no user-message ancestor');
 		}
-		// Re-anchor the active branch at the user message — walks from
-		// here build the upstream request from history-up-to-the-retry-
-		// point. The new assistant turn (and any of its tool messages)
-		// becomes a sibling subtree of the chain being retried.
-		setActiveLeafMessageId(params.id, userMessage.id);
+		// The active leaf is NOT moved here. A chat retry re-anchors it at the
+		// user message once it reaches the chat path (below), and puts it back
+		// if the attempt persists nothing; a media retry needs no history and
+		// never moves it — its job appends under `userMessage` and advances the
+		// leaf only when there is something to show.
 	} else {
 		userMessage = createUserMessage({
 			conversationId: params.id,
@@ -385,8 +386,23 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// fan-out branch that ever DOES run a title task would reopen that gap to
 	// seconds and duplicate the "N ready" push — see fanout-notify.ts.
 	const onGenerationSettled = () => clearInFlight(params.id, inFlight);
+
+	// A chat retry re-anchors the active branch at the user message so the
+	// walks below build the upstream request from history-up-to-the-retry-point;
+	// the new assistant turn (and any of its tool messages) becomes a sibling
+	// subtree of the chain being retried. If the attempt then ends having
+	// persisted nothing — Stop before the first token, a setup error — the leaf
+	// would stay on the user message and the reply being retried would vanish
+	// from the thread, so put it back. Compare-and-swap: a reply, a tool row or
+	// a branch switch has already moved the leaf and is left alone.
+	const leafBeforeRetry = isRetry ? (meta.activeLeafMessageId ?? null) : null;
+	const undoRetryRewind = () => {
+		if (leafBeforeRetry) restoreActiveLeafIfUnchanged(params.id, userMessage.id, leafBeforeRetry);
+	};
+
 	const onBranchComplete = () => {
 		clearInFlight(params.id, inFlight);
+		undoRetryRewind();
 		if (isFanout) {
 			notifyFanoutCompleteIfLast({
 				conversationId: params.id,
@@ -400,6 +416,8 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	};
 
 	try {
+		if (isRetry) setActiveLeafMessageId(params.id, userMessage.id);
+
 		// Resolve the system prompt sent upstream. Precedence:
 		//   1. The conversation's snapshotted prompt (set when a custom-model
 		//      preset or an explicit body.systemPrompt was used at create time).
@@ -767,6 +785,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		}
 	} catch (e) {
 		clearInFlight(params.id, inFlight);
+		undoRetryRewind();
 		throw e;
 	}
 };

@@ -55,6 +55,9 @@ arrived.
 - Compacting a conversation while a message is sent to it from another tab or
   device no longer hides that message. The compaction now stops and asks you
   to try again.
+- Stopping a retry before it produced anything (or a retry that failed before
+  starting) no longer hides the reply you were retrying. It used to vanish from
+  the thread, and the next message was attached in the wrong place.
 
 ## v0.44.1
 
