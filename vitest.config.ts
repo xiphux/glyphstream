@@ -40,6 +40,16 @@ export default defineConfig({
 					name: 'unit',
 					include: ['tests/unit/**/*.{test,spec}.{js,ts}'],
 					environment: 'node',
+					// Forked processes, not the root's worker threads. Under threads
+					// the run intermittently segfaulted inside node:sqlite
+					// (releaseAllSavepoints <- sqlite3BtreeClose <- sqlite3VdbeHalt
+					// <- StatementSync::Run, Node 26.1 / SQLite 3.53.0): about one
+					// run in fourteen, taking the whole process down with no file
+					// named. 38 consecutive forks runs had none. Only this project
+					// opens SQLite databases, so the component project keeps threads.
+					// The crash reports are in ~/Library/Logs/DiagnosticReports
+					// (node-*.ips) if this is ever re-tested on a newer Node.
+					pool: 'forks',
 				},
 			},
 			{
