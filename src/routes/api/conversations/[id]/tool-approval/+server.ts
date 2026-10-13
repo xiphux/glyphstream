@@ -35,6 +35,7 @@ import { getUserPreferences, setUserPreferences } from '#lib/server/db/queries/u
 import { composePersonaPrompt } from '#lib/server/chat/persona-context.js';
 import { executeOneToolCall } from '#lib/server/streaming/tool-execution.js';
 import { clearInFlight, registerInFlight } from '#lib/server/streaming/in-flight.js';
+import { sseResponse } from '#lib/server/streaming/sse-transport.js';
 import { startStreamingRelay } from '#lib/server/streaming/relay.js';
 import { mediaIdToDataUrl } from '#lib/server/media/data-url.js';
 import type { ChatCompletionRequest } from '#lib/server/endpoints/client.js';
@@ -281,7 +282,10 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const initialParentMessageId =
 		meta.activeLeafMessageId ?? updatedBranch[updatedBranch.length - 1]?.id ?? lastUserMessage.id;
 
-	const inFlight = registerInFlight(params.id, endpoint);
+	// The same model fields the send path registers with: in-flight readers (the
+	// conversation list's generating marker, the endpoint view) describe a
+	// resumed turn by them, and an entry without them read as an unknown model.
+	const inFlight = registerInFlight(params.id, endpoint, undefined, meta.modelKind, meta.modelId);
 
 	const stream = await startStreamingRelay({
 		conversationId: params.id,
@@ -314,14 +318,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		initialParentMessageId,
 	});
 
-	return new Response(stream, {
-		headers: {
-			'Content-Type': 'text/event-stream',
-			'Cache-Control': 'no-cache, no-store, no-transform',
-			Connection: 'keep-alive',
-			'X-Accel-Buffering': 'no',
-		},
-	});
+	return sseResponse(stream);
 };
 
 interface FoundPending {

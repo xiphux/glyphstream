@@ -91,7 +91,7 @@ vi.mock('#lib/server/streaming/relay.js', () => ({
 import { POST } from '../../src/routes/api/conversations/[id]/tool-approval/+server';
 import { createConversation } from '#lib/server/db/queries/conversations.js';
 import { appendMessage } from '#lib/server/db/queries/messages.js';
-import { resetInFlight } from '#lib/server/streaming/in-flight.js';
+import { getInFlightEntries, resetInFlight } from '#lib/server/streaming/in-flight.js';
 
 function toolDef(name: string, description = name): OpenAIToolDefinition {
 	return {
@@ -237,5 +237,16 @@ describe('POST /tool-approval — a pending call runs at most once', () => {
 		await first;
 		expect(await second).toBe(409);
 		expect(mocks.executions).toBe(1);
+	});
+});
+
+describe('POST /tool-approval — the resumed turn is registered like a sent one', () => {
+	it('records the conversation model on its in-flight entry, and answers as SSE', async () => {
+		const { conversationId, userId } = seedPendingApproval();
+		const res = await approve(conversationId, userId);
+		expect(res.headers.get('content-type')).toBe('text/event-stream');
+		expect(getInFlightEntries(conversationId)).toEqual([
+			expect.objectContaining({ modelKind: 'chat', modelId: 'mock::mock-chat' }),
+		]);
 	});
 });
