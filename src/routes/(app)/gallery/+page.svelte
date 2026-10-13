@@ -375,20 +375,34 @@
 	// Open the lightbox for a media id. Drill/search rows are already full
 	// MediaListItems (instant); a top-level grid tile carries only a thin unit,
 	// so its leader is fetched.
+	// Bumped by every open and close. A top-level tile (or a carousel swipe to
+	// one) fetches its row; if the user has since opened another item, swiped
+	// on, or closed the preview, that late response must not replace — or
+	// reopen — what they're looking at.
+	let lightboxRequest = 0;
+	function showLightbox(m: MediaListItem | null) {
+		lightboxRequest++;
+		lightbox = m;
+	}
+
 	async function openLightboxById(id: string) {
 		const local =
 			drillItems?.find((m) => m.id === id) ??
 			(searching ? searchItems.find((m) => m.id === id) : undefined);
 		if (local) {
-			lightbox = local;
+			showLightbox(local);
 			return;
 		}
+		const request = ++lightboxRequest;
 		try {
 			const res = await fetchWithTimeout(`/api/media/${id}`);
 			if (!res.ok) throw new Error(`Server returned ${res.status}`);
-			lightbox = (await res.json()) as MediaListItem;
+			const item = (await res.json()) as MediaListItem;
+			if (request === lightboxRequest) lightbox = item;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to open media';
+			if (request === lightboxRequest) {
+				error = e instanceof Error ? e.message : 'Failed to open media';
+			}
 		}
 	}
 
@@ -438,7 +452,7 @@
 	function enterSelectMode() {
 		selectMode = true;
 		selected = new Set();
-		lightbox = null;
+		showLightbox(null);
 	}
 	function exitSelectMode() {
 		selectMode = false;
@@ -1228,7 +1242,7 @@
 					>
 						<button
 							type="button"
-							onclick={() => (selectMode ? toggleSelected(m.id) : (lightbox = m))}
+							onclick={() => (selectMode ? toggleSelected(m.id) : showLightbox(m))}
 							class="block w-full"
 							aria-label={selectMode
 								? isSelected
@@ -1586,7 +1600,7 @@
 
 <MediaLightbox
 	media={lightbox}
-	onClose={() => (lightbox = null)}
+	onClose={() => showLightbox(null)}
 	onDelete={deleteOne}
 	{deletingId}
 	conversationsUsingThis={lightboxConversations}
