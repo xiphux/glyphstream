@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { requireFound, requireUser } from '#lib/server/auth/guard.js';
-import { parseJsonBody } from '#lib/server/http.js';
+import { optionalString, parseJsonBody } from '#lib/server/http.js';
 import {
 	getConversationMeta,
 	updateConversationModel,
@@ -77,7 +77,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// so a grid recovered after a reload keeps the order the user enqueued rather
 	// than the order the branches happened to finish in.
 	const fanoutIndex = resolveBranchIndex(body.branchIndex, isFanout);
-	const text = body.text?.trim() ?? '';
+	const text = optionalString(body.text, 'text')?.trim() ?? '';
 	const attachedMediaIds = Array.isArray(body.attachedMediaIds)
 		? body.attachedMediaIds.filter((s): s is string => typeof s === 'string')
 		: [];

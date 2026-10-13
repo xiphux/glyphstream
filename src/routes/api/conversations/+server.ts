@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
-import { parseJsonBody } from '#lib/server/http.js';
+import { optionalString, parseJsonBody } from '#lib/server/http.js';
 import {
 	createConversation,
 	listConversationIds,
@@ -72,9 +72,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		resolvedModelKind = body.modelKind;
 	}
 
-	if (body.customModelId) {
-		const cm = getCustomModelForUser(body.customModelId, locals.user.id);
-		if (!cm) error(400, `Unknown custom model "${body.customModelId}"`);
+	const customModelId = optionalString(body.customModelId, 'customModelId');
+	if (customModelId) {
+		const cm = getCustomModelForUser(customModelId, locals.user.id);
+		if (!cm) error(400, `Unknown custom model "${customModelId}"`);
 		if (!getEndpoint(cm.baseEndpointId)) {
 			error(
 				400,
@@ -87,7 +88,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		resolvedParameters = cm.parameters;
 		resolvedCustomModelId = cm.id;
 	} else {
-		const modelId = body.modelId?.trim();
+		const modelId = optionalString(body.modelId, 'modelId')?.trim();
 		if (!modelId) error(400, "'modelId' or 'customModelId' is required");
 
 		const parsed = parseModelId(modelId);
@@ -107,7 +108,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		// chats. The custom-model branch above still snapshots from the
 		// preset because preset edits are explicitly meant not to
 		// retroactively change in-flight chats.
-		const explicit = body.systemPrompt?.trim();
+		const explicit = optionalString(body.systemPrompt, 'systemPrompt')?.trim();
 		resolvedSystemPrompt = explicit || null;
 	}
 
@@ -126,7 +127,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		systemPrompt: resolvedSystemPrompt,
 		parameters: resolvedParameters,
 		customModelId: resolvedCustomModelId,
-		title: body.title?.trim() || null,
+		title: optionalString(body.title, 'title')?.trim() || null,
 		disabledFeatures,
 		// "Private chat" content seal — create-time only, never mutable via PATCH.
 		private: body.private ?? false,

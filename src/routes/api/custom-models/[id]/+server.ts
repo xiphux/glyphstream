@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { requireFound, requireUser } from '#lib/server/auth/guard.js';
-import { parseJsonBody } from '#lib/server/http.js';
+import { optionalString, parseJsonBody } from '#lib/server/http.js';
 import {
 	deleteCustomModel,
 	getCustomModelForUser,
@@ -33,16 +33,16 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	// can clear an optional value via PATCH.
 	const patch: Parameters<typeof updateCustomModel>[2] = {};
 	if (body.name !== undefined) {
-		const name = body.name.trim();
+		const name = optionalString(body.name, 'name')?.trim();
 		if (!name) error(400, "'name' must not be empty");
 		if (name.length > 200) error(400, "'name' must be 200 characters or fewer");
 		patch.name = name;
 	}
 	if (body.description !== undefined) {
-		patch.description = body.description.trim() || null;
+		patch.description = optionalString(body.description, 'description')?.trim() || null;
 	}
 	if (body.baseEndpointId !== undefined) {
-		const id = body.baseEndpointId.trim();
+		const id = optionalString(body.baseEndpointId, 'baseEndpointId')?.trim();
 		if (!id) error(400, "'baseEndpointId' must not be empty");
 		if (!getEndpoint(id)) {
 			error(400, `Unknown endpoint "${id}" — not in config.toml`);
@@ -50,12 +50,12 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 		patch.baseEndpointId = id;
 	}
 	if (body.baseModelId !== undefined) {
-		const id = body.baseModelId.trim();
+		const id = optionalString(body.baseModelId, 'baseModelId')?.trim();
 		if (!id) error(400, "'baseModelId' must not be empty");
 		patch.baseModelId = id;
 	}
 	if (body.systemPrompt !== undefined) {
-		patch.systemPrompt = body.systemPrompt.trim() || null;
+		patch.systemPrompt = optionalString(body.systemPrompt, 'systemPrompt')?.trim() || null;
 	}
 	if (body.parameters !== undefined) {
 		patch.parameters = validateParameters(body.parameters);

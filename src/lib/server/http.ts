@@ -21,3 +21,15 @@ export async function parseJsonBody<T>(request: Request): Promise<T> {
 	}
 	return parsed as T;
 }
+
+/**
+ * Narrow an optional string field of a parsed body. Absent (`undefined` or
+ * `null`) gives `undefined`; any other non-string is a 400 naming the field.
+ * `parseJsonBody` only asserts the body's type, so without this a client
+ * sending `{"title": 5}` reaches `.trim()` on a number and gets a 500.
+ */
+export function optionalString(value: unknown, field: string): string | undefined {
+	if (value === undefined || value === null) return undefined;
+	if (typeof value !== 'string') error(400, `'${field}' must be a string`);
+	return value;
+}

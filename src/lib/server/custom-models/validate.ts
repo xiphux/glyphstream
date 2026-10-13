@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit';
+import { optionalString } from '#lib/server/http.js';
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
 import { getRegisteredCategoryIds } from '#lib/server/feature-catalog.js';
 import {
@@ -22,21 +23,21 @@ export interface ValidatedCreate {
 }
 
 export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCreate {
-	const name = body.name?.trim();
+	const name = optionalString(body.name, 'name')?.trim();
 	if (!name) error(400, "'name' is required");
 	if (name.length > 200) error(400, "'name' must be 200 characters or fewer");
 
-	const baseEndpointId = body.baseEndpointId?.trim();
+	const baseEndpointId = optionalString(body.baseEndpointId, 'baseEndpointId')?.trim();
 	if (!baseEndpointId) error(400, "'baseEndpointId' is required");
 	if (!getEndpoint(baseEndpointId)) {
 		error(400, `Unknown endpoint "${baseEndpointId}" — not in config.toml`);
 	}
 
-	const baseModelId = body.baseModelId?.trim();
+	const baseModelId = optionalString(body.baseModelId, 'baseModelId')?.trim();
 	if (!baseModelId) error(400, "'baseModelId' is required");
 
-	const description = body.description?.trim() || null;
-	const systemPrompt = body.systemPrompt?.trim() || null;
+	const description = optionalString(body.description, 'description')?.trim() || null;
+	const systemPrompt = optionalString(body.systemPrompt, 'systemPrompt')?.trim() || null;
 	const parameters = validateParameters(body.parameters);
 	const defaultDisabledFeatures = validateDefaultDisabledFeatures(body.defaultDisabledFeatures);
 

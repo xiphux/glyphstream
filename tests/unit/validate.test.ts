@@ -99,6 +99,15 @@ describe('validateCreateInput', () => {
 		expect(r.systemPrompt).toBe('Be concise');
 	});
 
+	it('rejects a non-string field with a 400, not a TypeError', () => {
+		for (const field of ['name', 'baseEndpointId', 'baseModelId', 'description', 'systemPrompt']) {
+			const body = { name: 'n', baseEndpointId: 'bridge', baseModelId: 'm', [field]: 42 };
+			expect(() => validateCreateInput(body as never)).toThrow(
+				expect.objectContaining({ status: 400 }),
+			);
+		}
+	});
+
 	it('rejects empty name', () => {
 		expect(() => validateCreateInput({ ...valid, name: '   ' })).toThrow();
 	});
