@@ -1,7 +1,7 @@
 /**
- * Passkey credential queries. Every user is bootstrapped via GitHub
- * OAuth, so this table only ever holds *additional* sign-in methods —
- * the user_id always exists in `users` before any row here is written.
+ * Passkey credential queries. A user is created by an OAuth sign-in or by a
+ * passkey registration (setup or invite); either way the `users` row is
+ * written before any row here references it.
  *
  * Two visibility shapes:
  *  - PasskeyCredentialRow — the full row including public_key bytes and
@@ -251,7 +251,7 @@ export function deleteCredential(userId: string, credentialId: string): boolean 
 }
 
 /** Used by the last-method guard before a delete: refuse to remove the
- *  user's only passkey when GitHub login is also disabled. */
+ *  user's only passkey when they have no OAuth account to sign in with. */
 export function countCredentialsForUser(userId: string): number {
 	const db = getDb();
 	return (

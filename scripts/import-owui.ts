@@ -9,7 +9,7 @@
  *     /imports/owui-export.json --user-id <uuid>
  *
  * The user id must already exist in the users table — the user has to
- * have logged in via GitHub OAuth at least once. Set DB_PATH in the
+ * have signed in at least once (any method). Set DB_PATH in the
  * environment to point at the SQLite file (defaults to
  * `./data/glyphstream.db` to match the SvelteKit runtime default).
  *
@@ -107,7 +107,7 @@ const userExists = db
 	.get();
 if (!userExists) {
 	console.error(`User id "${parsed.userId}" not found in the users table.`);
-	console.error('The user must have logged in via GitHub OAuth at least once.');
+	console.error('The user must have signed in at least once.');
 	sqlite.close();
 	exit(1);
 }

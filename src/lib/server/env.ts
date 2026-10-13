@@ -234,15 +234,14 @@ export function passkeyLoginEnabled(): boolean {
 }
 
 /**
- * Optional bootstrap token gating the /setup wizard. When set, /setup
- * requires `?token=<value>` (constant-time compared) before any of its
- * flows are reachable; when unset, /setup is openly accessible while
- * the user count is zero. The token has no effect after the first user
- * is created — /setup is closed structurally at that point.
+ * Optional bootstrap token gating the /setup wizard: /setup requires
+ * `?token=<value>` (constant-time compared) before any of its flows are
+ * reachable. The token has no effect after the first user is created —
+ * /setup is closed structurally at that point.
  *
- * Empty string means "no token required" (the default). Operators on a
- * known-indexed subdomain who want defense-in-depth set this to a
- * random value.
+ * Empty (the default) does NOT leave /setup open: `effectiveSetupToken` in
+ * auth/setup.ts generates a random one for the life of the process and logs
+ * the one-time setup URL at boot. Set this only to pin your own.
  */
 export function setupToken(): string {
 	return readString('SETUP_TOKEN', '').trim();

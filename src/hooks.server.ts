@@ -532,7 +532,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 			// back in whatever the host evicted while nothing was asking.
 			//
 			// `fault` (major page faults) counts exactly that, and the database is
-			// squarely in scope: `db/client.ts` sets `PRAGMA mmap_size` to 30MB, so
+			// squarely in scope: `db/client.ts` sets `PRAGMA mmap_size` to 256MB, so
 			// the main DB file is mapped read-only and file-backed, and a query
 			// touching a page the host reclaimed faults it in as a MAJOR fault.
 			// That's the point rather than a caveat — clean file-backed pages need

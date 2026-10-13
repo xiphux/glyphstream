@@ -4,7 +4,6 @@
  * the token's hash is persisted, so it can never be re-surfaced — losing it
  * means revoking and minting a new one.
  */
-import { error } from '@sveltejs/kit';
 import { requireAdmin } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import { createInvite } from '#lib/server/db/queries/invites.js';
@@ -27,7 +26,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	if (ttlMs > MAX_TTL_MS) ttlMs = MAX_TTL_MS;
 
 	const invite = createInvite({ createdByUserId: locals.user.id, role, ttlMs });
-	if (!invite) error(500, 'Failed to create invite');
 
 	// The raw token is returned only here; the client assembles the join URL
 	// from its own origin so this endpoint needs no base-URL config.
