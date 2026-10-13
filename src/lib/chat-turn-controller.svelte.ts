@@ -683,6 +683,10 @@ export class ChatTurnController {
 				this.inFlightStatus = null;
 				this.busy = false;
 				this.activeAbort = null;
+				// The turn is over and its catch has already read these. Left set,
+				// every later return to the tab (or back online) re-ran the full
+				// branch reload the flags exist to trigger once.
+				this.clearInterruptedFlags();
 			}
 		}
 	}

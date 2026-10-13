@@ -83,6 +83,34 @@ test.describe('event: visibilitychange recovery during in-flight stream', () => 
 		// in test runs without a pending SW), so the role lookup is
 		// effectively toast-specific here.
 		await expect(page.getByRole('status')).toHaveCount(0);
+
+		// The interruption was reconciled; it must not keep costing a full
+		// reload of the conversation on every later return to the tab. Count
+		// page-data refetches that re-run the chat page itself (the last flag
+		// in `x-sveltekit-invalidated` is the page node), as opposed to the
+		// layout's cheap sidebar refresh that every resume does.
+		await page.waitForLoadState('networkidle');
+		let pageReloads = 0;
+		page.on('request', (r) => {
+			const url = new URL(r.url());
+			if (url.pathname.endsWith('/__data.json')) {
+				if ((url.searchParams.get('x-sveltekit-invalidated') ?? '').endsWith('1')) pageReloads++;
+			}
+		});
+		for (let i = 0; i < 2; i++) {
+			for (const state of ['hidden', 'visible']) {
+				await page.evaluate((s) => {
+					Object.defineProperty(document, 'visibilityState', {
+						configurable: true,
+						get: () => s,
+					});
+					document.dispatchEvent(new Event('visibilitychange'));
+				}, state);
+				await page.waitForTimeout(100);
+			}
+		}
+		await page.waitForLoadState('networkidle');
+		expect(pageReloads).toBe(0);
 	});
 });
 

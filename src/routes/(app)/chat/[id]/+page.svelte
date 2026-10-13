@@ -1646,6 +1646,11 @@
 			// died (iOS suspend), the branch fetches error and runBranch hands the
 			// fan-out off to recovery itself.
 			void refreshAll();
+			// That reload reconciles the interruption. With nothing still in
+			// flight, nothing else will read the flags (a running turn's catch
+			// still needs them), so drop them rather than reloading the whole
+			// branch again on every later return to the tab.
+			if (!turn.busy && !fanout.streaming) turn.clearInterruptedFlags();
 		} else {
 			// A draw reconciles through the cheap probe, not a reload: a turn is over
 			// in seconds, a draw takes minutes, and a full `refreshAll()` per
@@ -1692,8 +1697,11 @@
 		isOffline = false;
 		// Same reasoning as the visibility path — don't pre-emptively abort a
 		// live fan-out; an actually-dropped branch fetch recovers via runBranch.
-		if (turn.wasOfflineDuringFetch) void refreshAll();
-		else avatarDraw.reconcileIfOwed();
+		if (turn.wasOfflineDuringFetch) {
+			void refreshAll();
+			// Same as the visibility path: reconciled, and nothing in flight needs them.
+			if (!turn.busy && !fanout.streaming) turn.clearInterruptedFlags();
+		} else avatarDraw.reconcileIfOwed();
 	}
 
 	// In-flight assistant render state (segments + open/progress/status/queued/

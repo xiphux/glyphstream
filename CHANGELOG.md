@@ -34,6 +34,9 @@ arrived.
 - An image preview left open when search (or a notification) took you to
   another conversation now closes instead of staying over the new one.
 - The gallery loads its contents once when opened, instead of twice.
+- After switching away from a conversation while it was replying, coming back
+  to the tab no longer re-downloads the whole conversation every time, only
+  the first time.
 - When approving a tool call failed, the page no longer retries the approval
   on its own in a tight loop (hundreds of requests a second). The error shows
   and the buttons wait for you, as they do after you press Stop.
