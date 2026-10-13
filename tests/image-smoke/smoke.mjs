@@ -21,18 +21,18 @@
  * is e2e's to cover, since Playwright runs this same production build.
  */
 import { readdirSync, readFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { join } from 'node:path';
+import { fork, spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import process from 'node:process';
-import { pathToFileURL } from 'node:url';
-import { Worker } from 'node:worker_threads';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // Chunks whose evaluation IS the app, so importing them here would start a
 // second instance inside the running container, on the same DB: adapter-node's
 // handler calls `server.init`, which runs hooks.server's startup (sweepers, MCP
 // bootstrap, model listing), and its entry listens on the port the container's
-// server already holds. The code interpreter's worker refuses to load off a
-// worker thread. All of them are still proven by run.sh, whose server can't
+// server already holds. The code interpreter's worker refuses to load except
+// as a forked child with an IPC channel (codeInterpreter below starts it so). All of them are still proven by run.sh, whose server can't
 // boot and answer /api/health unless they load.
 //
 // adapter-node 6 moved its own server code into build/server (it used to sit
@@ -107,11 +107,14 @@ const checks = {
 		if (out !== 45) throw new Error(`runPython returned ${String(out)}`);
 	},
 
-	// The code interpreter as the server starts it: a worker thread at the URL
-	// the pool's chunk resolves, not a path this test assumes. That URL is
-	// relative to wherever the bundler put the chunk, and adapter-node moving
-	// the chunk once left every production build without a worker to start
-	// (see scripts/place-worker.mjs) while `pyodide` above still passed.
+	// The code interpreter as the server starts it: a child process forked at
+	// the URL the pool's chunk resolves (not a path this test assumes), under
+	// the same permission flags spawn.ts uses. The URL is relative to wherever
+	// the bundler put the chunk, and adapter-node moving the chunk once left
+	// every production build without a worker to start (see
+	// scripts/place-worker.mjs) while `pyodide` above still passed. The flags
+	// matter too: a read grant that no longer covers what the worker loads in
+	// the image fails here and nowhere else.
 	async codeInterpreter() {
 		const root = '/app/build/server';
 		const spawner = readdirSync(root, { recursive: true })
@@ -123,41 +126,51 @@ const checks = {
 				),
 			);
 		if (!spawner) throw new Error('no server chunk spawns ./worker.js');
-		const worker = new Worker(new URL('./worker.js', pathToFileURL(spawner)));
+		const workerPath = fileURLToPath(new URL('./worker.js', pathToFileURL(spawner)));
+		const pyodideDir = dirname(createRequire(import.meta.url).resolve('pyodide'));
+		// Mirrors spawnInterpreterProcess in src/lib/server/code-interpreter/spawn.ts.
+		const child = fork(workerPath, [], {
+			execArgv: [
+				'--permission',
+				`--allow-fs-read=${workerPath}`,
+				`--allow-fs-read=${pyodideDir}`,
+				'--max-old-space-size=512',
+			],
+			env: {},
+			serialization: 'advanced',
+			stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
+		});
 		try {
 			const result = await new Promise((resolve, reject) => {
 				const timer = setTimeout(() => reject(new Error('no result within 60s')), 60_000);
-				worker.on('error', (e) => {
+				child.on('error', (e) => {
 					clearTimeout(timer);
 					reject(e);
 				});
 				// A worker that dies without replying would otherwise surface as
 				// the 60s timeout rather than its exit code. After a settle, the
-				// `finally` below terminates it and this reject is a no-op.
-				worker.on('exit', (code) => {
+				// `finally` below kills it and this reject is a no-op.
+				child.on('exit', (code, signal) => {
 					clearTimeout(timer);
-					reject(new Error(`worker exited with code ${code} before replying`));
+					reject(new Error(`worker exited (${code ?? signal}) before replying`));
 				});
-				worker.on('message', (m) => {
+				child.on('message', (m) => {
 					if (m.type === 'ready') {
-						worker.postMessage({
-							type: 'run',
-							callId: 1,
-							code: '6 * 7',
-							disabledFeatures: [],
-							preFiles: [],
-						});
+						child.send({ type: 'run', callId: 1, code: '6 * 7', preFiles: [] });
 					} else {
 						clearTimeout(timer);
 						if (m.type === 'result') resolve(m.result);
 						else reject(new Error(`worker replied ${JSON.stringify(m)}`));
 					}
 				});
-				worker.postMessage({ type: 'init' });
+				child.send({
+					type: 'init',
+					pyodideModuleUrl: pathToFileURL(join(pyodideDir, 'pyodide.mjs')).href,
+				});
 			});
 			if (result !== 42) throw new Error(`6 * 7 returned ${JSON.stringify(result)}`);
 		} finally {
-			await worker.terminate();
+			child.kill('SIGKILL');
 		}
 	},
 

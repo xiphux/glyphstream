@@ -61,8 +61,8 @@ export function pyodideModuleUrl(packageDir: string = pyodidePackageDir()): stri
 export interface SpawnInterpreterOptions {
 	/** Absolute path of the bundled worker script. */
 	workerPath: string;
-	/** V8 heap ceiling for the child. Pyodide's WASM heap is bounded
-	 *  separately by the pool's RSS watchdog. */
+	/** V8 heap ceiling for the child. This does NOT bound Pyodide's WASM
+	 *  heap, which nothing caps yet (audit S2: an RSS watchdog in the pool). */
 	memoryMb: number;
 	/** Pyodide package directory to grant read access to. */
 	pyodideDir?: string;
