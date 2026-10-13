@@ -21,6 +21,17 @@ import {
 test.beforeEach(() => resetData());
 test.skip(({ isMobile }) => isMobile, 'the sidebar is a drawer on mobile; the switch is the same');
 
+/** Open the search modal. The shortcut is bound by the (app) layout once it has
+ *  hydrated, so retry it until the modal is actually up. */
+async function openSearch(page: Page) {
+	const search = page.getByRole('dialog', { name: 'Search chats' });
+	await expect(async () => {
+		await page.keyboard.press('ControlOrMeta+k');
+		await expect(search).toBeVisible({ timeout: 1_000 });
+	}).toPass({ timeout: 10_000 });
+	return search;
+}
+
 async function webAccessChecked(page: Page): Promise<string | null> {
 	await page.getByRole('button', { name: 'Feature toggles' }).click();
 	const value = await page.getByRole('switch', { name: 'Web access' }).getAttribute('aria-checked');
@@ -65,8 +76,7 @@ test('an open image preview closes when search takes you to another conversation
 
 	// The search modal opens over the preview; picking a result navigates
 	// without unmounting the chat page.
-	await page.keyboard.press('ControlOrMeta+k');
-	const search = page.getByRole('dialog', { name: 'Search chats' });
+	const search = await openSearch(page);
 	await search.getByRole('textbox', { name: 'Search query' }).fill('Somewhere else');
 	await search
 		.getByRole('button', { name: /Somewhere else entirely/ })
@@ -86,10 +96,7 @@ test('a search hit in another conversation scrolls to and highlights that messag
 	seedConversationMessages(target, 30, 'needle');
 
 	await page.goto(`/chat/${first}`);
-	// The shortcut is bound once the app has hydrated.
-	await expect(page.getByRole('button', { name: 'Select model' })).toBeEnabled();
-	await page.keyboard.press('ControlOrMeta+k');
-	const search = page.getByRole('dialog', { name: 'Search chats' });
+	const search = await openSearch(page);
 	// seedConversationMessages writes "Question <i>" user turns; pick an early one
 	// so it sits well above the bottom the page would otherwise open at.
 	await search.getByRole('textbox', { name: 'Search query' }).fill('Question 3');
