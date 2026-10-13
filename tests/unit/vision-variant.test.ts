@@ -41,6 +41,25 @@ vi.mock('#lib/server/endpoints/config.js', () => ({
 	}),
 }));
 
+const slot = vi.hoisted(() => ({ calls: 0, running: 0, peak: 0 }));
+vi.mock('#lib/server/media/thumbnail.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/server/media/thumbnail.js')>();
+	return {
+		...actual,
+		withGenerationSlot: <T>(fn: () => Promise<T>) =>
+			actual.withGenerationSlot(async () => {
+				slot.calls++;
+				slot.running++;
+				slot.peak = Math.max(slot.peak, slot.running);
+				try {
+					return await fn();
+				} finally {
+					slot.running--;
+				}
+			}),
+	};
+});
+
 import { photoPng } from './_helpers/photo-png';
 import {
 	cachedVisionVariantSize,
@@ -55,6 +74,7 @@ function write(storagePath: string, bytes: Buffer): void {
 }
 
 beforeEach(() => {
+	Object.assign(slot, { calls: 0, running: 0, peak: 0 });
 	mocks.mediaDir = mkdtempSync(join(tmpdir(), 'gs-vision-test-'));
 	mocks.maxImageDim = 1568;
 	mocks.imageQuality = 82;
@@ -259,5 +279,23 @@ describe('cachedVisionVariantSize', () => {
 
 		const variant = await getVisionVariant('ab/cd/big.png');
 		expect(await cachedVisionVariantSize('ab/cd/big.png')).toBe(variant!.bytes.byteLength);
+	});
+});
+
+describe('getVisionVariant under concurrency', () => {
+	it('decodes an image once when several sends ask for it at the same time', async () => {
+		write('ab/cd/fan.png', await photoPng(3000, 2000));
+		const results = await Promise.all(
+			Array.from({ length: 5 }, () => getVisionVariant('ab/cd/fan.png')),
+		);
+		expect(slot.calls).toBe(1);
+		for (const r of results) expect(r?.bytes.equals(results[0]!.bytes)).toBe(true);
+	});
+
+	it('decodes at most three different images at once', async () => {
+		for (let i = 0; i < 6; i++) write(`ab/cd/img${i}.png`, await photoPng(2400, 1600));
+		await Promise.all(Array.from({ length: 6 }, (_, i) => getVisionVariant(`ab/cd/img${i}.png`)));
+		expect(slot.calls).toBe(6);
+		expect(slot.peak).toBeLessThanOrEqual(3);
 	});
 });

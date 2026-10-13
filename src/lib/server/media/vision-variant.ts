@@ -33,6 +33,7 @@ import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { derivedDir, mediaDir } from '../env';
 import { getVisionConfig } from '../endpoints/config';
+import { withGenerationSlot } from './thumbnail';
 
 /** Convention mirrors `thumbStoragePath`: the original's RELATIVE path plus
  *  `.vision.jpg`, under `derivedDir()` — beside the original unless DERIVED_DIR
@@ -135,6 +136,29 @@ export async function getVisionVariant(storagePath: string): Promise<VisionVaria
 	const cached = await readFileOrNull(variantAbs, `cached variant for ${storagePath}`);
 	if (cached !== null) return { bytes: cached, contentType: 'image/jpeg' };
 
+	// One generation per image at a time. A multi-model fan-out sends the same
+	// fresh image from several concurrent requests; each used to decode it.
+	const pending = generating.get(variantAbs);
+	if (pending) return pending;
+	const job = generateVisionVariant(storagePath, sourceAbs, variantAbs, imageQuality, maxImageDim);
+	generating.set(variantAbs, job);
+	try {
+		return await job;
+	} finally {
+		generating.delete(variantAbs);
+	}
+}
+
+/** In-flight generations, keyed by the variant's absolute path. */
+const generating = new Map<string, Promise<VisionVariant | null>>();
+
+async function generateVisionVariant(
+	storagePath: string,
+	sourceAbs: string,
+	variantAbs: string,
+	imageQuality: number,
+	maxImageDim: number,
+): Promise<VisionVariant | null> {
 	// A media row can outlive its bytes, so a MISSING original is ordinary and
 	// `readFileOrNull` stays quiet about it. An original that is present but
 	// unreadable is not ordinary, and it is the failure a remote MEDIA_DIR
@@ -156,18 +180,22 @@ export async function getVisionVariant(storagePath: string): Promise<VisionVaria
 		// to inlining the original, which is the right answer.
 		mkdirSync(dirname(variantAbs), { recursive: true });
 
-		const encoded = await sharp(original)
-			// EXIF orientation first: the re-encode drops metadata, so without this
-			// the model was sent a portrait phone photo lying on its side.
-			.rotate()
-			.resize(maxImageDim, maxImageDim, { fit: 'inside', withoutEnlargement: true })
-			// JPEG has no alpha. Without an explicit flatten, sharp composites
-			// transparency onto BLACK — which turns a transparent-background diagram
-			// or a dark-mode screenshot into an unreadable smear. White matches how
-			// these images are viewed in practice.
-			.flatten({ background: '#ffffff' })
-			.jpeg({ quality: imageQuality, mozjpeg: true })
-			.toBuffer();
+		// Under the thumbnail module's generation slots, so a burst of fresh images
+		// (a fan-out, a long thread's first send) decodes at most a few at a time.
+		const encoded = await withGenerationSlot(() =>
+			sharp(original)
+				// EXIF orientation first: the re-encode drops metadata, so without this
+				// the model was sent a portrait phone photo lying on its side.
+				.rotate()
+				.resize(maxImageDim, maxImageDim, { fit: 'inside', withoutEnlargement: true })
+				// JPEG has no alpha. Without an explicit flatten, sharp composites
+				// transparency onto BLACK — which turns a transparent-background diagram
+				// or a dark-mode screenshot into an unreadable smear. White matches how
+				// these images are viewed in practice.
+				.flatten({ background: '#ffffff' })
+				.jpeg({ quality: imageQuality, mozjpeg: true })
+				.toBuffer(),
+		);
 
 		// Re-encoding a small, already-efficient image can come out BIGGER (a 200px
 		// JPEG icon round-tripped through sharp, say). Inlining that would make the

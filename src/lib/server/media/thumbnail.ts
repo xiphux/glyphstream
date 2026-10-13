@@ -155,6 +155,20 @@ function releaseSlot(): void {
 	active--;
 }
 
+/**
+ * Run `fn` in one of the shared generation slots. Exported for the vision
+ * variant encoder, so every sharp/ffmpeg decode in the process sits under the
+ * one MAX_CONCURRENT_GENERATIONS bound.
+ */
+export async function withGenerationSlot<T>(fn: () => Promise<T>): Promise<T> {
+	await acquireSlot();
+	try {
+		return await fn();
+	} finally {
+		releaseSlot();
+	}
+}
+
 /** Stat a file, or null if it isn't there — one syscall instead of
  *  `existsSync` followed by `stat` (which asks the filesystem twice, on a
  *  path taken for every gallery tile). */
