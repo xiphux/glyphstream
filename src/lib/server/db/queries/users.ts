@@ -67,10 +67,21 @@ export function createUser(input: CreateUserInput, tx?: Tx): string {
  * backstop against a race. Callers (`/setup`-verify endpoints) check
  * `countUsers() === 0` first for a clean 4xx; this throw is defense-in-depth.
  */
-export function createInitialUser(input: CreateInitialUserInput): string {
-	if (countUsers() > 0) {
-		throw new Error('createInitialUser: a user already exists; setup is closed');
+/**
+ * Thrown by {@link createInitialUser} when a user already exists. Both setup
+ * flows check the gate before an `await` (the provider's profile fetch, the
+ * passkey ceremony), so two tabs finishing setup together both pass it and the
+ * second lands here. Callers catch it to answer "setup is complete", not 500.
+ */
+export class SetupClosedError extends Error {
+	constructor() {
+		super('createInitialUser: a user already exists; setup is closed');
+		this.name = 'SetupClosedError';
 	}
+}
+
+export function createInitialUser(input: CreateInitialUserInput): string {
+	if (countUsers() > 0) throw new SetupClosedError();
 	return createUser({ ...input, role: 'admin' });
 }
 

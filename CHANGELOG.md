@@ -38,6 +38,9 @@ arrived.
 
 ### Fixed
 
+- Finishing first-run setup in two tabs at once no longer shows an error page
+  in the second. It goes to sign-in, since the first tab already created the
+  admin account.
 - Memories and image prompts are now indexed for search on embedding servers
   that return vectors without an `index` field. Before, nothing was ever
   indexed on those servers, and no error explained why.

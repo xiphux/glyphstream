@@ -12,7 +12,7 @@ import { SETUP_PASSKEY_CARRY_COOKIE, setupGate } from '#lib/server/auth/setup.js
 import { clearAuthCookie, verify } from '#lib/server/auth/signed-cookies.js';
 import { createSession, setSessionCookie } from '#lib/server/auth/session.js';
 import { insertCredential } from '#lib/server/db/queries/passkey.js';
-import { createInitialUser } from '#lib/server/db/queries/users.js';
+import { createInitialUser, SetupClosedError } from '#lib/server/db/queries/users.js';
 import { passkeyLoginEnabled } from '#lib/server/env.js';
 import type { RequestHandler } from './$types';
 
@@ -43,11 +43,19 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 		request,
 	);
 
-	const userId = createInitialUser({
-		id: carry.userId,
-		displayName: carry.displayName,
-		email: carry.email,
-	});
+	// The gate ran before the ceremony's await; a parallel setup that finished
+	// in between closes it. Same answer the gate would now give.
+	let userId: string;
+	try {
+		userId = createInitialUser({
+			id: carry.userId,
+			displayName: carry.displayName,
+			email: carry.email,
+		});
+	} catch (e) {
+		if (e instanceof SetupClosedError) error(409, 'Setup is already complete');
+		throw e;
+	}
 	insertCredential({
 		id: credential.id,
 		userId,

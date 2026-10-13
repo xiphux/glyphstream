@@ -34,7 +34,12 @@ import {
 	touchOAuthAccount,
 } from '../../db/queries/oauth-accounts';
 import { findValidInvite } from '../../db/queries/invites';
-import { bumpUserLastLogin, countUsers, createInitialUser } from '../../db/queries/users';
+import {
+	bumpUserLastLogin,
+	countUsers,
+	createInitialUser,
+	SetupClosedError,
+} from '../../db/queries/users';
 import { isUniqueViolation } from '../../db/errors';
 import { CODE_VERIFIER_COOKIE, LINK_STATE_COOKIE, STATE_COOKIE } from './cookies';
 import type { OAuthProfile, OAuthProvider } from './types';
@@ -185,10 +190,19 @@ async function handleSetup(args: {
 		codeVerifier,
 	);
 
-	const userId = createInitialUser({
-		displayName: carry.displayName,
-		email: carry.email ?? profile.email,
-	});
+	// The count check above ran before the profile fetch's await, so a second
+	// tab finishing setup in the meantime gets here too. It lost; it goes to
+	// /login like the check above would have sent it.
+	let userId: string;
+	try {
+		userId = createInitialUser({
+			displayName: carry.displayName,
+			email: carry.email ?? profile.email,
+		});
+	} catch (e) {
+		if (e instanceof SetupClosedError) redirect(302, '/login');
+		throw e;
+	}
 	addOAuthAccount({
 		userId,
 		provider: provider.id,

@@ -72,6 +72,7 @@ import { LINK_STATE_COOKIE, STATE_COOKIE } from '#lib/server/auth/oauth/cookies.
 import { SETUP_OAUTH_CARRY_COOKIE } from '#lib/server/auth/setup.js';
 import { JOIN_OAUTH_CARRY_COOKIE } from '#lib/server/auth/join.js';
 import { createInvite, deleteInvite } from '#lib/server/db/queries/invites.js';
+import { countUsers } from '#lib/server/db/queries/users.js';
 import { sign } from '#lib/server/auth/signed-cookies.js';
 import { invites, oauthAccounts, users } from '#lib/server/db/schema.js';
 
@@ -240,6 +241,17 @@ describe('GitHub callback — setup branch', () => {
 
 		const r = await expectRedirect(() => GET(event as never));
 		expect(r.location).toBe('/login');
+	});
+
+	it('redirects the loser to /login when a parallel setup finishes during the profile fetch', async () => {
+		// The count check runs BEFORE the fetch's await; a setup completing in
+		// that window used to surface createInitialUser's throw as a 500.
+		mocks.duringProfileFetch = () => seedUser();
+		const { event } = setupEvent();
+
+		const r = await expectRedirect(() => GET(event as never));
+		expect(r.location).toBe('/login');
+		expect(countUsers()).toBe(1);
 	});
 
 	it('does NOT re-check SETUP_TOKEN on the callback (idp redirect lacks it)', async () => {
