@@ -38,6 +38,8 @@ arrived.
 
 ### Fixed
 
+- Opening an invite link in a browser whose session is app-locked now asks you
+  to unlock, instead of offering to create a new account over it.
 - Python code that contains a line of three backticks now shows in full in
   its tool block. The code used to stop at that line, with the rest shown as
   formatted text.

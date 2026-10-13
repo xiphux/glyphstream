@@ -18,7 +18,7 @@ const ERROR_MESSAGES: Record<string, string> = {
  * invite token (path param) rather than the zero-users setup gate.
  *
  *  - Already signed in → redirect home (no point redeeming an invite in a
- *    browser that already has an account).
+ *    browser that already has an account); app-locked → /unlock.
  *  - Invalid / expired / used token → render an "invalid invite" state with
  *    no sign-up buttons.
  *  - Valid token → render the wizard, carrying the token to the API
@@ -26,6 +26,10 @@ const ERROR_MESSAGES: Record<string, string> = {
  */
 export const load: PageServerLoad = ({ params, url, locals }) => {
 	if (locals.user) redirect(302, '/');
+	// An app-locked session resolves to no user, but it is still this
+	// browser's account, one passkey away, the same as on /login. Signing up
+	// here would replace its session cookie with a new account's.
+	if (locals.appLock?.locked) redirect(302, '/unlock');
 
 	const invite = findValidInvite(params.token);
 	const errorCode = url.searchParams.get('error');
