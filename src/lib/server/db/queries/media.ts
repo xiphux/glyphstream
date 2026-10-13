@@ -609,6 +609,65 @@ export function getMediaListItemsByIds(userId: string, ids: string[]): MediaList
 	);
 }
 
+type DenseCorpusOpts = {
+	kind?: 'image' | 'video';
+	model?: string;
+	favorite?: boolean;
+	embeddingModel: string;
+};
+
+/**
+ * The decoded dense-search corpus, cached per (user, filters, embedding model).
+ *
+ * Search runs per keystroke, and each run re-read and decoded up to
+ * DENSE_CORPUS_CAP blobs (~11 ms at 5,000 x 768 dims) to get the same vectors
+ * as last time. An entry is reused while a blob-free signature over the same
+ * filter (`count(*)` and a rowid sum, ~1 ms) is unchanged: any row entering or
+ * leaving the corpus (a backfill write, a delete, a star under Favorites)
+ * moves it, and a row's vector only changes by being cleared and re-embedded,
+ * which moves it twice. Few entries, because each holds the decoded vectors
+ * (~15 MB at that size).
+ */
+const DENSE_CORPUS_CACHE_MAX = 4;
+const denseCorpusCache = new Map<
+	string,
+	{ signature: string; ids: string[]; vectors: Float32Array[] }
+>();
+
+function denseCorpusFor(
+	userId: string,
+	opts: DenseCorpusOpts,
+): { ids: string[]; vectors: Float32Array[] } {
+	const key = JSON.stringify([userId, opts.kind, opts.model, opts.favorite, opts.embeddingModel]);
+	const sig = getDb()
+		.select({
+			n: sql<number>`count(*)`,
+			s: sql<number>`coalesce(sum(${media}.rowid), 0)`,
+		})
+		.from(media)
+		.where(and(...mediaEmbeddingConditions(userId, opts)))
+		.get();
+	const signature = `${sig?.n ?? 0}:${sig?.s ?? 0}`;
+	const hit = denseCorpusCache.get(key);
+	if (hit && hit.signature === signature) {
+		denseCorpusCache.delete(key);
+		denseCorpusCache.set(key, hit);
+		return hit;
+	}
+	const rows = listMediaEmbeddingsForUser(userId, { ...opts, limit: DENSE_CORPUS_CAP });
+	const entry = {
+		signature,
+		ids: rows.map((r) => r.id),
+		vectors: rows.map((r) => decodeVector(r.embedding)),
+	};
+	denseCorpusCache.delete(key);
+	denseCorpusCache.set(key, entry);
+	while (denseCorpusCache.size > DENSE_CORPUS_CACHE_MAX) {
+		denseCorpusCache.delete(denseCorpusCache.keys().next().value as string);
+	}
+	return entry;
+}
+
 /**
  * Relevance-ranked prompt search over a user's gallery media. Keyword leg: the
  * `media_prompt_fts` FTS5 index (migration 20260622120000), ranked by bm25.
@@ -648,14 +707,13 @@ export async function searchMediaForUser(
 		const qvec = await embedQuery(rawQuery, cfg, AbortSignal.timeout(cfg.timeoutSeconds * 1000));
 		if (!qvec) return ftsItems.slice(0, limit);
 
-		const vecRows = listMediaEmbeddingsForUser(userId, {
+		const corpus = denseCorpusFor(userId, {
 			kind: opts.kind,
 			model: opts.model,
 			favorite: opts.favorite,
 			embeddingModel: cfg.modelId,
-			limit: DENSE_CORPUS_CAP,
 		});
-		if (vecRows.length === 0) return ftsItems.slice(0, limit);
+		if (corpus.ids.length === 0) return ftsItems.slice(0, limit);
 
 		// Apply a cosine floor BEFORE taking the top-K: cosineRank ranks the whole
 		// loaded candidate set (up to DENSE_CORPUS_CAP), so without a floor the
@@ -663,13 +721,10 @@ export async function searchMediaForUser(
 		// prompts) — only genuine synonyms should surface. Threshold is
 		// config-tunable (model-dependent cosine scales).
 		const minSim = cfg.gallerySearchMinSimilarity ?? DEFAULT_GALLERY_SEARCH_MIN_SIMILARITY;
-		const denseRanked = cosineRank(
-			qvec,
-			vecRows.map((r) => decodeVector(r.embedding)),
-		)
+		const denseRanked = cosineRank(qvec, corpus.vectors)
 			.filter((sc) => sc.score >= minSim)
 			.slice(0, DENSE_TOPK);
-		const denseIds = denseRanked.map((sc) => vecRows[sc.index].id);
+		const denseIds = denseRanked.map((sc) => corpus.ids[sc.index]);
 
 		// Fuse the two rankings over a shared id→index space (RRF ignores scores,
 		// uses rank position). The union includes semantic-only ids, so synonym
@@ -753,6 +808,24 @@ export function setMediaEmbedding(
 	return result.changes > 0;
 }
 
+/** The dense corpus filter, shared by the corpus read and its cache signature
+ *  so the two can never describe different sets. */
+function mediaEmbeddingConditions(
+	userId: string,
+	opts: DenseCorpusOpts,
+): Array<Parameters<typeof and>[number]> {
+	return [
+		eq(media.userId, userId),
+		isNull(media.deletedAt),
+		eq(media.origin, 'generated'),
+		isNotNull(media.embedding),
+		eq(media.embeddingModel, opts.embeddingModel),
+		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
+		opts.model ? eq(media.sourceModel, opts.model) : undefined,
+		opts.favorite ? isNotNull(media.favoritedAt) : undefined,
+	].filter(Boolean);
+}
+
 /**
  * Candidate vectors for the semantic search leg: a user's embedded gallery media
  * for the active embedding model, newest-first, capped. Composes with
@@ -772,16 +845,7 @@ export function listMediaEmbeddingsForUser(
 	},
 ): Array<{ id: string; embedding: Buffer }> {
 	const limit = Math.max(1, Math.min(opts.limit ?? DENSE_CORPUS_CAP, 20000));
-	const conditions = [
-		eq(media.userId, userId),
-		isNull(media.deletedAt),
-		eq(media.origin, 'generated'),
-		isNotNull(media.embedding),
-		eq(media.embeddingModel, opts.embeddingModel),
-		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
-		opts.model ? eq(media.sourceModel, opts.model) : undefined,
-		opts.favorite ? isNotNull(media.favoritedAt) : undefined,
-	].filter(Boolean) as Array<Parameters<typeof and>[number]>;
+	const conditions = mediaEmbeddingConditions(userId, opts);
 
 	return getDb()
 		.select({ id: media.id, embedding: media.embedding })

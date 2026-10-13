@@ -21,6 +21,7 @@ import {
 	insertMedia,
 	searchMediaForUser,
 	setMediaEmbedding,
+	trashMediaForUser,
 } from '#lib/server/db/queries/media.js';
 import { encodeVector } from '#lib/server/retrieval/vector.js';
 
@@ -140,6 +141,25 @@ describe('searchMediaForUser (semantic fusion)', () => {
 		addMedia(u.id, 'a golden retriever puppy', [1, 0], 'old-model');
 		embedQueryMock.mockResolvedValue([1, 0]);
 
+		expect(await searchMediaForUser(u.id, 'dog')).toEqual([]);
+	});
+	it('finds an item embedded after the corpus was cached', async () => {
+		resolveMock.mockReturnValue(CFG);
+		embedQueryMock.mockResolvedValue([1, 0]);
+		const u = seedUser();
+		addMedia(u.id, 'a sunny meadow', [0, 1]);
+		expect(await searchMediaForUser(u.id, 'dog')).toEqual([]); // warms the cache
+		const puppy = addMedia(u.id, 'a golden retriever puppy', [1, 0]);
+		expect((await searchMediaForUser(u.id, 'dog')).map((h) => h.id)).toEqual([puppy]);
+	});
+
+	it('drops a trashed item from a cached corpus', async () => {
+		resolveMock.mockReturnValue(CFG);
+		embedQueryMock.mockResolvedValue([1, 0]);
+		const u = seedUser();
+		const puppy = addMedia(u.id, 'a golden retriever puppy', [1, 0]);
+		expect((await searchMediaForUser(u.id, 'dog')).map((h) => h.id)).toEqual([puppy]);
+		trashMediaForUser(puppy, u.id);
 		expect(await searchMediaForUser(u.id, 'dog')).toEqual([]);
 	});
 });
