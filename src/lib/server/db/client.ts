@@ -1,3 +1,4 @@
+import process from 'node:process';
 import { DatabaseSync } from 'node:sqlite';
 import { drizzle, type NodeSQLiteDatabase } from 'drizzle-orm/node-sqlite';
 import { migrate } from 'drizzle-orm/node-sqlite/migrator';
@@ -26,10 +27,16 @@ export function getDb(): DB {
 	if (cached) return cached.db;
 
 	const path = resolve(dbPath());
-	mkdirSync(dirname(path), { recursive: true });
-
-	const sqlite = new DatabaseSync(path);
-	sqlite.exec('PRAGMA journal_mode = WAL');
+	let sqlite: DatabaseSync;
+	try {
+		mkdirSync(dirname(path), { recursive: true });
+		sqlite = new DatabaseSync(path);
+		// The first write: a database file the process can read but not write
+		// opens read-only without complaint and fails here instead.
+		sqlite.exec('PRAGMA journal_mode = WAL');
+	} catch (e) {
+		throw explainUnwritableDb(e, path);
+	}
 	sqlite.exec('PRAGMA synchronous = NORMAL');
 	sqlite.exec('PRAGMA busy_timeout = 5000');
 	sqlite.exec('PRAGMA foreign_keys = ON');
@@ -156,4 +163,22 @@ export function closeDb(): void {
 		cached.sqlite.close();
 		cached = null;
 	}
+}
+
+/**
+ * Turn a permission failure opening the database into the fix. The Docker
+ * image runs as the unprivileged `node` user (uid 1000); a data
+ * directory created by an older, root-run container is owned by root, and the
+ * raw error ("attempt to write a readonly database", EACCES) doesn't say so.
+ */
+function explainUnwritableDb(e: unknown, path: string): unknown {
+	const message = e instanceof Error ? e.message : String(e);
+	if (!/readonly|EACCES|EPERM|unable to open/i.test(message)) return e;
+	const uid = process.getuid?.();
+	return new Error(
+		`Cannot write the database at ${path} (${message}). The server runs as ` +
+			`uid ${uid ?? '?'}; make its data directory writable by that user, e.g. ` +
+			`\`sudo chown -R 1000:1000 ./data\` for the Docker image.`,
+		{ cause: e },
+	);
 }

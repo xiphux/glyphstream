@@ -351,6 +351,19 @@ COPY --from=builder /app/package.json ./
 
 # `data/` (sqlite + media) is expected to be a bind mount or named
 # volume; the dir is created on first DB open if missing.
+#
+# Run as the base image's unprivileged `node` user (uid 1000), not root, so an
+# escape from the app, ffmpeg or an MCP server isn't root in the container.
+# It needs to write two places: /app/data, and Pyodide's package directory,
+# where the code interpreter caches the wheels it downloads (13 MB, so the
+# chown's layer is small). Everything else stays root-owned and read-only.
+# A bind-mounted ./data from an older, root-run container must be handed over
+# once: `sudo chown -R 1000:1000 ./data` (docs/deployment.md).
+RUN mkdir -p /app/data \
+    && chown node:node /app/data \
+    && chown -R node:node "$(readlink -f /app/node_modules/pyodide)"
+USER node
+
 EXPOSE 3000
 
 # Baked into the image so every consumer — compose, plain `docker run`,

@@ -48,6 +48,14 @@ const SKIP = [
 ];
 
 const checks = {
+	// The image runs as the unprivileged `node` user (see the Dockerfile's
+	// USER). smoke.mjs runs via `docker exec`, which uses the image's user too,
+	// so this fails if the USER line is dropped.
+	async nonRoot() {
+		const uid = process.getuid?.();
+		if (uid === 0) throw new Error('running as root');
+	},
+
 	async bundle() {
 		const root = '/app/build/server';
 		const files = readdirSync(root, { recursive: true })

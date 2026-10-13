@@ -66,6 +66,19 @@ token is correct either way.
 Drizzle migrations apply automatically on first DB open. Subsequent config
 or env changes only need `docker compose restart` — no rebuild.
 
+**The container runs as the unprivileged `node` user (uid 1000), not root.** A
+fresh `./data` works as-is. If you're upgrading from a version that ran as root,
+hand the existing data directory over once before starting the new image:
+
+```sh
+sudo chown -R 1000:1000 ./data
+```
+
+Skip it and the server starts but can't write its database: pages fail, and the
+log says `Cannot write the database … sudo chown -R 1000:1000 ./data`. (The
+health check doesn't open the database, so the container still reports
+healthy.)
+
 ## Faststart backfill (one-shot)
 
 Videos are stored with their index at the front so a player can start before
