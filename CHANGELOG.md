@@ -52,6 +52,11 @@ arrived.
 
 ### Fixed
 
+- A file attachment of exactly the 25 MB maximum now uploads. The Docker
+  image's request size limit left no room for the upload's own framing, so a
+  file at the cap was refused with a confusing "must be multipart" error. An
+  upload over a server's limit now says so. If you set `BODY_SIZE_LIMIT`
+  yourself, `.env.example` has the new value.
 - The gallery shows a renamed or deleted chat's images under their new
   grouping right away, rather than up to half a minute later.
 - Pressing Enter while the "Context could not be compacted" prompt is open no

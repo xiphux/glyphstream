@@ -62,11 +62,12 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		// BODY_SIZE_LIMIT (default 512 KB!) is exceeded, then `formData()`
 		// fails to parse the truncated body. Surface that as a 413 with
 		// an actionable message rather than a misleading 400 about
-		// content type. The Dockerfile sets BODY_SIZE_LIMIT=25M by
+		// content type. The Dockerfile sets BODY_SIZE_LIMIT (25 MiB + slack) by
 		// default, but a custom deployment with the upstream default
 		// would otherwise hit this for any non-trivial photo.
 		const msg = e instanceof Error ? e.message : String(e);
-		if (/body.*too.*large|413|exceeded/i.test(msg)) {
+		// adapter-node words it "Content-length of N exceeds limit of M bytes."
+		if (/too large|413|exceed/i.test(msg)) {
 			error(
 				413,
 				'Upload exceeded the request body size limit. Raise BODY_SIZE_LIMIT in the environment.',

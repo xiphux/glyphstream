@@ -161,6 +161,18 @@ describe('POST /api/uploads', () => {
 		expect(formData).not.toHaveBeenCalled();
 	});
 
+	it("answers 413 when adapter-node's BODY_SIZE_LIMIT cut the body off", async () => {
+		// adapter-node aborts the body past BODY_SIZE_LIMIT and formData() then
+		// rejects with this wording; matching only "exceeded" sent it to the
+		// misleading "must be multipart" 400.
+		const req = uploadRequest(new File([PNG], 'p.png', { type: 'image/png' }));
+		vi.spyOn(req, 'formData').mockRejectedValue(
+			new Error('Content-length of 26214602 exceeds limit of 26214400 bytes.'),
+		);
+		const res = await call(upload as Handler, req);
+		expect(res.status).toBe(413);
+	});
+
 	it('applies the per-kind limit: an image over the image cap is 413', async () => {
 		const big = new File([new Uint8Array(MAX_UPLOAD_BYTES_IMAGE + 1)], 'big.png', {
 			type: 'image/png',
