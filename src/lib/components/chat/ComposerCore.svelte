@@ -23,6 +23,7 @@
 	import {
 		autoResizeTextarea,
 		dragHasFiles,
+		extractFiles,
 		extractImageFiles,
 		replaceRange,
 	} from '#lib/composer.js';
@@ -219,7 +220,9 @@
 		e.preventDefault();
 		dragDepth = 0;
 		isDraggingOver = false;
-		const files = extractImageFiles(e.dataTransfer);
+		// Any file, like the picker; paste below stays images-only so a text
+		// paste that also carries a rendered image still lands as text.
+		const files = extractFiles(e.dataTransfer);
 		if (files.length > 0) void attachments.addFiles(files);
 	}
 
@@ -313,7 +316,7 @@
 			aria-hidden="true"
 			class="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl border-2 border-dashed border-fg-muted bg-surface-panel/85 text-sm text-fg-secondary backdrop-blur-sm"
 		>
-			Drop image to attach
+			Drop files to attach
 		</div>
 	{/if}
 </form>

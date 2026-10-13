@@ -1,7 +1,7 @@
 /** Tests for the composer drag/paste helpers. */
 
 import { describe, expect, it } from 'vitest';
-import { dragHasFiles, extractImageFiles } from '#lib/composer.js';
+import { dragHasFiles, extractFiles, extractImageFiles } from '#lib/composer.js';
 
 function img(name: string): File {
 	return new File(['x'], name, { type: 'image/png' });
@@ -40,5 +40,15 @@ describe('extractImageFiles', () => {
 
 	it('returns [] for a null source', () => {
 		expect(extractImageFiles(null)).toEqual([]);
+	});
+});
+
+describe('extractFiles', () => {
+	it('returns every file, not only images', () => {
+		const png = new File(['x'], 'a.png', { type: 'image/png' });
+		const csv = new File(['a,b'], 'b.csv', { type: 'text/csv' });
+		const dt = { files: [png, csv], items: [] } as unknown as DataTransfer;
+		expect(extractFiles(dt).map((f) => f.name)).toEqual(['a.png', 'b.csv']);
+		expect(extractFiles(null)).toEqual([]);
 	});
 });

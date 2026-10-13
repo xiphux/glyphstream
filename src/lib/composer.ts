@@ -80,3 +80,23 @@ export function extractImageFiles(source: DataTransfer | null | undefined): File
 	}
 	return out;
 }
+
+/**
+ * Pull every file out of a drop: images, documents, data files, the same set
+ * the file picker accepts. The upload route classifies each one, so a type it
+ * can't take comes back as a failed chip with the reason, rather than being
+ * silently ignored here.
+ */
+export function extractFiles(source: DataTransfer | null | undefined): File[] {
+	if (!source) return [];
+	const fromFiles = Array.from(source.files ?? []);
+	if (fromFiles.length > 0) return fromFiles;
+	const out: File[] = [];
+	for (const item of source.items ?? []) {
+		if (item.kind === 'file') {
+			const f = item.getAsFile();
+			if (f) out.push(f);
+		}
+	}
+	return out;
+}

@@ -131,7 +131,7 @@ describe('ComposerCore — drag-drop', () => {
 		const { container } = render(ComposerCore, { props: baseProps() });
 		const form = container.querySelector('form')!;
 		await fireEvent.dragEnter(form, { dataTransfer: fakeTransfer([imageFile()]) });
-		expect(screen.getByText('Drop image to attach')).toBeInTheDocument();
+		expect(screen.getByText('Drop files to attach')).toBeInTheDocument();
 	});
 
 	it('hides the overlay again on drag leave', async () => {
@@ -139,7 +139,7 @@ describe('ComposerCore — drag-drop', () => {
 		const form = container.querySelector('form')!;
 		await fireEvent.dragEnter(form, { dataTransfer: fakeTransfer([imageFile()]) });
 		await fireEvent.dragLeave(form, { dataTransfer: fakeTransfer([imageFile()]) });
-		expect(screen.queryByText('Drop image to attach')).toBeNull();
+		expect(screen.queryByText('Drop files to attach')).toBeNull();
 	});
 
 	it('adds dropped image files to the store', async () => {
@@ -150,11 +150,20 @@ describe('ComposerCore — drag-drop', () => {
 		expect(store.addFiles).toHaveBeenCalled();
 	});
 
+	it('adds a dropped document too, as the file picker would', async () => {
+		const store = makeStore();
+		const { container } = render(ComposerCore, { props: baseProps({ attachments: store }) });
+		const form = container.querySelector('form')!;
+		const pdf = new File(['%PDF-1.4'], 'notes.pdf', { type: 'application/pdf' });
+		await fireEvent.drop(form, { dataTransfer: fakeTransfer([pdf]) });
+		expect(store.addFiles).toHaveBeenCalledWith([pdf]);
+	});
+
 	it('ignores drags when attachments are not allowed', async () => {
 		const { container } = render(ComposerCore, { props: baseProps({ allowAttachments: false }) });
 		const form = container.querySelector('form')!;
 		await fireEvent.dragEnter(form, { dataTransfer: fakeTransfer([imageFile()]) });
-		expect(screen.queryByText('Drop image to attach')).toBeNull();
+		expect(screen.queryByText('Drop files to attach')).toBeNull();
 	});
 });
 

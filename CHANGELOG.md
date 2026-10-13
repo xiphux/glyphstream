@@ -46,6 +46,9 @@ arrived.
 
 ### Changed
 
+- Dragging a document (PDF, CSV, spreadsheet, text) onto the message box now
+  attaches it, the same as choosing it with the attach button. Only images used
+  to be accepted by drag-and-drop.
 - A tool result over a million characters (a Python script printing in a
   loop, an MCP server dumping a huge response) is kept in the conversation as
   its beginning and end, with the middle dropped and marked.
