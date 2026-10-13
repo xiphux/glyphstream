@@ -54,6 +54,8 @@ them into a single fast chat UI with one model picker.
   announced. Off or on per conversation, and per user by default — fitting for a
   roleplay thread, unwelcome in a work one.
 - **Full-text search** across every conversation.
+- **Archive** a conversation to clear it from the sidebar without deleting it;
+  the Archived page lists them, to reopen, unarchive or delete.
 - **Auto-titling** via a small, fast task model of your choice.
 - Token usage and generation speed (tok/s) per message; Stop button wired
   across chat, image, and video generations. A bar above the composer shows the
@@ -199,8 +201,8 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   to chat attachments ([guide](docs/code-interpreter.md)).
 - **MCP servers** — point `config.toml` at any Model Context Protocol server
   (stdio or HTTP) and its tools join the registry, gated by per-tool
-  Allow / Allow Always approval; authenticate with a shared token or each
-  user's own credential. High-tool-count servers can set `defer_tools` to hide
+  Allow / Allow Always approval (revocable from the Permissions page);
+  authenticate with a shared token or each user's own credential. High-tool-count servers can set `defer_tools` to hide
   behind a `search_tools` lookup (hybrid keyword + embeddings) so they don't
   spend context every request ([guide](docs/mcp.md)).
 - **Agent skills** ([agentskills.io](https://agentskills.io) spec) — import
@@ -317,6 +319,8 @@ pnpm dev                               # http://localhost:5173
 | [Tool calling](docs/tools.md)                    | Enabling tools per endpoint, model requirements, llama.cpp setup, feature toggles, writing tools    |
 | [Web search & RAG](docs/web-search.md)           | SearxNG setup, `fetch_url`, the `[embeddings]` and `[rerank]` blocks                                |
 | [Code interpreter](docs/code-interpreter.md)     | The Pyodide sandbox, file round-trip, resource limits                                               |
+| [Canvas](docs/canvas.md)                         | The side-by-side document the assistant drafts and revises across turns                             |
+| [Prompt snippets](docs/prompt-snippets.md)       | Reusable prompt pieces: inserting, tagging, import and export                                       |
 | [MCP servers](docs/mcp.md)                       | stdio/HTTP transports, the approval model, examples                                                 |
 | [Push notifications](docs/notifications.md)      | VAPID keys, multi-device behavior, iOS install requirement                                          |
 | [Deployment](docs/deployment.md)                 | Docker, reverse proxies (Caddy, nginx, Synology, Cloudflare), compression                           |

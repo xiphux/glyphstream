@@ -359,7 +359,7 @@ which itemizes what each image costs.
 
 ## Auto-titling (`task_model`)
 
-By default, conversation titles in the sidebar are the first ~50 characters
+By default, conversation titles in the sidebar are the first 60 characters
 of the user's opening message. To get model-generated titles instead, add a
 `[task_model]` section naming a model that one of your endpoints exposes:
 
@@ -463,13 +463,13 @@ description) and can be turned off per-conversation from the composer's feature
 menu ("Image prompt enhancement" on an image model, "Video prompt enhancement"
 on a video model).
 
-Add the block at the **top of `config.toml`** (above the first `[[endpoints]]`,
-same scoping rule as `task_model`):
+Add the block anywhere in `config.toml`. (It is a table, so it doesn't share the
+bare `task_model = "…"` key's rule of sitting above every table header.)
 
 ```toml
 [image_enhancement]
 model = "groq::llama-3.3-70b-versatile"   # endpoint_id::upstream_model_id
-# max_tokens = 400                         # optional cap per rewrite
+# max_tokens = 1000                        # optional cap per rewrite (default fits a JSON prompt)
 # temperature = 0.7                        # optional
 # [image_enhancement.style_instructions]   # optional: override the built-in
 #   "booru-tags" = "..."                   #   wording for a given style
@@ -673,7 +673,6 @@ background **"dreaming"** pass that periodically tidies the store:
 - **prunes** only as a genuine last resort, when nothing durable can be salvaged.
 
 ```toml
-# top of config.toml — like [image_enhancement], above every [[endpoints]] block
 [memory_model]
 model = "dirac::qwen3-32b"      # endpoint_id::upstream_model_id
 max_tokens = 4000               # optional; completion budget per call, all passes
@@ -752,6 +751,9 @@ own guide:
 | --------------------- | ------------------------------------------------------------------------ | ------------------------------------------------ |
 | `[search]`            | `web_search` via SearxNG                                                 | [Web search & RAG](web-search.md)                |
 | `[embeddings]`        | semantic retrieval (`fetch_url`, `recall_memory`, gallery prompt search) | [Web search & RAG](web-search.md)                |
+| `[task_model]`        | auto-titles and topic-label backfill                                     | [above](#auto-titling-task_model)                |
+| `[vision]`            | downscaling images inlined for a vision model                            | [above](#inlined-image-size-vision)              |
+| `[rerank]`            | reranking `fetch_url` candidates                                         | [Web search & RAG](web-search.md)                |
 | `[image_enhancement]` | LLM prompt rewriting for image + video models                            | [above](#prompt-enhancement-image_enhancement)   |
 | `[memory_model]`      | background memory consolidation ("dreaming")                             | [above](#memory-consolidation-memory_model)      |
 | `[code_interpreter]`  | the sandboxed Python runtime                                             | [Code interpreter](code-interpreter.md)          |

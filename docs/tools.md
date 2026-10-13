@@ -7,7 +7,7 @@ folded back into the conversation. The built-in toolset:
 - `get_current_time` — clock with optional IANA timezone.
 - `fetch_url` — read a single web page or text resource by URL. Takes an
   optional `find` so long pages return the most relevant sections rather
-  than the first 20 KB (see [Web search & RAG](web-search.md)).
+  than the first 20,000 characters (see [Web search & RAG](web-search.md)).
 - `web_search` — query a [SearxNG](https://docs.searxng.org/) instance
   (requires a `[search]` config block; see [Web search & RAG](web-search.md)).
 - `run_python` — execute Python in a sandboxed Pyodide interpreter, with
@@ -37,6 +37,11 @@ folded back into the conversation. The built-in toolset:
   model; a search query runs keyword (BM25) matching, additionally fused with
   semantic similarity when an embedding model is configured (the `[embeddings]`
   block; see [Web search & RAG](web-search.md)).
+- `activate_skill` / `read_skill_file` / `run_skill_script` — use the agent
+  skills you've enabled (`/settings/skills`). `activate_skill` loads a skill's
+  instructions, `read_skill_file` reads another file from its bundle, and
+  `run_skill_script` runs one of its Python scripts in the code interpreter
+  (offered only while the code interpreter is available).
 
 The architecture is unbounded — adding more is a single file under
 `src/lib/server/tools/` (see [Adding more tools](#adding-more-tools)), and
