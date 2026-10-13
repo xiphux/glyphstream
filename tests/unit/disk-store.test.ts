@@ -7,7 +7,7 @@
  * against real disk I/O.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Readable } from 'node:stream';
@@ -115,6 +115,27 @@ describe('DiskMediaStore.putStream', () => {
 
 		// The .tmp sibling must have been cleaned up (renamed away).
 		expect(existsSync(abs + '.tmp')).toBe(false);
+	});
+
+	it('leaves nothing behind when the stream fails part-way', async () => {
+		// A Stop mid-video-download, or a dropped upstream: the pipeline rejects
+		// with a partial `.tmp` written. Nothing else ever looks at `.tmp` files.
+		const store = new DiskMediaStore();
+		async function* failing() {
+			yield Buffer.from('first half of a video');
+			throw new Error('upstream dropped');
+		}
+		await expect(
+			store.putStream({
+				stream: Readable.from(failing()),
+				contentType: 'video/mp4',
+				kind: 'video',
+			}),
+		).rejects.toThrow('upstream dropped');
+		const leftovers = readdirSync(mocks.mediaDir, { recursive: true }).filter((f) =>
+			String(f).endsWith('.tmp'),
+		);
+		expect(leftovers).toEqual([]);
 	});
 
 	it('returns correct byteSize and content type', async () => {

@@ -99,8 +99,15 @@ export class DiskMediaStore implements MediaStore {
 		mkdirSync(dirname(absolute), { recursive: true });
 
 		const tmp = `${absolute}.tmp`;
-		await writeFile(tmp, input.bytes);
-		await rename(tmp, absolute);
+		try {
+			await writeFile(tmp, input.bytes);
+			await rename(tmp, absolute);
+		} catch (e) {
+			// Nothing else ever looks at a `.tmp`, so a failed write would leave it
+			// on disk for good.
+			await unlink(tmp).catch(() => {});
+			throw e;
+		}
 		return {
 			storagePath,
 			byteSize: input.bytes.byteLength,
@@ -117,13 +124,19 @@ export class DiskMediaStore implements MediaStore {
 		mkdirSync(dirname(absolute), { recursive: true });
 
 		const tmp = `${absolute}.tmp`;
-		const ws = createWriteStream(tmp);
-		await pipeline(input.stream, ws);
-
-		// Stat after pipeline completes — guarantees the OS has flushed the
-		// write stream to disk before we read the size.
-		const st = await stat(tmp);
-		await rename(tmp, absolute);
+		let st;
+		try {
+			await pipeline(input.stream, createWriteStream(tmp));
+			// Stat after pipeline completes — guarantees the OS has flushed the
+			// write stream to disk before we read the size.
+			st = await stat(tmp);
+			await rename(tmp, absolute);
+		} catch (e) {
+			// A stream that fails part-way (a Stop mid-download, a dropped
+			// upstream) left a partial `.tmp` that nothing else ever cleans up.
+			await unlink(tmp).catch(() => {});
+			throw e;
+		}
 
 		return {
 			storagePath,
