@@ -30,6 +30,9 @@ arrived.
 
 ### Fixed
 
+- Python code that contains a line of three backticks now shows in full in
+  its tool block. The code used to stop at that line, with the rest shown as
+  formatted text.
 - Switching conversations from the sidebar now shows the new conversation's
   feature toggles (web access, personalization, …). It kept showing the
   previous conversation's, and changing one saved that list onto the new

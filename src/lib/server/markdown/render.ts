@@ -171,3 +171,17 @@ export async function renderMarkdown(text: string): Promise<string | null> {
 	const md = await getMarkdownIt();
 	return md.render(text);
 }
+
+/**
+ * Wrap `code` in a fenced block that nothing inside it can close. A fence
+ * ends at a line of at least as many backticks as opened it, so the fence
+ * is one longer than the longest backtick run in the code (minimum three).
+ * Otherwise a line of ``` in the code ends the block early and the rest
+ * renders as markdown.
+ */
+export function fenceCode(language: string, code: string): string {
+	let longest = 0;
+	for (const run of code.match(/`+/g) ?? []) longest = Math.max(longest, run.length);
+	const fence = '`'.repeat(Math.max(3, longest + 1));
+	return `${fence}${language}\n${code}\n${fence}`;
+}

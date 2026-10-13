@@ -40,7 +40,7 @@ import { chatCompletionStream, type ChatCompletionRequest } from '../endpoints/c
 import { appendMessage } from '../db/queries/messages';
 import { getConversationMeta } from '../db/queries/conversations';
 import { logLevel } from '../env';
-import { renderMarkdown } from '../markdown/render';
+import { fenceCode, renderMarkdown } from '../markdown/render';
 import { notifyConversationComplete } from '../push/notify';
 import type { NotifyModality } from '#lib/types/push.js';
 import { raceTitle, startTitleTaskIfFirstExchange } from '../tasks/title-task-runner';
@@ -89,7 +89,7 @@ async function maybeRenderCodeArg(toolName: string, rawArgs: string): Promise<st
 	if (typeof code !== 'string' || code.length === 0) return null;
 	// Wrap in a fenced code block — same path assistant message bodies
 	// take, so we inherit the existing shiki setup, theme, and CSS.
-	const md = '```' + meta.language + '\n' + code + '\n```';
+	const md = fenceCode(meta.language, code);
 	try {
 		return await renderMarkdown(md);
 	} catch {

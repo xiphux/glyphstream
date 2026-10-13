@@ -17,7 +17,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { renderMarkdown } from '#lib/server/markdown/render.js';
+import { fenceCode, renderMarkdown } from '#lib/server/markdown/render.js';
 
 describe('renderMarkdown — empty handling', () => {
 	it('returns null for an empty string', async () => {
@@ -118,5 +118,25 @@ describe('renderMarkdown — shiki syntax highlighting', () => {
 		const out = (await renderMarkdown('```\nplain\n```'))!;
 		expect(out).toContain('<pre>');
 		expect(out).not.toContain('class="shiki');
+	});
+});
+
+describe('fenceCode', () => {
+	it('keeps a ``` line inside the code from closing the block', async () => {
+		const code = 'doc = """\n```\n# not a heading\n"""\nprint(doc)';
+		const html = await renderMarkdown(fenceCode('python', code));
+		expect(html).not.toBeNull();
+		// One code block, and the would-be heading stays code.
+		expect(html!.match(/<pre/g)).toHaveLength(1);
+		expect(html).not.toContain('<h1');
+		expect(html).toContain('print');
+	});
+
+	it('uses a plain triple fence when the code has no backticks', () => {
+		expect(fenceCode('python', 'x = 1')).toBe('```python\nx = 1\n```');
+	});
+
+	it('outruns the longest backtick run', () => {
+		expect(fenceCode('', 'a ````` b')).toMatch(/^`{6}\n/);
 	});
 });
