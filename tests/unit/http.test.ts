@@ -1,7 +1,12 @@
 /** Tests for the server-side request-body parser. */
 
 import { describe, expect, it } from 'vitest';
-import { optionalString, parseJsonBody } from '#lib/server/http.js';
+import {
+	optionalString,
+	parseJsonBody,
+	requireMaxItems,
+	requireMaxLength,
+} from '#lib/server/http.js';
 
 function jsonRequest(body: string): Request {
 	return new Request('http://localhost/api/x', { method: 'POST', body });
@@ -43,5 +48,19 @@ describe('optionalString', () => {
 			caught = e;
 		}
 		expect(caught).toMatchObject({ status: 400, body: { message: "'title' must be a string" } });
+	});
+});
+
+describe('requireMaxLength / requireMaxItems', () => {
+	it('passes values at the ceiling through, and refuses past it', () => {
+		expect(requireMaxLength('abc', 'f', 3)).toBe('abc');
+		expect(requireMaxLength(undefined, 'f', 3)).toBeUndefined();
+		expect(() => requireMaxLength('abcd', 'f', 3)).toThrow(
+			expect.objectContaining({ status: 400 }),
+		);
+		expect(requireMaxItems([1, 2], 'f', 2)).toEqual([1, 2]);
+		expect(() => requireMaxItems([1, 2, 3], 'f', 2)).toThrow(
+			expect.objectContaining({ status: 400 }),
+		);
 	});
 });

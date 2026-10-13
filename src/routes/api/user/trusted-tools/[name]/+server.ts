@@ -13,6 +13,8 @@
 
 import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
+import { requireMaxLength } from '#lib/server/http.js';
+import { MAX_LIST_ITEMS, MAX_NAME_CHARS } from '#lib/server/text-limits.js';
 import { getUserPreferences, setUserPreferences } from '#lib/server/db/queries/user-preferences.js';
 import type { RequestHandler } from './$types';
 
@@ -20,9 +22,13 @@ export const PUT: RequestHandler = async ({ params, locals }) => {
 	requireUser(locals);
 	const name = params.name;
 	if (!name) error(400, 'Missing tool name in path');
+	requireMaxLength(name, 'name', MAX_NAME_CHARS);
 	const prefs = getUserPreferences(locals.user.id);
 	const trusted = prefs?.trustedMcpTools ?? [];
 	if (trusted.includes(name)) return new Response(null, { status: 204 });
+	if (trusted.length >= MAX_LIST_ITEMS) {
+		error(400, `At most ${MAX_LIST_ITEMS} tools can be trusted`);
+	}
 	setUserPreferences(locals.user.id, {
 		trustedMcpTools: [...trusted, name],
 	});

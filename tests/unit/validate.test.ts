@@ -108,6 +108,19 @@ describe('validateCreateInput', () => {
 		}
 	});
 
+	it('accepts a long system prompt and refuses an absurd one', () => {
+		const ok = {
+			name: 'n',
+			baseEndpointId: 'bridge',
+			baseModelId: 'm',
+			systemPrompt: 'x'.repeat(100_000),
+		};
+		expect(validateCreateInput(ok as never).systemPrompt).toHaveLength(100_000);
+		expect(() =>
+			validateCreateInput({ ...ok, systemPrompt: 'x'.repeat(200_001) } as never),
+		).toThrow(expect.objectContaining({ status: 400 }));
+	});
+
 	it('rejects empty name', () => {
 		expect(() => validateCreateInput({ ...valid, name: '   ' })).toThrow();
 	});

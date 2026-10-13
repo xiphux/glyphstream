@@ -24,7 +24,8 @@
 
 import { error } from '@sveltejs/kit';
 import { requireFound, requireUser } from '#lib/server/auth/guard.js';
-import { optionalString, parseJsonBody } from '#lib/server/http.js';
+import { optionalString, parseJsonBody, requireMaxLength } from '#lib/server/http.js';
+import { MAX_MESSAGE_CHARS } from '#lib/server/text-limits.js';
 import { getConversationMeta, setFanoutParent } from '#lib/server/db/queries/conversations.js';
 import { parseModelId } from '#lib/server/endpoints/model-id.js';
 import { createUserMessage } from '#lib/server/messages/create-user-message.js';
@@ -74,7 +75,8 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	);
 
 	const body = await parseJsonBody<PrepareFanoutRequest>(request);
-	const text = optionalString(body.text, 'text')?.trim() ?? '';
+	const text =
+		requireMaxLength(optionalString(body.text, 'text'), 'text', MAX_MESSAGE_CHARS)?.trim() ?? '';
 	const attachedMediaIds = Array.isArray(body.attachedMediaIds)
 		? body.attachedMediaIds.filter((s): s is string => typeof s === 'string')
 		: [];

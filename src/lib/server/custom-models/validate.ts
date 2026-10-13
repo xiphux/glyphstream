@@ -1,5 +1,10 @@
 import { error } from '@sveltejs/kit';
-import { optionalString } from '#lib/server/http.js';
+import { optionalString, requireMaxLength } from '#lib/server/http.js';
+import {
+	MAX_DESCRIPTION_CHARS,
+	MAX_NAME_CHARS,
+	MAX_PROMPT_CHARS,
+} from '#lib/server/text-limits.js';
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
 import { getRegisteredCategoryIds } from '#lib/server/feature-catalog.js';
 import {
@@ -33,11 +38,25 @@ export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCr
 		error(400, `Unknown endpoint "${baseEndpointId}" — not in config.toml`);
 	}
 
-	const baseModelId = optionalString(body.baseModelId, 'baseModelId')?.trim();
+	const baseModelId = requireMaxLength(
+		optionalString(body.baseModelId, 'baseModelId'),
+		'baseModelId',
+		MAX_NAME_CHARS,
+	)?.trim();
 	if (!baseModelId) error(400, "'baseModelId' is required");
 
-	const description = optionalString(body.description, 'description')?.trim() || null;
-	const systemPrompt = optionalString(body.systemPrompt, 'systemPrompt')?.trim() || null;
+	const description =
+		requireMaxLength(
+			optionalString(body.description, 'description'),
+			'description',
+			MAX_DESCRIPTION_CHARS,
+		)?.trim() || null;
+	const systemPrompt =
+		requireMaxLength(
+			optionalString(body.systemPrompt, 'systemPrompt'),
+			'systemPrompt',
+			MAX_PROMPT_CHARS,
+		)?.trim() || null;
 	const parameters = validateParameters(body.parameters);
 	const defaultDisabledFeatures = validateDefaultDisabledFeatures(body.defaultDisabledFeatures);
 

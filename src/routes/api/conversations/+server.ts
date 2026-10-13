@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
-import { optionalString, parseJsonBody } from '#lib/server/http.js';
+import { optionalString, parseJsonBody, requireMaxLength } from '#lib/server/http.js';
+import { MAX_PROMPT_CHARS } from '#lib/server/text-limits.js';
 import {
 	createConversation,
 	listConversationIds,
@@ -10,7 +11,7 @@ import { getCustomModelForUser } from '#lib/server/db/queries/custom-models.js';
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
 import { filterFullyQueued, filterInFlight } from '#lib/server/streaming/in-flight.js';
 import { parseModelId } from '#lib/server/endpoints/model-id.js';
-import { isModelKind } from '#lib/types/api.js';
+import { isModelKind, MAX_CONVERSATION_TITLE_LENGTH } from '#lib/types/api.js';
 import type {
 	CreateConversationRequest,
 	CustomModelParameters,
@@ -108,7 +109,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		// chats. The custom-model branch above still snapshots from the
 		// preset because preset edits are explicitly meant not to
 		// retroactively change in-flight chats.
-		const explicit = optionalString(body.systemPrompt, 'systemPrompt')?.trim();
+		const explicit = requireMaxLength(
+			optionalString(body.systemPrompt, 'systemPrompt'),
+			'systemPrompt',
+			MAX_PROMPT_CHARS,
+		)?.trim();
 		resolvedSystemPrompt = explicit || null;
 	}
 
@@ -127,7 +132,12 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		systemPrompt: resolvedSystemPrompt,
 		parameters: resolvedParameters,
 		customModelId: resolvedCustomModelId,
-		title: optionalString(body.title, 'title')?.trim() || null,
+		title:
+			requireMaxLength(
+				optionalString(body.title, 'title')?.trim(),
+				'title',
+				MAX_CONVERSATION_TITLE_LENGTH,
+			) || null,
 		disabledFeatures,
 		// "Private chat" content seal — create-time only, never mutable via PATCH.
 		private: body.private ?? false,

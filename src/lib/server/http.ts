@@ -33,3 +33,21 @@ export function optionalString(value: unknown, field: string): string | undefine
 	if (typeof value !== 'string') error(400, `'${field}' must be a string`);
 	return value;
 }
+
+/** 400 when `value` is longer than `max` characters. Returns it unchanged. */
+export function requireMaxLength<T extends string | undefined>(
+	value: T,
+	field: string,
+	max: number,
+): T {
+	if (value !== undefined && value.length > max) {
+		error(400, `'${field}' must be ${max.toLocaleString('en-US')} characters or fewer`);
+	}
+	return value;
+}
+
+/** 400 when `list` has more than `max` entries. Returns it unchanged. */
+export function requireMaxItems<T>(list: T[], field: string, max: number): T[] {
+	if (list.length > max) error(400, `'${field}' may hold at most ${max} entries`);
+	return list;
+}

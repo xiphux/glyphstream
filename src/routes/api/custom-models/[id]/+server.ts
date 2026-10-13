@@ -1,6 +1,11 @@
 import { error } from '@sveltejs/kit';
 import { requireFound, requireUser } from '#lib/server/auth/guard.js';
-import { optionalString, parseJsonBody } from '#lib/server/http.js';
+import { optionalString, parseJsonBody, requireMaxLength } from '#lib/server/http.js';
+import {
+	MAX_DESCRIPTION_CHARS,
+	MAX_NAME_CHARS,
+	MAX_PROMPT_CHARS,
+} from '#lib/server/text-limits.js';
 import {
 	deleteCustomModel,
 	getCustomModelForUser,
@@ -39,7 +44,12 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 		patch.name = name;
 	}
 	if (body.description !== undefined) {
-		patch.description = optionalString(body.description, 'description')?.trim() || null;
+		patch.description =
+			requireMaxLength(
+				optionalString(body.description, 'description'),
+				'description',
+				MAX_DESCRIPTION_CHARS,
+			)?.trim() || null;
 	}
 	if (body.baseEndpointId !== undefined) {
 		const id = optionalString(body.baseEndpointId, 'baseEndpointId')?.trim();
@@ -50,12 +60,21 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 		patch.baseEndpointId = id;
 	}
 	if (body.baseModelId !== undefined) {
-		const id = optionalString(body.baseModelId, 'baseModelId')?.trim();
+		const id = requireMaxLength(
+			optionalString(body.baseModelId, 'baseModelId'),
+			'baseModelId',
+			MAX_NAME_CHARS,
+		)?.trim();
 		if (!id) error(400, "'baseModelId' must not be empty");
 		patch.baseModelId = id;
 	}
 	if (body.systemPrompt !== undefined) {
-		patch.systemPrompt = optionalString(body.systemPrompt, 'systemPrompt')?.trim() || null;
+		patch.systemPrompt =
+			requireMaxLength(
+				optionalString(body.systemPrompt, 'systemPrompt'),
+				'systemPrompt',
+				MAX_PROMPT_CHARS,
+			)?.trim() || null;
 	}
 	if (body.parameters !== undefined) {
 		patch.parameters = validateParameters(body.parameters);

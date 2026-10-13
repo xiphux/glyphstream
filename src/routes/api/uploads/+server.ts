@@ -29,6 +29,7 @@ import { requireUser } from '#lib/server/auth/guard.js';
 import { insertMedia } from '#lib/server/db/queries/media.js';
 import { getMediaStore } from '#lib/server/media/disk-store.js';
 import { classifyUpload, MAX_UPLOAD_BYTES_FILE } from '#lib/server/uploads/classify.js';
+import { MAX_FILENAME_CHARS } from '#lib/server/text-limits.js';
 import type { RequestHandler } from './$types';
 
 /** Headroom for multipart framing (boundaries, part headers, the trailing
@@ -115,7 +116,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	// "IMG_2412.heic" on every photo.
 	const originalFilename =
 		classification.kind === 'file' && typeof file.name === 'string' && file.name.length > 0
-			? file.name
+			? file.name.slice(0, MAX_FILENAME_CHARS)
 			: null;
 
 	const { id } = insertMedia({

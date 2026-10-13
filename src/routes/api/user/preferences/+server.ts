@@ -12,7 +12,8 @@
 
 import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
-import { parseJsonBody } from '#lib/server/http.js';
+import { parseJsonBody, requireMaxItems, requireMaxLength } from '#lib/server/http.js';
+import { MAX_LIST_ITEMS, MAX_NAME_CHARS, MAX_PROMPT_CHARS } from '#lib/server/text-limits.js';
 import { getUserPreferences, setUserPreferences } from '#lib/server/db/queries/user-preferences.js';
 import { isFeatureCategoryString } from '#lib/types/api.js';
 import type { ColorScheme, SavedModelSet, ThemeName, UserPreferences } from '#lib/types/api.js';
@@ -38,10 +39,19 @@ export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 	// only ever sees known-good values. (The query itself is also
 	// defensive, but defense-in-depth is cheap here.)
 	const patch: Partial<UserPreferences> = {};
-	if (typeof body.name === 'string') patch.name = body.name;
-	if (typeof body.aboutYou === 'string') patch.aboutYou = body.aboutYou;
+	// The three persona fields are re-sent upstream on every turn; see
+	// text-limits.ts for why they have ceilings at all.
+	if (typeof body.name === 'string')
+		patch.name = requireMaxLength(body.name, 'name', MAX_NAME_CHARS);
+	if (typeof body.aboutYou === 'string') {
+		patch.aboutYou = requireMaxLength(body.aboutYou, 'aboutYou', MAX_PROMPT_CHARS);
+	}
 	if (typeof body.customInstructions === 'string') {
-		patch.customInstructions = body.customInstructions;
+		patch.customInstructions = requireMaxLength(
+			body.customInstructions,
+			'customInstructions',
+			MAX_PROMPT_CHARS,
+		);
 	}
 	if (body.enterBehavior !== undefined) {
 		if (body.enterBehavior !== 'send' && body.enterBehavior !== 'newline') {
@@ -80,6 +90,8 @@ export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 		) {
 			error(400, 'favoriteModels must be a string[]');
 		}
+		requireMaxItems(body.favoriteModels, 'favoriteModels', MAX_LIST_ITEMS);
+		for (const id of body.favoriteModels) requireMaxLength(id, 'favoriteModels[]', MAX_NAME_CHARS);
 		patch.favoriteModels = body.favoriteModels;
 	}
 	if (body.avatarModelId !== undefined) {
@@ -118,6 +130,11 @@ export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 			)
 		) {
 			error(400, 'modelSets must be { id, name, models: {modelId, count>=1}[] }[]');
+		}
+		requireMaxItems(body.modelSets, 'modelSets', MAX_LIST_ITEMS);
+		for (const set of body.modelSets) {
+			requireMaxLength(set.name, 'modelSets[].name', MAX_NAME_CHARS);
+			requireMaxItems(set.models, 'modelSets[].models', MAX_LIST_ITEMS);
 		}
 		patch.modelSets = body.modelSets;
 	}

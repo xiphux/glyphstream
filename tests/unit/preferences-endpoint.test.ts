@@ -192,3 +192,18 @@ describe('PATCH /api/user/preferences — the allowlist', () => {
 		expect(await patch({ isAdmin: true, preferencesJson: 'pwned' })).toEqual({});
 	});
 });
+
+describe('PATCH /api/user/preferences — length ceilings', () => {
+	it('accepts long custom instructions, and refuses only absurd ones', async () => {
+		const long = 'x'.repeat(50_000);
+		expect((await patch({ customInstructions: long })).customInstructions).toBe(long);
+		await expect(patch({ customInstructions: 'x'.repeat(200_001) })).rejects.toMatchObject({
+			status: 400,
+		});
+	});
+
+	it('refuses a favourites list past the item ceiling', async () => {
+		const many = Array.from({ length: 1_001 }, (_, i) => `ep::m${i}`);
+		await expect(patch({ favoriteModels: many })).rejects.toMatchObject({ status: 400 });
+	});
+});

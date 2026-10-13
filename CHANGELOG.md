@@ -11,6 +11,10 @@ arrived.
 
 ### Security
 
+- Text fields now have generous size limits (2 million characters for a
+  message, 200,000 for a system prompt or custom instructions, and so on), so
+  one account can't store multi-megabyte values that are re-sent to the model
+  on every turn. Nothing typed or pasted in normal use comes near them.
 - Images over 100 megapixels are no longer decoded for thumbnails or for
   sending to vision models. A small crafted file could otherwise claim a size
   that took around a gigabyte of memory to open. Ordinary photos and panoramas
