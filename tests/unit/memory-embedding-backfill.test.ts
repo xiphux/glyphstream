@@ -124,4 +124,28 @@ describe('runBackfillSweep', () => {
 		expect(stillQueued).toHaveLength(1);
 		expect(stillQueued[0].content).toBe('bbb');
 	});
+	it('pairs vectors by position when the upstream omits `index`', async () => {
+		const u = seedUser();
+		createMemory(u.id, 'aaa');
+		createMemory(u.id, 'bbb');
+		// Some OpenAI-compatible servers return vectors in input order with no
+		// `index`. Every vector used to be dropped, stalling the queue silently.
+		embeddingsMock.mockImplementation(async (_ep: unknown, body: { input: string[] }) => ({
+			data: body.input.map(() => ({ embedding: [1, 0] })),
+		}));
+		const { embedded } = await runBackfillSweep();
+		expect(embedded).toBe(2);
+		expect(listMemoriesNeedingEmbedding(MODEL, 100)).toHaveLength(0);
+	});
+
+	it('warns when a batch stores nothing, instead of stalling silently', async () => {
+		const u = seedUser();
+		createMemory(u.id, 'aaa');
+		embeddingsMock.mockImplementation(async () => ({ data: [{ index: 0, embedding: [] }] }));
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const { embedded } = await runBackfillSweep();
+		expect(embedded).toBe(0);
+		expect(warn).toHaveBeenCalledWith(expect.stringMatching(/no vectors .* were stored/));
+		warn.mockRestore();
+	});
 });

@@ -38,6 +38,9 @@ arrived.
 
 ### Fixed
 
+- Memories and image prompts are now indexed for search on embedding servers
+  that return vectors without an `index` field. Before, nothing was ever
+  indexed on those servers, and no error explained why.
 - Opening an invite link in a browser whose session is app-locked now asks you
   to unlock, instead of offering to create a new account over it.
 - Python code that contains a line of three backticks now shows in full in

@@ -88,13 +88,18 @@ async function drainQueue(
 		// than discarding the whole batch on a count mismatch — a short or
 		// reordered response still persists the vectors that did come back, so a
 		// poison row can't starve the rows behind it.
+		//
+		// `index` is optional in practice: some OpenAI-compatible servers omit it
+		// and return vectors in input order. Without a fallback every vector
+		// was dropped and the queue stalled with no sign of why. Position is the
+		// same assumption embed-rank makes for its query-time requests.
 		const vecByIndex = new Map<number, number[]>();
-		for (const d of data) {
+		data.forEach((d, position) => {
 			const v = d.embedding;
-			if (typeof d.index === 'number' && Array.isArray(v) && v.length > 0) {
-				vecByIndex.set(d.index, v);
+			if (Array.isArray(v) && v.length > 0) {
+				vecByIndex.set(typeof d.index === 'number' ? d.index : position, v);
 			}
-		}
+		});
 
 		let progressed = 0;
 		for (let i = 0; i < rows.length; i++) {
@@ -108,8 +113,14 @@ async function drainQueue(
 			}
 		}
 		// Nothing in this batch took — stop rather than re-query the same
-		// unembeddable rows forever within one sweep.
-		if (progressed === 0) break;
+		// unembeddable rows forever within one sweep. Say so: a batch that keeps
+		// landing here never shrinks the queue, and nothing else would show it.
+		if (progressed === 0) {
+			console.warn(
+				`[${label}-backfill] no vectors from a ${rows.length}-row batch were stored (${data.length} returned); retrying next sweep`,
+			);
+			break;
+		}
 	}
 	return embedded;
 }
