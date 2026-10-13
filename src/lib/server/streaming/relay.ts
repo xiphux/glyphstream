@@ -690,6 +690,12 @@ async function runOneIteration(args: {
 		console.error('[stream/relay] recorder branch failed:', e);
 		throw e;
 	});
+	// Awaited only after the client loop below finishes. If the recorder
+	// rejects first (a DB write failing while the client branch is still
+	// draining), Node would see an unhandled rejection in between — fatal under
+	// its default `--unhandled-rejections=throw`. This marks it handled; the
+	// `await` below still receives the rejection.
+	recorderPromise.catch(() => {});
 
 	// Drive the client-facing branch to completion (or abort).
 	try {
