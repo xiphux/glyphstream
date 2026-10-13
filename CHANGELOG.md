@@ -58,6 +58,9 @@ arrived.
 - Stopping a retry before it produced anything (or a retry that failed before
   starting) no longer hides the reply you were retrying. It used to vanish from
   the thread, and the next message was attached in the wrong place.
+- Deleting the reply you are viewing, when there are several, now moves you to
+  the newest remaining one (as switching to that message would), not the
+  oldest.
 
 ## v0.44.1
 

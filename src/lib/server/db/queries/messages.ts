@@ -922,7 +922,13 @@ export function deleteBranch(
 
 		// Siblings sharing this message's parent_message_id (null parent = root
 		// siblings). Used both as the active-leaf replacement and in the refusal.
-		const siblings = all.filter((r) => r.parentId === target.parentId && r.id !== messageId);
+		// Newest first, ties by id descending — the same order deepestDescendant
+		// walks children in, so the replacement below is the branch selectBranch
+		// on the parent would land on (its documented contract). Unsorted, it was
+		// whatever order the index scan returned: in practice the OLDEST.
+		const siblings = all
+			.filter((r) => r.parentId === target.parentId && r.id !== messageId)
+			.sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
 
 		// Collect the subtree rooted at messageId (inclusive) via BFS.
 		const childrenByParent = buildChildrenByParent(all);

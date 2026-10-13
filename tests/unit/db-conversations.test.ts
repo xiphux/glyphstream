@@ -2305,3 +2305,46 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 		expect(getFanoutParent(conv.id, u.id)).toBeNull();
 	});
 });
+
+describe('deleteBranch — which sibling the thread lands on', () => {
+	afterEach(() => vi.useRealTimers());
+
+	it('lands where selecting the parent would: the newest remaining sibling', () => {
+		// Three replies to one prompt; the user is viewing the newest and deletes
+		// it. The replacement must follow the same newest-first rule as
+		// selectBranch (deepestDescendant's documented contract), not whatever
+		// order the database happened to return the rows in.
+		vi.useFakeTimers();
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::m',
+			modelKind: 'chat',
+		});
+		vi.setSystemTime(1_000);
+		const prompt = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'q' }],
+		});
+		const reply = (at: number, text: string) => {
+			vi.setSystemTime(at);
+			return appendMessage({
+				conversationId: conv.id,
+				parentMessageId: prompt.id,
+				role: 'assistant',
+				parts: [{ type: 'text', text }],
+			});
+		};
+		reply(2_000, 'oldest');
+		const middle = reply(3_000, 'middle');
+		const newest = reply(4_000, 'newest');
+
+		deleteBranch(conv.id, newest.id, u.id);
+
+		expect(getConversationMeta(conv.id, u.id)?.activeLeafMessageId).toBe(middle.id);
+		expect(selectBranch(conv.id, prompt.id)?.newActiveLeaf).toBe(middle.id);
+	});
+});
