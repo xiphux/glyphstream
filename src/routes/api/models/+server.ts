@@ -4,7 +4,10 @@ import { parseModelId } from '#lib/server/endpoints/model-id.js';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { listEndpoints } from '#lib/server/endpoints/registry.js';
 import { ConfigError } from '#lib/server/endpoints/config.js';
-import { listAllModelsWithErrors } from '#lib/server/endpoints/list-models.js';
+import {
+	endpointErrorForViewer,
+	listAllModelsWithErrors,
+} from '#lib/server/endpoints/list-models.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
@@ -18,22 +21,25 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		listEndpoints();
 	} catch (e) {
 		if (e instanceof ConfigError) {
-			// The detail names the absolute config.toml path and the env var
-			// expected to hold a key — troubleshooting gold for the operator,
-			// and infrastructure disclosure to everyone else. (Only the env var
-			// NAME, never a resolved value, per the *_env convention — so this
-			// is path/name disclosure, not a credential leak.) Admins can
-			// already read config.toml; non-admins get the bare fact.
-			if (locals.user.role === 'admin') {
-				error(500, `Endpoint configuration is invalid: ${e.message}`);
-			}
-			error(500, 'Endpoint configuration is invalid. Ask an administrator to check it.');
+			// Only the env var NAME is ever in the detail, never a resolved value
+			// (the *_env convention), so this is path/name disclosure, not a
+			// credential leak; endpointErrorForViewer still keeps it to admins.
+			error(
+				500,
+				endpointErrorForViewer(
+					locals.user.role,
+					'config',
+					`Endpoint configuration is invalid: ${e.message}`,
+				),
+			);
 		}
 		throw e;
 	}
 
 	const results = await listAllModelsWithErrors();
 	const allModels = results.flatMap((r) => r.models);
+	const role = locals.user.role;
+	const viewerError = (message: string) => endpointErrorForViewer(role, 'listing', message);
 
 	// `?ids=a,b,c` — resolve specific models without shipping the catalogue.
 	//
@@ -79,12 +85,12 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 			data: allModels.filter((m) => wanted.has(m.id)),
 			endpoint_errors: results
 				.filter((r) => r.error && wantedEndpoints.has(r.endpointId))
-				.map((r) => ({ endpointId: r.endpointId, error: r.error })),
+				.map((r) => ({ endpointId: r.endpointId, error: viewerError(r.error!) })),
 		});
 	}
 	const errors = results
 		.filter((r) => r.error)
-		.map((r) => ({ endpointId: r.endpointId, error: r.error }));
+		.map((r) => ({ endpointId: r.endpointId, error: viewerError(r.error!) }));
 
 	return Response.json({
 		object: 'list',

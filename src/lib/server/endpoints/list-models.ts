@@ -220,3 +220,23 @@ export function resetModelCache(): void {
 	cache.clear();
 	inFlight.clear();
 }
+
+/**
+ * The text a viewer may see for a failed model listing or a broken config.
+ *
+ * The raw messages are for operators: a listing failure names the upstream's
+ * internal URL and the network error behind it, and a ConfigError names the
+ * absolute config.toml path and the env var expected to hold a key. Admins can
+ * already read all of that; anyone else gets the bare fact, with the endpoint
+ * id (which the response carries alongside) saying which one.
+ */
+export function endpointErrorForViewer(
+	role: 'admin' | 'user',
+	kind: 'listing' | 'config',
+	message: string,
+): string {
+	if (role === 'admin') return message;
+	return kind === 'config'
+		? 'Endpoint configuration is invalid. Ask an administrator to check it.'
+		: 'The model server could not be reached.';
+}

@@ -31,6 +31,10 @@ arrived.
   IPv4 address (IPv4-mapped, NAT64 and 6to4). A domain pointing at, say,
   `64:ff9b::a9fe:a9fe` could reach the cloud metadata service on a NAT64
   network.
+- When a model server can't be reached, only admins now see the error's
+  detail, which can include the server's internal address. Everyone else sees
+  that the server couldn't be reached, as they already did for a broken
+  config file.
 
 ### Fixed
 

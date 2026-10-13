@@ -1,6 +1,9 @@
 import { listCustomModelsForUser } from '#lib/server/db/queries/custom-models.js';
 import { listEndpoints } from '#lib/server/endpoints/registry.js';
-import { listAllModelsWithErrors } from '#lib/server/endpoints/list-models.js';
+import {
+	endpointErrorForViewer,
+	listAllModelsWithErrors,
+} from '#lib/server/endpoints/list-models.js';
 import { ConfigError } from '#lib/server/endpoints/config.js';
 import type { PageServerLoad } from './$types';
 
@@ -24,12 +27,17 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 	// See /(app)/+page.server.ts for why.
 	await parent();
 	const customModels = listCustomModelsForUser(locals.user!.id);
+	const role = locals.user!.role;
 
 	try {
 		listEndpoints();
 	} catch (e) {
 		if (e instanceof ConfigError) {
-			return { customModels, models: [], modelsError: e.message };
+			return {
+				customModels,
+				models: [],
+				modelsError: endpointErrorForViewer(role, 'config', e.message),
+			};
 		}
 		throw e;
 	}
@@ -42,6 +50,10 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 		// Name the endpoints that failed rather than reporting "no models" with no
 		// explanation. Null when everything resolved.
 		modelsError:
-			failed.length > 0 ? failed.map((r) => `${r.endpointId}: ${r.error}`).join('; ') : null,
+			failed.length > 0
+				? failed
+						.map((r) => `${r.endpointId}: ${endpointErrorForViewer(role, 'listing', r.error!)}`)
+						.join('; ')
+				: null,
 	};
 };

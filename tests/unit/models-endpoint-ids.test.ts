@@ -16,12 +16,17 @@ import { describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
 	results: vi.fn<() => Array<{ endpointId: string; models: unknown[]; error?: string }>>(),
+	listEndpoints: vi.fn<() => unknown[]>(() => []),
+	ConfigError: class ConfigError extends Error {},
 }));
 
 vi.mock('#lib/server/auth/guard.js', () => ({ requireUser: () => {} }));
-vi.mock('#lib/server/endpoints/registry.js', () => ({ listEndpoints: () => [] }));
-vi.mock('#lib/server/endpoints/config.js', () => ({ ConfigError: class extends Error {} }));
-vi.mock('#lib/server/endpoints/list-models.js', () => ({
+vi.mock('#lib/server/endpoints/registry.js', () => ({
+	listEndpoints: () => mocks.listEndpoints(),
+}));
+vi.mock('#lib/server/endpoints/config.js', () => ({ ConfigError: mocks.ConfigError }));
+vi.mock('#lib/server/endpoints/list-models.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/server/endpoints/list-models.js')>()),
 	listAllModelsWithErrors: () => Promise.resolve(mocks.results()),
 }));
 
@@ -32,15 +37,15 @@ function model(id: string) {
 	return { id, endpointId, upstreamId, displayName: upstreamId, kind: 'chat' };
 }
 
-async function get(ids: string | null) {
+async function get(ids: string | null, role: 'admin' | 'user' = 'user') {
 	const url = new URL(`http://x/api/models${ids === null ? '' : `?ids=${ids}`}`);
 	const res = await GET({
-		locals: { user: { id: 'u1', role: 'user' } },
+		locals: { user: { id: 'u1', role } },
 		url,
 	} as unknown as Parameters<typeof GET>[0]);
 	return (await (res as Response).json()) as {
 		data: Array<{ id: string }>;
-		endpoint_errors: Array<{ endpointId: string }>;
+		endpoint_errors: Array<{ endpointId: string; error: string }>;
 	};
 }
 
@@ -88,5 +93,42 @@ describe('GET /api/models?ids=', () => {
 		]);
 		const body = await get(null);
 		expect(body.endpoint_errors.map((e) => e.endpointId)).toEqual(['other']);
+	});
+});
+
+describe('GET /api/models — error detail is for admins', () => {
+	const raw =
+		'Network error listing models from http://10.0.0.5:8080/v1/models: connect ECONNREFUSED 10.0.0.5:8080';
+
+	it.each([null, 'ep::a'])('keeps the upstream URL from a non-admin (ids=%s)', async (ids) => {
+		mocks.results.mockReturnValue([{ endpointId: 'ep', models: [], error: raw }]);
+		const body = await get(ids, 'user');
+		expect(body.endpoint_errors).toEqual([
+			{ endpointId: 'ep', error: 'The model server could not be reached.' },
+		]);
+	});
+
+	it.each([null, 'ep::a'])('gives an admin the full error (ids=%s)', async (ids) => {
+		mocks.results.mockReturnValue([{ endpointId: 'ep', models: [], error: raw }]);
+		const body = await get(ids, 'admin');
+		expect(body.endpoint_errors).toEqual([{ endpointId: 'ep', error: raw }]);
+	});
+
+	it('keeps the config path and env var name from a non-admin', async () => {
+		const detail = '/srv/glyphstream/config.toml: endpoint "ep" expects env var BRIDGE_KEY';
+		mocks.listEndpoints.mockImplementationOnce(() => {
+			throw new mocks.ConfigError(detail);
+		});
+		await expect(get(null, 'user')).rejects.toMatchObject({
+			status: 500,
+			body: { message: 'Endpoint configuration is invalid. Ask an administrator to check it.' },
+		});
+		mocks.listEndpoints.mockImplementationOnce(() => {
+			throw new mocks.ConfigError(detail);
+		});
+		await expect(get(null, 'admin')).rejects.toMatchObject({
+			status: 500,
+			body: { message: `Endpoint configuration is invalid: ${detail}` },
+		});
 	});
 });
