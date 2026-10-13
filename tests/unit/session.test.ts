@@ -25,6 +25,7 @@ vi.mock('#lib/server/db/client.js', () => ({
 import {
 	clearSessionCookie,
 	createSession,
+	deleteExpiredSessions,
 	SESSION_ABSOLUTE_MAX_MS,
 	listSessionsForUser,
 	revokeOtherSessionsForUser,
@@ -386,5 +387,23 @@ describe('cookie Secure attribute', () => {
 			if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
 			else process.env.NODE_ENV = previousNodeEnv;
 		}
+	});
+});
+
+describe('deleteExpiredSessions', () => {
+	// validateSessionToken only deletes a dead session when its own token is
+	// presented, which for an abandoned device or a cleared cookie is never.
+	it('removes sessions past their expiry or their absolute ceiling, and nothing else', () => {
+		const u = seedUser();
+		const now = 10 * SESSION_ABSOLUTE_MAX_MS;
+		const insert = (id: string, expiresAt: number, createdAt: number) =>
+			mocks.testDb.insert(sessions).values({ id, userId: u.id, expiresAt, createdAt }).run();
+		insert('live', now + 1_000, now - 1_000);
+		insert('expired', now - 1, now - 1_000);
+		insert('past-ceiling', now + 1_000, now - SESSION_ABSOLUTE_MAX_MS - 1);
+
+		expect(deleteExpiredSessions(now)).toBe(2);
+		const left = mocks.testDb.select({ id: sessions.id }).from(sessions).all();
+		expect(left).toEqual([{ id: 'live' }]);
 	});
 });

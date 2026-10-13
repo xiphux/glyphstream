@@ -37,6 +37,10 @@ vi.mock('#lib/server/media/purger.js', () => ({
 	startMediaPurger: vi.fn(),
 	stopMediaPurger: vi.fn(),
 }));
+vi.mock('#lib/server/auth/session-sweeper.js', () => ({
+	startSessionSweeper: vi.fn(),
+	stopSessionSweeper: vi.fn(),
+}));
 vi.mock('#lib/server/memory/embedding-backfill.js', () => ({
 	startEmbeddingBackfiller: vi.fn(),
 	stopEmbeddingBackfiller: vi.fn(),

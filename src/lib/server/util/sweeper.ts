@@ -1,6 +1,7 @@
 /**
  * Shared lifecycle for the periodic background workers (media purger, embedding
- * backfiller, topic backfiller, dreaming, conversation summaries).
+ * backfiller, topic backfiller, dreaming, conversation summaries, expired
+ * sessions).
  *
  * Every one of them independently grew the same skeleton — a recursive
  * `setTimeout` chain, an idempotent `start`, a `stop` that tears the timer down —

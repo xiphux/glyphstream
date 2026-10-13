@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { and, desc, eq, gt, isNull, ne } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, lte, ne, or } from 'drizzle-orm';
 import type { Cookies } from '@sveltejs/kit';
 import { getDb } from '../db/client';
 import { cookiesSecure } from '../env';
@@ -196,6 +196,21 @@ export function setSessionUnlockedUntil(sessionId: string, unlockedUntil: number
 	getDb().update(sessions).set({ unlockedUntil }).where(eq(sessions.id, sessionId)).run();
 }
 
+/**
+ * Delete every session that is past its sliding expiry or its absolute
+ * ceiling. validateSessionToken removes a dead session only when its own token
+ * is presented, which for an abandoned device or a cleared cookie never
+ * happens, so without this the table only grows. Run by the session sweeper
+ * (session-sweeper.ts). Returns how many rows went.
+ */
+export function deleteExpiredSessions(now: number = Date.now()): number {
+	const res = getDb()
+		.delete(sessions)
+		.where(or(lte(sessions.expiresAt, now), lte(sessions.createdAt, now - SESSION_ABSOLUTE_MAX_MS)))
+		.run();
+	return Number(res.changes);
+}
+
 export function invalidateSession(sessionId: string): void {
 	const db = getDb();
 	db.delete(sessions).where(eq(sessions.id, sessionId)).run();
@@ -215,8 +230,8 @@ export interface SessionSummary {
  * Every live session for a user, most recently active first.
  *
  * Expired rows are filtered rather than shown — they're already dead to
- * `validateSessionToken` and only get swept when their own token is next
- * presented, which for an abandoned device is never.
+ * `validateSessionToken`, and the session sweeper removes them only
+ * periodically.
  */
 export function listSessionsForUser(userId: string, now: number = Date.now()): SessionSummary[] {
 	const db = getDb();

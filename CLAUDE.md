@@ -85,7 +85,7 @@ tests/e2e/            # playwright (production-build webServer)
   is kept indefinitely; the background purger only reaps abandoned uploads,
   on a hardcoded cadence (see `src/lib/server/media/purger.ts`).
 - Background sweepers (purger, embedding + topic backfill, dreaming,
-  conversation summaries) mount through `createSweeper`
+  conversation summaries, expired sessions) mount through `createSweeper`
   (`server/util/sweeper.ts`) — don't hand-roll another recursive
   `setTimeout`. Five copies had drifted and two lacked the generation
   token, so a `stop()` landing during an in-flight sweep re-armed the

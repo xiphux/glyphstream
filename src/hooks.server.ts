@@ -24,6 +24,7 @@ import {
 } from '#lib/server/env.js';
 import { ensureAdminBootstrap } from '#lib/server/db/queries/users.js';
 import { startMediaPurger, stopMediaPurger } from '#lib/server/media/purger.js';
+import { startSessionSweeper, stopSessionSweeper } from '#lib/server/auth/session-sweeper.js';
 import {
 	startEmbeddingBackfiller,
 	stopEmbeddingBackfiller,
@@ -92,6 +93,10 @@ scheduleGenerationJobResume();
 // starts even if no user has hit the server yet (e.g. on a fresh redeploy).
 startMediaPurger();
 
+// Delete expired sessions — nothing else ever removes a session whose token is
+// never presented again. Same boot-time rationale as the purger.
+startSessionSweeper();
+
 // Backfill embeddings for saved memories + gallery prompts (recall_memory and
 // semantic gallery search). No-op when no `[embeddings]` block is configured.
 // Same boot-time rationale as the purger.
@@ -156,6 +161,7 @@ void listAllModels().catch(() => {});
 // is ever needed, call process.exit() explicitly after the awaits.
 process.on('sveltekit:shutdown', async () => {
 	stopMediaPurger();
+	stopSessionSweeper();
 	stopDreamingWorker();
 	stopEmbeddingBackfiller();
 	stopTopicBackfiller();
