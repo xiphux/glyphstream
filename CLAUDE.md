@@ -114,11 +114,12 @@ tests/e2e/            # playwright (production-build webServer)
   `supersedes` AND settled from the caller's `finally`.
 - Wire types live in `#lib/types/api.ts`, never in a `db/queries/*`
   module. A DTO imported from `#lib/server` by client-safe code
-  type-checks and ships nothing, so nothing catches it — but it makes the
-  browser's contract whatever a `SELECT` happens to project, with no
-  boundary at which changing a query registers as changing an API. The
-  media/gallery feature did exactly this; no client module imports from
-  `#lib/server` now, and that's worth keeping true.
+  type-checks and ships nothing, so neither the compiler nor the bundle
+  notices — but it makes the browser's contract whatever a `SELECT` happens
+  to project, with no boundary at which changing a query registers as
+  changing an API. The media/gallery feature did exactly this. `pnpm lint`
+  now refuses it: `no-restricted-imports` bans `#lib/server` from every file
+  outside `src/lib/server`, `+server.ts`, `*.server.ts` and `app.d.ts`.
 - Per-endpoint secrets use the `*_env` field convention in `config.toml`:
   the field stores the _name_ of an env var, never the secret itself.
 - **Server env vars are read from `process.env`, never a Kit env module.**

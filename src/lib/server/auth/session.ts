@@ -5,6 +5,8 @@ import { getDb } from '../db/client';
 import { cookiesSecure } from '../env';
 import { clearAuthCookie } from './signed-cookies';
 import { sessions, users } from '../db/schema';
+import type { SessionSummary } from '#lib/types/api.js';
+export type { SessionSummary };
 
 const SESSION_COOKIE = 'glyphstream_session';
 const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -214,16 +216,6 @@ export function deleteExpiredSessions(now: number = Date.now()): number {
 export function invalidateSession(sessionId: string): void {
 	const db = getDb();
 	db.delete(sessions).where(eq(sessions.id, sessionId)).run();
-}
-
-export interface SessionSummary {
-	/** The sha256 of the cookie token — safe to hand to the client, since it
-	 *  can't be reversed into a usable cookie. */
-	id: string;
-	createdAt: number;
-	lastSeenAt: number;
-	expiresAt: number;
-	userAgent: string | null;
 }
 
 /**

@@ -11,22 +11,8 @@
 
 import { sql } from 'drizzle-orm';
 import { getDb } from '../client';
-
-export interface SearchResult {
-	conversationId: string;
-	conversationTitle: string | null;
-	updatedAt: number;
-	/** `'message'` for body hits (with `messageId` set), `'title'` for title hits,
-	 *  `'summary'` for a hit on the conversation's background-generated gist. */
-	kind: 'message' | 'title' | 'summary';
-	/** NULL for title/summary hits — the row identifies the whole conversation, not a specific message. */
-	messageId: string | null;
-	/** FTS5 snippet with `<mark>...</mark>` wrapping the matched tokens. */
-	snippet: string;
-	/** The conversation's stored summary gist (background summary pass), or null.
-	 *  Carried on every result regardless of which row kind matched. */
-	summary: string | null;
-}
+import type { SearchResult } from '#lib/types/api.js';
+export type { SearchResult };
 
 interface SearchOptions {
 	/** Hard cap on returned rows. Default 30, max 100. */

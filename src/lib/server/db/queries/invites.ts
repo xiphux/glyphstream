@@ -16,7 +16,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { generateId } from '../../util/id';
 import { getDb, type Tx } from '../client';
 import { invites, users } from '../schema';
-import type { UserRole } from './users';
+import type { InviteSummary, UserRole } from '#lib/types/api.js';
+export type { InviteSummary };
 
 /** Hex SHA-256 of a raw invite token — the stored/looked-up form. */
 export function hashInviteToken(rawToken: string): string {
@@ -119,14 +120,6 @@ export function consumeInvite(inviteId: string, tx?: Tx): boolean {
 	const exec = tx ?? getDb();
 	const res = exec.delete(invites).where(eq(invites.id, inviteId)).run();
 	return res.changes > 0;
-}
-
-export interface InviteSummary {
-	id: string;
-	role: UserRole;
-	createdByUserId: string;
-	createdAt: number;
-	expiresAt: number;
 }
 
 /** All outstanding invites, newest first — for the admin UI's invite list.

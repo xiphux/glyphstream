@@ -15,6 +15,8 @@ import { and, asc, count, eq } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import { getDb, type Tx } from '../client';
 import { oauthAccounts, users } from '../schema';
+import type { OAuthAccountSummary } from '#lib/types/api.js';
+export type { OAuthAccountSummary };
 
 export interface OAuthAccountRow {
 	id: string;
@@ -25,16 +27,6 @@ export interface OAuthAccountRow {
 	externalEmail: string | null;
 	createdAt: number;
 	lastSyncedAt: number | null;
-}
-
-/** UI-safe projection — omits the internal row id and last-synced
- *  timestamp; everything the settings page actually needs to render. */
-export interface OAuthAccountSummary {
-	provider: string;
-	externalId: string;
-	externalUsername: string | null;
-	externalEmail: string | null;
-	createdAt: number;
 }
 
 export interface AddOAuthAccountInput {

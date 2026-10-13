@@ -4,9 +4,7 @@
 	import { page } from '$app/state';
 	import { Check, KeyRound, Laptop, Pencil, Plus, Trash2, X } from '@lucide/svelte';
 	import ProviderIcon from '#lib/components/ProviderIcon.svelte';
-	import type { OAuthAccountSummary } from '#lib/server/db/queries/oauth-accounts.js';
-	import type { PasskeySummary } from '#lib/server/db/queries/passkey.js';
-	import type { SessionSummary } from '#lib/server/auth/session.js';
+	import type { OAuthAccountSummary, PasskeySummary, SessionSummary } from '#lib/types/api.js';
 	import { confirmDialog } from '#lib/confirm.svelte.js';
 	import { toast } from '#lib/toast.svelte.js';
 	import { errorMessageFromResponse } from '#lib/fetch-error.js';

@@ -24,7 +24,7 @@
 	import { toast } from '#lib/toast.svelte.js';
 	import BaseDialog from './BaseDialog.svelte';
 
-	type MediaCounts = { images: number; videos: number };
+	import type { ConversationOrphanCounts as MediaCounts } from '#lib/types/api.js';
 
 	let {
 		targetId = $bindable(null),

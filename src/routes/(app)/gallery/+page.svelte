@@ -27,6 +27,7 @@
 		GalleryUnitsPage,
 		MediaConversationRef,
 		MediaListItem,
+		ModelFacet,
 	} from '#lib/types/api.js';
 	import { toast } from '#lib/toast.svelte.js';
 
@@ -37,7 +38,7 @@
 			kind: 'image' | 'video' | null;
 			model: string | null;
 			favorite: boolean;
-			modelFacets: Array<{ value: string; label: string; count: number }>;
+			modelFacets: Array<ModelFacet & { label: string }>;
 			q: string | null;
 			/** From the (app) layout — the presets an image can be made the
 			 *  avatar of. */

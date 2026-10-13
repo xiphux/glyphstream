@@ -10,8 +10,8 @@ import { and, asc, count, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import { getDb, type Tx } from '../client';
 import { conversations, media, users } from '../schema';
-
-export type UserRole = 'admin' | 'user';
+import type { UserRole, UserSummary } from '#lib/types/api.js';
+export type { UserRole, UserSummary };
 
 export interface CreateUserInput {
 	/** Optional pre-allocated id; the passkey flows need this because the
@@ -111,20 +111,6 @@ export function getDisabledAt(userId: string): number | null {
 		.where(eq(users.id, userId))
 		.get();
 	return row?.disabledAt ?? null;
-}
-
-export interface UserSummary {
-	id: string;
-	displayName: string | null;
-	email: string | null;
-	role: UserRole;
-	disabledAt: number | null;
-	createdAt: number;
-	lastLoginAt: number | null;
-	invitedByUserId: string | null;
-	/** Non-null when the user has app lock on — shown so an admin can turn it
-	 *  off for someone who has lost every passkey. */
-	appLockTimeoutMs: number | null;
 }
 
 /** All users, newest-first — for the admin user-management table. */

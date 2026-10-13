@@ -19,9 +19,10 @@
 import { and, asc, count, eq } from 'drizzle-orm';
 import { getDb, type Tx } from '../client';
 import { passkeyCredentials, users } from '../schema';
+import type { PasskeyDeviceType, PasskeySummary } from '#lib/types/api.js';
+export type { PasskeyDeviceType, PasskeySummary };
 
 export type AuthenticatorTransport = 'usb' | 'ble' | 'nfc' | 'internal' | 'hybrid';
-export type PasskeyDeviceType = 'singleDevice' | 'multiDevice';
 
 export interface PasskeyCredentialRow {
 	id: string;
@@ -32,15 +33,6 @@ export interface PasskeyCredentialRow {
 	backedUp: boolean;
 	deviceType: PasskeyDeviceType;
 	name: string | null;
-	createdAt: number;
-	lastUsedAt: number | null;
-}
-
-export interface PasskeySummary {
-	id: string;
-	name: string | null;
-	backedUp: boolean;
-	deviceType: PasskeyDeviceType;
 	createdAt: number;
 	lastUsedAt: number | null;
 }

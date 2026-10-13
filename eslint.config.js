@@ -138,6 +138,42 @@ export default defineConfig([
 	},
 
 	{
+		// Client-reachable code may not import server modules, even type-only.
+		// A type-only import compiles to nothing and type-checks fine, so nothing
+		// else catches it; but it makes the browser's contract whatever a server
+		// query happens to project (CLAUDE.md: wire types live in
+		// #lib/types/api.ts). Server-only files are everything under
+		// src/lib/server, every +server.ts and *.server.ts.
+		files: ['src/**/*.{ts,svelte}'],
+		ignores: [
+			'src/lib/server/**',
+			'src/**/+server.ts',
+			'src/**/*.server.ts',
+			// App.Locals describes server state by definition.
+			'src/app.d.ts',
+		],
+		rules: {
+			'no-restricted-imports': [
+				'error',
+				{
+					patterns: [
+						{
+							group: ['#lib/server', '#lib/server/*', '$lib/server', '$lib/server/*'],
+							message:
+								'Client code must not import from #lib/server. Put shared wire types in #lib/types/api.ts.',
+						},
+						{
+							regex: '(^|/)server(/|$)',
+							message:
+								'Client code must not import a server module. Put shared wire types in #lib/types/api.ts.',
+						},
+					],
+				},
+			],
+		},
+	},
+
+	{
 		files: ['tests/e2e/**/*.spec.ts'],
 		rules: {
 			// Specs take `test` from fixtures/test.ts, whose auto-fixture fails a

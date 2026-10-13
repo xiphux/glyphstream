@@ -6,25 +6,11 @@
 	import { toast } from '#lib/toast.svelte.js';
 	import { errorMessageFromResponse } from '#lib/fetch-error.js';
 
-	type UserRole = 'admin' | 'user';
-	interface UserRow {
-		id: string;
-		displayName: string | null;
-		email: string | null;
-		role: UserRole;
-		disabledAt: number | null;
-		createdAt: number;
-		lastLoginAt: number | null;
-		invitedByUserId: string | null;
-		appLockTimeoutMs: number | null;
-	}
-	interface InviteRow {
-		id: string;
-		role: UserRole;
-		createdByUserId: string;
-		createdAt: number;
-		expiresAt: number;
-	}
+	import type {
+		InviteSummary as InviteRow,
+		UserRole,
+		UserSummary as UserRow,
+	} from '#lib/types/api.js';
 
 	let { data } = $props<{ data: { me: string; users: UserRow[]; invites: InviteRow[] } }>();
 

@@ -4,14 +4,7 @@
 	import { Search as SearchIcon } from '@lucide/svelte';
 	import { searchModal } from '#lib/search-modal.svelte.js';
 
-	interface SearchResult {
-		conversationId: string;
-		conversationTitle: string | null;
-		updatedAt: number;
-		kind: 'message' | 'title';
-		messageId: string | null;
-		snippet: string;
-	}
+	import type { SearchResult } from '#lib/types/api.js';
 
 	const DEBOUNCE_MS = 250;
 
