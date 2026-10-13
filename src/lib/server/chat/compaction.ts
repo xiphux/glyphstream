@@ -218,24 +218,32 @@ export type CompactionResult =
 export async function runCompaction(
 	conversationId: string,
 	userId: string,
-	opts: { keepTurns?: number } = {},
+	opts: { keepTurns?: number; signal?: AbortSignal } = {},
 ): Promise<CompactionResult> {
-	const plan = await prepareCompaction(conversationId, userId, opts);
+	const plan = await prepareCompaction(conversationId, userId, { keepTurns: opts.keepTurns });
 	if (!plan) return { status: 'noop' };
 
 	// Hold a per-endpoint slot so compaction doesn't preempt a live
 	// generation on a single-GPU backend. Release once the upstream
 	// call settles — even on error.
+	// The caller's signal bounds the WAIT as well as the call: without it a
+	// request whose client went away still queued behind a paused endpoint
+	// group indefinitely.
 	const slot = await acquireEndpointSlot(plan.endpoint, {
 		work: { purpose: 'compaction', modelId: plan.upstreamId },
+		signal: opts.signal,
 	});
 	try {
-		const resp = await chatCompletionSync(plan.endpoint, {
-			model: plan.upstreamId,
-			messages: plan.messages,
-			temperature: plan.temperature,
-			max_tokens: plan.maxTokens,
-		});
+		const resp = await chatCompletionSync(
+			plan.endpoint,
+			{
+				model: plan.upstreamId,
+				messages: plan.messages,
+				temperature: plan.temperature,
+				max_tokens: plan.maxTokens,
+			},
+			opts.signal,
+		);
 		const summaryText = (resp.choices?.[0]?.message?.content ?? '').trim();
 		if (!summaryText) return { status: 'noop' };
 

@@ -45,7 +45,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	}
 
 	try {
-		const result = await runCompaction(params.id, locals.user.id);
+		const result = await runCompaction(params.id, locals.user.id, { signal: request.signal });
 		if (result.status === 'noop') {
 			error(409, 'Not enough conversation history to compact yet.');
 		}

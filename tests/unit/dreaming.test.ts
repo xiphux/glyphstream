@@ -113,10 +113,10 @@ describe('runDreamSweep', () => {
 		// Slot acquired on the model's endpoint and released, declaring itself as
 		// dreaming — the admin endpoint view reads that label to explain a
 		// single-GPU box that is busy with no user turn in flight.
-		expect(acquireMock).toHaveBeenCalledWith(
-			expect.objectContaining({ id: 'gpu', resourceGroup: 'gpu', resourceGroupMaxConcurrent: 1 }),
-			{ work: { purpose: 'dream', modelId: 'm' } },
-		);
+		const [ep, acquireOpts] = acquireMock.mock.calls[0] as [unknown, Record<string, unknown>];
+		expect(ep).toMatchObject({ id: 'gpu', resourceGroup: 'gpu', resourceGroupMaxConcurrent: 1 });
+		expect(acquireOpts.work).toEqual({ purpose: 'dream', modelId: 'm' });
+		expect(acquireOpts.signal).toBeInstanceOf(AbortSignal);
 		expect(releaseSpy).toHaveBeenCalled();
 	});
 
@@ -227,6 +227,26 @@ describe('runDreamSweep', () => {
 		const r = await runDreamSweep();
 		expect(chatMock).toHaveBeenCalledTimes(1); // broke after the first user, didn't hammer
 		expect(r.usersProcessed).toBe(0);
+	});
+
+	it('bounds its slot wait, and ends the sweep when the wait runs out', async () => {
+		const u1 = seedUser();
+		createMemory(u1.id, 'a1', 'T');
+		createMemory(u1.id, 'b1', 'T');
+		const u2 = seedUser();
+		createMemory(u2.id, 'a2', 'T');
+		createMemory(u2.id, 'b2', 'T');
+		// A paused endpoint group: the slot never comes, so the wait is what ends it.
+		acquireMock.mockImplementation((_ep: unknown, opts: { signal?: AbortSignal }) => {
+			expect(opts.signal).toBeInstanceOf(AbortSignal);
+			return Promise.reject(new DOMException('Endpoint slot acquisition aborted', 'AbortError'));
+		});
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const r = await runDreamSweep();
+		expect(acquireMock).toHaveBeenCalledTimes(1); // one wait, not one per user
+		expect(chatMock).not.toHaveBeenCalled();
+		expect(r.usersProcessed).toBe(0);
+		warn.mockRestore();
 	});
 
 	it('skips a per-user (non-endpoint) failure and continues to the next user', async () => {

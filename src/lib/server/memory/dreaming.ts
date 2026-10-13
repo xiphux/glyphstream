@@ -25,6 +25,7 @@ import { unhandled } from '../../exhaustive';
 import { getMemoryModel, type ResolvedMemoryModel } from '../tasks/memory-model';
 import { UpstreamError } from '../endpoints/client';
 import { acquireEndpointSlot } from '../endpoints/concurrency';
+import { isAbortError } from '../../abort';
 import { isWithinWindow } from './dream-window';
 import {
 	proposeConsolidation,
@@ -42,6 +43,9 @@ import {
 	type MemoryForDreaming,
 } from '../db/queries/memories';
 import { createSweeper } from '../util/sweeper';
+
+/** How long one dream waits for an endpoint slot before giving up the sweep. */
+const DREAM_SLOT_WAIT_MS = 15 * 60_000;
 
 const SWEEP_INTERVAL_MS = 15 * 60 * 1000;
 const INITIAL_DELAY_MS = 30_000;
@@ -81,7 +85,9 @@ export async function runDreamSweep(
 				opsApplied += await dreamUser(model, userId);
 				usersProcessed++;
 			} catch (e) {
-				if (e instanceof UpstreamError) {
+				// A slot wait that ran out (DREAM_SLOT_WAIT_MS) is endpoint-level too:
+				// the group is paused or saturated for everyone after this user.
+				if (e instanceof UpstreamError || isAbortError(e)) {
 					// Endpoint-level failure (shared — down / timeout): end the sweep
 					// rather than hammer it once per remaining user. Watermark unadvanced,
 					// so everyone retries next window.
@@ -125,8 +131,13 @@ async function dreamUser(model: ResolvedMemoryModel, userId: string): Promise<nu
 	}));
 
 	// Queue behind live chats on the shared endpoint; release even on error/abort.
+	// Bounded: with no signal, a sweep waiting on a PAUSED endpoint group (paused
+	// from /settings/endpoints) parked forever, and stop() can't cancel a pending
+	// await. Giving up ends this sweep; the next window retries.
+	const wait = AbortSignal.timeout(DREAM_SLOT_WAIT_MS);
 	const slot = await acquireEndpointSlot(model.endpoint, {
 		work: { purpose: 'dream', modelId: model.upstreamId },
+		signal: wait,
 	});
 	let ops: ConsolidationOp[];
 	try {
