@@ -51,6 +51,17 @@ const PUBLIC: Record<string, string> = {
 		'app-lock unlock: a LOCKED session has no user by design; gated on locals.appLock instead',
 };
 
+/**
+ * (app) page loads that must guard with requireUserPage and must NOT await
+ * parent(). Awaiting the parent couples the page to every layout
+ * invalidation, so a turn completing or a tab refocusing re-serializes the
+ * whole payload (CLAUDE.md, the `await parent()` convention). Re-adding it
+ * regresses silently, which is what this list is for.
+ */
+const NO_PARENT: Record<string, string> = {
+	'/(app)/chat/[id]': 'ships the whole active branch with content_html',
+};
+
 /** (app) server loads that legitimately need neither parent() nor requireUserPage. */
 const APP_LOAD_EXEMPT: Record<string, string> = {
 	'/(app)/settings/admin': 'unconditional redirect; the target does the auth check',
@@ -137,6 +148,16 @@ describe('static: (app) server loads', () => {
 			expect(src).toMatch(/await\s+parent\(\)|requireUserPage\(/);
 		},
 	);
+
+	it.each(Object.keys(NO_PARENT))('%s guards without awaiting parent()', (route) => {
+		const file = join(ROUTES, route.slice(1), '+page.server.ts');
+		// Its own comments explain why it skips `await parent()`; only code counts.
+		const code = readFileSync(file, 'utf8')
+			.replace(/\/\*[\s\S]*?\*\//g, '')
+			.replace(/\/\/.*$/gm, '');
+		expect(code).toMatch(/requireUserPage\(/);
+		expect(code).not.toMatch(/\bparent\s*\(/);
+	});
 });
 
 describe('dynamic: guarded handlers refuse a signed-out caller first', () => {
