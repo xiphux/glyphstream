@@ -17,6 +17,7 @@
  * the same.
  */
 
+import { unhandled } from './exhaustive';
 import { readSSE } from './sse-client';
 import type { CanvasVersion, ChatMessage, McpUnavailableServer, StreamEvent } from './types/api';
 
@@ -197,6 +198,8 @@ export async function consumeChatStream(
 			case 'error':
 				cb.onError?.(event.message, event.messageId);
 				break;
+			default:
+				unhandled(event);
 		}
 	}
 	return { sawToolCalls };

@@ -21,6 +21,7 @@
  * called directly by tests.
  */
 
+import { unhandled } from '../../exhaustive';
 import { getMemoryModel, type ResolvedMemoryModel } from '../tasks/memory-model';
 import { UpstreamError } from '../endpoints/client';
 import { acquireEndpointSlot } from '../endpoints/concurrency';
@@ -189,6 +190,8 @@ export function applyConsolidation(
 				if (snap && softDeleteMemory(userId, op.id, null, snap.content)) applied++;
 				break;
 			}
+			default:
+				unhandled(op);
 		}
 	}
 	return applied;

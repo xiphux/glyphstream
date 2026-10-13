@@ -20,6 +20,7 @@
  * for the WHOLE loop and released once in the outer `finally`.
  */
 
+import { unhandled } from '../../exhaustive';
 import type {
 	ChatMessage,
 	McpUnavailableServer,
@@ -962,5 +963,7 @@ function forwardDelta(
 			write(ev);
 			return;
 		}
+		default:
+			unhandled(d);
 	}
 }

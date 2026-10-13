@@ -7,6 +7,7 @@
  * silent regression here breaks every conversation.
  */
 
+import { unhandled } from './exhaustive';
 import type { ChatMessage, MessagePart, ModelEntry } from './types/api';
 import { arrangeForDisplay, isCompactionSummary } from './chat-compaction';
 
@@ -393,6 +394,8 @@ export function inFlightToBlocks(segments: InFlightSegment[]): RenderBlock[] {
 					status: seg.status,
 				});
 				break;
+			default:
+				unhandled(seg);
 		}
 	}
 	return blocks;
