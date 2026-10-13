@@ -146,6 +146,21 @@
 			matchDepTypes: ['devDependencies'],
 			commitMessagePrefix: 'deps(dev):',
 		},
+		{
+			// The Dockerfile's base image is pinned by digest, so a tag that gets
+			// re-pushed (or hijacked) can't change what a release builds from.
+			// Renovate keeps the pin current: a rebuilt node:26-alpine arrives as a
+			// digest update, and it auto-merges like a patch, since the image smoke
+			// test in CI boots the result. Scoped to the Dockerfile, because the
+			// compose file names a locally built image there is nothing to pin for.
+			matchManagers: ['dockerfile'],
+			pinDigests: true,
+		},
+		{
+			matchManagers: ['dockerfile'],
+			matchUpdateTypes: ['digest'],
+			automerge: true,
+		},
 
 		// What auto-merges, and what does not. Carried over unchanged from the
 		// hand-written auto-merge workflow this replaced: patch yes; minor yes

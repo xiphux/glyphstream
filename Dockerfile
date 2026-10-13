@@ -24,7 +24,7 @@
 # ----------------------------------------------------------------------
 
 # --- builder ----------------------------------------------------------
-FROM node:26-alpine AS builder
+FROM node:26-alpine@sha256:143494b1da2945f061539253adc65e4f1569ddf07da2d384c022c791a9d90a4a AS builder
 
 WORKDIR /app
 
@@ -57,7 +57,7 @@ RUN pnpm rebuild esbuild \
 
 
 # --- proddeps ---------------------------------------------------------
-FROM node:26-alpine AS proddeps
+FROM node:26-alpine@sha256:143494b1da2945f061539253adc65e4f1569ddf07da2d384c022c791a9d90a4a AS proddeps
 
 WORKDIR /app
 
@@ -137,7 +137,7 @@ RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
 # failure is silent by construction: a missing/unloadable ffmpeg is just another
 # decode failure, so the symptom would be every video tile in every deployment
 # going blank after an unrelated base-image refresh, with a green build.
-FROM node:26-alpine AS ffmpeg
+FROM node:26-alpine@sha256:143494b1da2945f061539253adc65e4f1569ddf07da2d384c022c791a9d90a4a AS ffmpeg
 # Bump these two together. The digest is what makes the version a pin rather
 # than a label — without it, `9.0.1` means "whatever that URL serves today".
 ARG FFMPEG_VERSION=9.0.1
@@ -257,7 +257,7 @@ RUN apk add --no-cache ffmpeg \
 # this one's (see there), and a pinned `alpine:3.x` would be bumped by Renovate
 # on a different schedule from `node:26-alpine` — as a minor, which automerges.
 # Deriving from node:26-alpine keeps one moving part, exactly as before.
-FROM node:26-alpine AS runtime-base
+FROM node:26-alpine@sha256:143494b1da2945f061539253adc65e4f1569ddf07da2d384c022c791a9d90a4a AS runtime-base
 
 # tini = PID 1 with proper signal handling. Without it, SIGTERM doesn't
 # reach the Node process cleanly, which means the media purger interval
