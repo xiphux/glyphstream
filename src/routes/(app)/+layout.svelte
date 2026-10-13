@@ -360,8 +360,16 @@
 	// truth) after hydration — correcting a stale cookie if the theme was
 	// changed on another device — and rewrites the cookie to match.
 	// 'glyphstream' is the default and carries no attribute.
+	//
+	// Keyed on the pref's VALUE (a $derived string), not on `data`. Every layout
+	// load hands over a new `data`, and one that started before a Preferences
+	// change and lands after it still carries the OLD value. Reading through
+	// `data` would re-run this on that load and write the old theme back over
+	// the one the user just picked. A derived primitive signals only when the
+	// value changes, so a stale load repeating the previous value is a no-op.
+	const themePref = $derived(data.prefs?.theme ?? 'glyphstream');
 	$effect(() => {
-		const theme = data.prefs?.theme ?? 'glyphstream';
+		const theme = themePref;
 		const root = document.documentElement;
 		if (theme === 'glyphstream') delete root.dataset.theme;
 		else root.dataset.theme = theme;
@@ -373,7 +381,8 @@
 	// cookie and the resolution have different triggers:
 	//
 	//   1. Sync the gs-scheme cookie from the authoritative DB pref, which heals
-	//      a stale cross-device cookie. Depends on `data.prefs` ONLY.
+	//      a stale cross-device cookie. Depends on the pref's VALUE only, for
+	//      the same stale-load reason as the theme effect above.
 	//   2. Resolve data-scheme from the COOKIE plus the live media query.
 	//
 	// Keeping the write out of the resolver is load-bearing. The Preferences
@@ -389,8 +398,9 @@
 	// flip the cookie says `light` and the stale pref says `system`, so they do
 	// differ and the clobbering write still happens.)
 	const systemDark = new MediaQuery('prefers-color-scheme: dark', false);
+	const schemePref = $derived(data.prefs?.colorScheme ?? 'system');
 	$effect(() => {
-		const pref = data.prefs?.colorScheme ?? 'system';
+		const pref = schemePref;
 		document.cookie = `gs-scheme=${pref}; path=/; max-age=31536000; samesite=lax`;
 	});
 	$effect(() => {
@@ -399,7 +409,7 @@
 		// so the cookie write has already landed when this reads it back. Without
 		// this dep the split would fix the clobber but leave `data-scheme` stale
 		// on a prefs change, since the media query alone wouldn't have fired.
-		void data.prefs?.colorScheme;
+		void schemePref;
 		// Read unconditionally (not inside the `p !== 'light'` short-circuit
 		// below) so this effect always subscribes to the query — matching the old
 		// always-registered `change` listener. Otherwise a forced-light cookie

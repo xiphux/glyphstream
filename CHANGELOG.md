@@ -38,6 +38,8 @@ arrived.
 
 ### Fixed
 
+- Switching light/dark mode or theme no longer occasionally flips back a
+  moment later, when the app refreshed in the background at the same time.
 - An Open WebUI chat whose last-viewed reply had been deleted now imports with
   its messages showing, instead of as an empty conversation.
 - Finishing first-run setup in two tabs at once no longer shows an error page
