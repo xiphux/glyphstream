@@ -33,6 +33,8 @@ arrived.
   conversation.
 - An image preview left open when search (or a notification) took you to
   another conversation now closes instead of staying over the new one.
+- "New chat from this prompt" on a comparison you just sent now brings all of
+  its models along. It only did after reloading the page.
 - Picking a winner in a model comparison (or pressing Done) and then quickly
   opening another conversation no longer shows the comparison, its error, or
   the picked model in the conversation you opened.

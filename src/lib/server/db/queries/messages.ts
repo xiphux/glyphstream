@@ -188,6 +188,10 @@ export function appendMessage(input: AppendInput): ChatMessage {
 		tokensOut: input.tokensOut ?? null,
 		genMs: input.genMs ?? null,
 		compactionResumeFromMessageId: input.compactionResumeFromMessageId ?? null,
+		// Same shape a read of the row produces (rowToChatMessage): the client
+		// swaps its optimistic bubble for this object, and "New chat from this
+		// prompt" on a just-sent comparison reads the models from it.
+		...(input.dispatchedModels?.length ? { dispatchedModels: input.dispatchedModels } : {}),
 		createdAt: now,
 	};
 }

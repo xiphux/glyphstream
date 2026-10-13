@@ -2348,3 +2348,32 @@ describe('deleteBranch — which sibling the thread lands on', () => {
 		expect(selectBranch(conv.id, prompt.id)?.newActiveLeaf).toBe(middle.id);
 	});
 });
+
+describe('appendMessage — the returned message', () => {
+	// The chat page swaps its optimistic bubble for this return value (the
+	// `start` event), so it must carry what a full read of the row would.
+	// Without `dispatchedModels`, "New chat from this prompt" on a just-sent
+	// comparison fell back to a single model until the page reloaded.
+	it('carries the same fields a later read of the row does', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::m',
+			modelKind: 'chat',
+		});
+		const sent = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'compare these' }],
+			dispatchedModels: [
+				{ modelId: 'bridge::a', count: 1 },
+				{ modelId: 'bridge::b', count: 2 },
+			],
+		});
+		const read = walkActiveBranch(conv.id).find((m) => m.id === sent.id)!;
+		expect(sent.dispatchedModels).toEqual(read.dispatchedModels);
+		expect(sent.parentMessageId ?? null).toEqual(read.parentMessageId ?? null);
+	});
+});
