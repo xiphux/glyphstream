@@ -1,0 +1,2 @@
+CREATE INDEX `idx_conversations_active_leaf` ON `conversations` (`active_leaf_message_id`);--> statement-breakpoint
+CREATE INDEX `idx_conversations_fanout_parent` ON `conversations` (`fanout_parent_message_id`);

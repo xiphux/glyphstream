@@ -381,6 +381,15 @@ export const conversations = sqliteTable(
 		index('idx_conversations_summary_queue')
 			.on(t.updatedAt)
 			.where(sql`${t.private} = 0`),
+		// Both columns reference messages.id. SQLite enforces a parent-side
+		// delete by looking the deleted key up in each child column, and with no
+		// index that lookup is a full scan of `conversations` — once per deleted
+		// message row. Deleting a 1,500-message conversation took 325 ms at 3k
+		// conversations and 2.2 s at 20k (all synchronous, stalling every live
+		// stream); with these, ~14 ms at either size. Branch deletes (every
+		// fan-out discard) pay the same per-row scan.
+		index('idx_conversations_active_leaf').on(t.activeLeafMessageId),
+		index('idx_conversations_fanout_parent').on(t.fanoutParentMessageId),
 	],
 );
 

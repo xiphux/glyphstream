@@ -61,6 +61,9 @@ arrived.
 - Deleting the reply you are viewing, when there are several, now moves you to
   the newest remaining one (as switching to that message would), not the
   oldest.
+- Deleting a long conversation, or discarding branches of a comparison, no
+  longer stalls the server for seconds when there are many conversations
+  (3.8 s down to 24 ms for a 1,500-message thread among 40,000 conversations).
 
 ## v0.44.1
 
