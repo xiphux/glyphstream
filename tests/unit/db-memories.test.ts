@@ -14,6 +14,7 @@ import {
 	createMemory,
 	deleteMemory,
 	listDeletedMemoriesForUser,
+	listMemoriesForDreaming,
 	listMemoriesForUser,
 	listMemoriesNeedingEmbedding,
 	listMemoriesNeedingTopic,
@@ -194,6 +195,15 @@ describe('recall corpus queries', () => {
 			'mem-c',
 		]);
 		expect(listMemoryRecallVectors(u.id, MODEL, 2).map((v) => v.id)).toEqual(['mem-b', 'mem-a']);
+		// The prompt-building reads use the same tiebreak, so the inline memory
+		// section, the tier split and the dream input all agree on one order.
+		const insertOrder = ['mem-c', 'mem-a', 'mem-b'];
+		expect(listMemoriesForUser(u.id).map((m) => m.id)).toEqual(insertOrder);
+		expect(listMemoryTierRows(u.id).map((r) => r.id)).toEqual(insertOrder);
+		expect(listMemoryBodies(u.id, ['mem-b', 'mem-a', 'mem-c']).map((m) => m.id)).toEqual(
+			insertOrder,
+		);
+		expect(listMemoriesForDreaming(u.id).map((m) => m.id)).toEqual(insertOrder);
 	});
 
 	it('listMemoryRecallVectors returns only matching-model, non-null vectors, newest-first, capped', () => {

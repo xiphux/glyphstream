@@ -112,7 +112,7 @@ export function listMemoriesForUser(userId: string): Memory[] {
 		})
 		.from(memories)
 		.where(and(eq(memories.userId, userId), isNull(memories.deletedAt)))
-		.orderBy(asc(memories.createdAt), asc(memories.id))
+		.orderBy(asc(memories.createdAt), asc(INSERT_ORDER))
 		.all();
 }
 
@@ -163,7 +163,7 @@ export function listMemoryTierRows(userId: string): MemoryTierRow[] {
 		})
 		.from(memories)
 		.where(and(eq(memories.userId, userId), isNull(memories.deletedAt)))
-		.orderBy(asc(memories.createdAt), asc(memories.id))
+		.orderBy(asc(memories.createdAt), asc(INSERT_ORDER))
 		.all();
 }
 
@@ -186,7 +186,7 @@ export function listMemoryBodies(userId: string, ids: string[]): Memory[] {
 		})
 		.from(memories)
 		.where(and(eq(memories.userId, userId), inArray(memories.id, ids), isNull(memories.deletedAt)))
-		.orderBy(asc(memories.createdAt), asc(memories.id))
+		.orderBy(asc(memories.createdAt), asc(INSERT_ORDER))
 		.all();
 }
 
@@ -749,7 +749,7 @@ export function listMemoriesForDreaming(userId: string): MemoryForDreaming[] {
 		})
 		.from(memories)
 		.where(and(eq(memories.userId, userId), isNull(memories.deletedAt)))
-		.orderBy(asc(memories.createdAt), asc(memories.id))
+		.orderBy(asc(memories.createdAt), asc(INSERT_ORDER))
 		.all();
 }
 
