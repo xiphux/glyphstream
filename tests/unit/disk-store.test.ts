@@ -31,6 +31,7 @@ vi.mock('#lib/server/env.js', () => ({
 }));
 
 import { DiskMediaStore } from '#lib/server/media/disk-store.js';
+import { MediaTooLargeError } from '#lib/server/media/store.js';
 
 let tmpDirs: string[] = [];
 
@@ -65,6 +66,34 @@ describe('DiskMediaStore.putStream', () => {
 		expect(existsSync(abs)).toBe(true);
 		const onDisk = readFileSync(abs);
 		expect(onDisk.equals(content)).toBe(true);
+	});
+
+	it('refuses a stream past maxBytes and keeps nothing', async () => {
+		const store = new DiskMediaStore();
+		const chunks = Array.from({ length: 10 }, () => Buffer.alloc(1024, 1));
+		await expect(
+			store.putStream({
+				stream: Readable.from(chunks),
+				contentType: 'video/mp4',
+				kind: 'video',
+				maxBytes: 4096,
+			}),
+		).rejects.toBeInstanceOf(MediaTooLargeError);
+		const left = readdirSync(mocks.mediaDir, { recursive: true }).filter((f) =>
+			String(f).match(/\.(mp4|tmp)$/),
+		);
+		expect(left).toEqual([]);
+	});
+
+	it('stores a stream exactly at maxBytes', async () => {
+		const store = new DiskMediaStore();
+		const ref = await store.putStream({
+			stream: Readable.from([Buffer.alloc(4096, 1)]),
+			contentType: 'video/mp4',
+			kind: 'video',
+			maxBytes: 4096,
+		});
+		expect(ref.byteSize).toBe(4096);
 	});
 
 	it('reports correct byteSize for empty stream', async () => {

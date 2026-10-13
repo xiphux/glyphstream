@@ -11,6 +11,7 @@ import { createReadStream, createWriteStream, mkdirSync } from 'node:fs';
 import { rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { derivedDir, mediaDir } from '../env';
 import { normalizeContentType } from './content-type';
@@ -24,6 +25,7 @@ import type {
 	MediaStore,
 	MediaStoredRef,
 } from './store';
+import { MediaTooLargeError } from './store';
 
 const EXT_BY_CONTENT_TYPE: Record<string, string> = {
 	'image/png': 'png',
@@ -126,7 +128,11 @@ export class DiskMediaStore implements MediaStore {
 		const tmp = `${absolute}.tmp`;
 		let st;
 		try {
-			await pipeline(input.stream, createWriteStream(tmp));
+			if (input.maxBytes === undefined) {
+				await pipeline(input.stream, createWriteStream(tmp));
+			} else {
+				await pipeline(input.stream, byteCeiling(input.maxBytes), createWriteStream(tmp));
+			}
 			// Stat after pipeline completes — guarantees the OS has flushed the
 			// write stream to disk before we read the size.
 			st = await stat(tmp);
@@ -248,4 +254,16 @@ export async function unlinkMediaFiles(
 			}
 		}),
 	);
+}
+
+/** A pass-through that fails the pipeline once more than `max` bytes went by. */
+function byteCeiling(max: number): Transform {
+	let seen = 0;
+	return new Transform({
+		transform(chunk: Buffer, _enc, done) {
+			seen += chunk.length;
+			if (seen > max) done(new MediaTooLargeError(max));
+			else done(null, chunk);
+		},
+	});
 }

@@ -29,6 +29,18 @@ export interface MediaPutStreamInput {
 	stream: Readable;
 	contentType: string;
 	kind: 'image' | 'video' | 'file';
+	/** Abort the write, keeping nothing, once the stream passes this many
+	 *  bytes. The stream comes from somewhere else (a model server, an upload),
+	 *  so without one a misbehaving source could fill the disk. */
+	maxBytes?: number;
+}
+
+/** Thrown by `putStream` when the stream passed `maxBytes`. */
+export class MediaTooLargeError extends Error {
+	constructor(readonly maxBytes: number) {
+		super(`Media stream exceeded ${maxBytes} bytes; nothing was stored.`);
+		this.name = 'MediaTooLargeError';
+	}
 }
 
 /** What `open()` returns — body + status info for serving the bytes. */

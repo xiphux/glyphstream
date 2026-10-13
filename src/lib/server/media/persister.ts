@@ -96,6 +96,11 @@ interface PersistVideoInput {
 	aspectRatio?: string | null;
 }
 
+/** Ceiling on one generated video: generated clips run to tens of MB, so
+ *  this only stops a model server that streams without end from filling the
+ *  disk. */
+const MAX_GENERATED_VIDEO_BYTES = 2 * 1024 * 1024 * 1024;
+
 /** Persist a video stream directly to the media store without buffering in memory. */
 export async function persistGeneratedVideo(input: PersistVideoInput): Promise<string> {
 	const store = getMediaStore();
@@ -103,6 +108,7 @@ export async function persistGeneratedVideo(input: PersistVideoInput): Promise<s
 		stream: input.stream,
 		contentType: input.contentType || 'video/mp4',
 		kind: 'video',
+		maxBytes: MAX_GENERATED_VIDEO_BYTES,
 	});
 
 	// Move the index to the front, once, here — rather than making every future
