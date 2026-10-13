@@ -22,6 +22,11 @@ import { get as getTool } from '../tools/registry';
 import { registerUserMcpTools } from '../mcp/tool-bridge';
 import { isReactionTool } from '#lib/chat-render.js';
 import type { Tool, ToolExecution } from '../tools/types';
+import { truncateToolResultUncached } from '../endpoints/serialize-upstream';
+
+/** Largest tool result kept in the transcript: far beyond anything a person
+ *  reads, small enough that one runaway result can't bloat the database. */
+export const TOOL_RESULT_STORE_MAX_CHARS = 1_000_000;
 
 /**
  * Per-tool wall-clock cap when the tool itself doesn't declare one. A
@@ -320,6 +325,17 @@ export async function executeOneToolCall(
 				isError: true,
 			};
 		}
+	}
+
+	// Cap what is stored and streamed. `max_tool_result_chars` only trims what
+	// goes upstream; the full result still landed in the message row and the
+	// SSE stream, so a script or MCP server that dumped megabytes kept them
+	// forever. Head + tail survive (same elision the upstream cap uses).
+	if (execution.content.length > TOOL_RESULT_STORE_MAX_CHARS) {
+		execution = {
+			...execution,
+			content: truncateToolResultUncached(execution.content, TOOL_RESULT_STORE_MAX_CHARS),
+		};
 	}
 
 	// Construct media parts from attachedMediaIds so callers (inline

@@ -810,7 +810,7 @@ let truncateCacheChars = 0;
  * The uncached transform. Exported for tests that need to assert the memo
  * doesn't change the output.
  */
-function truncateToolResultUncached(result: string, maxChars: number): string {
+export function truncateToolResultUncached(result: string, maxChars: number): string {
 	const structured = truncateJsonResult(result, maxChars);
 	if (structured !== null) return structured;
 

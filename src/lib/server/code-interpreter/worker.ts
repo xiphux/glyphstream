@@ -216,18 +216,13 @@ async function handleHostMessage(msg: HostMessage): Promise<void> {
 			materializeWorkspace(py, msg.preFiles);
 			const preSnapshot = snapshotWorkspace(py);
 
-			let stdout = '';
-			let stderr = '';
-			py.setStdout({
-				batched: (s: string) => {
-					stdout += s;
-				},
-			});
-			py.setStderr({
-				batched: (s: string) => {
-					stderr += s;
-				},
-			});
+			// Bounded: a print loop otherwise grows these strings until the
+			// process runs out of memory, all for output nobody can read. Past
+			// the cap, the rest is counted and dropped.
+			const out = cappedCollector();
+			const err = cappedCollector();
+			py.setStdout({ batched: out.push });
+			py.setStderr({ batched: err.push });
 			// Auto-load any Pyodide packages the code imports (numpy,
 			// pandas, matplotlib, scipy, sympy, scikit-learn, ...). Reads
 			// from the local node_modules/pyodide/ package store — no
@@ -264,8 +259,8 @@ async function handleHostMessage(msg: HostMessage): Promise<void> {
 			sendToHost({
 				type: 'result',
 				callId: msg.callId,
-				stdout,
-				stderr,
+				stdout: out.text(),
+				stderr: err.text(),
 				result,
 				newFiles,
 			});
@@ -441,4 +436,23 @@ function sha256Hex(bytes: Uint8Array): string {
 	const h = createHash('sha256');
 	h.update(bytes);
 	return h.digest('hex');
+}
+
+/** Most characters of stdout (or stderr) one run keeps. */
+const MAX_STREAM_CHARS = 1_000_000;
+
+function cappedCollector(): { push: (s: string) => void; text: () => string } {
+	let kept = '';
+	let dropped = 0;
+	return {
+		push: (s: string) => {
+			const room = MAX_STREAM_CHARS - kept.length;
+			if (room >= s.length) kept += s;
+			else {
+				kept += s.slice(0, Math.max(0, room));
+				dropped += s.length - Math.max(0, room);
+			}
+		},
+		text: () => (dropped ? `${kept}\n[… ${dropped} more characters of output not kept]` : kept),
+	};
 }

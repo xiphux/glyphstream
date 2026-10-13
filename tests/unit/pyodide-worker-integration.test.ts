@@ -146,6 +146,12 @@ describe('code-interpreter worker (real pyodide)', () => {
 		expect(res).toMatchObject({ type: 'result', stdout: 'hello from python', result: 45 });
 	});
 
+	it('keeps at most a million characters of stdout, and says how much it dropped', async () => {
+		const res = (await run('for _ in range(3000):\n    print("y" * 999)')) as { stdout: string };
+		expect(res.stdout.length).toBeLessThan(1_000_100);
+		expect(res.stdout).toMatch(/\[… \d+ more characters of output not kept\]$/);
+	});
+
 	it('mounts pre-files into /workspace and returns files the code writes', async () => {
 		const res = await run(
 			[

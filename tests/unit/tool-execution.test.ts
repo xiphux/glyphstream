@@ -12,7 +12,11 @@ import { createConversation } from '#lib/server/db/queries/conversations.js';
 import { appendMessage, getMessage, walkActiveBranch } from '#lib/server/db/queries/messages.js';
 import { serializeBranchForUpstream } from '#lib/server/endpoints/serialize-upstream.js';
 import { _resetForTests, register } from '#lib/server/tools/registry.js';
-import { executeToolCalls, executeOneToolCall } from '#lib/server/streaming/tool-execution.js';
+import {
+	executeToolCalls,
+	executeOneToolCall,
+	TOOL_RESULT_STORE_MAX_CHARS,
+} from '#lib/server/streaming/tool-execution.js';
 import type { ChatMessage, MessagePart, StreamEvent } from '#lib/types/api.js';
 import type { Tool } from '#lib/server/tools/types.js';
 
@@ -190,6 +194,27 @@ describe('executeToolCalls', () => {
 		const [first, second] = toolMessages;
 		expect((first.parts[0] as { toolCallId: string }).toolCallId).toBe('slow-1');
 		expect((second.parts[0] as { toolCallId: string }).toolCallId).toBe('fast-1');
+	});
+
+	it('caps an oversized result before storing and streaming it, keeping head and tail', async () => {
+		const huge = `HEAD${'x'.repeat(2_000_000)}TAIL`;
+		register(mkTool('dumps', () => ({ content: huge })));
+		const { conversationId, assistantMessage, userId } = seedConversationWithAssistantToolCalls([
+			{ type: 'tool_call', toolCallId: 'c1', toolName: 'dumps', arguments: '{}' },
+		]);
+		const events: StreamEvent[] = [];
+		const { toolMessages } = await executeToolCalls({
+			assistantMessage,
+			conversationId,
+			userId,
+			emit: (e) => events.push(e),
+		});
+		const part = toolMessages[0].parts[0] as Extract<MessagePart, { type: 'tool_result' }>;
+		expect(part.result.length).toBeLessThanOrEqual(TOOL_RESULT_STORE_MAX_CHARS);
+		expect(part.result.startsWith('HEAD')).toBe(true);
+		expect(part.result.endsWith('TAIL')).toBe(true);
+		const streamed = events.find((e) => e.type === 'tool_call_result') as { result: string };
+		expect(streamed.result).toBe(part.result);
 	});
 
 	it('returns isError when the tool is unknown', async () => {

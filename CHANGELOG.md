@@ -42,6 +42,9 @@ arrived.
 
 ### Changed
 
+- A tool result over a million characters (a Python script printing in a
+  loop, an MCP server dumping a huge response) is kept in the conversation as
+  its beginning and end, with the middle dropped and marked.
 - The server refuses to start when `AUTH_SECRET` is missing or shorter than 32
   characters (and `MCP_SECRET_KEY`, when set), naming the problem, instead of
   starting and failing at the first sign-in or accepting a trivially short key.
