@@ -67,6 +67,7 @@ import type { Stats } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { derivedDir, mediaDir } from '../env';
+import { MAX_DECODE_PIXELS } from './decode-limits';
 
 // Tuned for typical gallery grid cells (max 5-6 columns at sm+,
 // 2-3 on mobile, so each cell is ~150-300px wide). 512px gives
@@ -269,7 +270,7 @@ class DecodeError extends Error {
 }
 
 async function encodeImageThumb(sourceAbs: string, tmpAbs: string): Promise<void> {
-	await sharp(sourceAbs)
+	await sharp(sourceAbs, { limitInputPixels: MAX_DECODE_PIXELS })
 		// Apply EXIF orientation first. Phones store landscape sensor pixels plus
 		// an orientation tag, and the JPEG written below carries no metadata, so
 		// without this a portrait photo's thumbnail came out sideways.

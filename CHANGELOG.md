@@ -11,6 +11,10 @@ arrived.
 
 ### Security
 
+- Images over 100 megapixels are no longer decoded for thumbnails or for
+  sending to vision models. A small crafted file could otherwise claim a size
+  that took around a gigabyte of memory to open. Ordinary photos and panoramas
+  are well under the limit.
 - The Python code interpreter now runs as a separate, locked-down process. Code
   it runs can no longer see the server's environment variables or files,
   start other programs, or open network connections of its own; its web

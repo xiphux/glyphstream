@@ -61,6 +61,7 @@ vi.mock('#lib/server/media/thumbnail.js', async (importOriginal) => {
 });
 
 import { photoPng } from './_helpers/photo-png';
+import { bilevelPng } from './_helpers/bilevel-png';
 import {
 	cachedVisionVariantSize,
 	getVisionVariant,
@@ -297,5 +298,14 @@ describe('getVisionVariant under concurrency', () => {
 		await Promise.all(Array.from({ length: 6 }, (_, i) => getVisionVariant(`ab/cd/img${i}.png`)));
 		expect(slot.calls).toBe(6);
 		expect(slot.peak).toBeLessThanOrEqual(3);
+	});
+});
+
+describe('getVisionVariant past the pixel limit', () => {
+	it('declines to decode it and leaves the caller to send the original', async () => {
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+		write('ab/cd/huge.png', bilevelPng(12_000, 12_000));
+		expect(await getVisionVariant('ab/cd/huge.png')).toBeNull();
+		expect(slot.calls).toBe(1);
 	});
 });

@@ -34,6 +34,7 @@ import { dirname, resolve } from 'node:path';
 import { derivedDir, mediaDir } from '../env';
 import { getVisionConfig } from '../endpoints/config';
 import { withGenerationSlot } from './thumbnail';
+import { MAX_DECODE_PIXELS } from './decode-limits';
 
 /** Convention mirrors `thumbStoragePath`: the original's RELATIVE path plus
  *  `.vision.jpg`, under `derivedDir()` — beside the original unless DERIVED_DIR
@@ -183,7 +184,7 @@ async function generateVisionVariant(
 		// Under the thumbnail module's generation slots, so a burst of fresh images
 		// (a fan-out, a long thread's first send) decodes at most a few at a time.
 		const encoded = await withGenerationSlot(() =>
-			sharp(original)
+			sharp(original, { limitInputPixels: MAX_DECODE_PIXELS })
 				// EXIF orientation first: the re-encode drops metadata, so without this
 				// the model was sent a portrait phone photo lying on its side.
 				.rotate()

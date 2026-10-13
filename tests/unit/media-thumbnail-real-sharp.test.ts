@@ -17,6 +17,7 @@ import { dirname, join, resolve } from 'node:path';
 import sharp, { type Sharp } from 'sharp';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { photoPng } from './_helpers/photo-png';
+import { bilevelPng } from './_helpers/bilevel-png';
 
 const state = vi.hoisted(() => ({ root: '' }));
 
@@ -97,6 +98,21 @@ describe('getOrCreateThumbnail with real sharp', () => {
 		const thumb = await getOrCreateThumbnail('ab/cd/tall.png', 'image');
 		const meta = await sharp(await readFile(thumb!.absolutePath)).metadata();
 		expect(meta).toMatchObject({ width: 128, height: 512 });
+	});
+
+	it('refuses to decode an image past the pixel limit', async () => {
+		// 144 MP: over MAX_DECODE_PIXELS, under sharp's own 268 MP default, so
+		// only the limit stops this decode.
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+		writeOriginal('ab/cd/huge.png', bilevelPng(12_000, 12_000));
+		await expect(getOrCreateThumbnail('ab/cd/huge.png', 'image')).resolves.toBeNull();
+		vi.restoreAllMocks();
+	});
+
+	it('still thumbnails a large but plausible image (a 60 MP panorama)', async () => {
+		writeOriginal('ab/cd/pano.png', bilevelPng(15_000, 4_000));
+		const thumb = await getOrCreateThumbnail('ab/cd/pano.png', 'image');
+		expect(thumb).not.toBeNull();
 	});
 
 	it('returns null for bytes sharp cannot decode, leaving no partial thumb', async () => {
