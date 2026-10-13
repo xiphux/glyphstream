@@ -157,6 +157,9 @@ export async function getVisionVariant(storagePath: string): Promise<VisionVaria
 		mkdirSync(dirname(variantAbs), { recursive: true });
 
 		const encoded = await sharp(original)
+			// EXIF orientation first: the re-encode drops metadata, so without this
+			// the model was sent a portrait phone photo lying on its side.
+			.rotate()
 			.resize(maxImageDim, maxImageDim, { fit: 'inside', withoutEnlargement: true })
 			// JPEG has no alpha. Without an explicit flatten, sharp composites
 			// transparency onto BLACK — which turns a transparent-background diagram

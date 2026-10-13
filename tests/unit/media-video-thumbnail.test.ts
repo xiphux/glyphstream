@@ -107,6 +107,7 @@ vi.mock('sharp', () => ({
 	default: () => {
 		state.sharpCalls++;
 		const chain = {
+			rotate: () => chain,
 			resize: () => chain,
 			jpeg: () => chain,
 			toFile: (p: string) => {

@@ -256,6 +256,10 @@ class DecodeError extends Error {
 
 async function encodeImageThumb(sourceAbs: string, tmpAbs: string): Promise<void> {
 	await sharp(sourceAbs)
+		// Apply EXIF orientation first. Phones store landscape sensor pixels plus
+		// an orientation tag, and the JPEG written below carries no metadata, so
+		// without this a portrait photo's thumbnail came out sideways.
+		.rotate()
 		.resize(THUMB_MAX_DIM, THUMB_MAX_DIM, {
 			fit: 'inside',
 			withoutEnlargement: true,

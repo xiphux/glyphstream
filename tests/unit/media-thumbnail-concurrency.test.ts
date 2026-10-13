@@ -35,6 +35,7 @@ vi.mock('#lib/server/env.js', () => ({
 vi.mock('sharp', () => {
 	const makeChain = (outPath: { value: string }) => {
 		const chain = {
+			rotate: () => chain,
 			resize: () => chain,
 			jpeg: () => chain,
 			toFile: (p: string) => {

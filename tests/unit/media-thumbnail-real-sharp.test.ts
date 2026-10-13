@@ -78,6 +78,20 @@ describe('getOrCreateThumbnail with real sharp', () => {
 		expect(meta).toMatchObject({ format: 'jpeg', width: 200, height: 120 });
 	});
 
+	it('applies EXIF orientation, so a phone photo is not sideways', async () => {
+		// Phones store the sensor's landscape pixels and record how to turn them
+		// in EXIF. Stored 800×400 with orientation 6 (rotate 90° clockwise), this
+		// photo is displayed 400×800 — and its thumbnail must be portrait too.
+		const tagged = await sharp(await photoPng(800, 400))
+			.jpeg()
+			.withMetadata({ orientation: 6 })
+			.toBuffer();
+		writeOriginal('ab/cd/phone.jpg', tagged);
+		const thumb = await getOrCreateThumbnail('ab/cd/phone.jpg', 'image');
+		const meta = await sharp(await readFile(thumb!.absolutePath)).metadata();
+		expect(meta).toMatchObject({ width: 256, height: 512 });
+	});
+
 	it('fits a tall image by its height', async () => {
 		writeOriginal('ab/cd/tall.png', await photoPng(400, 1600));
 		const thumb = await getOrCreateThumbnail('ab/cd/tall.png', 'image');

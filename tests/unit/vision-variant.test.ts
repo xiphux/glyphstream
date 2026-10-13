@@ -87,6 +87,18 @@ describe('getVisionVariant', () => {
 		expect(onDisk.equals(original)).toBe(true);
 	});
 
+	it('applies EXIF orientation, so the model sees a phone photo upright', async () => {
+		// Stored 3000×1500 with orientation 6: displayed (and meant) as 1500×3000.
+		const tagged = await sharp(await photoPng(3000, 1500))
+			.jpeg()
+			.withMetadata({ orientation: 6 })
+			.toBuffer();
+		write('ab/cd/phone.jpg', tagged);
+		const variant = await getVisionVariant('ab/cd/phone.jpg');
+		const meta = await sharp(variant!.bytes).metadata();
+		expect(meta).toMatchObject({ width: 784, height: 1568 });
+	});
+
 	it('caches the variant as a sibling file and reuses it', async () => {
 		write('ab/cd/big.png', await photoPng(2400, 1600));
 

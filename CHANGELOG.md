@@ -37,6 +37,9 @@ arrived.
   opening another conversation no longer shows the comparison, its error, or
   the picked model in the conversation you opened.
 - The gallery loads its contents once when opened, instead of twice.
+- Photos taken in portrait on a phone now get upright thumbnails, and are sent
+  to vision models upright. (Thumbnails already made before this change keep
+  their old orientation.)
 - An image attached just before sending is either sent or held until it is
   ready; it no longer goes missing from that message and then turns up
   attached to the next one.
