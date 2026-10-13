@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, lte, ne, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import { getDb, type Tx } from '../client';
 import { conversations, media, messageMedia, messages } from '../schema';
@@ -396,15 +396,18 @@ export function listMediaForUser(
 	const db = getDb();
 	const limit = Math.max(1, Math.min(opts.limit ?? 60, 200));
 
-	// `<` on (createdAt, id) — newer rows have larger createdAt; we want
-	// "older than the cursor". Composite key: (createdAt < cur) OR
-	// (createdAt = cur AND id < cur_id).
+	// "Older than the cursor" on the composite key (createdAt, id), written as
+	// a SQLite row value. The equivalent `createdAt < ? OR (createdAt = ? AND
+	// id < ?)` planned as a multi-index OR plus a temp b-tree sort, re-sorting
+	// everything older than the cursor on every page: ~22 ms per deep page at
+	// 30k media against ~0.04 ms for this form, which walks the index from the
+	// cursor. The first page has no cursor, which is why it hid.
 	const cursorWhere = (() => {
 		if (!opts.cursor) return undefined;
 		const [cAt, cId] = opts.cursor.split(':');
 		const at = Number.parseInt(cAt, 10);
 		if (!Number.isFinite(at) || !cId) return undefined;
-		return or(lt(media.createdAt, at), and(eq(media.createdAt, at), lt(media.id, cId)));
+		return sql`(${media.createdAt}, ${media.id}) < (${at}, ${cId})`;
 	})();
 
 	// Default to image+video only. Adding `kind: 'file'` to the schema

@@ -330,6 +330,33 @@ describe('listMediaForUser', () => {
 		for (const item of p2.items) expect(ids1.has(item.id)).toBe(false);
 	});
 
+	it('pages through rows sharing a createdAt without skipping or repeating', () => {
+		// The cursor is (createdAt, id); with rows tied on createdAt the id alone
+		// carries the paging, across several page boundaries.
+		const u = seedUser();
+		const ids: string[] = [];
+		for (let i = 0; i < 7; i++) {
+			const m = makeMedia(u.id);
+			setCreatedAt(m.id, 1_000);
+			ids.push(m.id);
+		}
+		const older = makeMedia(u.id);
+		setCreatedAt(older.id, 500);
+
+		const seen: string[] = [];
+		let cursor: string | null = null;
+		for (let guard = 0; guard < 10; guard++) {
+			const page = listMediaForUser(u.id, { limit: 3, cursor });
+			seen.push(...page.items.map((i) => i.id));
+			cursor = page.nextCursor;
+			if (!cursor) break;
+		}
+		expect(seen).toHaveLength(8);
+		expect(new Set(seen).size).toBe(8);
+		expect(seen.at(-1)).toBe(older.id);
+		expect(seen.slice(0, 7)).toEqual([...ids].sort().reverse());
+	});
+
 	it('does not leak across users', () => {
 		const u1 = seedUser();
 		const u2 = seedUser();
