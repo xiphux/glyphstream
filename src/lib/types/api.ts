@@ -482,6 +482,14 @@ export type MessagePart =
 			 * this that's deterministic.
 			 */
 			displayOnly?: boolean;
+			/**
+			 * The image's shape as `W:H`, when known at persist time (a generated
+			 * image's upstream echo). Lets the thread reserve the box before the
+			 * pixels arrive, so a long thread doesn't jump as images load. Display
+			 * only; serialization maps parts field by field, so it never goes
+			 * upstream.
+			 */
+			aspectRatio?: string;
 	  }
 	| { type: 'video'; mediaId: string }
 	| {

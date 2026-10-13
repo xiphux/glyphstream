@@ -13,6 +13,7 @@
 	import CanvasCard from '#lib/components/chat/CanvasCard.svelte';
 	import FileAttachmentChip from '#lib/components/FileAttachmentChip.svelte';
 	import { isCanvasTool, splitCanvasCards, type RenderBlock } from '#lib/chat-render.js';
+	import { parseRatio } from '#lib/aspect-ratio.js';
 	import type { ApprovalAction } from '#lib/approval-workflow.js';
 
 	interface Props {
@@ -50,6 +51,13 @@
 			return b.type + ':' + b.mediaId;
 		}
 		return b.type + ':' + i;
+	}
+
+	/** `W:H` as a CSS aspect-ratio, or undefined (no reservation) if it isn't one. */
+	function cssRatio(ratio: string | undefined): string | undefined {
+		if (!ratio || parseRatio(ratio) === null) return undefined;
+		const [w, h] = ratio.split(':');
+		return `${w} / ${h}`;
 	}
 </script>
 
@@ -100,10 +108,13 @@
 			class="mt-2 block w-full overflow-hidden rounded-lg p-0 text-left transition disabled:opacity-60"
 			disabled={openingLightboxFor === mediaId}
 		>
+			<!-- The stored ratio reserves the box before the image loads, so the
+			     thread doesn't jump; without one it sizes from the pixels. -->
 			<img
 				src="/api/media/{block.mediaId}/content"
 				alt={block.alt ?? 'Image'}
 				loading="lazy"
+				style:aspect-ratio={cssRatio(block.aspectRatio)}
 				class="block h-auto w-full max-h-[80vh] rounded-lg object-contain"
 			/>
 		</button>

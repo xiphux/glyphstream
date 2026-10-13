@@ -161,7 +161,7 @@
 						<!-- Split-attachments: the input image this branch edits / animates,
 						     so each result reads as "this input → this model". -->
 						<img
-							src="/api/media/{c.inputMediaId}/content"
+							src="/api/media/{c.inputMediaId}/thumbnail"
 							alt="Source input"
 							class="h-6 w-6 shrink-0 rounded object-cover ring-1 ring-border"
 						/>

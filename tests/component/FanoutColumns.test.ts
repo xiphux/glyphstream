@@ -226,7 +226,8 @@ describe('FanoutColumns — media (keep-many) mode', () => {
 			},
 		});
 		const thumb = container.querySelector<HTMLImageElement>('header img');
-		expect(thumb?.getAttribute('src')).toBe('/api/media/src-7/content');
+		// A 24px chip: the thumbnail, not the full-resolution original.
+		expect(thumb?.getAttribute('src')).toBe('/api/media/src-7/thumbnail');
 	});
 
 	it('shows a QUEUED badge (with how many are ahead) for a waiting branch', () => {

@@ -72,6 +72,19 @@ describe('RenderBlocks — image', () => {
 		expect(img).toHaveAttribute('alt', 'a cat');
 	});
 
+	it('reserves the stored aspect ratio so the thread does not jump on load', () => {
+		const { container } = renderBlocks([{ type: 'image', mediaId: 'img-1', aspectRatio: '16:9' }]);
+		expect(container.querySelector('img')!.style.aspectRatio).toBe('16 / 9');
+	});
+
+	it('reserves nothing without a valid ratio', () => {
+		const { container } = renderBlocks([
+			{ type: 'image', mediaId: 'img-1' },
+			{ type: 'image', mediaId: 'img-2', aspectRatio: 'wide' },
+		]);
+		for (const img of container.querySelectorAll('img')) expect(img.style.aspectRatio).toBe('');
+	});
+
 	it('falls back to "Image" alt when none supplied', () => {
 		const { container } = renderBlocks([{ type: 'image', mediaId: 'img-1' }]);
 		expect(container.querySelector('img')).toHaveAttribute('alt', 'Image');

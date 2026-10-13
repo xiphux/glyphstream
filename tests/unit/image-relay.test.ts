@@ -202,6 +202,20 @@ describe('startImageRelay — avatar generation', () => {
 		expect(parts).toEqual([{ type: 'image', mediaId: 'media-out', displayOnly: true }]);
 	});
 
+	it('records the upstream-reported aspect ratio on the part', async () => {
+		mocks.imageGeneration.mockResolvedValue({
+			data: [{ url: 'http://img/out.png', aspect_ratio: '3:4' }],
+		});
+		const { conv, user, userMessage } = seedConvWithUser();
+		const events = await drain(
+			startImageRelay(baseParams({ conversationId: conv.id, userId: user.id, userMessage })),
+		);
+		const done = events.find((e) => e.type === 'done')!;
+		expect((done as { assistantMessage: ChatMessage }).assistantMessage.parts).toEqual([
+			{ type: 'image', mediaId: 'media-out', aspectRatio: '3:4' },
+		]);
+	});
+
 	it('leaves the part unflagged by default, so ordinary generations are untouched', async () => {
 		const { conv, user, userMessage } = seedConvWithUser();
 		const events = await drain(

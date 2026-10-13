@@ -15,6 +15,7 @@
 
 import { imageEdit, imageGeneration, type ImageEditInputFile } from '../endpoints/client';
 import { logLevel } from '../env';
+import { parseRatio } from '../../aspect-ratio';
 import { loadMediaBytes } from '../media/data-url';
 import { persistGeneratedImage } from '../media/persister';
 import { runPromptEnhancement } from './media-enhance';
@@ -179,9 +180,14 @@ function buildImageRelay(params: ImageRelayParams): [MediaRelayScaffoldParams, M
 				aspectRatio: result.aspect_ratio ?? null,
 			});
 			return {
-				part: params.displayOnly
-					? { type: 'image', mediaId, displayOnly: true }
-					: { type: 'image', mediaId },
+				part: {
+					type: 'image',
+					mediaId,
+					...(params.displayOnly ? { displayOnly: true } : {}),
+					...(result.aspect_ratio && parseRatio(result.aspect_ratio) !== null
+						? { aspectRatio: result.aspect_ratio }
+						: {}),
+				},
 				mediaId,
 				rawResponseJson: rawResponseForStorage(upstream),
 				modality: 'image',

@@ -38,6 +38,9 @@ arrived.
 
 ### Changed
 
+- Newly generated images hold their space in the chat while they load, so a
+  long thread no longer jumps as images appear. The small source-image chip in
+  a comparison column loads a thumbnail instead of the full image.
 - Chats with generated images load faster, and the database grows less, on
   image servers that return pictures inline (`b64_json`). Each image was being
   stored twice and read back on every load.
