@@ -17,7 +17,7 @@
 import { createHash } from 'node:crypto';
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { getDb } from '../db/client';
-import { media } from '../db/schema';
+import { conversations, media } from '../db/schema';
 import {
 	assignedConversationId,
 	attachConversationTitles,
@@ -210,12 +210,11 @@ function computeGalleryUnits(userId: string, opts: GalleryUnitOpts): GalleryUnit
 // first-units of a single reload — share one computation.
 //
 // Correctness: each entry is validated against a cheap per-user data fingerprint
-// (a count of the user's generated media, live + total). Any insert or delete
-// changes it, so the cache auto-invalidates on every write path — including
-// direct DB writes that bypass the query layer (e.g. the e2e seed helpers) —
-// with no manual invalidation calls to keep in sync. A short TTL backstops the
-// residual case a count can't see (a link/unlink or conversation delete that
-// re-homes stacking without changing the count).
+// (media counts and delete/star signatures, plus the user's conversation count
+// and latest update; see galleryUserFingerprint). The writes that change the
+// units move it, so the cache invalidates on those write paths, including
+// direct DB writes that bypass the query layer (e.g. the e2e seed helpers),
+// with no manual invalidation calls to keep in sync.
 //
 // Bounded size: `model` and `tzOffsetMinutes` are part of the key and come from
 // unvalidated query params, so key cardinality is client-controlled. Three
@@ -223,7 +222,11 @@ function computeGalleryUnits(userId: string, opts: GalleryUnitOpts): GalleryUnit
 // snapped to one of ~105 real offsets, a `model` that matches nothing is never
 // cached, and the map evicts oldest-first on both an entry cap and a total-units
 // cap (the entry cap alone bounds entries, not the memory behind them).
-const GALLERY_UNITS_TTL_MS = 30_000;
+// A backstop: the fingerprint observes the changes that alter the units (see
+// galleryUserFingerprint), and this bounds anything it misses. At 30s it re-ran the
+// O(library) load and stack (100-230 ms synchronous at 30k media) every half
+// minute of browsing.
+const GALLERY_UNITS_TTL_MS = 10 * 60_000;
 const GALLERY_UNITS_CACHE_MAX = 256;
 /** Total units held across all cache entries. Each entry holds a unit per item
  *  in the whole filtered library, so a count-only cap bounds the number of
@@ -418,8 +421,26 @@ function galleryUserFingerprint(userId: string): { base: string; fav: string } {
 		.from(media)
 		.where(and(eq(media.userId, userId), eq(media.origin, 'generated')))
 		.get();
+	// What re-homes stacking or relabels a stack without touching a media row,
+	// read off the user's conversations (index-served, so it costs next to
+	// nothing). Linking an existing image into a chat, and deleting or
+	// rewinding the messages that held one, each stamp the conversation's
+	// `updated_at`, as does every title write (stack labels carry titles); a
+	// conversation delete changes the count. Every message stamps `updated_at`
+	// too, so this half moves while the user is chatting but stays put while
+	// they browse, which is the case the cache is for. A per-link signature
+	// over message_media was exact but cost ~5 ms a request at 30k media; the
+	// TTL backstops whatever this misses.
+	const convs = getDb()
+		.select({
+			n: sql<number>`count(*)`,
+			at: sql<number>`coalesce(max(${conversations.updatedAt}), 0)`,
+		})
+		.from(conversations)
+		.where(eq(conversations.userId, userId))
+		.get();
 	return {
-		base: `${row?.total ?? 0}:${row?.live ?? 0}:${row?.deletedSig ?? 0}`,
+		base: `${row?.total ?? 0}:${row?.live ?? 0}:${row?.deletedSig ?? 0}:${convs?.n ?? 0}:${convs?.at ?? 0}`,
 		fav: `${row?.favs ?? 0}:${row?.favAt ?? 0}`,
 	};
 }

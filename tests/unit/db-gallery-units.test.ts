@@ -22,7 +22,11 @@ import {
 	listGalleryUnitMembers,
 } from '#lib/server/gallery/layout.js';
 import type { GalleryUnit } from '#lib/types/api.js';
-import { createConversation } from '#lib/server/db/queries/conversations.js';
+import {
+	createConversation,
+	deleteConversation,
+	renameConversation,
+} from '#lib/server/db/queries/conversations.js';
 import { appendMessage } from '#lib/server/db/queries/messages.js';
 import { media } from '#lib/server/db/schema.js';
 
@@ -722,5 +726,32 @@ describe('gallery tz offset normalization', () => {
 		const insane = computeGalleryLayout(u.id, { tzOffsetMinutes: -100_000 }).days[0].key;
 		expect(insane).toBe(computeGalleryLayout(u.id, { tzOffsetMinutes: -720 }).days[0].key);
 		expect(insane).toBe('2024-06-14');
+	});
+});
+
+describe('gallery units: cache follows changes the media rows do not show', () => {
+	function convStack(u: { id: string }) {
+		const conv = makeConv(u.id);
+		renameConversation(conv, u.id, 'Before');
+		for (let i = 0; i < 2; i++) linkToConv(conv, makeGen(u.id, at(2024, 6, 15, 12, i)));
+		return conv;
+	}
+
+	it('relabels a conversation stack as soon as the chat is renamed', () => {
+		const u = seedUser();
+		const conv = convStack(u);
+		expect(allUnits(u.id)[0].label).toBe('Before'); // primes the cache
+		renameConversation(conv, u.id, 'After');
+		expect(allUnits(u.id)[0].label).toBe('After');
+	});
+
+	it("unstacks a deleted conversation's media as soon as it is deleted", () => {
+		const u = seedUser();
+		makeConv(u.id); // a newer, unrelated conversation keeps max(updated_at) put
+		const conv = convStack(u);
+		makeConv(u.id);
+		expect(allUnits(u.id)[0].groupKind).toBe('conversation');
+		deleteConversation(conv, u.id);
+		expect(allUnits(u.id).map((x) => x.groupKind)).not.toContain('conversation');
 	});
 });
