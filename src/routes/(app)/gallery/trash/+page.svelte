@@ -6,6 +6,7 @@
 	import { confirmDialog } from '#lib/confirm.svelte.js';
 	import { toast } from '#lib/toast.svelte.js';
 	import { friendlyModelName } from '#lib/model-ids.js';
+	import { observeSentinel } from '#lib/observe-sentinel.js';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -23,6 +24,29 @@
 	// a reload that drops the item (purged from another tab, expired) closes it
 	// rather than leaving it showing something that's gone.
 	let viewingId = $state<string | null>(null);
+
+	// Render the grid a page at a time. The trash can hold up to a thousand
+	// items (the 30-day window); the server rendered every tile and the browser
+	// built every node up front. Selection, "empty trash" and the lightbox all
+	// work from `data.items`, so only the drawing is windowed.
+	const PAGE = 120;
+	let shown = $state(PAGE);
+	let scroller = $state<HTMLElement | null>(null);
+	let sentinel = $state<HTMLElement | null>(null);
+	// Re-observed after every page (the `shown` read): an IntersectionObserver
+	// reports on observe and then only on changes, so a sentinel still in view
+	// after a page lands, on a tall screen, would otherwise never grow it again.
+	$effect(() => {
+		void shown;
+		return observeSentinel(
+			scroller,
+			sentinel,
+			(visible) => {
+				if (visible) shown += PAGE;
+			},
+			{ rootMargin: '600px' },
+		);
+	});
 	const viewing = $derived(data.items.find((i) => i.id === viewingId) ?? null);
 	const siblings = $derived(data.items.map(({ id, kind }) => ({ id, kind })));
 
@@ -167,7 +191,7 @@
 		</div>
 	</header>
 
-	<div class="flex-1 overflow-y-auto px-4 pb-4">
+	<div bind:this={scroller} class="flex-1 overflow-y-auto px-4 pb-4">
 		<p class="pb-3 text-xs text-fg-muted">
 			Deleted images and videos stay here for 30 days, then are removed for good. Restored items
 			return to the gallery, but not to the conversation they came from.
@@ -178,7 +202,7 @@
 			<ul
 				class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
 			>
-				{#each data.items as m (m.id)}
+				{#each data.items.slice(0, shown) as m (m.id)}
 					{@const isSelected = selected.has(m.id)}
 					<li
 						class="relative overflow-hidden rounded-lg border bg-surface-raised transition {isSelected
@@ -243,6 +267,9 @@
 					</li>
 				{/each}
 			</ul>
+			{#if shown < data.items.length}
+				<div bind:this={sentinel} class="h-px" aria-hidden="true"></div>
+			{/if}
 		{/if}
 	</div>
 </div>

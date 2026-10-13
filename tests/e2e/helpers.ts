@@ -126,6 +126,18 @@ export function seedMedia(count: number): void {
 	}
 }
 
+/** Move every seeded media row to the trash (deleted just now), for specs about
+ *  the trash page. Same standalone-connection caveat as `seedMedia`. */
+export function trashAllMedia(): void {
+	const db = new DatabaseSync(DB_PATH);
+	db.exec('PRAGMA busy_timeout = 5000');
+	try {
+		db.prepare('UPDATE media SET deleted_at = ? WHERE deleted_at IS NULL').run(Date.now());
+	} finally {
+		db.close();
+	}
+}
+
 /**
  * Seed a prompt snippet straight into the DB. The composer's autocomplete
  * fetches the library lazily over HTTP, so a seeded row is all that's needed
