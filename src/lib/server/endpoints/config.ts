@@ -690,11 +690,6 @@ export function getMaxToolLoopIterations(): number {
 	return maxToolLoopIterationsCache;
 }
 
-/** Test hook: clear the memoized iteration cap so the next call re-reads. */
-export function _resetMaxToolLoopIterationsCacheForTests(): void {
-	maxToolLoopIterationsCache = undefined;
-}
-
 /**
  * Default ceiling on the characters of a single tool result sent upstream
  * (~4k tokens). Tool results are re-sent verbatim on every later turn of the
@@ -750,11 +745,6 @@ export function getMaxToolResultChars(): number {
 		maxToolResultCharsCache = loadMaxToolResultChars();
 	}
 	return maxToolResultCharsCache;
-}
-
-/** Test hook: clear the memoized result cap so the next call re-reads. */
-export function _resetMaxToolResultCharsCacheForTests(): void {
-	maxToolResultCharsCache = undefined;
 }
 
 /**
@@ -847,11 +837,6 @@ let visionConfigCache: VisionConfig | undefined;
 export function getVisionConfig(): VisionConfig {
 	if (visionConfigCache === undefined) visionConfigCache = loadVisionConfig();
 	return visionConfigCache;
-}
-
-/** Test hook: clear the memoized vision config so the next call re-reads. */
-export function _resetVisionConfigCacheForTests(): void {
-	visionConfigCache = undefined;
 }
 
 /**

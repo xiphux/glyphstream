@@ -165,19 +165,6 @@ export const FEATURE_CATEGORY_LABELS: Record<
 	},
 };
 
-/**
- * Runtime guard for the *built-in* feature categories. MCP categories
- * (`mcp:<server-id>`) pass through validators directly as opaque strings;
- * use {@link isFeatureCategoryString} when the goal is to accept any
- * category form rather than narrow to a built-in.
- */
-export function isBuiltinFeatureCategory(v: unknown): v is BuiltinFeatureCategory {
-	return typeof v === 'string' && (BUILTIN_FEATURE_CATEGORIES as readonly string[]).includes(v);
-}
-
-/** Back-compat alias for the built-in narrow-check. */
-export const isFeatureCategory = isBuiltinFeatureCategory;
-
 /** Non-empty string guard — accepts both built-in and MCP-style categories. */
 export function isFeatureCategoryString(v: unknown): v is FeatureCategory {
 	return typeof v === 'string' && v.length > 0;
@@ -1235,19 +1222,6 @@ export interface FanoutRecoveryState {
 	pendingSourceMediaIds: Array<string | null>;
 }
 
-/** POST /api/conversations/:id/messages response (sync mode). */
-export interface SendMessageResponse {
-	userMessage: ChatMessage;
-	assistantMessage: ChatMessage;
-	/**
-	 * Set when the task model generated a title for this conversation as
-	 * part of this exchange. Image-modality conversations don't stream, so
-	 * the title piggybacks on the JSON response rather than an SSE frame.
-	 * Absent when title gen was skipped, timed out, or already happened.
-	 */
-	title?: string;
-}
-
 // --- streaming event protocol (server → client SSE) ----------------------
 //
 // Server normalizes upstream SSE per provider quirk and emits these events.
@@ -1599,20 +1573,6 @@ export interface PromptSnippet {
 	usageCount: number;
 	createdAt: number;
 	updatedAt: number;
-}
-
-export interface CreatePromptSnippetRequest {
-	name: string;
-	body: string;
-	kinds?: SnippetKind[];
-	tags?: string[];
-}
-
-export interface UpdatePromptSnippetRequest {
-	name?: string;
-	body?: string;
-	kinds?: SnippetKind[];
-	tags?: string[];
 }
 
 /**

@@ -327,7 +327,7 @@ export interface ArticleStructured {
 	title: string;
 	/** Cleaned article HTML (Readability `content`) — retains heading structure. */
 	contentHtml: string;
-	/** Flattened title + body text (the value `extractArticleText` returns). */
+	/** Flattened title + body text. */
 	text: string;
 }
 
@@ -357,16 +357,6 @@ export function extractArticleStructured(html: string): ArticleStructured | null
 		// Malformed HTML, parser quirk, or DOM API mismatch — fall through.
 	}
 	return null;
-}
-
-/**
- * Extract readable article text from an HTML document. Thin wrapper over
- * `extractArticleStructured` that falls back to the regex stripper (coarser
- * but always-usable) when Readability can't identify an article. Behavior is
- * unchanged from the original single-function form.
- */
-export function extractArticleText(html: string): string {
-	return extractArticleStructured(html)?.text ?? extractTextFromHtml(html);
 }
 
 function normalizeWhitespace(s: string): string {

@@ -167,9 +167,7 @@ You do not know this model's preferred prompt format, so KEEP the format the use
  * collapse into `comma-list` (see {@link STYLE_ACCEPTS_SHAPE} for why that's
  * the right call rather than a limitation to work around).
  */
-export const PROMPT_SHAPES = ['json', 'comma-list', 'tagged-prose', 'prose'] as const;
-
-export type PromptShape = (typeof PROMPT_SHAPES)[number];
+export type PromptShape = 'json' | 'comma-list' | 'tagged-prose' | 'prose';
 
 /**
  * Which input shapes count as "already in this style", i.e. a rewrite would be

@@ -6,7 +6,6 @@ import {
 	updateConversationModel,
 } from '#lib/server/db/queries/conversations.js';
 import {
-	appendMessage,
 	findUserMessageAncestor,
 	getMessage,
 	restoreActiveLeafIfUnchanged,
@@ -14,13 +13,7 @@ import {
 	walkActiveBranch,
 } from '#lib/server/db/queries/messages.js';
 import { createUserMessage } from '#lib/server/messages/create-user-message.js';
-import {
-	chatCompletionSync,
-	formatUpstreamError,
-	UpstreamError,
-	type ChatCompletionRequest,
-} from '#lib/server/endpoints/client.js';
-import { acquireEndpointSlot } from '#lib/server/endpoints/concurrency.js';
+import type { ChatCompletionRequest } from '#lib/server/endpoints/client.js';
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
 import { generateId } from '#lib/server/util/id.js';
 import { listAllModels } from '#lib/server/endpoints/list-models.js';
@@ -44,7 +37,6 @@ import {
 	type SyntheticActivationEvent,
 } from '#lib/server/chat/synthesize-skill-activation.js';
 import { logLevel } from '#lib/server/env.js';
-import { renderMarkdown } from '#lib/server/markdown/render.js';
 import { mediaIdToDataUrl } from '#lib/server/media/data-url.js';
 import {
 	clearInFlight,
@@ -54,14 +46,11 @@ import {
 import { startStreamingRelay } from '#lib/server/streaming/relay.js';
 import { submitGenerationJob } from '#lib/server/generation/jobs.js';
 import { sseResponse } from '#lib/server/streaming/sse-transport.js';
-import { raceTitle, startTitleTaskIfFirstExchange } from '#lib/server/tasks/title-task-runner.js';
-
-const TITLE_DELIVERY_BUDGET_MS = 5000;
 
 const DEBUG = logLevel() === 'debug';
 import { isMediaKind } from '#lib/fanout.js';
 import { isModelKind } from '#lib/types/api.js';
-import type { ModelEntry, SendMessageRequest, SendMessageResponse } from '#lib/types/api.js';
+import type { ModelEntry, SendMessageRequest } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, params, request, url }) => {
@@ -591,198 +580,110 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			supportsTools,
 		});
 
-		const wantsStream = url.searchParams.get('stream') === '1';
+		// Chat always streams, like the image and video branches above. A JSON
+		// path for callers that left off `?stream=1` used to follow: ~90 lines,
+		// its own slot handling, no normalizer (so `provider_quirk` never
+		// applied), no test, and no caller, since the client always streams.
+		// Streaming responses omit `usage` unless the caller asks for it.
+		// We always want it — it's how the UI surfaces conversation size.
+		requestBody.stream_options = { include_usage: true };
 
-		if (wantsStream) {
-			// Streaming responses omit `usage` unless the caller asks for it.
-			// We always want it — it's how the UI surfaces conversation size.
-			requestBody.stream_options = { include_usage: true };
-
-			// Closure the relay uses between tool-loop iterations to derive
-			// the next upstream body. The conversation's active leaf has
-			// advanced to the latest tool result, so re-walking the branch
-			// picks up the assistant's tool_calls + the tool messages
-			// without us having to track that state in the relay.
-			const rebuildRequestBody = async ({
-				activatedToolNames,
-			}: {
-				activatedToolNames: string[];
-			}): Promise<ChatCompletionRequest> => {
-				const nextBranch = walkActiveBranch(params.id, { columns: 'serialization' });
-				const nextMessages = await serializeBranchForUpstream(
-					nextBranch,
-					resolveMediaDataUrl,
-					effectiveSystemPrompt,
-				);
-				const next: ChatCompletionRequest = { ...requestBody, messages: nextMessages };
-				// Promote tools the model searched up this turn into tools[] so it can
-				// call them on the next iteration (within-turn activation). requestBody
-				// already carries the base set + the cross-turn seed, so we just append.
-				if (activatedToolNames.length > 0) {
-					const additions = resolveActivatedToolDefs(activatedToolNames, {
-						excludeCategories: disabledFeatures,
-					});
-					if (additions.length > 0) {
-						next.tools = dedupeToolDefs([...(next.tools ?? []), ...additions]);
-						next.tool_choice = 'auto';
-					}
-				}
-				// Re-fold the canvas each iteration: a create_canvas earlier this
-				// turn arms update_canvas now, and every edit is reflected in a
-				// freshly-read tail block (always last, never in the prefix).
-				return augmentRequestForCanvas(next, {
-					conversationId: params.id,
-					userId: locals.user.id,
-					disabledFeatures,
-					supportsTools,
+		// Closure the relay uses between tool-loop iterations to derive
+		// the next upstream body. The conversation's active leaf has
+		// advanced to the latest tool result, so re-walking the branch
+		// picks up the assistant's tool_calls + the tool messages
+		// without us having to track that state in the relay.
+		const rebuildRequestBody = async ({
+			activatedToolNames,
+		}: {
+			activatedToolNames: string[];
+		}): Promise<ChatCompletionRequest> => {
+			const nextBranch = walkActiveBranch(params.id, { columns: 'serialization' });
+			const nextMessages = await serializeBranchForUpstream(
+				nextBranch,
+				resolveMediaDataUrl,
+				effectiveSystemPrompt,
+			);
+			const next: ChatCompletionRequest = { ...requestBody, messages: nextMessages };
+			// Promote tools the model searched up this turn into tools[] so it can
+			// call them on the next iteration (within-turn activation). requestBody
+			// already carries the base set + the cross-turn seed, so we just append.
+			if (activatedToolNames.length > 0) {
+				const additions = resolveActivatedToolDefs(activatedToolNames, {
+					excludeCategories: disabledFeatures,
 				});
-			};
-
-			// MCP approval gate from the shared assembly: built-in tools and
-			// user-trusted MCP tools execute inline; untrusted MCP tools halt the
-			// turn with an inline approval prompt.
-			const needsApproval = toolCtx.needsApproval;
-
-			const stream = await startStreamingRelay({
+				if (additions.length > 0) {
+					next.tools = dedupeToolDefs([...(next.tools ?? []), ...additions]);
+					next.tool_choice = 'auto';
+				}
+			}
+			// Re-fold the canvas each iteration: a create_canvas earlier this
+			// turn arms update_canvas now, and every edit is reflected in a
+			// freshly-read tail block (always last, never in the prefix).
+			return augmentRequestForCanvas(next, {
 				conversationId: params.id,
 				userId: locals.user.id,
-				conversationTitle: meta.title,
-				modelKind: meta.modelKind,
-				endpoint,
-				providerQuirk: endpoint.providerQuirk,
-				requestBody,
-				userMessage,
-				storedModelId: meta.modelId,
-				abortSignal: inFlight.controller.signal,
-				// When the turn opened with an explicit skill activation, the model's
-				// first response continues off the synthetic tool result (not a sibling
-				// of the user message) — same seam the approval-resume flow uses — and
-				// the activation is replayed as live SSE so its block renders in-flight.
-				...(synthLeafId ? { initialParentMessageId: synthLeafId } : {}),
-				...(preActivatedToolEvents.length ? { preActivatedToolEvents } : {}),
-				// Fan-out branch: persist the assistant as a sibling without
-				// advancing the leaf (stays pinned at the shared user message),
-				// and don't start a per-branch title task (/prepare owns it once).
-				advanceActiveLeaf: !isFanout,
-				fanoutIndex,
-				suppressTitleTask: isFanout,
-				suppressNotify: isFanout,
-				inFlight,
-				onGenerationSettled,
-				// Clear the registry slot once the whole turn settles (all
-				// loop iterations + tool executions done), not per recorder.
-				// The recorder branches survive client disconnect, so the
-				// recovery indicator stays accurate after an iOS PWA suspend.
-				onComplete: onBranchComplete,
-				needsApproval,
-				// Surface any conversation-enabled per-user MCP server that's down so
-				// the client can show an inline "tools skipped" notice for this turn.
-				...(toolCtx.unavailableMcpServers.length
-					? { unavailableMcpServers: toolCtx.unavailableMcpServers }
-					: {}),
-				// Threaded into each tool's ToolContext so behavior-only
-				// consumers (e.g. run_python's Python network shim, which
-				// blocks egress when 'web' is off even though run_python is
-				// in 'code_interpreter') can honor the conversation's
-				// disabled-features without a registry-level filter.
 				disabledFeatures,
-				maxToolLoopIterations: getMaxToolLoopIterations(),
-				// Only enable the multi-iteration loop for endpoints whose
-				// models actually support tools. Endpoints without tools
-				// won't emit tool_calls anyway, but skipping the closure
-				// makes the single-iteration path explicit.
-				...(toolDefs.length > 0 ? { rebuildRequestBody } : {}),
+				supportsTools,
 			});
-			return sseResponse(stream);
-		}
+		};
 
-		// JSON / sync path (Phase 5 behavior preserved).
-		// Wire the in-flight abort signal into BOTH the gate wait and the upstream
-		// call so a client Stop / disconnect actually cancels this path: without it
-		// a saturated endpoint queues uncancellably and the upstream fetch runs to
-		// completion ignoring /cancel. (Dormant in practice — the shipping client
-		// always requests ?stream=1 — but a latent hang otherwise.)
-		let syncSlot;
-		try {
-			syncSlot = await acquireEndpointSlot(endpoint, {
-				work: { purpose: 'chat', modelId: meta.modelId },
-				signal: inFlight.controller.signal,
-			});
-		} catch (e) {
-			clearInFlight(params.id, inFlight);
-			if (inFlight.controller.signal.aborted) error(499, 'Client closed request');
-			throw e;
-		}
-		// The slot is ours. The relay-backed branches get this stamp from the relay
-		// itself; this path gates by hand, so it stamps by hand. Dormant like the
-		// rest of this path (the shipping client always asks for ?stream=1), but
-		// is what `filterFullyQueued` reads to tell queued from running, so
-		// leaving it null here would report a generation on the GPU as waiting.
-		inFlight.generationStartedAt = Date.now();
-		try {
-			let upstream;
-			try {
-				upstream = await chatCompletionSync(endpoint, requestBody, inFlight.controller.signal);
-			} catch (e) {
-				clearInFlight(params.id, inFlight);
-				if (inFlight.controller.signal.aborted) error(499, 'Client closed request');
-				if (e instanceof UpstreamError) {
-					const status = mapUpstreamStatus(e.status);
-					error(status, `Upstream error: ${formatUpstreamError(e)}`);
-				}
-				throw e;
-			}
-			clearInFlight(params.id, inFlight);
+		// MCP approval gate from the shared assembly: built-in tools and
+		// user-trusted MCP tools execute inline; untrusted MCP tools halt the
+		// turn with an inline approval prompt.
+		const needsApproval = toolCtx.needsApproval;
 
-			const assistantText = upstream.choices?.[0]?.message?.content ?? '';
-			const finishReason = upstream.choices?.[0]?.finish_reason ?? null;
-			const tokensIn = upstream.usage?.prompt_tokens ?? null;
-			const tokensOut = upstream.usage?.completion_tokens ?? null;
-			const contentHtml = await renderMarkdown(assistantText);
-
-			const assistantMessage = appendMessage({
-				conversationId: params.id,
-				// Continue off the synthetic skill-activation tool result when present,
-				// else off the user message (the streaming path does the same via the
-				// relay's initialParentMessageId).
-				parentMessageId: synthLeafId ?? userMessage.id,
-				role: 'assistant',
-				parts: [{ type: 'text', text: assistantText }],
-				contentHtml,
-				finishReason,
-				modelUsed: meta.modelId,
-				tokensIn,
-				tokensOut,
-				rawResponseJson: JSON.stringify(upstream),
-			});
-
-			// Generation + persistence are done — free the endpoint slot BEFORE the
-			// title race. The title task is gated on the same endpoint slot now (see
-			// callTaskModel), so on a single-GPU (max_concurrent=1) endpoint holding
-			// it here would block the title task from being granted and raceTitle
-			// would burn its whole budget. The finally's release is the idempotent
-			// backstop.
-			syncSlot.release();
-
-			// Title task: same shape as the image branch — fire now (after both
-			// user + assistant messages are persisted) and race the bounded
-			// delivery budget before returning JSON. Non-streaming chat callers
-			// (clients that don't pass `?stream=1`) get the title inline; the
-			// generator's conditional UPDATE handles "already AI/user-titled."
-			const syncTitle = await raceTitle(
-				startTitleTaskIfFirstExchange(params.id, locals.user.id),
-				TITLE_DELIVERY_BUDGET_MS,
-			);
-
-			const response: SendMessageResponse = {
-				userMessage,
-				assistantMessage,
-				...(syncTitle ? { title: syncTitle } : {}),
-			};
-			return Response.json(response);
-		} finally {
-			syncSlot.release();
-		}
+		const stream = await startStreamingRelay({
+			conversationId: params.id,
+			userId: locals.user.id,
+			conversationTitle: meta.title,
+			modelKind: meta.modelKind,
+			endpoint,
+			providerQuirk: endpoint.providerQuirk,
+			requestBody,
+			userMessage,
+			storedModelId: meta.modelId,
+			abortSignal: inFlight.controller.signal,
+			// When the turn opened with an explicit skill activation, the model's
+			// first response continues off the synthetic tool result (not a sibling
+			// of the user message) — same seam the approval-resume flow uses — and
+			// the activation is replayed as live SSE so its block renders in-flight.
+			...(synthLeafId ? { initialParentMessageId: synthLeafId } : {}),
+			...(preActivatedToolEvents.length ? { preActivatedToolEvents } : {}),
+			// Fan-out branch: persist the assistant as a sibling without
+			// advancing the leaf (stays pinned at the shared user message),
+			// and don't start a per-branch title task (/prepare owns it once).
+			advanceActiveLeaf: !isFanout,
+			fanoutIndex,
+			suppressTitleTask: isFanout,
+			suppressNotify: isFanout,
+			inFlight,
+			onGenerationSettled,
+			// Clear the registry slot once the whole turn settles (all
+			// loop iterations + tool executions done), not per recorder.
+			// The recorder branches survive client disconnect, so the
+			// recovery indicator stays accurate after an iOS PWA suspend.
+			onComplete: onBranchComplete,
+			needsApproval,
+			// Surface any conversation-enabled per-user MCP server that's down so
+			// the client can show an inline "tools skipped" notice for this turn.
+			...(toolCtx.unavailableMcpServers.length
+				? { unavailableMcpServers: toolCtx.unavailableMcpServers }
+				: {}),
+			// Threaded into each tool's ToolContext so behavior-only
+			// consumers (e.g. run_python's Python network shim, which
+			// blocks egress when 'web' is off even though run_python is
+			// in 'code_interpreter') can honor the conversation's
+			// disabled-features without a registry-level filter.
+			disabledFeatures,
+			maxToolLoopIterations: getMaxToolLoopIterations(),
+			// Only enable the multi-iteration loop for endpoints whose
+			// models actually support tools. Endpoints without tools
+			// won't emit tool_calls anyway, but skipping the closure
+			// makes the single-iteration path explicit.
+			...(toolDefs.length > 0 ? { rebuildRequestBody } : {}),
+		});
+		return sseResponse(stream);
 	} catch (e) {
 		clearInFlight(params.id, inFlight);
 		undoRetryRewind();
@@ -818,11 +719,4 @@ function resolveAspectRatio(requested: unknown, model: ModelEntry | undefined): 
 	// wire. Bounded to 6 digits and a non-zero denominator to match the bridge's
 	// own parser, so a value that passes here can't be one it will silently drop.
 	return /^(?!0+:)\d{1,6}:(?!0+$)\d{1,6}$/.test(requested) ? requested : undefined;
-}
-
-function mapUpstreamStatus(status: number | null): 502 | 504 | 400 {
-	if (status === null) return 502;
-	if (status === 408 || status === 504) return 504;
-	if (status >= 400 && status < 500) return 400;
-	return 502;
 }

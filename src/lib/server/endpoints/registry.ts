@@ -29,8 +29,3 @@ export function getEndpoint(id: string): LoadedEndpoint | undefined {
 export function listEndpoints(): LoadedEndpoint[] {
 	return [...getRegistry().values()];
 }
-
-/** Test/dev only: discard the cached registry so the next access reloads. */
-export function resetRegistry(): void {
-	cached = null;
-}

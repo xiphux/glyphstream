@@ -50,9 +50,3 @@ export function isTaskModelPrivate(): boolean {
 	return value;
 }
 let privateCache: { value: boolean } | null = null;
-
-/** Test/dev only: discard the cached resolution so the next access reloads. */
-export function resetTaskModel(): void {
-	resolver.reset();
-	privateCache = null;
-}

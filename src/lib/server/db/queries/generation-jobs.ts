@@ -104,14 +104,3 @@ export function consumeGenerationJob(tx: Tx, id: string): boolean {
 export function deleteGenerationJob(id: string): void {
 	getDb().delete(generationJobs).where(eq(generationJobs.id, id)).run();
 }
-
-/** Test/diagnostic: is this job still queued or running? */
-export function generationJobExists(id: string): boolean {
-	return (
-		getDb()
-			.select({ id: generationJobs.id })
-			.from(generationJobs)
-			.where(eq(generationJobs.id, id))
-			.get() !== undefined
-	);
-}

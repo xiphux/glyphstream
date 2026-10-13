@@ -149,7 +149,7 @@ export function registerAllMcpTools(): void {
  * Register the currently-advertised tools for a single GLOBAL server. Used by
  * the manual-reconnect path so a server that came up after boot can be
  * surfaced to the LLM without restarting the process. (Per-user servers go
- * through `registerPerUserServerTools` — their availability is per request.)
+ * through `registerUserMcpTools` — their availability is per request.)
  */
 export function registerMcpServerTools(serverId: string): void {
 	const cfg = getMcpServerCfg(serverId);
