@@ -65,10 +65,10 @@ describe('RenderBlocks — tool_call', () => {
 });
 
 describe('RenderBlocks — image', () => {
-	it('renders an image with the content-endpoint src', () => {
+	it('renders an image from its display-sized copy', () => {
 		const { container } = renderBlocks([{ type: 'image', mediaId: 'img-1', alt: 'a cat' }]);
 		const img = container.querySelector('img')!;
-		expect(img).toHaveAttribute('src', '/api/media/img-1/content');
+		expect(img).toHaveAttribute('src', '/api/media/img-1/display');
 		expect(img).toHaveAttribute('alt', 'a cat');
 	});
 

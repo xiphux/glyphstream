@@ -15,6 +15,7 @@ import { fetchUpstreamBytes } from '../endpoints/client';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { insertMedia } from '../db/queries/media';
 import { getOrCreateThumbnail, type ThumbnailSourceKind } from './thumbnail';
+import { getOrCreateDisplayVariant } from './display-variant';
 import { getMediaStore } from './disk-store';
 import { makeFaststart } from './faststart';
 import { mediaDir } from '../env';
@@ -73,6 +74,8 @@ export async function persistGeneratedImage(input: PersistImageInput): Promise<s
 		...promptFields(input.prompt),
 	});
 	prewarmThumbnail(ref.storagePath, 'image');
+	// The chat bubble shows this one as soon as the image arrives.
+	void getOrCreateDisplayVariant(ref.storagePath).catch(() => {});
 	return id;
 }
 

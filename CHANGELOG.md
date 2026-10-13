@@ -61,6 +61,9 @@ arrived.
 
 ### Changed
 
+- Images in a chat load as a display-sized copy (at most 1280 px, WebP, keeping
+  transparency) instead of the full original: a 10 MB image arrives as about
+  200 KB. Opening an image still shows the original.
 - Dragging a document (PDF, CSV, spreadsheet, text) onto the message box now
   attaches it, the same as choosing it with the attach button. Only images used
   to be accepted by drag-and-drop.

@@ -110,8 +110,9 @@
 		>
 			<!-- The stored ratio reserves the box before the image loads, so the
 			     thread doesn't jump; without one it sizes from the pixels. -->
+			<!-- The display-sized copy; the lightbox opens the original. -->
 			<img
-				src="/api/media/{block.mediaId}/content"
+				src="/api/media/{block.mediaId}/display"
 				alt={block.alt ?? 'Image'}
 				loading="lazy"
 				style:aspect-ratio={cssRatio(block.aspectRatio)}

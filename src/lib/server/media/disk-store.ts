@@ -17,6 +17,7 @@ import { derivedDir, mediaDir } from '../env';
 import { normalizeContentType } from './content-type';
 import { thumbStoragePath } from './thumbnail';
 import { visionStoragePath } from './vision-variant';
+import { displayStoragePath } from './display-variant';
 import type {
 	MediaOpenResult,
 	MediaPutInput,
@@ -203,7 +204,11 @@ export class DiskMediaStore implements MediaStore {
 		// yet; a never-viewed, never-sent image has neither). Without
 		// this, every hard-deleted image would leak its derivatives to
 		// disk indefinitely.
-		for (const derived of [thumbStoragePath(storagePath), visionStoragePath(storagePath)]) {
+		for (const derived of [
+			thumbStoragePath(storagePath),
+			visionStoragePath(storagePath),
+			displayStoragePath(storagePath),
+		]) {
 			try {
 				// `derivedDir()`, not `root()`: these two may live on a different
 				// volume than the originals. Resolved fresh rather than via the

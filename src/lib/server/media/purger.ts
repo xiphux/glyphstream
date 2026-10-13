@@ -71,8 +71,8 @@ let running = false;
  * claim, so nothing is written here; a failed unlink is logged and leaks the
  * file.
  *
- * Concurrent rather than one candidate at a time. Each delete is three unlinks
- * (original + .thumb.jpg + .vision.jpg), so a full 500-row batch was up to 1500
+ * Concurrent rather than one candidate at a time. Each delete is four unlinks
+ * (original + .thumb.jpg + .vision.jpg + .display.webp), so a full 500-row batch was up to 2000
  * serialized filesystem round trips. Nothing here blocks the event loop (it's
  * all async I/O) — it just made the sweep take far longer than it needed to.
  * Bounded so a large batch can't saturate the filesystem queue against
