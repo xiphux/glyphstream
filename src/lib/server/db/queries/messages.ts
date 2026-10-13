@@ -1,4 +1,4 @@
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, getTableColumns } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import type { CompareSelection } from '#lib/fanout.js';
 import type { ChatMessage, MessagePart, MessageRole } from '#lib/types/api.js';
@@ -79,6 +79,17 @@ interface AppendInput {
  * `advanceActiveLeaf: false` to insert a sibling without moving the leaf
  * (fan-out). Returns the newly inserted row shaped as a ChatMessage.
  */
+
+/**
+ * Every `messages` column the ChatMessage mapping reads: all but
+ * `raw_response_json`. That column holds the upstream's whole response, which
+ * for a `b64_json` image server used to be the entire PNG (megabytes), and
+ * nothing reads it back; selecting it anyway made each branch load and each
+ * fan-out poll decode it. Rows built for rowToChatMessage select this.
+ */
+const { rawResponseJson: _rawResponseJson, ...chatMessageColumns } = getTableColumns(messages);
+type ChatMessageRow = Omit<typeof messages.$inferSelect, 'rawResponseJson'>;
+
 export function appendMessage(input: AppendInput): ChatMessage {
 	const db = getDb();
 	const id = generateId();
@@ -357,7 +368,7 @@ export function walkActiveBranch(
 	}
 
 	const heavyRows = db
-		.select()
+		.select(chatMessageColumns)
 		.from(messages)
 		.where(and(eq(messages.conversationId, conversationId), inArray(messages.id, branchIds)))
 		.all();
@@ -488,7 +499,7 @@ export function getMessage(
 	reader: DB | Tx = getDb(),
 ): ChatMessage | null {
 	const row = reader
-		.select()
+		.select(chatMessageColumns)
 		.from(messages)
 		.where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId)))
 		.get();
@@ -617,7 +628,7 @@ export function getSiblingAssistants(
 ): ChatMessage[] {
 	const db = getDb();
 	const rows = db
-		.select()
+		.select(chatMessageColumns)
 		.from(messages)
 		.where(
 			and(
@@ -1057,7 +1068,7 @@ export function truncateAtMessage(
 	return { newActiveLeaf: newLeaf };
 }
 
-function rowToChatMessage(row: typeof messages.$inferSelect): ChatMessage {
+function rowToChatMessage(row: ChatMessageRow): ChatMessage {
 	return {
 		id: row.id,
 		role: row.role,

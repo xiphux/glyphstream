@@ -183,7 +183,7 @@ function buildImageRelay(params: ImageRelayParams): [MediaRelayScaffoldParams, M
 					? { type: 'image', mediaId, displayOnly: true }
 					: { type: 'image', mediaId },
 				mediaId,
-				rawResponseJson: JSON.stringify(upstream),
+				rawResponseJson: rawResponseForStorage(upstream),
 				modality: 'image',
 			};
 		} catch (e) {
@@ -202,4 +202,20 @@ function buildImageRelay(params: ImageRelayParams): [MediaRelayScaffoldParams, M
 		}
 	};
 	return [relayParams, generate];
+}
+
+/**
+ * The upstream response as stored on the message row, minus image bytes.
+ *
+ * A `b64_json` server returns the whole image inline, and that image is
+ * already saved under media/. Keeping it in `raw_response_json` too grew the
+ * database by the image size again for every picture, for a column kept only
+ * for debugging. Each `b64_json` value is replaced with its length.
+ */
+export function rawResponseForStorage(upstream: unknown): string {
+	return JSON.stringify(upstream, (key, value: unknown) =>
+		key === 'b64_json' && typeof value === 'string'
+			? `[${value.length} base64 chars, stored as media]`
+			: value,
+	);
 }

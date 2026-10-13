@@ -36,6 +36,12 @@ arrived.
   that the server couldn't be reached, as they already did for a broken
   config file.
 
+### Changed
+
+- Chats with generated images load faster, and the database grows less, on
+  image servers that return pictures inline (`b64_json`). Each image was being
+  stored twice and read back on every load.
+
 ### Fixed
 
 - Pressing Enter while the "Context could not be compacted" prompt is open no
