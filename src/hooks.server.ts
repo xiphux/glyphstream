@@ -21,6 +21,7 @@ import {
 	compressDynamicResponses,
 	passkeyLoginEnabled,
 	validateAuthMethodsEnabled,
+	validateSecrets,
 } from '#lib/server/env.js';
 import { ensureAdminBootstrap } from '#lib/server/db/queries/users.js';
 import { startMediaPurger, stopMediaPurger } from '#lib/server/media/purger.js';
@@ -60,6 +61,8 @@ import {
 // crash at boot with a clear message than serve a /login page with zero
 // buttons. Also catches the "passkeys on but EXTERNAL_BASE_URL not set in
 // prod" misconfig, since the RP ID is derived from it.
+// Same for a missing or short AUTH_SECRET (or MCP_SECRET_KEY, when set).
+validateSecrets();
 validateAuthMethodsEnabled();
 
 // Upgrade recovery (single-user → multi-user): a pre-multi-user DB gets the

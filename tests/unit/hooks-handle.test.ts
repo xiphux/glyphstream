@@ -29,6 +29,7 @@ vi.mock('#lib/server/db/client.js', () => ({
 vi.mock('#lib/server/env.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/server/env.js')>()),
 	validateAuthMethodsEnabled: () => {},
+	validateSecrets: () => {},
 	compressDynamicResponses: () => false,
 	authRateLimitMax: () => 3,
 	authRateLimitWindowSeconds: () => 60,

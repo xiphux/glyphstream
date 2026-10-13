@@ -265,6 +265,34 @@ export function mcpSecretKey(): string {
 	return readString('MCP_SECRET_KEY', '').trim() || authSecret();
 }
 
+/** Shortest acceptable AUTH_SECRET / MCP_SECRET_KEY: 32 characters, what
+ *  `openssl rand -hex 16` produces. The .env.example suggests 64 (`-hex 32`). */
+export const MIN_SECRET_LENGTH = 32;
+
+/**
+ * Refuse to start on a missing or short secret. AUTH_SECRET used to be read
+ * lazily, so an empty one booted and then 500'd on the first sign-in, and
+ * `AUTH_SECRET=x` was accepted, signing cookies and deriving the key for
+ * stored MCP tokens from one character. Called from hooks.server.ts at
+ * module load, beside validateAuthMethodsEnabled.
+ */
+export function validateSecrets(): void {
+	const auth = readString('AUTH_SECRET', '').trim();
+	if (auth.length < MIN_SECRET_LENGTH) {
+		throw new Error(
+			auth
+				? `AUTH_SECRET is ${auth.length} characters; it must be at least ${MIN_SECRET_LENGTH}. Generate one with: openssl rand -hex 32`
+				: 'AUTH_SECRET is not set. Generate one with: openssl rand -hex 32',
+		);
+	}
+	const mcp = readString('MCP_SECRET_KEY', '').trim();
+	if (mcp && mcp.length < MIN_SECRET_LENGTH) {
+		throw new Error(
+			`MCP_SECRET_KEY is ${mcp.length} characters; it must be at least ${MIN_SECRET_LENGTH} (or unset, to use AUTH_SECRET).`,
+		);
+	}
+}
+
 /**
  * Refuse to start if no login method is enabled. Called from
  * hooks.server.ts at module load so a misconfig becomes a crash instead

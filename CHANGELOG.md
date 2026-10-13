@@ -38,6 +38,9 @@ arrived.
 
 ### Changed
 
+- The server refuses to start when `AUTH_SECRET` is missing or shorter than 32
+  characters (and `MCP_SECRET_KEY`, when set), naming the problem, instead of
+  starting and failing at the first sign-in or accepting a trivially short key.
 - The server uses about 50 MB less memory. Code highlighting now loads each
   language the first time a reply uses it, instead of all of them at startup.
 - Thumbnails and video posters are made as soon as an image or video is
