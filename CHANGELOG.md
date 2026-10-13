@@ -27,6 +27,10 @@ arrived.
 - Web pages read by the model, Python's web requests and media URLs from a
   model server can no longer be steered to an internal address by a domain
   whose DNS answer changes between the safety check and the connection.
+- The same internal-address check now recognises IPv6 addresses that wrap an
+  IPv4 address (IPv4-mapped, NAT64 and 6to4). A domain pointing at, say,
+  `64:ff9b::a9fe:a9fe` could reach the cloud metadata service on a NAT64
+  network.
 
 ### Fixed
 

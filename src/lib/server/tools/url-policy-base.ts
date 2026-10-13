@@ -44,6 +44,16 @@ export function assertHttpScheme(url: URL): void {
  * clear refusal message before any connection is attempted.
  */
 export async function assertHostnameRoutable(hostname: string): Promise<void> {
+	// A URL's hostname keeps the brackets around an IPv6 literal. Judge the
+	// literal itself; DNS would only fail on the bracketed form, refusing
+	// every IPv6 URL, public ones included, for the wrong reason.
+	const literal = /^\[(.*)\]$/.exec(hostname)?.[1];
+	if (literal !== undefined) {
+		if (isPrivateIp(literal)) {
+			throw new UrlPolicyError(`Refused: ${hostname} is a private/reserved address.`);
+		}
+		return;
+	}
 	const addrs = await dns.promises.lookup(hostname, { all: true });
 	for (const a of addrs) {
 		if (isPrivateIp(a.address)) {
@@ -157,13 +167,66 @@ export function isPrivateIp(ip: string): boolean {
 
 	if (!cleaned.includes(':')) return true; // not an IP literal at all -> fail closed
 
-	const lower = cleaned.toLowerCase();
-	if (lower === '::' || lower === '::1') return true;
-	// fc00::/7 - unique local addresses (first byte fc or fd)
-	if (/^f[cd][0-9a-f]{2}:/.test(lower)) return true;
-	// fe80::/10 - link-local (first 10 bits 1111111010 -> first byte fe + nibble 8/9/a/b)
-	if (/^fe[89ab][0-9a-f]:/.test(lower)) return true;
-	// ff00::/8 - multicast
-	if (/^ff[0-9a-f]{2}:/.test(lower)) return true;
+	const h = expandIpv6(cleaned);
+	if (!h) return true; // unparseable -> fail closed
+	const [h0, h1, h2, h3, h4, h5, h6, h7] = h;
+	const embedded = (hi: number, lo: number) => `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+	// Addresses that carry an IPv4 address inside them are judged by that
+	// address. The URL parser always writes a mapped address in hex
+	// (`[::ffff:127.0.0.1]` becomes `::ffff:7f00:1`), so the dotted check
+	// above never sees it.
+	if (h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0) {
+		// ::/128 unspecified and ::1 loopback; the rest of ::/96 is the
+		// deprecated IPv4-compatible form; ::ffff:0:0/96 is IPv4-mapped.
+		if (h5 === 0 && h6 === 0 && (h7 === 0 || h7 === 1)) return true;
+		if (h5 === 0 || h5 === 0xffff) return isPrivateIp(embedded(h6, h7));
+		return true;
+	}
+	// 64:ff9b::/96 well-known NAT64 prefix: a NAT64 gateway forwards to the
+	// embedded IPv4, so 64:ff9b::a9fe:a9fe reaches 169.254.169.254.
+	if (h0 === 0x64 && h1 === 0xff9b && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0) {
+		return isPrivateIp(embedded(h6, h7));
+	}
+	if (h0 === 0x64 && h1 === 0xff9b && h2 === 1) return true; // 64:ff9b:1::/48 local NAT64
+	if (h0 === 0x2002) return isPrivateIp(embedded(h1, h2)); // 2002::/16 6to4
+	if (h0 === 0x2001 && h1 === 0) return true; // 2001::/32 Teredo (obfuscated IPv4)
+	if (h0 === 0x2001 && h1 === 0xdb8) return true; // 2001:db8::/32 documentation
+	if ((h0 & 0xfe00) === 0xfc00) return true; // fc00::/7 unique local
+	if ((h0 & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
+	if ((h0 & 0xffc0) === 0xfec0) return true; // fec0::/10 deprecated site-local
+	if ((h0 & 0xff00) === 0xff00) return true; // ff00::/8 multicast
 	return false;
+}
+
+/**
+ * Expand an IPv6 address (optionally ending in a dotted IPv4) to its eight
+ * 16-bit groups, or null if it isn't one. Classifying the expanded form means
+ * every spelling of an address (`::1`, `0:0:0:0:0:0:0:1`, `0::0:1`) is judged
+ * the same way.
+ */
+function expandIpv6(ip: string): number[] | null {
+	let s = ip.toLowerCase();
+	const tail: number[] = [];
+	const dotted = /^(.*:)(\d+\.\d+\.\d+\.\d+)$/.exec(s);
+	if (dotted) {
+		const parts = dotted[2].split('.').map(Number);
+		if (parts.some((n) => n > 255)) return null;
+		tail.push((parts[0] << 8) | parts[1], (parts[2] << 8) | parts[3]);
+		s = dotted[1].endsWith('::') ? dotted[1] : dotted[1].slice(0, -1);
+	}
+	const halves = s.split('::');
+	if (halves.length > 2) return null;
+	const parse = (part: string): number[] | null => {
+		if (part === '') return [];
+		const groups = part.split(':');
+		if (groups.some((g) => !/^[0-9a-f]{1,4}$/.test(g))) return null;
+		return groups.map((g) => parseInt(g, 16));
+	};
+	const head = parse(halves[0]);
+	const rest = halves.length === 2 ? parse(halves[1]) : [];
+	if (!head || !rest) return null;
+	const known = head.length + rest.length + tail.length;
+	if (halves.length === 1) return known === 8 ? [...head, ...tail] : null;
+	if (known > 7) return null;
+	return [...head, ...new Array<number>(8 - known).fill(0), ...rest, ...tail];
 }
