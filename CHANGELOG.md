@@ -33,6 +33,9 @@ arrived.
 - When the model server reports an error part-way through a streamed reply,
   that error is now shown. The reply used to end silently, sometimes as an
   empty message.
+- Model servers that number streamed tool calls loosely (reusing an index, or
+  leaving it out) no longer have separate tool calls merged into one or
+  dropped.
 
 ## v0.44.1
 

@@ -478,3 +478,86 @@ describe('a streamed error object', () => {
 		);
 	});
 });
+
+describe('tool_calls from loosely-compatible upstreams', () => {
+	const starts = (deltas: Array<{ type: string }>) =>
+		deltas.filter((d) => d.type === 'tool_call_start');
+
+	it('starts a new call when a new id arrives on an index already in use', () => {
+		const n = createNormalizer('passthrough');
+		const a = n.process(
+			rec(
+				toolChunk([
+					{
+						index: 0,
+						id: 'call_a',
+						type: 'function',
+						function: { name: 'f', arguments: '{"x":1}' },
+					},
+				]),
+			),
+		);
+		const b = n.process(
+			rec(
+				toolChunk([
+					{
+						index: 0,
+						id: 'call_b',
+						type: 'function',
+						function: { name: 'g', arguments: '{"y":2}' },
+					},
+				]),
+			),
+		);
+		expect(starts(a.deltas)).toEqual([
+			{ type: 'tool_call_start', toolCallId: 'call_a', toolName: 'f', index: 0 },
+		]);
+		expect(starts(b.deltas)).toEqual([
+			{ type: 'tool_call_start', toolCallId: 'call_b', toolName: 'g', index: 1 },
+		]);
+		expect(b.deltas).toContainEqual({
+			type: 'tool_call_args_delta',
+			toolCallId: 'call_b',
+			index: 1,
+			argumentsDelta: '{"y":2}',
+		});
+	});
+
+	it('treats a re-sent id on the same index as the same call', () => {
+		const n = createNormalizer('passthrough');
+		n.process(
+			rec(
+				toolChunk([
+					{ index: 0, id: 'call_a', type: 'function', function: { name: 'f', arguments: '{"x"' } },
+				]),
+			),
+		);
+		const more = n.process(
+			rec(toolChunk([{ index: 0, id: 'call_a', function: { arguments: ':1}' } }])),
+		);
+		expect(more.deltas).toEqual([
+			{ type: 'tool_call_args_delta', toolCallId: 'call_a', index: 0, argumentsDelta: ':1}' },
+		]);
+	});
+
+	it('keeps calls without an index apart by id, and continues the last one when there is no id', () => {
+		const n = createNormalizer('passthrough');
+		const noIndex = (call: object) => n.process(rec(toolChunk([call as never])));
+		const a = noIndex({
+			id: 'call_a',
+			type: 'function',
+			function: { name: 'f', arguments: '{"x"' },
+		});
+		const aMore = noIndex({ function: { arguments: ':1}' } });
+		const b = noIndex({ id: 'call_b', type: 'function', function: { name: 'g', arguments: '{}' } });
+		expect(starts(a.deltas)).toEqual([
+			{ type: 'tool_call_start', toolCallId: 'call_a', toolName: 'f', index: 0 },
+		]);
+		expect(aMore.deltas).toEqual([
+			{ type: 'tool_call_args_delta', toolCallId: 'call_a', index: 0, argumentsDelta: ':1}' },
+		]);
+		expect(starts(b.deltas)).toEqual([
+			{ type: 'tool_call_start', toolCallId: 'call_b', toolName: 'g', index: 1 },
+		]);
+	});
+});

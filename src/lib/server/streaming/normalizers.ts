@@ -55,7 +55,8 @@ const EMPTY: NormalizedResult = { deltas: [] };
  *  `function.name` once (on the first chunk for that index) and then
  *  streams `function.arguments` in subsequent chunks keyed by `index`. */
 interface OpenAIToolCallDelta {
-	index: number;
+	/** Required by the spec; some OpenAI-compatible layers omit it. */
+	index?: number;
 	id?: string;
 	type?: 'function';
 	function?: { name?: string; arguments?: string };
@@ -90,53 +91,64 @@ interface OpenAIChunk {
 
 /**
  * Translate OpenAI's streamed `delta.tool_calls[]` into our normalized
- * tool-call deltas. The first chunk for a given `index` brings `id` +
- * `function.name`; we emit a `tool_call_start` once and remember the id
- * by index. Subsequent chunks for the same index carry more
- * `function.arguments`; we emit one `tool_call_args_delta` per chunk and
- * the recorder concatenates them.
+ * tool-call deltas. The first chunk for a call brings `id` +
+ * `function.name`; we emit a `tool_call_start` once. Later chunks for the
+ * same call carry more `function.arguments`; we emit one
+ * `tool_call_args_delta` per chunk and the recorder concatenates them.
  *
- * `seenById` is the per-normalizer-instance state map (passed by ref so
- * callers can hold it on their class). Resilient defaults: an
- * args-before-start chunk (spec-violating upstream) is dropped rather
- * than throwing. An empty/whitespace arguments delta is also dropped to
- * avoid spamming the stream with empty events.
+ * The emitted `index` is a slot this tracker assigns, not the upstream's
+ * `index`, so that two upstream shapes that would otherwise collide stay
+ * separate calls:
+ *   - a NEW `id` on an `index` already in use starts a new call (a repeated
+ *     id is just the provider re-sending it, and continues the call);
+ *   - a chunk with no numeric `index` (some OpenAI-compatible layers omit
+ *     it) is keyed by its `id` when it has one, and otherwise continues the
+ *     most recently started call.
+ * For a spec-shaped stream the slots equal the upstream indexes.
+ *
+ * Resilient defaults: an args-before-start chunk is dropped rather than
+ * throwing, and an empty arguments delta is dropped to avoid spamming the
+ * stream with empty events.
  */
-function parseToolCallsDelta(
-	calls: OpenAIToolCallDelta[] | undefined,
-	seenById: Map<number, string>,
-): NormalizedDelta[] {
-	if (!calls || calls.length === 0) return [];
-	const out: NormalizedDelta[] = [];
-	for (const tc of calls) {
-		if (typeof tc.index !== 'number') continue;
+class ToolCallTracker {
+	/** Upstream key (numeric index, or `id:<id>` when the index is missing) → call. */
+	private byKey = new Map<string, { slot: number; id: string }>();
+	private nextSlot = 0;
+	private last: { slot: number; id: string } | null = null;
 
-		// First chunk for this index — record id + emit start.
-		if (typeof tc.id === 'string' && tc.id.length > 0 && !seenById.has(tc.index)) {
-			seenById.set(tc.index, tc.id);
-			out.push({
-				type: 'tool_call_start',
-				toolCallId: tc.id,
-				toolName: tc.function?.name ?? '',
-				index: tc.index,
-			});
-		}
+	parse(calls: OpenAIToolCallDelta[] | undefined): NormalizedDelta[] {
+		if (!calls || calls.length === 0) return [];
+		const out: NormalizedDelta[] = [];
+		for (const tc of calls) {
+			const id = typeof tc.id === 'string' && tc.id.length > 0 ? tc.id : null;
+			const key =
+				typeof tc.index === 'number' ? `index:${tc.index}` : id !== null ? `id:${id}` : null;
+			let call = key !== null ? this.byKey.get(key) : this.last;
 
-		// Args delta — must come AFTER we've recorded the id.
-		const argsDelta = tc.function?.arguments;
-		if (typeof argsDelta === 'string' && argsDelta.length > 0) {
-			const id = seenById.get(tc.index);
-			if (id) {
+			if (id !== null && call?.id !== id) {
+				call = { slot: this.nextSlot++, id };
+				if (key !== null) this.byKey.set(key, call);
+				out.push({
+					type: 'tool_call_start',
+					toolCallId: id,
+					toolName: tc.function?.name ?? '',
+					index: call.slot,
+				});
+			}
+			if (call) this.last = call;
+
+			const argsDelta = tc.function?.arguments;
+			if (call && typeof argsDelta === 'string' && argsDelta.length > 0) {
 				out.push({
 					type: 'tool_call_args_delta',
-					toolCallId: id,
-					index: tc.index,
+					toolCallId: call.id,
+					index: call.slot,
 					argumentsDelta: argsDelta,
 				});
 			}
 		}
+		return out;
 	}
-	return out;
 }
 
 /**
@@ -196,7 +208,7 @@ function commonExtras(
 // --- passthrough: just delta.content as text + tool_calls ---------------
 
 class PassthroughNormalizer implements StreamNormalizer {
-	private toolCallIdByIndex = new Map<number, string>();
+	private toolCalls = new ToolCallTracker();
 	process(record: SSERecord): NormalizedResult {
 		if (record.data === '[DONE]') return { deltas: [], done: true };
 		const chunk = parseChunk(record);
@@ -204,7 +216,7 @@ class PassthroughNormalizer implements StreamNormalizer {
 		const delta = chunk.choices?.[0]?.delta;
 		const deltas: NormalizedDelta[] = [];
 		if (delta?.content) deltas.push({ type: 'text', text: delta.content });
-		deltas.push(...parseToolCallsDelta(delta?.tool_calls, this.toolCallIdByIndex));
+		deltas.push(...this.toolCalls.parse(delta?.tool_calls));
 		return { deltas, ...commonExtras(chunk) };
 	}
 	flush(): NormalizedResult {
@@ -215,7 +227,7 @@ class PassthroughNormalizer implements StreamNormalizer {
 // --- openai-o-series: delta.reasoning_content + delta.content + tool_calls
 
 class OSeriesNormalizer implements StreamNormalizer {
-	private toolCallIdByIndex = new Map<number, string>();
+	private toolCalls = new ToolCallTracker();
 	process(record: SSERecord): NormalizedResult {
 		if (record.data === '[DONE]') return { deltas: [], done: true };
 		const chunk = parseChunk(record);
@@ -224,7 +236,7 @@ class OSeriesNormalizer implements StreamNormalizer {
 		const deltas: NormalizedDelta[] = [];
 		if (delta?.reasoning_content) deltas.push({ type: 'reasoning', text: delta.reasoning_content });
 		if (delta?.content) deltas.push({ type: 'text', text: delta.content });
-		deltas.push(...parseToolCallsDelta(delta?.tool_calls, this.toolCallIdByIndex));
+		deltas.push(...this.toolCalls.parse(delta?.tool_calls));
 		return { deltas, ...commonExtras(chunk) };
 	}
 	flush(): NormalizedResult {
@@ -235,7 +247,7 @@ class OSeriesNormalizer implements StreamNormalizer {
 // --- openrouter: delta.reasoning + delta.content + tool_calls -----------
 
 class OpenRouterNormalizer implements StreamNormalizer {
-	private toolCallIdByIndex = new Map<number, string>();
+	private toolCalls = new ToolCallTracker();
 	process(record: SSERecord): NormalizedResult {
 		if (record.data === '[DONE]') return { deltas: [], done: true };
 		const chunk = parseChunk(record);
@@ -244,7 +256,7 @@ class OpenRouterNormalizer implements StreamNormalizer {
 		const deltas: NormalizedDelta[] = [];
 		if (delta?.reasoning) deltas.push({ type: 'reasoning', text: delta.reasoning });
 		if (delta?.content) deltas.push({ type: 'text', text: delta.content });
-		deltas.push(...parseToolCallsDelta(delta?.tool_calls, this.toolCallIdByIndex));
+		deltas.push(...this.toolCalls.parse(delta?.tool_calls));
 		return { deltas, ...commonExtras(chunk) };
 	}
 	flush(): NormalizedResult {
