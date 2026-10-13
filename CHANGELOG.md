@@ -33,6 +33,9 @@ arrived.
   conversation.
 - An image preview left open when search (or a notification) took you to
   another conversation now closes instead of staying over the new one.
+- Picking a search result in another conversation now scrolls to and
+  highlights the matching message, as it already did when opening the app from
+  a link.
 - Stopping a reply while the Python interpreter was still preparing could
   leave that conversation's interpreter stuck until the server restarted, and
   enough of them would stop new interpreters from starting.

@@ -5,7 +5,7 @@
 	import { fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
-	import { goto, refreshAll } from '$app/navigation';
+	import { afterNavigate, goto, refreshAll } from '$app/navigation';
 	import { navigating } from '$app/state';
 	import { getModelCatalogue } from '#lib/model-catalogue.svelte.js';
 	import { observeSentinel } from '#lib/observe-sentinel.js';
@@ -1362,10 +1362,15 @@
 		};
 		if (w.requestIdleCallback) w.requestIdleCallback(warmLiveRenderers, { timeout: 2000 });
 		else setTimeout(warmLiveRenderers, 200);
-		// Deep-link from the search modal: URL hash like `#msg-<id>`.
-		// Wait for the message wrappers to be in the DOM before scrolling.
-		const hash = typeof location !== 'undefined' ? location.hash : '';
-		const match = hash.match(/^#msg-(.+)$/);
+	});
+
+	// Deep link from the search modal: a URL hash like `#msg-<id>` scrolls that
+	// message to the middle and flashes it. afterNavigate rather than onMount:
+	// it fires on the first entry AND when search lands in another conversation,
+	// which reuses this page without remounting it — onMount only ever saw the
+	// first. Waits a tick for the message wrappers to be in the DOM.
+	afterNavigate(({ to }) => {
+		const match = to?.url.hash.match(/^#msg-(.+)$/);
 		if (!match) return;
 		const targetId = decodeURIComponent(match[1]);
 		void tick().then(() => {
@@ -2171,8 +2176,8 @@
 	// conversation changes — a same-id `invalidate` re-seeds `data.conversation`
 	// but must not move the reader. Declared after the auto-scroll effect so, on
 	// mount, its tick lands second and the grid position wins over the bottom.
-	// A `#msg-` deep link is left alone: on a cold load onMount scrolls to and
-	// highlights it, and on a switch (no remount) Kit's own hash scroll lands it.
+	// A `#msg-` deep link is left alone: the afterNavigate handler above scrolls
+	// to and highlights it, on a cold load and on a switch alike.
 	//
 	// One placement isn't enough: images carry no stored dimensions, so at tick
 	// time an image thread is a fraction of its eventual height, and the bottom

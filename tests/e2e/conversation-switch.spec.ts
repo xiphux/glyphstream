@@ -76,3 +76,30 @@ test('an open image preview closes when search takes you to another conversation
 
 	await expect(preview).toHaveCount(0);
 });
+
+test('a search hit in another conversation scrolls to and highlights that message', async ({
+	page,
+}) => {
+	const first = seedConversation('Where we start');
+	seedConversationMessages(first, 1, 'start');
+	const target = seedConversation('Where the needle is');
+	seedConversationMessages(target, 30, 'needle');
+
+	await page.goto(`/chat/${first}`);
+	// The shortcut is bound once the app has hydrated.
+	await expect(page.getByRole('button', { name: 'Select model' })).toBeEnabled();
+	await page.keyboard.press('ControlOrMeta+k');
+	const search = page.getByRole('dialog', { name: 'Search chats' });
+	// seedConversationMessages writes "Question <i>" user turns; pick an early one
+	// so it sits well above the bottom the page would otherwise open at.
+	await search.getByRole('textbox', { name: 'Search query' }).fill('Question 3');
+	await search
+		.getByRole('button', { name: /Where the needle is/ })
+		.first()
+		.click();
+	await page.waitForURL(`**/chat/${target}#msg-*`);
+
+	const hit = page.locator(`#${new URL(page.url()).hash.slice(1)}`);
+	await expect(hit).toHaveClass(/bg-amber-200/);
+	await expect(hit).toBeInViewport();
+});
