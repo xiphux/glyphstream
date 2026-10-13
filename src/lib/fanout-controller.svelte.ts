@@ -871,18 +871,26 @@ export class FanoutController {
 						method: 'POST',
 					});
 			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
+			// The user may have opened another conversation while this saved; the
+			// pick still landed server-side, but nothing below belongs on screen.
+			if (this.#deps.convId() !== convId) return;
 			this.#deps.setStreamedMessageId(targetId);
 			await refreshAll();
+			if (this.#deps.convId() !== convId) return;
 			if (!avatarMode) {
 				// Continue with the chosen model — the picker reflects it now and the
 				// next send persists it. tick() lets the data-sync effect (which resets
 				// modelId from the unchanged conversation row) flush first so this wins.
 				await tick();
+				if (this.#deps.convId() !== convId) return;
 				this.#deps.setActiveModel(col.modelId, col.modelKind);
 			}
 			this.userMessageId = null;
 			this.live = false;
 		} catch (e) {
+			// Restoring the grid (or reporting the error) after a switch would
+			// paint this conversation's comparison onto the one now open.
+			if (this.#deps.convId() !== convId) return;
 			this.columns = savedColumns;
 			this.#deps.setError(e instanceof Error ? e.message : String(e));
 		} finally {
@@ -927,9 +935,12 @@ export class FanoutController {
 				await fetch(`/api/conversations/${convId}/fanout`, { method: 'DELETE' });
 			}
 			await refreshAll();
+			if (this.#deps.convId() !== convId) return;
 			this.userMessageId = null;
 			this.live = false;
 		} catch (e) {
+			// See pick: not after the user has switched conversations.
+			if (this.#deps.convId() !== convId) return;
 			this.columns = savedColumns;
 			this.#deps.setError(e instanceof Error ? e.message : String(e));
 		} finally {

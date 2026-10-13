@@ -1753,3 +1753,67 @@ describe('FanoutController — recovered columns keep their aspect ratio', () =>
 		expect(fc.columns.map((c) => c.aspectRatio)).toEqual([null, null]);
 	});
 });
+
+describe('pick / dismiss after the user switched conversations', () => {
+	// The controller is shared across conversations on the same page. A pick or
+	// Done that is still saving when the user opens another conversation must not
+	// paint its comparison grid, its error, or its chosen model onto that one.
+	function seedGrid() {
+		const { deps, state } = makeDeps();
+		const fc = new FanoutController(deps);
+		fc.syncFromServer({
+			parentMessageId: 'u1',
+			avatar: false,
+			kind: 'chat',
+			siblings: [mediaSibling('a', 'bridge::claude', null, [{ type: 'text', text: 'hi' }])],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		});
+		return { fc, state };
+	}
+
+	it('a failed pick does not restore the old grid into the new conversation', async () => {
+		const { fc, state } = seedGrid();
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => {
+				state.convId = 'c2';
+				fc.teardown();
+				return new Response('{"message":"nope"}', { status: 500 });
+			}),
+		);
+		await fc.pick(fc.columns[0]);
+		expect(fc.columns).toEqual([]);
+		expect(state.error).toBeNull();
+	});
+
+	it("a successful pick does not switch the new conversation's model", async () => {
+		const { fc, state } = seedGrid();
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => {
+				state.convId = 'c2';
+				return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+			}),
+		);
+		await fc.pick(fc.columns[0]);
+		expect(state.activeModel).toBeNull();
+	});
+
+	it('a failed Done does not restore the old grid either', async () => {
+		const { fc, state } = seedGrid();
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => {
+				state.convId = 'c2';
+				fc.teardown();
+				throw new Error('offline');
+			}),
+		);
+		await fc.dismiss();
+		expect(fc.columns).toEqual([]);
+		expect(state.error).toBeNull();
+	});
+});

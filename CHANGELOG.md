@@ -33,6 +33,9 @@ arrived.
   conversation.
 - An image preview left open when search (or a notification) took you to
   another conversation now closes instead of staying over the new one.
+- Picking a winner in a model comparison (or pressing Done) and then quickly
+  opening another conversation no longer shows the comparison, its error, or
+  the picked model in the conversation you opened.
 - The gallery loads its contents once when opened, instead of twice.
 - After switching away from a conversation while it was replying, coming back
   to the tab no longer re-downloads the whole conversation every time, only
