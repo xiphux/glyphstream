@@ -30,6 +30,9 @@ arrived.
 - When the model server stalls or drops the connection part-way through a
   reply, the part you already saw is now kept, with the error shown under it.
   It used to be thrown away and replaced by two error messages.
+- When the model server reports an error part-way through a streamed reply,
+  that error is now shown. The reply used to end silently, sometimes as an
+  empty message.
 
 ## v0.44.1
 

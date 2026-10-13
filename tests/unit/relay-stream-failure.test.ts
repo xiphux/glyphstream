@@ -186,6 +186,26 @@ describe('relay — upstream stream fails mid-reply', () => {
 		expect(notifyConversationComplete).not.toHaveBeenCalled();
 	});
 
+	it('keeps the partial reply when the upstream streams an error object', async () => {
+		const s = seed();
+		mocks.response = () =>
+			failingSseResponse(
+				[textChunk('Half an answer'), JSON.stringify({ error: { message: 'model crashed' } })],
+				new Error('unreachable: the error frame ends the stream first'),
+			);
+
+		const events = await drainEvents(await relay(s));
+
+		const errors = events.filter((e) => e.type === 'error') as Array<{ message: string }>;
+		expect(errors).toEqual([{ type: 'error', message: 'Upstream stream failed: model crashed' }]);
+		const reply = walkActiveBranch(s.conversationId).at(-1)!;
+		expect(reply.finishReason).toBe('error');
+		expect(reply.parts).toEqual([
+			{ type: 'text', text: 'Half an answer' },
+			{ type: 'error', message: 'Upstream stream failed: model crashed' },
+		]);
+	});
+
 	it('records the failure on its own when nothing had arrived yet', async () => {
 		const s = seed();
 		mocks.response = () =>

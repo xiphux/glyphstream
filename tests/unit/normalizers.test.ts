@@ -456,3 +456,25 @@ describe('openrouter normalizer · tool_calls', () => {
 		]);
 	});
 });
+
+describe('a streamed error object', () => {
+	// OpenAI, vLLM, OpenRouter and the bridge report a failure that happens
+	// after the 200 headers went out as a `data: {"error": …}` frame. It has no
+	// `choices`, so reading it as an ordinary chunk silently yields nothing and
+	// the turn ends as an empty reply.
+	const quirks = ['passthrough', 'deepseek-r1', 'openai-o-series', 'openrouter'] as const;
+
+	it.each(quirks)('%s: fails the stream with the upstream message', (quirk) => {
+		const norm = createNormalizer(quirk);
+		expect(() =>
+			norm.process({ data: JSON.stringify({ error: { message: 'model crashed', code: 500 } }) }),
+		).toThrow(/model crashed/);
+	});
+
+	it('accepts a bare string error too', () => {
+		const norm = createNormalizer('passthrough');
+		expect(() => norm.process({ data: JSON.stringify({ error: 'out of memory' }) })).toThrow(
+			/out of memory/,
+		);
+	});
+});

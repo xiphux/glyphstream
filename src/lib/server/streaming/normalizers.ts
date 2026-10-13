@@ -139,13 +139,39 @@ function parseToolCallsDelta(
 	return out;
 }
 
+/**
+ * Thrown when the upstream reports a failure inside an already-200 stream.
+ * The relay treats it like any other mid-stream failure: it keeps what
+ * arrived and records the error (relay.ts recorder).
+ */
+export class UpstreamStreamError extends Error {
+	override name = 'UpstreamStreamError';
+}
+
 function parseChunk(record: SSERecord): OpenAIChunk | null {
 	if (record.data === '[DONE]') return null;
+	let parsed: unknown;
 	try {
-		return JSON.parse(record.data) as OpenAIChunk;
+		parsed = JSON.parse(record.data);
 	} catch {
 		return null;
 	}
+	// OpenAI, vLLM, OpenRouter and the bridge send `data: {"error": …}` when
+	// generation fails after the response headers are out. It has no
+	// `choices`, so read as a chunk it would yield nothing and the turn would
+	// end as a silently empty reply.
+	const error = (parsed as { error?: unknown } | null)?.error;
+	if (error !== undefined && error !== null) {
+		throw new UpstreamStreamError(describeStreamError(error));
+	}
+	return parsed as OpenAIChunk;
+}
+
+function describeStreamError(error: unknown): string {
+	if (typeof error === 'string') return error;
+	const message = (error as { message?: unknown }).message;
+	if (typeof message === 'string' && message) return message;
+	return JSON.stringify(error).slice(0, 500);
 }
 
 function commonExtras(
