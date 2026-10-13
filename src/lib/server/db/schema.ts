@@ -154,30 +154,39 @@ export const invites = sqliteTable(
 // legitimate user's. Pinning the issue time gives renewal something it can't
 // push past. Defaulted to 0 for rows that predate the column, which reads as
 // "issued at the epoch" and so retires them at their next renewal check.
-export const sessions = sqliteTable('sessions', {
-	id: text('id').primaryKey(),
-	userId: text('user_id')
-		.notNull()
-		.references(() => users.id, { onDelete: 'cascade' }),
-	expiresAt: integer('expires_at').notNull(),
-	createdAt: integer('created_at').notNull().default(0),
-	// Identifying detail for the "your devices" list in /settings/security, so
-	// a session can be recognized before it's revoked. `last_seen_at` is
-	// written on a throttle, not per request — the session read is on every
-	// request including presence heartbeats, and this table is not where we
-	// want a write amplifier.
-	lastSeenAt: integer('last_seen_at').notNull().default(0),
-	userAgent: text('user_agent'),
-	// App lock (see server/auth/app-lock.ts): the session is usable from an
-	// installed app until this instant, and its visible-only keep-alive slides it
-	// forward (no other request does).
-	// NULL = never unlocked under app lock (a standalone request treats it as
-	// expired; anywhere else it's simply unlocked). 0 = born locked — minted by
-	// an OAuth sign-in for a user with app lock on, or set on the user's other
-	// sessions when they turn the lock on; must be followed by a passkey before
-	// the session is usable ANYWHERE.
-	unlockedUntil: integer('unlocked_until'),
-});
+export const sessions = sqliteTable(
+	'sessions',
+	{
+		id: text('id').primaryKey(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		expiresAt: integer('expires_at').notNull(),
+		createdAt: integer('created_at').notNull().default(0),
+		// Identifying detail for the "your devices" list in /settings/security, so
+		// a session can be recognized before it's revoked. `last_seen_at` is
+		// written on a throttle, not per request — the session read is on every
+		// request including presence heartbeats, and this table is not where we
+		// want a write amplifier.
+		lastSeenAt: integer('last_seen_at').notNull().default(0),
+		userAgent: text('user_agent'),
+		// App lock (see server/auth/app-lock.ts): the session is usable from an
+		// installed app until this instant, and its visible-only keep-alive slides it
+		// forward (no other request does).
+		// NULL = never unlocked under app lock (a standalone request treats it as
+		// expired; anywhere else it's simply unlocked). 0 = born locked — minted by
+		// an OAuth sign-in for a user with app lock on, or set on the user's other
+		// sessions when they turn the lock on; must be followed by a passkey before
+		// the session is usable ANYWHERE.
+		unlockedUntil: integer('unlocked_until'),
+	},
+	(t) => [
+		// The device list, "sign out other devices", app lock's lock-the-others
+		// and a user delete's FK cascade all look sessions up by user; without
+		// this each was a full scan of a table that only grows.
+		index('idx_sessions_user_id').on(t.userId),
+	],
+);
 
 // WebAuthn / passkey credentials. Bound to an existing user (always
 // bootstrapped via GitHub OAuth first), so this table only ever holds
