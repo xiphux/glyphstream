@@ -24,6 +24,9 @@ arrived.
   points. A URL starting with `//` or an upper-case `HTTP://` used to skip the
   check, so a misbehaving server could make Glyphstream fetch an internal
   address with the endpoint's API key attached.
+- Web pages read by the model, Python's web requests and media URLs from a
+  model server can no longer be steered to an internal address by a domain
+  whose DNS answer changes between the safety check and the connection.
 
 ### Fixed
 

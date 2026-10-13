@@ -13,6 +13,8 @@
  */
 
 import dns from 'node:dns';
+import type { LookupAddress } from 'node:dns';
+import { Agent } from 'undici';
 
 export class UrlPolicyError extends Error {
 	constructor(message: string) {
@@ -34,12 +36,12 @@ export function assertHttpScheme(url: URL): void {
  * should call this on every hop so a public→private redirect is
  * caught at the same gate as the initial address.
  *
- * There's an unavoidable TOCTOU window between the DNS lookup here and
- * the actual socket connect — a DNS-rebinding attacker could swap
- * addresses in between. The goal here is to defeat the common-case
- * "model emits an internal URL or follows a redirect into the LAN"
- * path, which it does. Hardening against DNS rebinding requires socket-
- * level address pinning, which is out of scope for v1.
+ * This check alone is not enough: `fetch` resolves the name again when it
+ * connects, and a DNS-rebinding server can answer the second lookup with a
+ * private address. So every caller ALSO fetches through {@link fetchRoutable},
+ * which applies the same filter to the
+ * lookup the socket actually uses. This early check stays because it gives a
+ * clear refusal message before any connection is attempted.
  */
 export async function assertHostnameRoutable(hostname: string): Promise<void> {
 	const addrs = await dns.promises.lookup(hostname, { all: true });
@@ -50,6 +52,72 @@ export async function assertHostnameRoutable(hostname: string): Promise<void> {
 			);
 		}
 	}
+}
+
+/**
+ * Lowercase a URL hostname and drop a trailing root dot. `api.example.com.`
+ * names the same host as `api.example.com`, so a comparison against a set of
+ * configured hostnames has to see them as equal.
+ */
+export function normalizeHostname(hostname: string): string {
+	return hostname.toLowerCase().replace(/\.$/, '');
+}
+
+type LookupCallback = (
+	err: NodeJS.ErrnoException | null,
+	address: string | LookupAddress[],
+	family?: number,
+) => void;
+
+/**
+ * A `connect.lookup` that resolves like the default and then refuses the
+ * connection when any resolved address is private. Because the socket
+ * connects to what this returns, the address that was checked is the
+ * address that is used, which closes the DNS-rebinding window that a
+ * check-then-fetch leaves open.
+ */
+function routableOnlyLookup(
+	hostname: string,
+	options: dns.LookupOptions,
+	callback: LookupCallback,
+): void {
+	dns.lookup(hostname, { ...options, all: true }, (err, addrs) => {
+		if (err) return callback(err, []);
+		const bad = addrs.find((a) => isPrivateIp(a.address));
+		if (bad) {
+			return callback(
+				new UrlPolicyError(
+					`Refused: ${hostname} resolves to private/reserved address ${bad.address}.`,
+				),
+				[],
+			);
+		}
+		if (addrs.length === 0) {
+			const e: NodeJS.ErrnoException = new Error(`No addresses for ${hostname}`);
+			e.code = 'ENOTFOUND';
+			return callback(e, []);
+		}
+		if (options.all) return callback(null, addrs);
+		callback(null, addrs[0].address, addrs[0].family);
+	});
+}
+
+let routableDispatcher: Agent | undefined;
+
+/**
+ * `fetch` for every URL that came from an untrusted source (a model's tool
+ * call, Python in the interpreter, an upstream's media URL). It connects only
+ * to publicly routable addresses; see {@link assertHostnameRoutable} for why
+ * the early check isn't enough on its own.
+ *
+ * An IP-literal host never reaches the lookup, so callers must still run
+ * `assertHostnameRoutable` first; it rejects private literals.
+ */
+export function fetchRoutable(input: string | URL, init: RequestInit): Promise<Response> {
+	routableDispatcher ??= new Agent({ connect: { lookup: routableOnlyLookup } });
+	// The DOM `RequestInit` the app type-checks against has no `dispatcher`;
+	// Node's fetch reads it.
+	return fetch(input, { ...init, dispatcher: routableDispatcher } as RequestInit);
 }
 
 /**

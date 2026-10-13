@@ -14,13 +14,20 @@
  *   1. the conversation's `web` toggle (off → refuse everything),
  *   2. http(s) only,
  *   3. not a configured backend host (upstream LLM / search endpoint),
- *   4. the hostname must resolve to a publicly routable address.
+ *   4. the hostname must resolve to a publicly routable address, checked
+ *      again at connect time so DNS rebinding can't swap it.
  *
  * Deliberately free of SvelteKit / config imports: the caller passes the
  * forbidden-host set, so the real-Pyodide integration test can drive it.
  */
 
-import { assertHostnameRoutable, assertHttpScheme, UrlPolicyError } from '../tools/url-policy-base';
+import {
+	assertHostnameRoutable,
+	assertHttpScheme,
+	normalizeHostname,
+	fetchRoutable,
+	UrlPolicyError,
+} from '../tools/url-policy-base';
 
 export interface ProxyFetchRequest {
 	url: string;
@@ -83,7 +90,7 @@ export async function proxyInterpreterFetch(
 			);
 		}
 		assertHttpScheme(current);
-		const host = current.hostname.toLowerCase();
+		const host = normalizeHostname(current.hostname);
 		if (policy.forbiddenHosts.has(host)) {
 			throw new UrlPolicyError(
 				`Refused: ${host} is a configured backend (an upstream LLM or search endpoint); the model is not allowed to reach it through tool calls.`,
@@ -94,7 +101,7 @@ export async function proxyInterpreterFetch(
 		// `redirect: 'manual'` so the policy re-runs on every hop. The body is
 		// only sent on the first hop; replaying it across redirects is its own
 		// can of worms and a 307/308 that needs it is rare from model code.
-		const res = await fetch(current, {
+		const res = await fetchRoutable(current, {
 			method: req.method,
 			headers: req.headers,
 			body: hop === 0 && req.body ? req.body : undefined,

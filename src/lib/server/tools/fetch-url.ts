@@ -8,10 +8,9 @@
  * SSRF guard (block-by-default): rejects non-http(s) schemes, and any
  * hostname whose DNS resolution lands in private / loopback / link-local
  * / cloud-metadata / multicast space — including across HTTP redirects.
- * There's an unavoidable TOCTOU window between our DNS lookup and the
- * actual socket connect (a DNS-rebinding attacker could swap addresses),
- * but the goal here is to defeat the common-case "model hallucinates an
- * internal URL or follows a redirect into the LAN" path, which it does.
+ * The same filter runs again on the lookup the socket connects with
+ * (`fetchRoutable`), so DNS rebinding can't swap in a private
+ * address between the check and the connect.
  *
  * Content types: text/html -> extracted to plain text; text/plain &
  * text/markdown -> pass-through; application/json -> re-stringified;
@@ -33,6 +32,7 @@ import {
 	assertHttpScheme,
 	assertNotConfiguredBackend,
 	isPrivateIp,
+	fetchRoutable,
 } from './url-policy';
 
 const TIMEOUT_MS = 10_000;
@@ -145,7 +145,7 @@ async function fetchAndExtract(
 		await assertHostnameRoutable(current.hostname);
 
 		const signal = composeSignals(ctxSignal, AbortSignal.timeout(TIMEOUT_MS));
-		const res = await fetch(current, {
+		const res = await fetchRoutable(current, {
 			redirect: 'manual',
 			signal,
 			headers: {

@@ -42,13 +42,15 @@
  */
 
 import { loadEndpoints, loadSearchConfig } from '../endpoints/config';
-import { UrlPolicyError } from './url-policy-base';
+import { normalizeHostname, UrlPolicyError } from './url-policy-base';
 
 export {
 	UrlPolicyError,
 	assertHttpScheme,
 	assertHostnameRoutable,
 	isPrivateIp,
+	normalizeHostname,
+	fetchRoutable,
 } from './url-policy-base';
 
 /**
@@ -73,7 +75,7 @@ export {
  */
 export function assertNotConfiguredBackend(url: URL): void {
 	const forbidden = getForbiddenHosts();
-	const host = url.hostname.toLowerCase();
+	const host = normalizeHostname(url.hostname);
 	if (forbidden.has(host)) {
 		throw new UrlPolicyError(
 			`Refused: ${host} is a configured backend (an upstream LLM or search endpoint); the model is not allowed to reach it through tool calls.`,
@@ -89,7 +91,7 @@ function getForbiddenHosts(): Set<string> {
 	try {
 		for (const ep of loadEndpoints()) {
 			try {
-				set.add(new URL(ep.baseUrl).hostname.toLowerCase());
+				set.add(normalizeHostname(new URL(ep.baseUrl).hostname));
 			} catch {
 				// Skip malformed entries — loadEndpoints validates `base_url`
 				// at boot, so this is defense-in-depth more than a real
@@ -106,7 +108,7 @@ function getForbiddenHosts(): Set<string> {
 		const search = loadSearchConfig();
 		if (search) {
 			try {
-				set.add(new URL(search.url).hostname.toLowerCase());
+				set.add(normalizeHostname(new URL(search.url).hostname));
 			} catch {
 				// Same defense-in-depth as above.
 			}

@@ -3,7 +3,12 @@ import { Readable } from 'node:stream';
 import type { LoadedEndpoint } from './config';
 import type { UpstreamModel } from '#lib/types/api.js';
 import { composeSignals } from '../util/abort';
-import { assertHostnameRoutable, assertHttpScheme, UrlPolicyError } from '../tools/url-policy-base';
+import {
+	assertHostnameRoutable,
+	assertHttpScheme,
+	fetchRoutable,
+	UrlPolicyError,
+} from '../tools/url-policy-base';
 
 /** Redirect cap for the guarded (untrusted, off-host) media-fetch path. */
 const MAX_UPSTREAM_REDIRECTS = 5;
@@ -143,9 +148,10 @@ async function doFetch(
 	url: string,
 	init: RequestInit,
 	networkErrorPrefix: string,
+	fetcher: typeof fetchRoutable = fetch,
 ): Promise<Response> {
 	try {
-		return await fetch(url, init);
+		return await fetcher(url, init);
 	} catch (e) {
 		wrapFetchFailure(e, networkErrorPrefix, null);
 	}
@@ -816,6 +822,7 @@ export async function fetchUpstreamBytes(
 				signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
 			},
 			`Network error fetching media from ${current.href}`,
+			fetchRoutable,
 		);
 		if (res.status >= 300 && res.status < 400) {
 			const loc = res.headers.get('location');
