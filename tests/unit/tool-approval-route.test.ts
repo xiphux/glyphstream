@@ -44,6 +44,9 @@ const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
 	toolDefs: [] as unknown[],
 	relayCalls: [] as unknown[],
+	/** Runs once per executed tool call; a test can make it slow. */
+	execute: null as unknown as () => Promise<void>,
+	executions: 0,
 }));
 
 vi.mock('#lib/server/db/client.js', () => ({
@@ -72,10 +75,11 @@ vi.mock('#lib/server/chat/persona-context.js', () => ({
 	composePersonaPrompt: () => null,
 }));
 vi.mock('#lib/server/streaming/tool-execution.js', () => ({
-	executeOneToolCall: async () => ({
-		execution: { content: '{"ok":true}', isError: false },
-		mediaParts: [],
-	}),
+	executeOneToolCall: async () => {
+		mocks.executions++;
+		await mocks.execute();
+		return { execution: { content: '{"ok":true}', isError: false }, mediaParts: [] };
+	},
 }));
 vi.mock('#lib/server/streaming/relay.js', () => ({
 	startStreamingRelay: async (opts: unknown) => {
@@ -135,12 +139,18 @@ function seedPendingApproval(): { conversationId: string; userId: string } {
 	return { conversationId: conv.id, userId: u.id };
 }
 
-function approve(conversationId: string, userId: string) {
+function approve(
+	conversationId: string,
+	userId: string,
+	decisions: Array<{ toolCallId: string; action: string }> = [
+		{ toolCallId: 'call_1', action: 'allow' },
+	],
+) {
 	const url = new URL(`http://x/api/conversations/${conversationId}/tool-approval`);
 	const request = new Request(url, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ decisions: [{ toolCallId: 'call_1', action: 'allow' }] }),
+		body: JSON.stringify({ decisions }),
 	});
 	return POST({
 		locals: { user: { id: userId } },
@@ -157,6 +167,8 @@ beforeEach(() => {
 	mocks.testDb = createTestDb();
 	mocks.toolDefs = [];
 	mocks.relayCalls = [];
+	mocks.execute = async () => {};
+	mocks.executions = 0;
 });
 afterEach(() => {
 	resetInFlight();
@@ -191,5 +203,39 @@ describe('POST /tool-approval — tools[] matches the send path', () => {
 		const [opts] = mocks.relayCalls as RelayOpts[];
 		const rebuilt = await opts.rebuildRequestBody();
 		expect(names(rebuilt.tools)).toEqual(['web_search']);
+	});
+});
+
+describe('POST /tool-approval — a pending call runs at most once', () => {
+	it('executes a tool call named twice in one body once', async () => {
+		const s = seedPendingApproval();
+		await approve(s.conversationId, s.userId, [
+			{ toolCallId: 'call_1', action: 'allow' },
+			{ toolCallId: 'call_1', action: 'allow' },
+		]);
+		expect(mocks.executions).toBe(1);
+	});
+
+	it('executes once when two approvals for the same call overlap', async () => {
+		// A second tab, or a retry, posting while the first approval's tool is
+		// still running. The pending row only stops being pending once the
+		// result is written, so without a claim both requests would run it.
+		const s = seedPendingApproval();
+		const waiting: Array<() => void> = [];
+		mocks.execute = () => new Promise<void>((r) => waiting.push(r));
+
+		const first = approve(s.conversationId, s.userId);
+		await vi.waitFor(() => expect(mocks.executions).toBe(1));
+		const second = Promise.resolve(approve(s.conversationId, s.userId)).then(
+			() => 'ok',
+			(e: { status?: number }) => e.status,
+		);
+		// Give the second request time to reach the pending row while the
+		// first is still executing.
+		await new Promise((r) => setTimeout(r, 50));
+		for (const r of waiting) r();
+		await first;
+		expect(await second).toBe(409);
+		expect(mocks.executions).toBe(1);
 	});
 });

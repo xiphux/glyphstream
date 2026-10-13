@@ -45,6 +45,8 @@ arrived.
 - Model servers that number streamed tool calls loosely (reusing an index, or
   leaving it out) no longer have separate tool calls merged into one or
   dropped.
+- Approving a tool call from two tabs at once, or a request that repeated the
+  approval, no longer runs the tool twice.
 
 ## v0.44.1
 

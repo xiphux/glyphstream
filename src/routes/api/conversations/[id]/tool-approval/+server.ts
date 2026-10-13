@@ -57,6 +57,18 @@ function isToolResultPart(p: MessagePart): p is Extract<MessagePart, { type: 'to
 	return p.type === 'tool_result';
 }
 
+/**
+ * Tool calls being executed right now, keyed `conversationId:toolCallId`.
+ *
+ * A pending row stops looking pending only when its result is written, which
+ * happens after the tool runs. A second approval for the same call arriving in
+ * between (another tab, a retry, or the same id twice in one body) would
+ * otherwise run the tool again. A call is claimed synchronously right after
+ * it is found pending and released once its result is written (or execution
+ * failed, leaving it pending to approve again).
+ */
+const executingToolCalls = new Set<string>();
+
 export const POST: RequestHandler = async ({ params, request, locals }) => {
 	if (!locals.user) error(401, 'Sign in to continue.');
 	const userId = locals.user.id;
@@ -86,28 +98,36 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 	await awaitMcpReady();
 
-	// Snapshot the branch *before* we mutate it so the toolCallId lookups
-	// are stable across the decision loop. Apply changes via
-	// updateMessageParts — the active-leaf doesn't move because we're
-	// rewriting existing rows, not appending.
-	const branch = walkActiveBranch(params.id, { columns: 'serialization' });
+	// Apply changes via updateMessageParts — the active-leaf doesn't move
+	// because we're rewriting existing rows, not appending.
 	const newlyTrusted: string[] = [];
 	let updatedAny = false;
 
 	for (const decision of body.decisions) {
+		// Read the branch fresh for each decision, and claim the call in the
+		// same synchronous step: a snapshot taken once before the loop goes
+		// stale across the awaits below, and a concurrent request could finish
+		// and release a call this request would then see as still pending.
+		const branch = walkActiveBranch(params.id, { columns: 'serialization' });
 		const found = findPending(branch, decision.toolCallId);
 		if (!found) continue;
-		const { toolMsg, resultPart, toolCallPart } = found;
-
-		let nextPart: Extract<MessagePart, { type: 'tool_result' }>;
-		if (decision.action === 'reject') {
-			nextPart = {
-				type: 'tool_result',
-				toolCallId: resultPart.toolCallId,
-				result: JSON.stringify({ error: 'User declined this tool call.' }),
-				isError: true,
-			};
-		} else {
+		const claim = `${params.id}:${decision.toolCallId}`;
+		if (executingToolCalls.has(claim)) continue;
+		executingToolCalls.add(claim);
+		try {
+			const { toolMsg, resultPart, toolCallPart } = found;
+			if (decision.action === 'reject') {
+				updateMessageParts(toolMsg.id, params.id, [
+					{
+						type: 'tool_result',
+						toolCallId: resultPart.toolCallId,
+						result: JSON.stringify({ error: 'User declined this tool call.' }),
+						isError: true,
+					},
+				]);
+				updatedAny = true;
+				continue;
+			}
 			const execResult = await executeOneToolCall(
 				toolCallPart,
 				userId,
@@ -115,7 +135,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				request.signal,
 				disabledFeatures,
 			);
-			nextPart = {
+			const nextPart: Extract<MessagePart, { type: 'tool_result' }> = {
 				type: 'tool_result',
 				toolCallId: resultPart.toolCallId,
 				result: execResult.execution.content,
@@ -132,11 +152,9 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			if (decision.action === 'allow_always') newlyTrusted.push(toolCallPart.toolName);
 			updateMessageParts(toolMsg.id, params.id, [nextPart, ...execResult.mediaParts]);
 			updatedAny = true;
-			continue;
+		} finally {
+			executingToolCalls.delete(claim);
 		}
-
-		updateMessageParts(toolMsg.id, params.id, [nextPart]);
-		updatedAny = true;
 	}
 
 	if (!updatedAny) {
