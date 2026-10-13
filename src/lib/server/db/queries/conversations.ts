@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import { MAX_CONVERSATION_TITLE_LENGTH } from '#lib/types/api.js';
 import type {
@@ -794,4 +794,15 @@ export function deleteConversation(
 		if (owned.summary !== null) reconcileOverviewAfterConversationDelete(userId, tx);
 		return { ok: true, trashedMediaIds };
 	});
+}
+
+/** The subset of `ids` that `userId` owns. */
+export function ownedConversationIds(userId: string, ids: readonly string[]): string[] {
+	if (ids.length === 0) return [];
+	return getDb()
+		.select({ id: conversations.id })
+		.from(conversations)
+		.where(and(eq(conversations.userId, userId), inArray(conversations.id, [...ids])))
+		.all()
+		.map((r) => r.id);
 }

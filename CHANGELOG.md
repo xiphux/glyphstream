@@ -9,6 +9,12 @@ arrived.
 
 ## Unreleased
 
+### Added
+
+- An optional cap on how many generations one non-admin user can have queued
+  (`[limits] max_queued_generations_per_user`). Off by default; admins are
+  never capped.
+
 ### Security
 
 - Text fields now have generous size limits (2 million characters for a

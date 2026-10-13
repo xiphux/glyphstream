@@ -290,3 +290,17 @@ export function resetInFlight(): void {
 	}
 	inFlight.clear();
 }
+
+/** Ids of every conversation with at least one generation in flight. Raw
+ *  registry keys, so callers must scope them to a user before using them
+ *  (see generation/user-cap.ts). */
+export function activeConversationIds(): string[] {
+	return [...inFlight.keys()];
+}
+
+/** Total in-flight generations across `conversationIds`. */
+export function countInFlight(conversationIds: readonly string[]): number {
+	let n = 0;
+	for (const id of conversationIds) n += inFlight.get(id)?.size ?? 0;
+	return n;
+}

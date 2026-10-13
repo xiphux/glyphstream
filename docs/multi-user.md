@@ -154,6 +154,21 @@ The pause is **saved in the database**, so it survives restarting GlyphStream
 itself: an endpoint paused before a redeploy is still paused when the new
 container starts, and stays that way until you resume it.
 
+### Capping one person's queue
+
+By default nobody's queue is capped: on a box only you use, queueing a thousand
+images overnight is a normal thing to do. If invitees share your GPU, you can stop
+any one of them from filling its queue:
+
+```toml
+[limits]
+max_queued_generations_per_user = 40
+```
+
+A non-admin with that many generations queued or running (chat replies, images,
+videos and avatar draws all count) gets "try again when some finish" until some
+complete. **Admins are never capped.**
+
 ### Restarting GlyphStream with generations queued
 
 Image and video generations are saved as they're queued, so restarting or

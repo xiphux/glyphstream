@@ -748,19 +748,20 @@ a reasoning model headroom; raise it for one that thinks harder.
 Each optional feature gets its own capability-named block, documented in its
 own guide:
 
-| Block                 | Feature                                                                  | Guide                                            |
-| --------------------- | ------------------------------------------------------------------------ | ------------------------------------------------ |
-| `[search]`            | `web_search` via SearxNG                                                 | [Web search & RAG](web-search.md)                |
-| `[embeddings]`        | semantic retrieval (`fetch_url`, `recall_memory`, gallery prompt search) | [Web search & RAG](web-search.md)                |
-| `[task_model]`        | auto-titles and topic-label backfill                                     | [above](#auto-titling-task_model)                |
-| `[vision]`            | downscaling images inlined for a vision model                            | [above](#inlined-image-size-vision)              |
-| `[rerank]`            | reranking `fetch_url` candidates                                         | [Web search & RAG](web-search.md)                |
-| `[image_enhancement]` | LLM prompt rewriting for image + video models                            | [above](#prompt-enhancement-image_enhancement)   |
-| `[memory_model]`      | background memory consolidation ("dreaming")                             | [above](#memory-consolidation-memory_model)      |
-| `[code_interpreter]`  | the sandboxed Python runtime                                             | [Code interpreter](code-interpreter.md)          |
-| `[[mcp_servers]]`     | external Model Context Protocol servers                                  | [MCP servers](mcp.md)                            |
-| `[tools]`             | tool-loop iteration cap                                                  | [MCP servers](mcp.md#deferred-tools-tool-search) |
-| `[notifications]`     | web push                                                                 | [Push notifications](notifications.md)           |
+| Block                 | Feature                                                                  | Guide                                                 |
+| --------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `[search]`            | `web_search` via SearxNG                                                 | [Web search & RAG](web-search.md)                     |
+| `[embeddings]`        | semantic retrieval (`fetch_url`, `recall_memory`, gallery prompt search) | [Web search & RAG](web-search.md)                     |
+| `[task_model]`        | auto-titles and topic-label backfill                                     | [above](#auto-titling-task_model)                     |
+| `[limits]`            | optional per-user cap on queued generations (admins exempt)              | [Multi-user](multi-user.md#capping-one-persons-queue) |
+| `[vision]`            | downscaling images inlined for a vision model                            | [above](#inlined-image-size-vision)                   |
+| `[rerank]`            | reranking `fetch_url` candidates                                         | [Web search & RAG](web-search.md)                     |
+| `[image_enhancement]` | LLM prompt rewriting for image + video models                            | [above](#prompt-enhancement-image_enhancement)        |
+| `[memory_model]`      | background memory consolidation ("dreaming")                             | [above](#memory-consolidation-memory_model)           |
+| `[code_interpreter]`  | the sandboxed Python runtime                                             | [Code interpreter](code-interpreter.md)               |
+| `[[mcp_servers]]`     | external Model Context Protocol servers                                  | [MCP servers](mcp.md)                                 |
+| `[tools]`             | tool-loop iteration cap                                                  | [MCP servers](mcp.md#deferred-tools-tool-search)      |
+| `[notifications]`     | web push                                                                 | [Push notifications](notifications.md)                |
 
 ## `.env` reference
 

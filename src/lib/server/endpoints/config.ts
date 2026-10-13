@@ -679,6 +679,36 @@ export function loadMaxToolLoopIterations(path = configPath()): number {
 	);
 }
 
+/**
+ * Read `[limits] max_queued_generations_per_user`: how many generations (chat
+ * replies, images, videos, avatar draws; queued or running) one non-admin
+ * user may have in flight at once. Unset means no cap, which is the default:
+ * on a one-person install the owner may queue a thousand images overnight,
+ * and admins are never capped anyway. Set it when invitees share the GPU.
+ */
+export function loadMaxQueuedGenerationsPerUser(path = configPath()): number | null {
+	return readTableScalar<number | null>(
+		path,
+		'limits',
+		'max_queued_generations_per_user',
+		null,
+		(raw, at) => {
+			if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1) {
+				throw new ConfigError(`${at} must be a positive integer`);
+			}
+			return raw;
+		},
+	);
+}
+
+let maxQueuedGenerationsCache: { value: number | null } | undefined;
+
+/** Memoized {@link loadMaxQueuedGenerationsPerUser}. */
+export function getMaxQueuedGenerationsPerUser(): number | null {
+	maxQueuedGenerationsCache ??= { value: loadMaxQueuedGenerationsPerUser() };
+	return maxQueuedGenerationsCache.value;
+}
+
 let maxToolLoopIterationsCache: number | undefined;
 
 /** Memoized {@link loadMaxToolLoopIterations} for the per-request hot path

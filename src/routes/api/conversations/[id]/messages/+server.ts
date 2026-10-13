@@ -53,6 +53,7 @@ import { isMediaKind } from '#lib/fanout.js';
 import { isModelKind } from '#lib/types/api.js';
 import type { ModelEntry, SendMessageRequest } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
+import { enforceGenerationCap } from '#lib/server/generation/user-cap.js';
 
 export const POST: RequestHandler = async ({ locals, params, request, url }) => {
 	requireUser(locals);
@@ -83,6 +84,10 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		getConversationMeta(params.id, locals.user.id),
 		'Conversation not found',
 	);
+	// Opt-in per-user cap (config `[limits]`), before anything is persisted.
+	// Checked once at admission, so a burst of simultaneous requests can pass
+	// it together; it bounds a queue, it isn't an exact quota.
+	enforceGenerationCap(locals.user);
 
 	// The effective feature opt-outs for this turn. For a "Private chat" this is
 	// the base set sealed up (personalization/web/mcp/prompt-enhancement all off);

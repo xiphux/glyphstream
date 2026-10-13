@@ -69,6 +69,15 @@
 # max_tool_loop_iterations = 8
 # max_tool_result_chars = 16384
 
+# ── Optional: [limits] ───────────────────────────────────────────────
+# max_queued_generations_per_user — how many generations (chat replies, images,
+# videos, avatar draws; queued or running) one NON-ADMIN user may have in flight
+# at once. Unset (the default) means no cap. Admins are never capped. Set it
+# when invitees share your GPU, so one person can't fill its queue. See
+# docs/multi-user.md#capping-one-persons-queue.
+# [limits]
+# max_queued_generations_per_user = 40
+
 # ── Optional: [vision] ───────────────────────────────────────────────
 # Controls the downscaled copy of an image that gets inlined into a chat
 # request. Attached images are re-sent on EVERY turn for the life of the

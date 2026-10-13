@@ -68,6 +68,7 @@ import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '#lib/fanout.js';
 import { resolveBranchIndex } from '#lib/server/messages/fanout-dispatch.js';
 import { partsToText } from '#lib/message-parts.js';
 import type { RequestHandler } from './$types';
+import { enforceGenerationCap } from '#lib/server/generation/user-cap.js';
 
 interface GenerateAvatarBody {
 	/** The assistant message the portrait hangs under. Still required when
@@ -116,6 +117,10 @@ interface GenerateAvatarBody {
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
 	requireUser(locals);
+	// Opt-in per-user cap (config `[limits]`), before anything is persisted.
+	// Checked once at admission, so a burst of simultaneous requests can pass
+	// it together; it bounds a queue, it isn't an exact quota.
+	enforceGenerationCap(locals.user);
 
 	const body = await parseJsonBody<GenerateAvatarBody>(request);
 	if (typeof body.sourceMessageId !== 'string' || !body.sourceMessageId) {
