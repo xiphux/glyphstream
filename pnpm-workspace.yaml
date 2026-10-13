@@ -13,8 +13,6 @@
 # to the 0.7.2 already in the lockfile — a cookie API kit 3 doesn't speak. The
 # other consumer, express under the MCP SDK, declares ^0.7.1 on its own.)
 overrides:
-  fast-uri: '>=4.1.3'
-  ip-address: '>=10.3.1'
   hono: '>=4.13.5'
   '@hono/node-server': '>=2.0.5'
   qs: '>=6.16.0'
@@ -70,8 +68,3 @@ engineStrict: true
 # immediately: for an urgent one, add the package to minimumReleaseAgeExclude
 # with a note, and take it back out once that version is three days old.
 minimumReleaseAge: 4320
-minimumReleaseAgeExclude:
-  # Renovate security update: smol-toml@1.9.0
-  - smol-toml@1.9.0
-  # Renovate security update: sharp@0.35.5
-  - sharp@0.35.5
