@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
 	import { refreshAll } from '$app/navigation';
 	import ModelPicker from '#lib/components/chat/ModelPicker.svelte';
@@ -119,6 +120,11 @@
 		avatarObjectUrl = file ? URL.createObjectURL(file) : null;
 		avatarFile = file;
 	}
+	// Leaving the page with a picked-but-unsaved avatar would otherwise keep its
+	// preview blob alive for the rest of the session.
+	onDestroy(() => {
+		if (avatarObjectUrl) URL.revokeObjectURL(avatarObjectUrl);
+	});
 
 	function onAvatarPicked(e: Event): void {
 		const input = e.currentTarget as HTMLInputElement;
