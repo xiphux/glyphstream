@@ -1,7 +1,12 @@
 import { error } from '@sveltejs/kit';
 import { requireFound, requireUser } from '#lib/server/auth/guard.js';
 import { getConversationMeta, getFanoutParent } from '#lib/server/db/queries/conversations.js';
-import { prepareCompaction, runCompaction, undoCompaction } from '#lib/server/chat/compaction.js';
+import {
+	COMPACTION_STALE_MESSAGE,
+	prepareCompaction,
+	runCompaction,
+	undoCompaction,
+} from '#lib/server/chat/compaction.js';
 import { streamCompaction } from '#lib/server/streaming/compaction-relay.js';
 import { sseResponse } from '#lib/server/streaming/sse-transport.js';
 import { formatUpstreamError, UpstreamError } from '#lib/server/endpoints/client.js';
@@ -44,6 +49,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		if (result.status === 'noop') {
 			error(409, 'Not enough conversation history to compact yet.');
 		}
+		if (result.status === 'stale') error(409, COMPACTION_STALE_MESSAGE);
 		return Response.json({ ok: true, summaryMessageId: result.summaryMessageId });
 	} catch (e) {
 		if (e instanceof UpstreamError) {

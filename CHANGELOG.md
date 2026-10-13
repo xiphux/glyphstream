@@ -52,6 +52,9 @@ arrived.
   the approval was lost.
 - An MCP server that connects but then fails to list its tools no longer
   leaves a stray process (or open connection) behind on every retry.
+- Compacting a conversation while a message is sent to it from another tab or
+  device no longer hides that message. The compaction now stops and asks you
+  to try again.
 
 ## v0.44.1
 

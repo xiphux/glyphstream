@@ -14,7 +14,12 @@
  */
 
 import { getConversationMeta } from '../db/queries/conversations';
-import { appendMessage, truncateAtMessage, walkActiveBranch } from '../db/queries/messages';
+import {
+	appendMessage,
+	getActiveLeafMessageId,
+	truncateAtMessage,
+	walkActiveBranch,
+} from '../db/queries/messages';
 import { chatCompletionSync, type ChatCompletionRequest } from '../endpoints/client';
 import { acquireEndpointSlot } from '../endpoints/concurrency';
 import type { LoadedEndpoint, ProviderQuirk } from '../endpoints/config';
@@ -75,6 +80,8 @@ export interface CompactionPlan {
 	resumeMessageId: string;
 	/** The active leaf the summary is appended under. */
 	parentLeafId: string;
+	/** Owner of the conversation, for re-reading its leaf before persisting. */
+	userId: string;
 	maxTokens: number;
 	temperature: number;
 }
@@ -153,22 +160,39 @@ export async function prepareCompaction(
 		messages,
 		resumeMessageId: cut.resumeMessageId,
 		parentLeafId: leaf.id,
+		userId,
 		maxTokens: summaryMaxTokens(promptTokens, contextWindow),
 		temperature: SUMMARY_TEMPERATURE,
 	};
 }
 
+/** Told to the user when the conversation moved on while it was summarized. */
+export const COMPACTION_STALE_MESSAGE =
+	'The conversation changed while it was being summarized, so nothing was compacted. Try again.';
+
 /**
  * Persist a generated summary as the compaction-anchor message. Shared by the
  * sync and streaming paths so the row shape (marker, content_html, leaf
- * advance) can't drift between them. Returns the persisted message.
+ * advance) can't drift between them. Returns the persisted message, or null
+ * when the conversation's leaf is no longer the one the summary was planned
+ * against.
+ *
+ * The plan captures the leaf before the endpoint slot is acquired and the
+ * summary is generated — minutes, on a busy single-GPU endpoint. A message
+ * sent from another tab or device in that time moves the leaf on; appending
+ * the summary under the old leaf and advancing onto it would drop that
+ * exchange off the active branch. The summary also no longer covers the
+ * conversation as it now stands, so it is not persisted at all. The check and
+ * the append run with no await between them, so nothing can slip in after
+ * the check (node:sqlite is synchronous).
  */
 export async function persistCompactionSummary(
 	conversationId: string,
 	plan: CompactionPlan,
 	summaryText: string,
-): Promise<ChatMessage> {
+): Promise<ChatMessage | null> {
 	const contentHtml = await renderMarkdown(summaryText);
+	if (getActiveLeafMessageId(conversationId, plan.userId) !== plan.parentLeafId) return null;
 	return appendMessage({
 		conversationId,
 		parentMessageId: plan.parentLeafId,
@@ -182,7 +206,7 @@ export async function persistCompactionSummary(
 }
 
 export type CompactionResult =
-	{ status: 'compacted'; summaryMessageId: string } | { status: 'noop' };
+	{ status: 'compacted'; summaryMessageId: string } | { status: 'noop' } | { status: 'stale' };
 
 /**
  * Synchronous compaction — plan, call the model once (blocking), persist.
@@ -216,6 +240,7 @@ export async function runCompaction(
 		if (!summaryText) return { status: 'noop' };
 
 		const summaryMsg = await persistCompactionSummary(conversationId, plan, summaryText);
+		if (!summaryMsg) return { status: 'stale' };
 		return { status: 'compacted', summaryMessageId: summaryMsg.id };
 	} finally {
 		slot.release();

@@ -142,9 +142,13 @@ async function drainEvents(stream: ReadableStream<Uint8Array>): Promise<StreamEv
 	return events;
 }
 
+/** Owner of the conversation the last seedBranch() created. */
+let seededUserId = '';
+
 /** Seed a conversation with one user + one assistant turn; return ids. */
 function seedBranch(): { conversationId: string; userMsg: ChatMessage; leaf: ChatMessage } {
 	const u = seedUser();
+	seededUserId = u.id;
 	const conv = createConversation({
 		userId: u.id,
 		endpointId: 'bridge',
@@ -180,6 +184,7 @@ function planFor(opts: { resumeMessageId: string; parentLeafId: string }): Compa
 		],
 		resumeMessageId: opts.resumeMessageId,
 		parentLeafId: opts.parentLeafId,
+		userId: seededUserId,
 		maxTokens: 1024,
 		temperature: 0.3,
 	};
@@ -302,6 +307,46 @@ describe('streamCompaction', () => {
 		expect(err?.message).toMatch(/cancelled/i);
 		expect(events.some((e) => e.type === 'compaction_done')).toBe(false);
 		expect(walkActiveBranch(conversationId).length).toBe(before);
+	});
+});
+
+describe('streamCompaction — the conversation moves on meanwhile', () => {
+	it('persists nothing and leaves the newer exchange on the branch', async () => {
+		// The plan captured the leaf before the summary was generated. A message
+		// sent from another device while it streams moves the leaf; appending the
+		// summary under the old leaf and advancing onto it would drop that
+		// exchange off the active branch.
+		const { conversationId, userMsg, leaf } = seedBranch();
+		let newer: ChatMessage | null = null;
+		mocks.upstreamResponses = [
+			() => {
+				newer = appendMessage({
+					conversationId,
+					parentMessageId: leaf.id,
+					role: 'user',
+					parts: [{ type: 'text', text: 'sent from my phone' }],
+				});
+				return sseResponse([textChunk('A summary.'), finishChunk('stop')]);
+			},
+		];
+
+		const events = await drainEvents(
+			streamCompaction({
+				conversationId,
+				plan: planFor({ resumeMessageId: userMsg.id, parentLeafId: leaf.id }),
+			}),
+		);
+
+		expect(events.some((e) => e.type === 'compaction_done')).toBe(false);
+		expect(events).toContainEqual(
+			expect.objectContaining({
+				type: 'error',
+				message: expect.stringMatching(/changed while/) as unknown,
+			}),
+		);
+		const branch = walkActiveBranch(conversationId);
+		expect(branch.at(-1)?.id).toBe(newer!.id);
+		expect(branch.some((m) => m.compactionResumeFromMessageId)).toBe(false);
 	});
 });
 

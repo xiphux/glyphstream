@@ -12,7 +12,11 @@
 
 import { chatCompletionStream } from '../endpoints/client';
 import { acquireEndpointSlot, type EndpointSlot } from '../endpoints/concurrency';
-import { persistCompactionSummary, type CompactionPlan } from '../chat/compaction';
+import {
+	COMPACTION_STALE_MESSAGE,
+	persistCompactionSummary,
+	type CompactionPlan,
+} from '../chat/compaction';
 import { parseSSEStream } from './sse-parser';
 import { createNormalizer } from './normalizers';
 import { errorMessage, isAbortError, sseWriter } from './sse-transport';
@@ -144,6 +148,10 @@ export function streamCompaction(args: StreamCompactionArgs): ReadableStream<Uin
 				}
 
 				const summaryMessage = await persistCompactionSummary(conversationId, plan, summaryText);
+				if (!summaryMessage) {
+					write({ type: 'error', message: COMPACTION_STALE_MESSAGE });
+					return;
+				}
 				write({ type: 'compaction_done', summaryMessage });
 			} catch (e) {
 				write({ type: 'error', message: errorMessage(e) });
