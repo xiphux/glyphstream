@@ -140,3 +140,20 @@ describe('fenceCode', () => {
 		expect(fenceCode('', 'a ````` b')).toMatch(/^`{6}\n/);
 	});
 });
+
+describe('renderMarkdown — grammars load on demand', () => {
+	it('highlights a language outside the core set on its first render', async () => {
+		const html = (await renderMarkdown('```zig\nconst x: u8 = 1;\n```'))!;
+		expect(html).toContain('class="shiki');
+		expect(html).toContain('--shiki-light');
+	});
+
+	it('renders the same text to the same HTML before and after its grammar loads', async () => {
+		const text = '```kotlin\nval x = 1\n```';
+		expect(await renderMarkdown(text)).toBe(await renderMarkdown(text));
+	});
+
+	it('resolves an alias to its lazily loaded grammar', async () => {
+		expect(await renderMarkdown('```rs\nfn main() {}\n```')).toContain('class="shiki');
+	});
+});

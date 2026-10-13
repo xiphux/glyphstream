@@ -19,10 +19,15 @@ import { createHighlighter, type Highlighter } from 'shiki';
 const LIGHT_THEME = 'github-light';
 const DARK_THEME = 'github-dark';
 
-// Pre-load a useful default set. Languages outside this list fall back to
-// plain `<pre><code>` (no highlighting); we accept that to keep startup
-// time + memory bounded. Add more here as needed.
-const PRELOADED_LANGS = [
+// The languages that get highlighting. Anything else falls back to plain
+// `<pre><code>`. Add more here as needed.
+//
+// Only CORE_LANGS load with the highlighter; the rest load the first time a
+// fence asks for one (see `loadFenceLanguages`). Preloading all of them cost
+// ~110 MB of resident memory for grammars most servers never render. The set
+// that CAN highlight is this whole list either way, so whether a grammar was
+// loaded yet never changes what a message renders to.
+const SUPPORTED_LANGS = [
 	'bash',
 	'c',
 	'cpp',
@@ -57,6 +62,8 @@ const PRELOADED_LANGS = [
 	'zig',
 ];
 
+const CORE_LANGS = ['python', 'bash', 'javascript', 'typescript', 'json', 'markdown'];
+
 // Some common aliases users write that aren't shiki language ids.
 const LANG_ALIASES: Record<string, string> = {
 	js: 'javascript',
@@ -74,7 +81,7 @@ function getHighlighter(): Promise<Highlighter> {
 	if (!highlighterPromise) {
 		highlighterPromise = createHighlighter({
 			themes: [LIGHT_THEME, DARK_THEME],
-			langs: PRELOADED_LANGS,
+			langs: CORE_LANGS,
 		});
 	}
 	return highlighterPromise;
@@ -86,7 +93,6 @@ async function getMarkdownIt(): Promise<MarkdownIt> {
 	if (mdPromise) return mdPromise;
 	mdPromise = (async () => {
 		const highlighter = await getHighlighter();
-		const loaded = new Set(highlighter.getLoadedLanguages());
 
 		const md = new MarkdownItCtor({
 			html: false, // raw HTML in source markdown is escaped
@@ -94,9 +100,10 @@ async function getMarkdownIt(): Promise<MarkdownIt> {
 			typographer: false,
 			breaks: false,
 			highlight: (code, langSpec) => {
-				const requested = (langSpec ?? '').trim().toLowerCase();
-				const resolved = LANG_ALIASES[requested] ?? requested;
-				if (resolved && loaded.has(resolved)) {
+				const resolved = resolveLang(langSpec ?? '');
+				// renderMarkdown loaded every supported fence language before
+				// rendering, so a supported one is always loaded by now.
+				if (resolved && SUPPORTED.has(resolved)) {
 					try {
 						return highlighter.codeToHtml(code, {
 							lang: resolved,
@@ -169,7 +176,41 @@ export async function renderMarkdown(text: string): Promise<string | null> {
 	const trimmed = text.trim();
 	if (!trimmed) return null;
 	const md = await getMarkdownIt();
+	await loadFenceLanguages(text);
 	return md.render(text);
+}
+
+const SUPPORTED = new Set(SUPPORTED_LANGS);
+
+function resolveLang(langSpec: string): string {
+	const requested = langSpec.trim().toLowerCase();
+	return LANG_ALIASES[requested] ?? requested;
+}
+
+/**
+ * Load the grammar for every supported language a fence in `text` names and
+ * the highlighter doesn't have yet. Highlighting runs synchronously inside
+ * markdown-it's render, so the grammar has to be there before it starts.
+ * Over-matching (a fence-like line inside another fence) only loads a grammar
+ * early; it can't change the output.
+ */
+async function loadFenceLanguages(text: string): Promise<void> {
+	const highlighter = await getHighlighter();
+	const loaded = new Set(highlighter.getLoadedLanguages());
+	const wanted = new Set<string>();
+	for (const m of text.matchAll(/^ {0,3}(?:`{3,}|~{3,})[ \t]*([^\s`{]+)/gm)) {
+		const lang = resolveLang(m[1]);
+		if (SUPPORTED.has(lang) && !loaded.has(lang)) wanted.add(lang);
+	}
+	for (const lang of wanted) {
+		try {
+			await highlighter.loadLanguage(lang as Parameters<Highlighter['loadLanguage']>[0]);
+		} catch (e) {
+			// Leave it unloaded: codeToHtml throws for it and the fence renders
+			// as plain code, as an unsupported language would.
+			console.warn(`[markdown] could not load the ${lang} grammar:`, e);
+		}
+	}
 }
 
 /**

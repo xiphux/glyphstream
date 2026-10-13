@@ -38,6 +38,8 @@ arrived.
 
 ### Changed
 
+- The server uses about 50 MB less memory. Code highlighting now loads each
+  language the first time a reply uses it, instead of all of them at startup.
 - Thumbnails and video posters are made as soon as an image or video is
   generated, so the gallery and finished videos show them without a wait on
   first view.
