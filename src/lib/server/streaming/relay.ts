@@ -16,8 +16,9 @@
  * ReadableStream's `start()` function continues running and our
  * `sseWriter` swallows enqueue errors on a closed controller, so iOS
  * suspending the PWA mid-turn doesn't lose the assistant row or any
- * pending tool execution. The in-flight slot (`onComplete`) is held
- * for the WHOLE loop and released once in the outer `finally`.
+ * pending tool execution. The in-flight registry entry is held for the
+ * whole loop: `onGenerationSettled` frees it once generation ends (ahead of
+ * the title race), and `onComplete` in the outer `finally` is the backstop.
  */
 
 import { unhandled } from '../../exhaustive';

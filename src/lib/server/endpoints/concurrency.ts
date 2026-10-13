@@ -222,7 +222,9 @@ const gates = new Map<string, Gate>();
 function getGate(resourceGroup: string, max: number): Gate {
 	const existing = gates.get(resourceGroup);
 	if (existing) {
-		// Reflect the latest configured cap (config could have reloaded).
+		// Take the caller's cap. Config loads once at boot, so every caller
+		// passes the same value; this only keeps the gate from ever disagreeing
+		// with it.
 		existing.max = max;
 		return existing;
 	}

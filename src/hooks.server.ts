@@ -147,8 +147,8 @@ void listAllModels().catch(() => {});
 // Clean shutdown on SIGTERM (adapter-node's graceful_shutdown emits
 // 'sveltekit:shutdown' after closing the HTTP server and before the
 // SHUTDOWN_TIMEOUT grace period expires). Without this listener the
-// event loop never drains — the five recursive setTimeout chains above
-// keep it alive — and the supervisor SIGKILLs. Each stop*() clears its
+// event loop never drains — the background sweepers' timers (all mounted
+// through createSweeper) keep it alive — and the supervisor SIGKILLs. Each stop*() clears its
 // timer or bumps its generation so the in-flight tick's completion
 // callback won't re-arm. The MCP and pool closers await connections to
 // drain, so in-flight tool calls / interpreter runs finish before the

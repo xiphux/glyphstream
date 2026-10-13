@@ -5,9 +5,9 @@
  * "executing → result" state without waiting for the whole turn.
  *
  * Independent of the streaming relay: relay.ts calls this between
- * "recorder persisted the assistant message" and "emit done." When PR5
- * adds the multi-iteration loop, that loop calls this same helper at
- * each iteration boundary.
+ * "recorder persisted the assistant message" and "emit done", and its
+ * multi-iteration tool loop calls this same helper at each iteration
+ * boundary.
  *
  * Tool execution is parallel via Promise.allSettled — every built-in
  * tool today (clock) is trivially side-effect-free. Future
@@ -106,8 +106,8 @@ export interface ExecuteOneToolCallResult {
  *
  * Returns the persisted tool messages in the same order as the
  * tool_call parts on the assistant message (which is upstream's
- * `index` order). PR5 reads this to assemble the follow-up upstream
- * request.
+ * `index` order). The relay's tool loop reads this to assemble the
+ * follow-up upstream request.
  *
  * Persistence ordering matters: tool messages are inserted serially
  * after their parallel `execute()` calls settle, so created_at is

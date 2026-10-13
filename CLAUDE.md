@@ -53,11 +53,14 @@ tests/e2e/            # playwright (production-build webServer)
   `provider_quirk` in `config.toml`.
 - **Architecture-now-for-v2-later.** Schema is tree-shaped
   (`parent_message_id` + `active_leaf_message_id`) so branching UI lands in
-  v2 with no migration. Every row carries `user_id` and queries scope by it
-  (the multi-user isolation invariant — don't add an unscoped read of a
-  user-owned table). `MediaStore` interface so S3 swap is a single new file.
+  v2 with no migration. Every user-owned row carries `user_id` and queries
+  scope by it (the multi-user isolation invariant — don't add an unscoped read
+  of a user-owned table). The exception is `messages`, which hangs off a
+  conversation and has no `user_id`: a messages read is scoped by resolving the
+  conversation with `getConversationMeta(id, userId)` first, and nothing
+  structural catches a caller that skips it. `MediaStore` interface so S3 swap is a single new file.
 - **Self-hosted on the public internet is the deployment target.** Auth is
-  GitHub OAuth + passkeys; access is gated per-user by `users.disabled_at`
+  OAuth (GitHub, Google, generic OIDC) + passkeys; access is gated per-user by `users.disabled_at`
   (toggled from `/settings/users`), NOT a config allowlist. Account creation
   is invite-only after the first (admin) user. Reverse proxy in front for
   TLS + HTTP/2.
@@ -157,8 +160,9 @@ tests/e2e/            # playwright (production-build webServer)
   so the race is benign. `chat/[id]` does this — it ships the whole active
   branch with `content_html`, and the coupling was making every completed turn
   _and_ every tab refocus refetch the entire conversation (measured 35 KB → 4 KB
-  on a 40-turn thread; megabytes on a long code-heavy one). If you re-add
-  `await parent()` there, that regresses silently.
+  on a 40-turn thread; megabytes on a long code-heavy one). Re-adding
+  `await parent()` there regresses nothing visible; the `NO_PARENT` list in
+  `route-auth-guard-sweep.test.ts` is what fails.
 - **Module singletons under `#lib/*.svelte.ts` may only be written from
   effects, event handlers, or functions those call** — never at
   component-init depth. `toast`, `confirmDialog`, `searchModal`,
@@ -210,7 +214,7 @@ tests/e2e/            # playwright (production-build webServer)
   SvelteKit's route-aware inference types `data` for the language server.
   A typo'd field then type-checks clean and fails at runtime. Both forms in
   the tree are annotated and safe: the generated `PageData` / `LayoutData`
-  (6 routes) and an inline `$props<{ data: … }>()` shape (11). Prefer
+  and an inline `$props<{ data: … }>()` shape. Prefer
   `PageData` for new pages — it follows the load function instead of a
   hand-maintained duplicate — but converting the inline ones buys type
   safety they already have. Same for optional callback props
@@ -381,7 +385,7 @@ exact-match `apple-touch-startup-image` media query.
 - **`$state.raw` only if nothing mutates an element in place.** `.raw` skips
   the per-element proxy, so `arr[i].foo = x` signals nothing and dependents
   recompute only on the next whole-array reassign — silently, one event behind.
-  Six collections in the tree qualify (they're only ever reassigned).
+  The collections declared `.raw` in the tree are all only ever reassigned.
   `ChatTurnController.inFlightSegments` looks like it qualifies and does not:
   the chat page's rAF markdown pump writes `s.html` in place on purpose, and
   reassigning there would re-trigger its own effect at 60Hz. Before converting
