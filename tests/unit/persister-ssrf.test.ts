@@ -70,4 +70,40 @@ describe('persister SSRF trust classification (by origin)', () => {
 		const opts = await persistUrl('http://backend.local:8080/v1', 'https://blob.public.net/x.png');
 		expect(opts).toEqual({ guardRedirects: true });
 	});
+
+	// The trust decision used to key on `url.startsWith('http')`, so anything
+	// absolute that didn't start with lowercase "http" fell into the "relative"
+	// branch: resolved against the endpoint base to an off-origin URL, fetched
+	// unguarded, with the endpoint's credential attached.
+	it('protocol-relative URL is resolved first, then untrusted → guarded', async () => {
+		const opts = await persistUrl(
+			'http://backend.local:8080/v1',
+			'//169.254.169.254/latest/meta-data',
+		);
+		expect(opts).toEqual({ guardRedirects: true });
+		expect(mocks.fetchUpstreamBytes.mock.calls[0][1]).toBe(
+			'http://169.254.169.254/latest/meta-data',
+		);
+	});
+
+	it('upper-case scheme is untrusted → guarded', async () => {
+		const opts = await persistUrl('http://backend.local:8080/v1', 'HTTP://10.0.0.5:9000/internal');
+		expect(opts).toEqual({ guardRedirects: true });
+	});
+
+	it('a path relative to the endpoint is trusted → unguarded', async () => {
+		const opts = await persistUrl('http://backend.local:8080/v1', 'files/a/content');
+		expect(opts).toEqual({ guardRedirects: false });
+		expect(mocks.fetchUpstreamBytes.mock.calls[0][1]).toBe(
+			'http://backend.local:8080/v1/files/a/content',
+		);
+	});
+
+	it.each(['file:///etc/passwd', 'data:image/png;base64,AAAA', 'ftp://backend.local/x'])(
+		'refuses a non-http(s) URL: %s',
+		async (url) => {
+			await expect(persistUrl('http://backend.local:8080/v1', url)).rejects.toThrow(/http/);
+			expect(mocks.fetchUpstreamBytes).not.toHaveBeenCalled();
+		},
+	);
 });

@@ -20,6 +20,10 @@ arrived.
   Signing out left the dead session cookie behind, and the one-time cookies
   used during passkey and GitHub/Google/OIDC sign-in outlived the step that
   used them.
+- An image URL returned by a model server is now checked by where it actually
+  points. A URL starting with `//` or an upper-case `HTTP://` used to skip the
+  check, so a misbehaving server could make Glyphstream fetch an internal
+  address with the endpoint's API key attached.
 
 ### Fixed
 

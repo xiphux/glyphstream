@@ -158,35 +158,37 @@ async function resolveBytes(
 		return { bytes: Buffer.from(urlOrB64.b64_json, 'base64'), contentType: 'image/png' };
 	}
 	if (urlOrB64.url) {
-		// Relative URL (e.g. "/v1/files/abc/content") resolves against the
-		// endpoint's base URL and is trusted by construction — it lives on
-		// the same host the operator configured. An absolute URL is the
-		// untrusted case: a compromised or malicious upstream could point
-		// us at 169.254.169.254 (cloud metadata) or an internal admin URL.
-		// Allow it only when it stays on the configured endpoint's host, or
-		// when the hostname is publicly routable. The most common
-		// legitimate off-host case is OpenAI's image responses, which
-		// return Azure-blob CDN URLs distinct from api.openai.com.
-		if (urlOrB64.url.startsWith('http')) {
-			let parsed: URL;
-			try {
-				parsed = new URL(urlOrB64.url);
-			} catch {
-				throw new Error(`Image generation response url is not a valid URL: ${urlOrB64.url}`);
-			}
-			// Trust is by full ORIGIN (scheme + host + port), not hostname: an
-			// absolute URL on the SAME origin as the configured endpoint is the
-			// backend returning its own asset (same as a relative URL). Anything
-			// else — a different host, a different port, or a scheme downgrade on
-			// the same host — is untrusted and takes the guarded branch, which
-			// re-runs the SSRF check on every redirect hop and never forwards the
-			// endpoint credential off-origin. (A hostname-only check would leak the
-			// bearer to `http://<endpoint-host>:<other-port>/…` with no SSRF gate.)
-			const offOrigin = parsed.origin !== new URL(endpoint.baseUrl).origin;
-			return fetchUpstreamBytes(endpoint, urlOrB64.url, { guardRedirects: offOrigin });
+		// Resolve FIRST, then decide trust on the result. A relative URL (e.g.
+		// "/v1/files/abc/content") lands on the endpoint's own origin and is
+		// trusted by construction. Anything that resolves elsewhere is the
+		// untrusted case: a compromised or malicious upstream could point us at
+		// 169.254.169.254 (cloud metadata) or an internal admin URL. Deciding by
+		// the string's prefix instead (`startsWith('http')`) let "//host/…",
+		// "HTTP://host/…" and other absolute forms through as "relative", fetched
+		// unguarded with the endpoint credential attached.
+		const base = new URL(endpoint.baseUrl + '/');
+		let resolved: URL;
+		try {
+			resolved = new URL(urlOrB64.url, base);
+		} catch {
+			throw new Error(`Image generation response url is not a valid URL: ${urlOrB64.url}`);
 		}
-		const absolute = new URL(urlOrB64.url, endpoint.baseUrl + '/').toString();
-		return fetchUpstreamBytes(endpoint, absolute);
+		if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') {
+			throw new Error(
+				`Image generation response url must be http(s), got "${resolved.protocol}" (${urlOrB64.url})`,
+			);
+		}
+		// Trust is by full ORIGIN (scheme + host + port), not hostname: a URL on
+		// the SAME origin as the configured endpoint is the backend returning its
+		// own asset. Anything else — a different host, a different port, or a
+		// scheme downgrade on the same host — takes the guarded branch, which
+		// re-runs the SSRF check on every redirect hop and never forwards the
+		// endpoint credential off-origin. (A hostname-only check would leak the
+		// bearer to `http://<endpoint-host>:<other-port>/…` with no SSRF gate.)
+		// The most common legitimate off-origin case is OpenAI's image
+		// responses, which return Azure-blob CDN URLs distinct from the API host.
+		const offOrigin = resolved.origin !== base.origin;
+		return fetchUpstreamBytes(endpoint, resolved.href, { guardRedirects: offOrigin });
 	}
 	throw new Error('Image generation response had neither url nor b64_json');
 }
