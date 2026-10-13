@@ -158,18 +158,18 @@ export function registerMcpServerTools(serverId: string): void {
 }
 
 /**
- * Register a per-user server's discovered tools so the relay's
- * `registry.get(name)` can resolve them for EXECUTION. They register with
- * `isAvailable: false` (never in the static advertisement); the request
- * handlers append their definitions per request for users who've configured
- * the server. Idempotent (registry is replace-semantics), so calling it each
- * time a user's connection reports tools is fine.
+ * Register the caller's per-user MCP tools so `registry.get(name)` can resolve
+ * them for EXECUTION, without building any tool list. Per-user tools normally
+ * enter the registry as a side effect of a request building its `tools[]`
+ * (buildUserMcpToolDefinitions); a tool call persisted before a restart and
+ * executed after it — an approval resumed on a fresh process — gets here first.
+ * Registers regardless of per-conversation opt-outs: execution enforces those
+ * itself. Idempotent (registry is replace-semantics).
  */
-export function registerPerUserServerTools(
-	server: LoadedMcpServer,
-	tools: McpToolDescriptor[],
-): void {
-	for (const t of tools) register(mcpToolFor(server, t, { perUser: true }));
+export async function registerUserMcpTools(userId: string): Promise<void> {
+	for await (const _ of eachRegisteredPerUserTool(userId, {})) {
+		// Registration is the generator's side effect; nothing to collect.
+	}
 }
 
 /**

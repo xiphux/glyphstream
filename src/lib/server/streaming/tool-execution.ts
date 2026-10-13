@@ -19,6 +19,7 @@ import type { ChatMessage, MessagePart, StreamEvent } from '#lib/types/api.js';
 import { appendMessage, setActiveLeafMessageId, updateMessageParts } from '../db/queries/messages';
 import { getMediaForUser, linkMessageMedia } from '../db/queries/media';
 import { get as getTool } from '../tools/registry';
+import { registerUserMcpTools } from '../mcp/tool-bridge';
 import { isReactionTool } from '#lib/chat-render.js';
 import type { Tool, ToolExecution } from '../tools/types';
 
@@ -248,7 +249,17 @@ export async function executeOneToolCall(
 	signal: AbortSignal,
 	disabledFeatures: ReadonlyArray<import('#lib/types/api.js').FeatureCategory>,
 ): Promise<ExecuteOneToolCallResult> {
-	const tool = getTool(part.toolName);
+	let tool = getTool(part.toolName);
+	if (!tool && part.toolName.startsWith('mcp__')) {
+		// A per-user MCP tool is only in the registry once something has listed
+		// this user's tools in this process. After a restart, approving a call
+		// persisted before it reaches here first — register them and look again
+		// rather than failing the approval as an unknown tool.
+		await registerUserMcpTools(userId).catch((e: unknown) => {
+			console.warn('[tool-execution] could not load per-user MCP tools:', e);
+		});
+		tool = getTool(part.toolName);
+	}
 	if (!tool) {
 		return {
 			execution: {

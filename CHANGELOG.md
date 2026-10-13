@@ -47,6 +47,9 @@ arrived.
   dropped.
 - Approving a tool call from two tabs at once, or a request that repeated the
   approval, no longer runs the tool twice.
+- Approving a tool call from an MCP server you connected with your own token
+  works after the server has restarted. It used to fail as an unknown tool and
+  the approval was lost.
 
 ## v0.44.1
 

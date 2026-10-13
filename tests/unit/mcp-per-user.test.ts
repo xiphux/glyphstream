@@ -35,6 +35,8 @@ import {
 	reapUserConnectionForTests,
 	resetMcpRegistryForTests,
 } from '#lib/server/mcp/registry.js';
+import { buildRegisteredName } from '#lib/server/mcp/tool-bridge.js';
+import { executeOneToolCall } from '#lib/server/streaming/tool-execution.js';
 
 function fakeConnection(label: string) {
 	return {
@@ -195,5 +197,51 @@ describe('send-path connect does not wait for a server whose tools are known', (
 		release();
 		const states = await pending;
 		expect(states[0].state).toBe('connected');
+	});
+});
+
+describe('executing a per-user tool call nothing has registered yet', () => {
+	// Per-user tools only enter the tool registry while a request builds its
+	// tool list. A call persisted before a restart and approved after it is
+	// executed before anything has done that — it used to fail as
+	// "Unknown tool" and overwrite the pending row, losing the approval.
+	it("registers the caller's per-user tools and runs the call", async () => {
+		mocks.credentials.set('userA:mail', 'token-A');
+		const connA = fakeConnection('A');
+		mocks.connectImpl.mockResolvedValue(connA);
+		await initializeMcpServers();
+
+		const result = await executeOneToolCall(
+			{
+				type: 'tool_call',
+				toolCallId: 'call_1',
+				toolName: buildRegisteredName('mail', 'tool_A'),
+				arguments: '{}',
+			},
+			'userA',
+			'conv-1',
+			new AbortController().signal,
+			[],
+		);
+
+		expect(result.execution.isError).toBeFalsy();
+		expect(result.execution.content).toContain('A');
+		expect(connA.callTool).toHaveBeenCalledTimes(1);
+	});
+
+	it('still reports a genuinely unknown MCP tool', async () => {
+		mocks.credentials.set('userA:mail', 'token-A');
+		mocks.connectImpl.mockResolvedValue(fakeConnection('A'));
+		await initializeMcpServers();
+
+		const result = await executeOneToolCall(
+			{ type: 'tool_call', toolCallId: 'c', toolName: 'mcp__mail__nope', arguments: '{}' },
+			'userA',
+			'conv-1',
+			new AbortController().signal,
+			[],
+		);
+		expect(result.execution).toMatchObject({ isError: true });
+		expect(result.execution.content).toMatch(/Unknown tool/);
 	});
 });
