@@ -47,6 +47,7 @@ pool_max = 4
 idle_timeout_seconds = 120
 call_timeout_seconds = 60
 worker_memory_mb = 1024
+python_memory_mb = 2048
 pyodide_index_url = "/var/cache/pyodide"
 `);
 		const cfg = loadCodeInterpreterConfig(configPath);
@@ -56,6 +57,7 @@ pyodide_index_url = "/var/cache/pyodide"
 			idleTimeoutSeconds: 120,
 			callTimeoutSeconds: 60,
 			workerMemoryMb: 1024,
+			pythonMemoryMb: 2048,
 			pyodideIndexUrl: '/var/cache/pyodide',
 		});
 	});
@@ -111,6 +113,16 @@ pool_max = 0
 worker_memory_mb = 32
 `);
 		expect(() => loadCodeInterpreterConfig(configPath)).toThrow(/'worker_memory_mb' must be >= 64/);
+	});
+
+	it('rejects python_memory_mb below 128 MB (Pyodide needs room to boot)', () => {
+		writeConfig(`
+[code_interpreter]
+python_memory_mb = 64
+`);
+		expect(() => loadCodeInterpreterConfig(configPath)).toThrow(
+			/'python_memory_mb' must be >= 128/,
+		);
 	});
 
 	it('rejects worker_memory_mb above the upper bound', () => {

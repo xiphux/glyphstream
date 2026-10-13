@@ -110,7 +110,8 @@ beforeAll(async () => {
 	await new Promise<void>((r) => http.listen(0, '127.0.0.1', r));
 	httpUrl = `http://127.0.0.1:${(http.address() as AddressInfo).port}/`;
 
-	worker = spawnInterpreterProcess({ workerPath: WORKER_JS, memoryMb: 512 });
+	// A Python ceiling well under what one test asks for, to prove it holds.
+	worker = spawnInterpreterProcess({ workerPath: WORKER_JS, memoryMb: 512, pythonMemoryMb: 384 });
 	worker.on('message', (raw) => {
 		const m = raw as { type: string; fetchId?: number; request?: ProxyFetchRequest };
 		if (m.type === 'fetch') {
@@ -150,6 +151,15 @@ describe('code-interpreter worker (real pyodide)', () => {
 		const res = (await run('for _ in range(3000):\n    print("y" * 999)')) as { stdout: string };
 		expect(res.stdout.length).toBeLessThan(1_000_100);
 		expect(res.stdout).toMatch(/\[… \d+ more characters of output not kept\]$/);
+	});
+
+	it('raises MemoryError past the Python memory ceiling, and the worker survives', async () => {
+		const res = (await run(
+			'try:\n    b = bytearray(600 * 1024 * 1024)\n    print("allocated")\nexcept MemoryError:\n    print("MemoryError")',
+		)) as { type: string; stdout: string };
+		expect(res).toMatchObject({ type: 'result', stdout: 'MemoryError' });
+		// Same worker, still usable.
+		expect(await run('1 + 1')).toMatchObject({ type: 'result', result: 2 });
 	});
 
 	it('mounts pre-files into /workspace and returns files the code writes', async () => {

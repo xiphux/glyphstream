@@ -513,19 +513,17 @@
 # pool_max = 10                   # max concurrent live workers
 # idle_timeout_seconds = 300      # 5 min of inactivity → worker reaped
 # call_timeout_seconds = 30       # wall-clock per call → terminate on overrun
-# worker_memory_mb = 512          # V8 heap cap per worker process (see caveat)
+# worker_memory_mb = 512          # V8 heap cap per worker process (see note)
+# python_memory_mb = 1024         # Python's own memory per worker (see note)
 # # pyodide_index_url = ""        # leave empty to resolve from node_modules
 #
 # `pool_max` is a GLOBAL ceiling; a single user is additionally capped at half
 # of it (minimum 1), so one account can't hold every interpreter slot.
 #
-# CAVEAT on worker_memory_mb: it sets `--max-old-space-size` on the worker
-# process, which bounds the V8 heap — but Pyodide's Python heap is WebAssembly
-# linear memory, allocated OUTSIDE that budget. A worker capped at 64 MB can
-# still commit a gigabyte of WASM memory, so this setting does not bound what
-# `run_python` can allocate. The per-call wall clock doesn't help either, since
-# a large allocation is fast.
-#
-# If you enable the interpreter on a multi-user instance, put a real memory
-# limit on the process — `mem_limit` in docker-compose, `MemoryMax=` under
-# systemd. That's the enforceable boundary; everything here is cooperative.
+# NOTE on memory: worker_memory_mb bounds only the worker's V8 heap. Python's
+# own memory is Pyodide's WebAssembly heap, which python_memory_mb bounds
+# (through V8's WebAssembly page limit): an allocation past it raises
+# MemoryError inside Python and the interpreter keeps running. The default 1024
+# sits above a warm interpreter with the scientific stack (~500 MB); raise it
+# for big data work. A process-level limit (`mem_limit` in docker-compose,
+# `MemoryMax=` under systemd) remains a sensible backstop for the whole server.

@@ -78,6 +78,7 @@ pool_max = 10                   # max concurrent live workers (LRU-evicted past 
 idle_timeout_seconds = 300      # 5 min of inactivity → worker reaped
 call_timeout_seconds = 30       # wall-clock per call → terminate on overrun
 worker_memory_mb = 512          # V8 heap cap per worker process
+python_memory_mb = 1024         # Python's own memory (the WASM heap) per worker
 # pyodide_index_url = ""        # leave empty to resolve from node_modules
 ```
 
@@ -91,14 +92,15 @@ saturated. Tighten `pool_max` on lower-spec hosts; tighten
 of it (minimum 1), so one account running Python in many conversations at
 once can't hold every slot and lock everyone else out.
 
-> **`worker_memory_mb` does not bound what Python can allocate.** It sets
-> `--max-old-space-size` on the worker process, which caps the V8 heap — but
-> Pyodide's Python heap is WebAssembly linear memory, allocated outside that
-> budget. A worker capped at 64 MB can still commit a gigabyte of WASM memory,
-> and `call_timeout_seconds` doesn't catch it because a large allocation is
-> fast. On a multi-user instance, enforce the real limit at the process level:
-> `mem_limit` in docker-compose, or `MemoryMax=` under systemd. Everything in
-> the config block above is cooperative; that isn't.
+**What bounds Python's memory is `python_memory_mb`** (default 1024), not
+`worker_memory_mb`. Pyodide's Python heap is WebAssembly memory, outside the V8
+heap that `worker_memory_mb` caps; `python_memory_mb` limits it through V8's own
+WebAssembly page limit. An allocation past it fails inside Python with
+`MemoryError`, which the script can catch, and the interpreter keeps running.
+A warm interpreter with the scientific stack loaded sits around 500 MB, so the
+default leaves headroom; raise it for big data work. A process-level limit
+(`mem_limit` in docker-compose, `MemoryMax=` under systemd) is still a sensible
+backstop for the whole server.
 
 Files attached to a conversation are mounted into `/workspace/` on every call,
 capped at 25 MB per file and 50 MB per call. Anything over budget is skipped

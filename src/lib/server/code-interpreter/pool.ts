@@ -41,6 +41,7 @@ export type { ManagedWorker } from './spawn';
 
 export interface WorkerFactoryArgs {
 	memoryMb: number;
+	pythonMemoryMb?: number;
 	/** Read-only paths beyond the worker bundle and the Pyodide package,
 	 *  e.g. a local `pyodide_index_url`. */
 	extraReadPaths?: readonly string[];
@@ -56,10 +57,11 @@ export type WorkerFactory = (args: WorkerFactoryArgs) => ManagedWorker;
 // `setWorkerFactoryForTests`.
 const defaultWorkerUrl = new URL('./worker.js', import.meta.url);
 
-const defaultWorkerFactory: WorkerFactory = ({ memoryMb, extraReadPaths }) =>
+const defaultWorkerFactory: WorkerFactory = ({ memoryMb, pythonMemoryMb, extraReadPaths }) =>
 	spawnInterpreterProcess({
 		workerPath: fileURLToPath(defaultWorkerUrl),
 		memoryMb,
+		pythonMemoryMb,
 		extraReadPaths,
 	});
 
@@ -396,6 +398,7 @@ async function doStart(
 		onStatus?.('Starting Python interpreter…');
 		const worker = workerFactory({
 			memoryMb: cfg.workerMemoryMb,
+			pythonMemoryMb: cfg.pythonMemoryMb,
 			extraReadPaths: localIndexPath(cfg.pyodideIndexUrl),
 		});
 		workerHandle = worker;

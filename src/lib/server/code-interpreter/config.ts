@@ -36,6 +36,11 @@ export interface LoadedCodeInterpreterConfig {
 	/** V8 heap cap for each worker process, in megabytes. Sets
 	 *  `--max-old-space-size` on the spawned child process. */
 	workerMemoryMb: number;
+	/** Ceiling on Python's own memory (Pyodide's WebAssembly heap), in
+	 *  megabytes. Enforced by V8 (`--wasm-max-mem-pages`), so an allocation
+	 *  past it raises MemoryError inside Python rather than killing the
+	 *  process. `workerMemoryMb` does not bound this heap. */
+	pythonMemoryMb: number;
 	/** Optional override for Pyodide's `indexURL`. Empty string = resolve
 	 *  from the installed `pyodide` package's `node_modules` location.
 	 *  Operators only need this if they're vendoring a custom Pyodide
@@ -49,6 +54,9 @@ const DEFAULTS: LoadedCodeInterpreterConfig = {
 	idleTimeoutSeconds: 300,
 	callTimeoutSeconds: 30,
 	workerMemoryMb: 512,
+	// Above what a warm interpreter with the scientific stack loaded reaches
+	// (~500 MB), so ordinary work never meets it.
+	pythonMemoryMb: 1024,
 	pyodideIndexUrl: '',
 };
 
@@ -139,6 +147,15 @@ export function loadCodeInterpreterConfig(path = configPath()): LoadedCodeInterp
 					integer: true,
 				});
 
+	const pythonMemoryMb =
+		block.python_memory_mb === undefined
+			? DEFAULTS.pythonMemoryMb
+			: requireNumber(block.python_memory_mb, 'python_memory_mb', at, {
+					min: 128,
+					max: 65536,
+					integer: true,
+				});
+
 	const pyodideIndexUrl =
 		block.pyodide_index_url === undefined
 			? DEFAULTS.pyodideIndexUrl
@@ -150,6 +167,7 @@ export function loadCodeInterpreterConfig(path = configPath()): LoadedCodeInterp
 		idleTimeoutSeconds,
 		callTimeoutSeconds,
 		workerMemoryMb,
+		pythonMemoryMb,
 		pyodideIndexUrl,
 	};
 }

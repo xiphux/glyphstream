@@ -17,6 +17,11 @@ arrived.
 
 ### Security
 
+- Python in the code interpreter is now held to a memory ceiling (1 GB per
+  interpreter by default, `python_memory_mb` under `[code_interpreter]`). A
+  script that asks for more gets Python's `MemoryError` instead of taking memory
+  the server and your models need. The old `worker_memory_mb` setting never
+  bounded Python itself.
 - Text fields now have generous size limits (2 million characters for a
   message, 200,000 for a system prompt or custom instructions, and so on), so
   one account can't store multi-megabyte values that are re-sent to the model
