@@ -192,18 +192,26 @@
 	// stacking change (and once on mount). Fetched here — not SSR'd — so the day
 	// buckets use the viewer's real tz. Waits for the tiles before any test/user
 	// interaction, so there's no mid-interaction reseed.
+	// The filters as one primitive. The effect below reads THIS rather than
+	// `data.kind` etc.: a replaced `data` object with the same filters — the
+	// (app) layout's deferred refetch on every cold load, its refresh on
+	// focus/resume — re-runs anything that reads through `data`, and the feed
+	// then refetched layout + units and jumped back to the top. A derived string
+	// only notifies when its value changes.
+	const browseFilterKey = $derived(`${data.kind}|${data.model}|${data.favorite}`);
 	$effect(() => {
 		if (searching) return;
 		// deps: filters + stacking
-		void data.kind;
-		void data.model;
-		void data.favorite;
+		void browseFilterKey;
 		void stacking;
 		// Skeleton only for a genuine first load (no layout yet); a filter/stacking
 		// change keeps the current grid until the new units land. untrack so reading
 		// the layout doesn't feed back into this effect.
 		if (untrack(() => feed.layout) === null) browseLoading = true;
-		void reloadFeed(true);
+		// Untracked: reloadFeed reads `data` synchronously (galleryFilterParams)
+		// before its first await, which would make this effect depend on the
+		// whole `data` object again despite the key above.
+		untrack(() => void reloadFeed(true));
 	});
 
 	// --- Filters ------------------------------------------------------------

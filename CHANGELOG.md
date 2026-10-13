@@ -33,6 +33,7 @@ arrived.
   conversation.
 - An image preview left open when search (or a notification) took you to
   another conversation now closes instead of staying over the new one.
+- The gallery loads its contents once when opened, instead of twice.
 - Picking a search result in another conversation now scrolls to and
   highlights the matching message, as it already did when opening the app from
   a link.
