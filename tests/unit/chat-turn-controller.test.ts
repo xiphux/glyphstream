@@ -476,6 +476,11 @@ describe('ChatTurnController — approval resume', () => {
 		expect(state.approvalError).toBe('upstream exploded');
 		// The latch must release, or the prompt stays wedged behind approvalBusy.
 		expect(turn.approvalSubmitting).toBe(false);
+		// And the decisions must be cleared. The page auto-submits whenever every
+		// pending call has a decision and no submit is running; a failed resume
+		// leaves the calls pending, so keeping the decisions re-posted the same
+		// approval (plus a full refreshAll) the moment the latch released, forever.
+		expect(state.approvalCleared).toBe(1);
 		vi.unstubAllGlobals();
 	});
 
@@ -495,6 +500,8 @@ describe('ChatTurnController — approval resume', () => {
 		// Clicking Stop is a deliberate user action, not an error to report.
 		expect(state.approvalError).toBeNull();
 		expect(turn.approvalSubmitting).toBe(false);
+		// Nor a request to try again: kept decisions would re-submit at once.
+		expect(state.approvalCleared).toBe(1);
 		vi.unstubAllGlobals();
 	});
 });

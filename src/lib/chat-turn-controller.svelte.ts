@@ -711,6 +711,12 @@ export class ChatTurnController {
 			if (!isAbortError(e)) {
 				this.#deps.setApprovalError(e instanceof Error ? e.message : String(e));
 			}
+			// Either way the decisions go. The page auto-submits as soon as every
+			// pending call has one and no submit is running; if this resume left
+			// the calls pending, keeping them re-posted the same approval (and
+			// another refreshAll) the moment the latch released — forever on a
+			// failure, and straight past the user's Stop on an abort.
+			this.#deps.clearApprovalDecisions();
 			await refreshAll();
 		} finally {
 			// Only clear if we still own the latch — a thread switch (teardown) or a
