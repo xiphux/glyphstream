@@ -7,12 +7,13 @@
  * `requireUser` is open to the internet with nothing else to catch it. The
  * per-route tests only cover routes someone thought to test.
  *
- *   - Static: each exported handler calls requireUser / requireAdmin (or checks
- *     `!locals.user`); /api/admin/** calls requireAdmin; each (app) server load
+ *   - Static: each exported handler calls requireUser / requireAdmin (a bare
+ *     `!locals.user` check is not enough: it answers a locked session 401,
+ *     sending it to /login instead of /unlock); /api/admin/** calls requireAdmin; each (app) server load
  *     awaits parent() or calls requireUserPage (CLAUDE.md).
  *   - Dynamic: each guarded handler, invoked with no user, empty params and an
  *     empty body, answers 401 — proving the guard runs BEFORE the handler reads
- *     params, the body, or the database.
+ *     params, the body, or the database — and answers an app-locked session 423.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
@@ -56,7 +57,7 @@ const APP_LOAD_EXEMPT: Record<string, string> = {
 };
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'fallback'];
-const GUARD = /\brequire(User|Admin)\s*\(|if\s*\(\s*!\s*locals\.user\s*\)/;
+const GUARD = /\brequire(User|Admin)\s*\(/;
 
 function walk(dir: string, match: RegExp): string[] {
 	return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
@@ -149,7 +150,12 @@ describe('dynamic: guarded handlers refuse a signed-out caller first', () => {
 		closeTestDb();
 	});
 
-	it.each(guarded.map((h) => [`${h.route} ${h.method}`, h] as const))('%s', async (_name, h) => {
+	const cases = guarded.flatMap((h) => [
+		[`${h.route} ${h.method} signed out → 401`, h, { appLock: null }, 401] as const,
+		[`${h.route} ${h.method} app-locked → 423`, h, { appLock: { locked: true } }, 423] as const,
+	]);
+
+	it.each(cases)('%s', async (_name, h, lock, expected) => {
 		const key = '../../src/routes/' + relative(ROUTES, h.file).split(sep).join('/');
 		const mod = await modules[key]();
 		const fn = mod[h.method] as (e: RequestEvent) => unknown;
@@ -159,7 +165,7 @@ describe('dynamic: guarded handlers refuse a signed-out caller first', () => {
 			url,
 			params,
 			route: { id: h.route },
-			locals: { user: null, sessionId: null },
+			locals: { user: null, sessionId: null, ...lock },
 			cookies: { get: () => undefined, set: () => {}, delete: () => {}, getAll: () => [] },
 			request: new Request(url, {
 				method: h.method === 'fallback' ? 'POST' : h.method,
@@ -181,6 +187,6 @@ describe('dynamic: guarded handlers refuse a signed-out caller first', () => {
 			if (!(e && typeof e === 'object' && 'status' in e)) throw e;
 			status = Number(e.status);
 		}
-		expect(status).toBe(401);
+		expect(status).toBe(expected);
 	});
 });

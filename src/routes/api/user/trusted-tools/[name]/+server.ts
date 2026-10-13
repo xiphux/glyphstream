@@ -12,11 +12,12 @@
  */
 
 import { error } from '@sveltejs/kit';
+import { requireUser } from '#lib/server/auth/guard.js';
 import { getUserPreferences, setUserPreferences } from '#lib/server/db/queries/user-preferences.js';
 import type { RequestHandler } from './$types';
 
 export const PUT: RequestHandler = async ({ params, locals }) => {
-	if (!locals.user) error(401, 'Sign in to continue.');
+	requireUser(locals);
 	const name = params.name;
 	if (!name) error(400, 'Missing tool name in path');
 	const prefs = getUserPreferences(locals.user.id);
@@ -29,7 +30,7 @@ export const PUT: RequestHandler = async ({ params, locals }) => {
 };
 
 export const DELETE: RequestHandler = async ({ params, locals }) => {
-	if (!locals.user) error(401, 'Sign in to continue.');
+	requireUser(locals);
 	const name = params.name;
 	if (!name) error(400, 'Missing tool name in path');
 	const prefs = getUserPreferences(locals.user.id);

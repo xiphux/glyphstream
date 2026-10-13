@@ -16,7 +16,7 @@
  */
 
 import { error } from '@sveltejs/kit';
-import { requireFound } from '#lib/server/auth/guard.js';
+import { requireFound, requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import { getConversationMeta } from '#lib/server/db/queries/conversations.js';
 import { walkActiveBranch, updateMessageParts } from '#lib/server/db/queries/messages.js';
@@ -70,7 +70,7 @@ function isToolResultPart(p: MessagePart): p is Extract<MessagePart, { type: 'to
 const executingToolCalls = new Set<string>();
 
 export const POST: RequestHandler = async ({ params, request, locals }) => {
-	if (!locals.user) error(401, 'Sign in to continue.');
+	requireUser(locals);
 	const userId = locals.user.id;
 
 	const body = await parseJsonBody<ApprovalBody>(request);
