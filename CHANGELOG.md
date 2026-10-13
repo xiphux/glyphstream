@@ -31,6 +31,8 @@ arrived.
   feature toggles (web access, personalization, …). It kept showing the
   previous conversation's, and changing one saved that list onto the new
   conversation.
+- An image preview left open when search (or a notification) took you to
+  another conversation now closes instead of staying over the new one.
 - Stopping a reply while the Python interpreter was still preparing could
   leave that conversation's interpreter stuck until the server restarted, and
   enough of them would stop new interpreters from starting.

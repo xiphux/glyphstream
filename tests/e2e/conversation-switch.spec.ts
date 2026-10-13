@@ -1,5 +1,6 @@
 import { test, expect, type Page } from './fixtures/test';
 import {
+	generateImageFromHome,
 	readConversationDisabledFeatures,
 	resetData,
 	seedConversation,
@@ -49,4 +50,29 @@ test('feature toggles follow the conversation, and toggling one does not copy th
 	await page.getByRole('switch', { name: 'Personalization' }).click();
 	await page.keyboard.press('Escape');
 	await expect.poll(() => readConversationDisabledFeatures(webOn)).toEqual(['personalization']);
+});
+
+test('an open image preview closes when search takes you to another conversation', async ({
+	page,
+}) => {
+	const other = seedConversation('Somewhere else entirely');
+	seedConversationMessages(other, 1, 'else');
+	await generateImageFromHome(page, 'a lighthouse at dusk');
+
+	await page.locator('main img[src*="/api/media/"]').first().click();
+	const preview = page.getByRole('dialog', { name: 'Media preview' });
+	await expect(preview).toBeVisible();
+
+	// The search modal opens over the preview; picking a result navigates
+	// without unmounting the chat page.
+	await page.keyboard.press('ControlOrMeta+k');
+	const search = page.getByRole('dialog', { name: 'Search chats' });
+	await search.getByRole('textbox', { name: 'Search query' }).fill('Somewhere else');
+	await search
+		.getByRole('button', { name: /Somewhere else entirely/ })
+		.first()
+		.click();
+	await page.waitForURL(`**/chat/${other}`);
+
+	await expect(preview).toHaveCount(0);
 });

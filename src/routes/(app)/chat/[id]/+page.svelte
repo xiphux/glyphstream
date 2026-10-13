@@ -1160,6 +1160,10 @@
 		// Stale set from the previous conversation — cleared so it can't
 		// briefly leak into a lightbox opened before the refetch lands.
 		conversationMedia = [];
+		// A preview left open (search, a toast's "Open" or a notification can
+		// navigate with it up) belongs to the previous conversation.
+		lightbox = null;
+		openingLightboxFor = null;
 	});
 
 	$effect(() => {
@@ -1232,10 +1236,13 @@
 	// `.raw` — replaced wholesale by the fetch below, never mutated in place.
 	let conversationMedia = $state.raw<ConversationMediaRef[]>([]);
 	async function loadConversationMedia() {
+		const forConversation = data.conversation.id;
 		try {
-			const res = await fetch(`/api/conversations/${data.conversation.id}/media`);
+			const res = await fetch(`/api/conversations/${forConversation}/media`);
 			if (!res.ok) return; // carousel just stays single-item; non-fatal
 			const body = (await res.json()) as { items: ConversationMediaRef[] };
+			// The user switched conversations while this was in flight.
+			if (data.conversation.id !== forConversation) return;
 			// The set arrives oldest-first, i.e. in COMPLETION order — which is not
 			// the order a live fan-out grid is drawn in (that's the order the models
 			// were enqueued in). Parallel branches finish out of order, so without
