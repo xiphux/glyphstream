@@ -1,7 +1,5 @@
-import {
-	listDistinctSourceModelsForUser,
-	searchMediaForUser,
-} from '#lib/server/db/queries/media.js';
+import { searchMediaForUser } from '#lib/server/db/queries/media.js';
+import { cachedModelFacets } from '#lib/server/gallery/layout.js';
 import { friendlyModelName } from '#lib/model-ids.js';
 import type { PageServerLoad } from './$types';
 
@@ -28,7 +26,7 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 
 	// Facet options for the Model dropdown. Labels via the pure `friendlyModelName`
 	// (no upstream fetch); the raw `value` is what `?model=` filters on.
-	const modelFacets = listDistinctSourceModelsForUser(userId, {
+	const modelFacets = cachedModelFacets(userId, {
 		kind: kind ?? undefined,
 		favorite,
 	}).map((f) => ({ ...f, label: friendlyModelName(f.value) }));

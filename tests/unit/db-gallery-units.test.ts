@@ -17,6 +17,8 @@ import {
 	setMediaFavorite,
 } from '#lib/server/db/queries/media.js';
 import {
+	cachedModelFacets,
+	cachedMonthPeriods,
 	computeGalleryLayout,
 	listGalleryUnits,
 	listGalleryUnitMembers,
@@ -741,7 +743,12 @@ describe('gallery units: cache follows changes the media rows do not show', () =
 		const u = seedUser();
 		const conv = convStack(u);
 		expect(allUnits(u.id)[0].label).toBe('Before'); // primes the cache
+		// A rename a moment later; the fingerprint keys on updated_at, which a
+		// write in the same millisecond as the last one would leave unmoved.
+		const later = Date.now() + 60_000;
+		vi.spyOn(Date, 'now').mockReturnValue(later);
 		renameConversation(conv, u.id, 'After');
+		vi.restoreAllMocks();
 		expect(allUnits(u.id)[0].label).toBe('After');
 	});
 
@@ -753,5 +760,38 @@ describe('gallery units: cache follows changes the media rows do not show', () =
 		expect(allUnits(u.id)[0].groupKind).toBe('conversation');
 		deleteConversation(conv, u.id);
 		expect(allUnits(u.id).map((x) => x.groupKind)).not.toContain('conversation');
+	});
+});
+
+describe('facet + month-rail memo stays current', () => {
+	it('picks up a new model as soon as it generates something', () => {
+		const u = seedUser();
+		makeGen(u.id, at(2024, 6, 15), { sourceModel: 'a' });
+		expect(cachedModelFacets(u.id).map((f) => f.value)).toEqual(['a']);
+		makeGen(u.id, at(2024, 6, 16), { sourceModel: 'b' });
+		expect(
+			cachedModelFacets(u.id)
+				.map((f) => f.value)
+				.sort(),
+		).toEqual(['a', 'b']);
+	});
+
+	it('follows a star under the Favorites filter', () => {
+		const u = seedUser();
+		const id = makeGen(u.id, at(2024, 6, 15), { sourceModel: 'a' });
+		expect(cachedModelFacets(u.id, { favorite: true })).toEqual([]);
+		setMediaFavorite(id, u.id, true);
+		expect(cachedModelFacets(u.id, { favorite: true })).toEqual([{ value: 'a', count: 1 }]);
+	});
+
+	it('drops a month whose only item was trashed, and brings it back on restore', () => {
+		const u = seedUser();
+		makeGen(u.id, at(2024, 6, 15));
+		const may = makeGen(u.id, at(2024, 5, 15));
+		expect(cachedMonthPeriods(u.id, TZ).map((p) => p.key)).toEqual(['2024-06', '2024-05']);
+		trashMediaForUser(may, u.id);
+		expect(cachedMonthPeriods(u.id, TZ).map((p) => p.key)).toEqual(['2024-06']);
+		restoreMediaForUser([may], u.id);
+		expect(cachedMonthPeriods(u.id, TZ).map((p) => p.key)).toEqual(['2024-06', '2024-05']);
 	});
 });

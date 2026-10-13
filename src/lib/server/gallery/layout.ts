@@ -22,7 +22,11 @@ import {
 	assignedConversationId,
 	attachConversationTitles,
 	getMediaListItemsByIds,
+	listDistinctSourceModelsForUser,
 	listMediaForConversation,
+	listMediaMonthPeriodsForUser,
+	type ModelFacet,
+	type MonthPeriod,
 } from '../db/queries/media';
 import { groupGalleryItems, type StackableMedia } from '../../gallery-stacks';
 import type {
@@ -400,7 +404,10 @@ function evictUnitsEntry(key: string): void {
  *  matching row — 0.8ms -> 3.2ms at 30k media — and this is the one piece of DB
  *  work a cache HIT still does. If you add an aggregate here, check it against
  *  that index first. */
-function galleryUserFingerprint(userId: string): { base: string; fav: string } {
+function galleryUserFingerprint(
+	userId: string,
+	{ withConversations = true }: { withConversations?: boolean } = {},
+): { base: string; fav: string } {
 	const row = getDb()
 		.select({
 			total: sql<number>`count(*)`,
@@ -431,16 +438,18 @@ function galleryUserFingerprint(userId: string): { base: string; fav: string } {
 	// they browse, which is the case the cache is for. A per-link signature
 	// over message_media was exact but cost ~5 ms a request at 30k media; the
 	// TTL backstops whatever this misses.
-	const convs = getDb()
-		.select({
-			n: sql<number>`count(*)`,
-			at: sql<number>`coalesce(max(${conversations.updatedAt}), 0)`,
-		})
-		.from(conversations)
-		.where(eq(conversations.userId, userId))
-		.get();
+	const convs = !withConversations
+		? null
+		: getDb()
+				.select({
+					n: sql<number>`count(*)`,
+					at: sql<number>`coalesce(max(${conversations.updatedAt}), 0)`,
+				})
+				.from(conversations)
+				.where(eq(conversations.userId, userId))
+				.get();
 	return {
-		base: `${row?.total ?? 0}:${row?.live ?? 0}:${row?.deletedSig ?? 0}:${convs?.n ?? 0}:${convs?.at ?? 0}`,
+		base: `${row?.total ?? 0}:${row?.live ?? 0}:${row?.deletedSig ?? 0}${convs ? `:${convs.n}:${convs.at}` : ''}`,
 		fav: `${row?.favs ?? 0}:${row?.favAt ?? 0}`,
 	};
 }
@@ -610,4 +619,56 @@ export function listGalleryUnitMembers(
 	const orderedIds = run.items.map((m) => m.id);
 	const byId = new Map(getMediaListItemsByIds(userId, orderedIds).map((m) => [m.id, m]));
 	return orderedIds.map((id) => byId.get(id)).filter((m): m is MediaListItem => m != null);
+}
+
+// --- Facet + month-rail memo -------------------------------------------------
+// The Model dropdown's facets and the month rail are each a GROUP BY over the
+// user's whole gallery (~10 ms apiece at 30k media), and the gallery page load
+// awaits the layout, so they re-ran on every focus refresh too. Both read only
+// media rows, so they are validated against the media half of the fingerprint:
+// chatting, which moves the conversation half, leaves them cached. Results are
+// a few dozen rows, so an entry cap alone bounds the memory.
+const MEDIA_MEMO_MAX = 256;
+const mediaMemo = new Map<string, { fingerprint: string; value: unknown }>();
+
+function memoOnMedia<T>(
+	userId: string,
+	name: string,
+	opts: { favorite?: boolean },
+	compute: () => T,
+): T {
+	const key = JSON.stringify([name, userId, opts]);
+	const fingerprint = fingerprintFor(
+		galleryUserFingerprint(userId, { withConversations: false }),
+		opts,
+	);
+	const hit = mediaMemo.get(key);
+	if (hit && hit.fingerprint === fingerprint) {
+		mediaMemo.delete(key);
+		mediaMemo.set(key, hit);
+		return hit.value as T;
+	}
+	const value = compute();
+	mediaMemo.delete(key);
+	mediaMemo.set(key, { fingerprint, value });
+	while (mediaMemo.size > MEDIA_MEMO_MAX) {
+		mediaMemo.delete(mediaMemo.keys().next().value as string);
+	}
+	return value;
+}
+
+/** `listDistinctSourceModelsForUser`, memoized on the user's media fingerprint. */
+export function cachedModelFacets(
+	userId: string,
+	opts: Parameters<typeof listDistinctSourceModelsForUser>[1] = {},
+): ModelFacet[] {
+	return memoOnMedia(userId, 'facets', opts, () => listDistinctSourceModelsForUser(userId, opts));
+}
+
+/** `listMediaMonthPeriodsForUser`, memoized on the user's media fingerprint. */
+export function cachedMonthPeriods(
+	userId: string,
+	opts: Parameters<typeof listMediaMonthPeriodsForUser>[1] = {},
+): MonthPeriod[] {
+	return memoOnMedia(userId, 'months', opts, () => listMediaMonthPeriodsForUser(userId, opts));
 }

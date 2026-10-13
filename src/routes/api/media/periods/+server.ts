@@ -1,5 +1,5 @@
 import { requireUser } from '#lib/server/auth/guard.js';
-import { listMediaMonthPeriodsForUser } from '#lib/server/db/queries/media.js';
+import { cachedMonthPeriods } from '#lib/server/gallery/layout.js';
 import type { RequestHandler } from './$types';
 
 /**
@@ -23,7 +23,7 @@ export const GET: RequestHandler = ({ locals, url }) => {
 	const tzParam = url.searchParams.get('tzOffset');
 	const tz = tzParam ? Number.parseInt(tzParam, 10) : undefined;
 
-	const periods = listMediaMonthPeriodsForUser(locals.user.id, {
+	const periods = cachedMonthPeriods(locals.user.id, {
 		kind,
 		model,
 		favorite,
