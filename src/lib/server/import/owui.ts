@@ -203,10 +203,14 @@ async function importOne(
 	const createdAt = secondsToMs(entry?.created_at) ?? Date.now();
 	const updatedAt = secondsToMs(entry?.updated_at) ?? createdAt;
 	const archivedAt = entry?.archived ? updatedAt : null;
+	// `currentId` can name a message that isn't in the export (a regenerated
+	// or deleted reply). A null leaf renders the conversation empty, so a
+	// stale id falls back to the same default as a missing one.
 	const activeLeafOwuiId = history?.currentId;
-	const activeLeafNewId = activeLeafOwuiId
-		? (idMap.get(activeLeafOwuiId) ?? null)
-		: (idMap.get(ordered[ordered.length - 1].owuiId) ?? null);
+	const activeLeafNewId =
+		(activeLeafOwuiId ? idMap.get(activeLeafOwuiId) : undefined) ??
+		idMap.get(ordered[ordered.length - 1].owuiId) ??
+		null;
 
 	const title = entry?.title ?? entry?.chat?.title ?? null;
 

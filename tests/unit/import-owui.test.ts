@@ -292,6 +292,16 @@ describe('importOwuiExport', () => {
 		expect(detail?.activeLeafMessageId).not.toBeNull();
 	});
 
+	it('falls back to a real leaf when currentId names a message not in the export', async () => {
+		const u = seedUser();
+		const entry = makeTextChat();
+		(entry.chat.history as { currentId?: string }).currentId = 'deleted-reply';
+		await importOwuiExport([entry], u.id, mocks.testDb);
+		const detail = getConversationDetail(listConversations(u.id)[0].id, u.id);
+		expect(detail?.activeLeafMessageId).not.toBeNull();
+		expect(detail?.messages.length).toBeGreaterThan(0);
+	});
+
 	it('preserves modelUsed on assistant messages', async () => {
 		const u = seedUser();
 		await importOwuiExport([makeTextChat()], u.id, mocks.testDb);

@@ -38,6 +38,8 @@ arrived.
 
 ### Fixed
 
+- An Open WebUI chat whose last-viewed reply had been deleted now imports with
+  its messages showing, instead of as an empty conversation.
 - Finishing first-run setup in two tabs at once no longer shows an error page
   in the second. It goes to sign-in, since the first tab already created the
   admin account.
