@@ -467,13 +467,13 @@ describe('a streamed error object', () => {
 	it.each(quirks)('%s: fails the stream with the upstream message', (quirk) => {
 		const norm = createNormalizer(quirk);
 		expect(() =>
-			norm.process({ data: JSON.stringify({ error: { message: 'model crashed', code: 500 } }) }),
+			norm.process(rec(JSON.stringify({ error: { message: 'model crashed', code: 500 } }))),
 		).toThrow(/model crashed/);
 	});
 
 	it('accepts a bare string error too', () => {
 		const norm = createNormalizer('passthrough');
-		expect(() => norm.process({ data: JSON.stringify({ error: 'out of memory' }) })).toThrow(
+		expect(() => norm.process(rec(JSON.stringify({ error: 'out of memory' })))).toThrow(
 			/out of memory/,
 		);
 	});
