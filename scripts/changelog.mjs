@@ -141,6 +141,20 @@ export function parseChangelog(text) {
 }
 
 /**
+ * Whether a section body says anything beyond its subheadings.
+ *
+ * `### Added` with nothing under it is not an entry. A version holding only
+ * subheadings is the empty-notes release this file exists to prevent, just
+ * with headings on it, so both validate and release treat it as empty.
+ *
+ * @param {string} body
+ * @returns {boolean}
+ */
+function hasEntries(body) {
+	return body.split('\n').some((line) => line.trim() !== '' && !/^ {0,3}#{3,6}(\s|$)/.test(line));
+}
+
+/**
  * Sortable key for a `vX.Y.Z` heading, or null if the heading is not a version.
  *
  * @param {string} heading
@@ -259,7 +273,7 @@ export function validate(text) {
 
 		// The whole point: a released version with nothing under it publishes
 		// the empty notes this file exists to prevent.
-		if (body === '') problems.push(`"## ${heading}" has no entries`);
+		if (!hasEntries(body)) problems.push(`"## ${heading}" has no entries`);
 	});
 
 	// The Rust port asserts this and these two did not, which is a divergence
@@ -284,7 +298,7 @@ export function sectionFor(text, tag) {
 			`CHANGELOG.md has no "## ${tag}" section. Add one below "## ${UNRELEASED}", holding the entries that were under it, before tagging.`,
 		);
 	}
-	if (section.body === '') {
+	if (!hasEntries(section.body)) {
 		throw new Error(`CHANGELOG.md's "## ${tag}" section is empty.`);
 	}
 	return section.body;

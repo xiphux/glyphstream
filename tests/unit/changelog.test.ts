@@ -202,6 +202,17 @@ describe('validate', () => {
 		expect(validate(text)).toContain('"## v0.2.0" has no entries');
 	});
 
+	it('rejects a released version holding only subheadings', () => {
+		// `### Fixed` with nothing under it is still empty notes, just labelled.
+		const text = '# Changelog\n\n## v0.2.0\n\n### Added\n\n### Fixed\n\n## v0.1.0\n\n- entry\n';
+		expect(validate(text)).toContain('"## v0.2.0" has no entries');
+	});
+
+	it('accepts a subheading with an entry under it', () => {
+		const text = '# Changelog\n\n## v0.2.0\n\n### Fixed\n\n- a fix\n\n## v0.1.0\n\n- entry\n';
+		expect(validate(text)).toEqual([]);
+	});
+
 	it('allows an empty Unreleased section, which just means nothing is pending', () => {
 		const text = '# Changelog\n\n## Unreleased\n\n## v0.1.0\n\n- entry\n';
 		expect(validate(text)).toEqual([]);
@@ -298,6 +309,11 @@ describe('validate', () => {
 	it('throws for a version with no section, naming the fix', () => {
 		expect(() => sectionFor(VALID, 'v0.3.0')).toThrow(/no "## v0\.3\.0" section/);
 		expect(() => sectionFor(VALID, 'v0.3.0')).toThrow(/Add one below "## Unreleased"/);
+	});
+
+	it('throws for a section of subheadings with no entries', () => {
+		const text = '# Changelog\n\n## v0.2.0\n\n### Added\n\n## v0.1.0\n\n- entry\n';
+		expect(() => sectionFor(text, 'v0.2.0')).toThrow(/is empty/);
 	});
 
 	it('throws for an empty section rather than returning nothing', () => {
