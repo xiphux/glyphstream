@@ -38,6 +38,9 @@ arrived.
 
 ### Changed
 
+- Thumbnails and video posters are made as soon as an image or video is
+  generated, so the gallery and finished videos show them without a wait on
+  first view.
 - Newly generated images hold their space in the chat while they load, so a
   long thread no longer jumps as images appear. The small source-image chip in
   a comparison column loads a thumbnail instead of the full image.

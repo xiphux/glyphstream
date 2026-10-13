@@ -14,6 +14,7 @@ import { Readable } from 'node:stream';
 import { fetchUpstreamBytes } from '../endpoints/client';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { insertMedia } from '../db/queries/media';
+import { getOrCreateThumbnail, type ThumbnailSourceKind } from './thumbnail';
 import { getMediaStore } from './disk-store';
 import { makeFaststart } from './faststart';
 import { mediaDir } from '../env';
@@ -71,6 +72,7 @@ export async function persistGeneratedImage(input: PersistImageInput): Promise<s
 		aspectRatio: input.aspectRatio ?? null,
 		...promptFields(input.prompt),
 	});
+	prewarmThumbnail(ref.storagePath, 'image');
 	return id;
 }
 
@@ -144,6 +146,7 @@ export async function persistGeneratedVideo(input: PersistVideoInput): Promise<s
 		aspectRatio: input.aspectRatio ?? null,
 		...promptFields(input.prompt),
 	});
+	prewarmThumbnail(ref.storagePath, 'video');
 	return id;
 }
 
@@ -191,4 +194,18 @@ async function resolveBytes(
 		return fetchUpstreamBytes(endpoint, resolved.href, { guardRedirects: offOrigin });
 	}
 	throw new Error('Image generation response had neither url nor b64_json');
+}
+
+/**
+ * Build the thumbnail (a video's poster) now, while the original is fresh,
+ * rather than on its first view. Generated lazily, a cold gallery screen was
+ * ~70 misses queued through the thumbnail semaphore, and a finished video's
+ * `<video poster>` spawned ffmpeg at first paint. Fire-and-forget: the
+ * thumbnail route still generates on demand, so a failure here costs nothing
+ * but the head start.
+ */
+function prewarmThumbnail(storagePath: string, kind: ThumbnailSourceKind): void {
+	void getOrCreateThumbnail(storagePath, kind).catch((e: unknown) => {
+		console.warn(`[persister] thumbnail prewarm failed for ${storagePath}:`, e);
+	});
 }
