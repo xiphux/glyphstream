@@ -422,10 +422,15 @@
 	// the lightbox is intentionally a tabindex=-1 dialog (not a focus
 	// trap) so the Escape semantic needs to be global. Early-return when
 	// no media is open so unrelated keypresses don't reach onClose.
+	//
+	// An Escape something else already handled is not ours. bits-ui layers
+	// (the "Set as avatar" picker, any open tooltip) close on Escape from a
+	// `document` listener and call preventDefault; this one is on `window`, so
+	// it sees the same event afterwards and would close the lightbox too.
 	function onKey(e: KeyboardEvent) {
 		if (!media) return;
 		if (e.key === 'Escape') {
-			onClose();
+			if (!e.defaultPrevented) onClose();
 			return;
 		}
 		// Arrow-key navigation, only meaningful in carousel mode. Guarded

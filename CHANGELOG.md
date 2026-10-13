@@ -38,6 +38,8 @@ arrived.
 
 ### Fixed
 
+- Pressing Escape in the image viewer's "Set as avatar" menu now closes just
+  the menu. It used to close the image viewer as well.
 - Switching light/dark mode or theme no longer occasionally flips back a
   moment later, when the app refreshed in the background at the same time.
 - An Open WebUI chat whose last-viewed reply had been deleted now imports with

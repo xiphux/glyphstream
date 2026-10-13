@@ -1037,6 +1037,30 @@ describe('MediaLightbox — set as avatar', () => {
 		expect(onSetAvatar).toHaveBeenCalledWith({ kind: 'preset', id: 'cm-2' }, 'm-9');
 	});
 
+	it('Escape closes the open picker without also closing the lightbox', async () => {
+		const user = userEvent.setup();
+		const onClose = vi.fn();
+		render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'm-9' }),
+				onClose,
+				onSetAvatar: vi.fn(),
+				avatarTargets: [
+					preset({ id: 'cm-1', name: 'Ilya' }),
+					preset({ id: 'cm-2', name: 'Marta' }),
+				],
+			},
+		});
+
+		await user.click(screen.getByRole('button', { name: 'Set as avatar…' }));
+		expect(screen.getByRole('button', { name: 'Marta' })).toBeInTheDocument();
+		await user.keyboard('{Escape}');
+		expect(onClose).not.toHaveBeenCalled();
+		// A second Escape, with the picker gone, closes the lightbox as usual.
+		await user.keyboard('{Escape}');
+		expect(onClose).toHaveBeenCalledTimes(1);
+	});
+
 	it('marks the preset already using this image and lets the others through', async () => {
 		const user = userEvent.setup();
 		const onSetAvatar = vi.fn();
