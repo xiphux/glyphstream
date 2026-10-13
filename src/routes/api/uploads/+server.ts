@@ -22,7 +22,8 @@
  * a sensible filename and the attachment chip can label them clearly.
  */
 
-import { Buffer } from 'node:buffer';
+import { Readable } from 'node:stream';
+import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { insertMedia } from '#lib/server/db/queries/media.js';
@@ -89,15 +90,23 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		error(413, `File too large (${file.size} bytes; max ${classification.maxBytes})`);
 	}
 
-	// `file.size` is reliable but `file.arrayBuffer()` may yield zero bytes
-	// for an empty file or a corrupted upload. Check after read.
-	const bytes = Buffer.from(await file.arrayBuffer());
-	if (bytes.byteLength === 0) {
+	if (file.size === 0) error(400, 'Empty file');
+
+	// Streamed from the parsed form's File rather than copied out with
+	// `file.arrayBuffer()` first: that copy held a second whole-file buffer
+	// beside the form's own at the peak of every upload.
+	const store = getMediaStore();
+	const ref = await store.putStream({
+		stream: Readable.fromWeb(file.stream() as NodeReadableStream<Uint8Array>),
+		contentType,
+		kind: classification.kind,
+	});
+	// `file.size` comes from the multipart framing; a corrupted part can still
+	// read as zero bytes. Same refusal, after the fact.
+	if (ref.byteSize === 0) {
+		await store.delete(ref.storagePath).catch(() => {});
 		error(400, 'Empty file');
 	}
-
-	const store = getMediaStore();
-	const ref = await store.put({ bytes, contentType, kind: classification.kind });
 
 	// Only stash the original filename for non-AV kinds where it carries
 	// meaning. AV uploads display by content type / thumbnail and the
