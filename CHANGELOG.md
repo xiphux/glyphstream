@@ -37,6 +37,9 @@ arrived.
   opening another conversation no longer shows the comparison, its error, or
   the picked model in the conversation you opened.
 - The gallery loads its contents once when opened, instead of twice.
+- An image or video generation that failed before reaching the model server
+  (for example, its source image could not be read) now leaves an error in the
+  conversation. It used to disappear, most visibly from comparison grids.
 - A file attached at the moment the background cleanup removed it as
   abandoned could leave its conversation unable to send. Cleanup now claims a
   file before deleting it, so the attach is refused instead.

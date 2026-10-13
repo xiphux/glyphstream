@@ -25,6 +25,8 @@ const mocks = vi.hoisted(() => ({
 	videoFetchContent: vi.fn(),
 	videoCancel: vi.fn(),
 	persistGeneratedImage: vi.fn(),
+	/** Set to make loadMediaBytes fail the way an unreadable store would. */
+	loadMediaBytesError: null as Error | null,
 	persistGeneratedVideo: vi.fn(),
 	linkMessageMedia: vi.fn(),
 	notify: vi.fn(async () => {}),
@@ -56,6 +58,16 @@ vi.mock('#lib/server/db/queries/media.js', async (orig) => ({
 	linkMessageMedia: mocks.linkMessageMedia,
 }));
 vi.mock('#lib/server/push/notify.js', () => ({ notifyConversationComplete: mocks.notify }));
+vi.mock('#lib/server/media/data-url.js', async (orig) => {
+	const real = await orig<typeof import('#lib/server/media/data-url.js')>();
+	return {
+		...real,
+		loadMediaBytes: (...args: Parameters<typeof real.loadMediaBytes>) =>
+			mocks.loadMediaBytesError
+				? Promise.reject(mocks.loadMediaBytesError)
+				: real.loadMediaBytes(...args),
+	};
+});
 vi.mock('#lib/server/media/disk-store.js', () => ({ unlinkMediaFiles: mocks.unlinkMediaFiles }));
 vi.mock('#lib/server/messages/fanout-notify.js', () => ({
 	notifyFanoutCompleteIfLast: mocks.notifyFanout,
@@ -280,6 +292,30 @@ describe('a submitted job', () => {
 		expect(events.at(-1)).toMatchObject({ type: 'error', message: 'upstream exploded' });
 		const [result] = getSiblingAssistants(s.conv.id, s.userMessage.id);
 		expect(result.parts[0]).toMatchObject({ type: 'error', message: 'upstream exploded' });
+		expect(jobRows()).toEqual([]);
+	});
+
+	it('persists an error column when the job fails outside the relay', async () => {
+		// The relay turns generation failures into events and error rows; a failure
+		// before it runs (here: the image-to-video source can't be read for a
+		// reason other than having been deleted) used to send only an SSE frame.
+		// A client that wasn't listening — a resumed job, a fan-out branch whose
+		// grid is rebuilt from the database — then found the column simply gone.
+		const s = seed();
+		mocks.loadMediaBytesError = new Error('store unreadable');
+		const events = await drain(
+			submitGenerationJob(
+				job(s, {
+					kind: 'video',
+					modelId: 'bridge::wan',
+					params: { ...job(s).params, dispatchMediaIds: ['src-1'] },
+				}),
+			),
+		);
+		mocks.loadMediaBytesError = null;
+		const [result] = getSiblingAssistants(s.conv.id, s.userMessage.id);
+		expect(result?.parts[0]).toMatchObject({ type: 'error', message: 'store unreadable' });
+		expect(events.at(-1)).toMatchObject({ type: 'error', messageId: result.id });
 		expect(jobRows()).toEqual([]);
 	});
 

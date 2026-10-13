@@ -566,7 +566,13 @@ async function runJob(
 		if (endpoint && entry.videoJobId) {
 			void videoCancel(endpoint, entry.videoJobId).catch(() => {});
 		}
-		sink.write({ type: 'error', message: errorMessage(e) } satisfies StreamErrorEvent);
+		// Leave a durable error column, as the relay and failBeforeRun do. An SSE
+		// frame alone reaches only a client still listening — a resumed job has
+		// none, and a fan-out grid rebuilt from the database would just lose the
+		// column. A no-op (undefined) if the relay already committed an outcome.
+		const message = errorMessage(e);
+		const messageId = persistFailure(row, params, message);
+		sink.write({ type: 'error', message, messageId } satisfies StreamErrorEvent);
 		sink.close();
 	} finally {
 		// Every exit that didn't commit an outcome — Stop, a discarded result, a
