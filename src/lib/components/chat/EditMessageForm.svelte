@@ -62,7 +62,7 @@
 	});
 
 	const canSave = $derived(
-		!(!editText.trim() && attachments.items.length === 0) && !attachments.isBusy,
+		!(!editText.trim() && attachments.items.length === 0) && !attachments.blocksSend,
 	);
 </script>
 

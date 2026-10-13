@@ -87,7 +87,7 @@ export class EditSession {
 		const editedId = this.messageId;
 		if (!editedId) return;
 		if ((!text && this.attachments.items.length === 0) || this.#deps.generating()) return;
-		if (this.attachments.isBusy) return;
+		if (this.attachments.blocksSend) return;
 		const attachedMediaIds = this.attachments.readyMediaIds();
 		this.#reset();
 		await this.#deps.send(text, attachedMediaIds, editedId);

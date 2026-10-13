@@ -14,7 +14,7 @@ const attachmentInstances = vi.hoisted(() => [] as MockStore[]);
 
 class MockStore {
 	items: Array<{ mediaId: string }> = [];
-	isBusy = false;
+	blocksSend = false;
 	cleared = 0;
 	destroyed = 0;
 	attached: string[] = [];
@@ -205,7 +205,7 @@ describe('save preconditions', () => {
 		const { session, sends, store } = make();
 		session.begin(msg());
 		session.text = 'ready';
-		store.isBusy = true;
+		store.blocksSend = true;
 		await session.save();
 		expect(sends).toEqual([]);
 		expect(session.active).toBe(true);

@@ -1,6 +1,6 @@
 /**
  * Component test for EditMessageForm — the inline message editor.
- * Uses a minimal AttachmentStore stand-in (items/isBusy/addFiles/remove
+ * Uses a minimal AttachmentStore stand-in (items/blocksSend/addFiles/remove
  * are all the component + its AttachmentThumbnails child touch).
  */
 
@@ -14,6 +14,7 @@ function makeStore(overrides: Partial<AttachmentStore> = {}): AttachmentStore {
 	return {
 		items: [],
 		isBusy: false,
+		blocksSend: false,
 		addFiles: vi.fn(),
 		remove: vi.fn(),
 		...overrides,
@@ -72,7 +73,11 @@ describe('EditMessageForm — save enable state', () => {
 	});
 
 	it('disables Save while attachments are busy uploading', () => {
-		const store = makeStore({ items: [{ clientId: 'a' }] as never, isBusy: true });
+		const store = makeStore({
+			items: [{ clientId: 'a' }] as never,
+			isBusy: true,
+			blocksSend: true,
+		});
 		render(EditMessageForm, { props: { ...base, attachments: store, editText: 'hello' } });
 		expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
 	});

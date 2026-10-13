@@ -236,6 +236,16 @@ export class AttachmentStore {
 		return this.items.some((it) => it.status === 'error');
 	}
 
+	/**
+	 * Whether a send must wait: an attachment is still uploading, or one failed.
+	 * A failed one used to be filtered out of `readyMediaIds()` and the message
+	 * went without it, the red chip the only sign. The chip shows the error and
+	 * a Remove button, so the user decides: remove it, or re-attach.
+	 */
+	get blocksSend(): boolean {
+		return this.items.some((it) => it.status === 'uploading' || it.status === 'error');
+	}
+
 	async addFiles(files: FileList | File[]): Promise<void> {
 		const arr = Array.from(files);
 		await Promise.all(arr.map((f) => this.addOne(f)));

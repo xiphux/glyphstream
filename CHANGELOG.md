@@ -66,6 +66,8 @@ arrived.
 
 ### Fixed
 
+- A message no longer goes out without an attachment that failed to upload.
+  Send stays disabled, saying why, until you remove the failed attachment.
 - A file attachment of exactly the 25 MB maximum now uploads. The Docker
   image's request size limit left no room for the upload's own framing, so a
   file at the cap was refused with a confusing "must be multipart" error. An

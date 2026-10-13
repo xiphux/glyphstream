@@ -2059,7 +2059,7 @@
 				};
 
 		if ((!text && attachments.items.length === 0) || generating || compaction.compacting) return;
-		if (attachments.isBusy) return;
+		if (attachments.blocksSend) return;
 		// Offline: block the send before anything is cleared. The button is
 		// already disabled, but Enter can still reach here — bail so the typed
 		// message stays in the box (and its draft) rather than clearing into a

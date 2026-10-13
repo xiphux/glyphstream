@@ -704,7 +704,7 @@
 			: { text: text.trim(), activatedSkillNames: [] as string[] };
 		if ((!fanout && !effectiveModelId) || busy) return;
 		if (!cleanText && attachments.items.length === 0) return;
-		if (attachments.isBusy) return;
+		if (attachments.blocksSend) return;
 		// Image-required model with no image: bail before creating a doomed chat.
 		// Button is disabled, but Enter reaches here — keep the prompt in the box.
 		if (needsImage) return;
@@ -1029,7 +1029,7 @@
 					disabled={(compareMode && fanoutFirstModels.length > 0 ? false : !modelId) ||
 						(!text.trim() && attachments.items.length === 0) ||
 						busy ||
-						attachments.isBusy ||
+						attachments.blocksSend ||
 						isOffline ||
 						needsImage}
 					aria-label={compareMode && fanoutFirstModels.length > 0
@@ -1039,9 +1039,11 @@
 						? "You're offline — reconnect to send"
 						: needsImage
 							? 'This model needs an image — attach one to continue'
-							: compareMode && fanoutFirstModels.length > 0
-								? `Send to ${fanoutFirstModels.length} models`
-								: 'Send'}
+							: attachments.hasErrors
+								? 'An attachment failed to upload — remove it to send'
+								: compareMode && fanoutFirstModels.length > 0
+									? `Send to ${fanoutFirstModels.length} models`
+									: 'Send'}
 					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-inverse text-fg-inverse transition hover:opacity-90 disabled:opacity-30"
 				>
 					<ArrowUp size={16} strokeWidth={2.5} />

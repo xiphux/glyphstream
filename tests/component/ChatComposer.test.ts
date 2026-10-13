@@ -17,6 +17,8 @@ function makeStore(overrides: Partial<AttachmentStore> = {}): AttachmentStore {
 	return {
 		items: [],
 		isBusy: false,
+		hasErrors: false,
+		blocksSend: false,
 		addFiles: vi.fn(),
 		remove: vi.fn(),
 		...overrides,
@@ -152,9 +154,25 @@ describe('ChatComposer — send/stop button', () => {
 	});
 
 	it('disables Send while attachments are uploading', () => {
-		const store = makeStore({ items: [{ clientId: 'a' }] as never, isBusy: true });
+		const store = makeStore({
+			items: [{ clientId: 'a' }] as never,
+			isBusy: true,
+			blocksSend: true,
+		});
 		render(ChatComposer, { props: baseProps({ composerText: 'hi', attachments: store }) });
 		expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+	});
+
+	it('disables Send, and says why, when an attachment failed to upload', () => {
+		const store = makeStore({
+			items: [{ clientId: 'a', status: 'error' }] as never,
+			hasErrors: true,
+			blocksSend: true,
+		});
+		render(ChatComposer, { props: baseProps({ composerText: 'hi', attachments: store }) });
+		const btn = screen.getByRole('button', { name: 'Send message' });
+		expect(btn).toBeDisabled();
+		expect(btn).toHaveAttribute('title', 'An attachment failed to upload — remove it to send');
 	});
 
 	it('disables the textarea while generating', () => {

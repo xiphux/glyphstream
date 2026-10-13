@@ -231,7 +231,7 @@
 		!(
 			(!effectiveText && attachments.items.length === 0) ||
 			generating ||
-			attachments.isBusy ||
+			attachments.blocksSend ||
 			!hasValidModel ||
 			offline ||
 			needsImage
@@ -431,9 +431,11 @@
 							? "You're offline — reconnect to send"
 							: needsImage
 								? 'This model needs an image — attach one to continue'
-								: fanoutActive
-									? `Send to ${compareTotal} models`
-									: 'Send'}
+								: attachments.hasErrors
+									? 'An attachment failed to upload — remove it to send'
+									: fanoutActive
+										? `Send to ${compareTotal} models`
+										: 'Send'}
 					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-inverse text-fg-inverse transition hover:opacity-90 disabled:opacity-30"
 				>
 					<ArrowUp size={16} strokeWidth={2.5} />

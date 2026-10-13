@@ -49,5 +49,16 @@ describe('AttachmentStore', () => {
 		const store = new AttachmentStore();
 		await store.addFiles([png()]);
 		expect(store.readyMediaIds()).toEqual(['m1']);
+		expect(store.blocksSend).toBe(false);
+	});
+
+	it('holds the send while an upload has failed, until the failed one is removed', async () => {
+		fetchMock.mockResolvedValueOnce(Response.json({ message: 'too large' }, { status: 413 }));
+		const store = new AttachmentStore();
+		await store.addFiles([png()]);
+		expect(store.hasErrors).toBe(true);
+		expect(store.blocksSend).toBe(true);
+		store.remove(store.items[0].clientId);
+		expect(store.blocksSend).toBe(false);
 	});
 });
