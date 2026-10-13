@@ -409,3 +409,39 @@ describe('a connection whose tool listing fails', () => {
 		expect(conn.close).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('a late close from a replaced connection', () => {
+	// A stdio client's close event can arrive after the registry has already
+	// replaced it (the SDK's close() can resolve before the child's 'close').
+	// That stale event must not idle — and close — the replacement mid-use.
+	it('leaves the current connection alone', async () => {
+		mocks.servers = [
+			{
+				id: 'fs',
+				displayName: 'fs',
+				transport: 'stdio',
+				auth: 'global',
+				command: 'x',
+				args: [],
+				env: {},
+				timeoutSeconds: 30,
+				idleTimeoutSeconds: 900,
+			},
+		];
+		const first = fakeConnection(['read_file']);
+		const second = fakeConnection(['read_file']);
+		mocks.connectImpl.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+		await initializeMcpServers();
+
+		// The first connection closes; the next call reconnects.
+		for (const cb of first.closeListeners) cb();
+		await callMcpTool('fs', 'u', 'read_file', {}, new AbortController().signal);
+		expect(second.callTool).toHaveBeenCalledTimes(1);
+
+		// Its close event fires again, late.
+		for (const cb of first.closeListeners) cb();
+
+		expect(second.close).not.toHaveBeenCalled();
+		expect(listGlobalServerStates().find((s) => s.id === 'fs')?.state).toBe('connected');
+	});
+});

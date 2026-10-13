@@ -441,7 +441,7 @@ export async function callMcpTool(
 			throw err;
 		}
 
-		markIdle(key);
+		markIdle(key, conn);
 		const conn2 = await ensureConnected(serverId, effUserId);
 		const result = await conn2.callTool(toolName, args, signal, timeoutMs);
 		markActive(key);
@@ -603,7 +603,8 @@ async function doConnect(
 			firstTime || existingTools === null
 				? await withTimeout(client.listTools(), timeoutMs, `${serverId} listTools`)
 				: existingTools;
-		client.onClose(() => markIdle(key));
+		const connected = client;
+		client.onClose(() => markIdle(key, connected));
 		return {
 			serverId,
 			userId,
@@ -689,10 +690,18 @@ function markActive(key: string): void {
 	}
 }
 
-function markIdle(key: string): void {
+/**
+ * Move `key` from connected to idle and close its client — but only if
+ * `client` is still the entry's client. A close event or a failed call can
+ * belong to a connection the entry has already replaced (a stdio client's
+ * 'close' can land after the registry reconnected; two concurrent calls can
+ * both fail on the old one); acting on it would idle and close the
+ * replacement mid-use.
+ */
+function markIdle(key: string, client: McpConnection): void {
 	const entry = entries.get(key);
 	if (!entry) return;
-	if (entry.state === 'connected') {
+	if (entry.state === 'connected' && entry.client === client) {
 		if (entry.idleTimerId) clearTimeout(entry.idleTimerId);
 		entries.set(key, {
 			serverId: entry.serverId,
