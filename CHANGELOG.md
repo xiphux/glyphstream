@@ -50,6 +50,8 @@ arrived.
 - Approving a tool call from an MCP server you connected with your own token
   works after the server has restarted. It used to fail as an unknown tool and
   the approval was lost.
+- An MCP server that connects but then fails to list its tools no longer
+  leaves a stray process (or open connection) behind on every retry.
 
 ## v0.44.1
 

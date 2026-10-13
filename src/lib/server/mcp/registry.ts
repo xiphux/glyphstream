@@ -593,8 +593,12 @@ async function doConnect(
 ): Promise<Entry> {
 	const key = keyFor(serverId, userId);
 	const timeoutMs = cfg.timeoutSeconds * 1000;
+	// Hoisted so the catch can close a client that connected but then failed
+	// its tool listing — otherwise each retry of the failed entry leaks one
+	// (a stdio subprocess, or an open HTTP session).
+	let client: Awaited<ReturnType<typeof connectMcpServer>> | null = null;
 	try {
-		const client = await connectMcpServer(cfg, timeoutMs);
+		client = await connectMcpServer(cfg, timeoutMs);
 		const tools =
 			firstTime || existingTools === null
 				? await withTimeout(client.listTools(), timeoutMs, `${serverId} listTools`)
@@ -611,6 +615,7 @@ async function doConnect(
 			idleTimerId: null,
 		};
 	} catch (err) {
+		await client?.close().catch(() => {});
 		const msg = err instanceof Error ? err.message : String(err);
 		if (firstTime && userId === null) {
 			console.warn(`[mcp] failed to connect to "${serverId}": ${msg}`);

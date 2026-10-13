@@ -379,3 +379,33 @@ describe('healthyBootstrapBudgetMs', () => {
 		expect(healthyBootstrapBudgetMs()).toBe(0);
 	});
 });
+
+describe('a connection whose tool listing fails', () => {
+	// The transport connected (for stdio, a child process is running) but
+	// listTools then failed or timed out. The entry goes `failed`; the client
+	// must be closed too, or every retry of the failed entry leaks another
+	// subprocess / HTTP session.
+	it('closes the client it connected', async () => {
+		mocks.servers = [
+			{
+				id: 'fs',
+				displayName: 'fs',
+				transport: 'stdio',
+				auth: 'global',
+				command: 'x',
+				args: [],
+				env: {},
+				timeoutSeconds: 30,
+				idleTimeoutSeconds: 900,
+			},
+		];
+		const conn = fakeConnection(['read_file']);
+		conn.listTools.mockRejectedValue(new Error('listTools exploded'));
+		mocks.connectImpl.mockResolvedValue(conn);
+
+		await initializeMcpServers();
+
+		expect(listGlobalServerStates().find((s) => s.id === 'fs')?.state).toBe('failed');
+		expect(conn.close).toHaveBeenCalledTimes(1);
+	});
+});
