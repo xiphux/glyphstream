@@ -1260,14 +1260,14 @@
 										class="h-full w-full object-cover"
 									/>
 								{:else}
-									<video
-										src="/api/media/{m.id}/content"
-										poster="/api/media/{m.id}/thumbnail"
-										preload="none"
-										muted
-										playsinline
+									<!-- A tile never plays, so its poster is all it needs: an <img> skips
+									     the media element and its decoder. The badge marks it a video. -->
+									<img
+										src="/api/media/{m.id}/thumbnail"
+										alt={m.promptExcerpt ?? 'Generated video'}
+										loading="lazy"
 										class="h-full w-full object-cover"
-									></video>
+									/>
 								{/if}
 								{@render cornerBadges(m.favorite, m.kind === 'video')}
 								{#if m.promptExcerpt}
@@ -1371,14 +1371,14 @@
 										class="h-full w-full object-cover"
 									/>
 								{:else}
-									<video
-										src="/api/media/{u.leaderId}/content"
-										poster="/api/media/{u.leaderId}/thumbnail"
-										preload="none"
-										muted
-										playsinline
+									<!-- A tile never plays, so its poster is all it needs: an <img> skips
+									     the media element and its decoder. The badge marks it a video. -->
+									<img
+										src="/api/media/{u.leaderId}/thumbnail"
+										alt={u.excerpt ?? 'Generated video'}
+										loading="lazy"
 										class="h-full w-full object-cover"
-									></video>
+									/>
 								{/if}
 								{@render cornerBadges(u.favoriteCount > 0, u.leaderKind === 'video')}
 								{#if u.excerpt}
@@ -1445,14 +1445,14 @@
 													class="h-full w-full object-cover"
 												/>
 											{:else}
-												<video
-													src="/api/media/{p.id}/content"
-													poster="/api/media/{p.id}/thumbnail"
-													preload="none"
-													muted
-													playsinline
+												<!-- A tile never plays, so its poster is all it needs: an <img> skips
+												     the media element and its decoder. The badge marks it a video. -->
+												<img
+													src="/api/media/{p.id}/thumbnail"
+													alt=""
+													loading="lazy"
 													class="h-full w-full object-cover"
-												></video>
+												/>
 											{/if}
 										</div>
 									{/each}
