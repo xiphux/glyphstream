@@ -42,7 +42,7 @@
 
 import { Buffer } from 'node:buffer';
 import { generateId } from '../util/id';
-import { getEndpoint } from '../endpoints/registry';
+import { getEndpoint, getRegistry } from '../endpoints/registry';
 import { parseModelId } from '../endpoints/model-id';
 import { videoCancel } from '../endpoints/client';
 import type { LoadedEndpoint } from '../endpoints/config';
@@ -222,11 +222,17 @@ export function resumeGenerationJobs(): void {
 	let rows: GenerationJobRow[];
 	try {
 		rows = listGenerationJobs();
+		// Every row is resolved against the endpoint registry below. If config
+		// can't be loaded right now, each per-row resolve would throw and be
+		// logged as "could not resume" — with the queue marked resumed, so the
+		// jobs sat untouched until the next restart. Load it here instead, where
+		// a failure takes the same not-resumed, retry-later path as a failed read.
+		if (rows.length > 0) getRegistry();
 	} catch (e) {
 		// NOT marked resumed: the queue is still in the table and this process
-		// hasn't taken it back. A transient failure (a busy database at boot) must
-		// not strand it until the next restart — the fallback timer retries, as
-		// does the next submit.
+		// hasn't taken it back. A transient failure (a busy database at boot, a
+		// config file being edited) must not strand it until the next restart —
+		// the fallback timer retries, as does the next submit.
 		console.error('[generation-jobs] could not read the queue to resume it:', errorMessage(e));
 		scheduleGenerationJobResume();
 		return;

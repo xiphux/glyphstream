@@ -27,6 +27,8 @@ const mocks = vi.hoisted(() => ({
 	persistGeneratedImage: vi.fn(),
 	/** Set to make loadMediaBytes fail the way an unreadable store would. */
 	loadMediaBytesError: null as Error | null,
+	/** Set to make the endpoint registry fail the way a broken config.toml does. */
+	configError: null as Error | null,
 	persistGeneratedVideo: vi.fn(),
 	linkMessageMedia: vi.fn(),
 	notify: vi.fn(async () => {}),
@@ -47,7 +49,14 @@ vi.mock('#lib/server/endpoints/client.js', async (orig) => ({
 	videoCancel: mocks.videoCancel,
 }));
 vi.mock('#lib/server/endpoints/registry.js', () => ({
-	getEndpoint: (id: string) => (mocks.endpoint?.id === id ? mocks.endpoint : undefined),
+	getEndpoint: (id: string) => {
+		if (mocks.configError) throw mocks.configError;
+		return mocks.endpoint?.id === id ? mocks.endpoint : undefined;
+	},
+	getRegistry: () => {
+		if (mocks.configError) throw mocks.configError;
+		return new Map(mocks.endpoint ? [[mocks.endpoint.id, mocks.endpoint]] : []);
+	},
 }));
 vi.mock('#lib/server/media/persister.js', () => ({
 	persistGeneratedImage: mocks.persistGeneratedImage,
@@ -481,6 +490,24 @@ describe('after a restart', () => {
 
 		// A transient failure must not have marked the queue as taken back.
 		mocks.testDb = real;
+		resumeGenerationJobs();
+		expect(getInFlightEntries(s.conv.id)).toHaveLength(1);
+	});
+
+	it('tries again when the config cannot be loaded, instead of stranding the queue', () => {
+		// Every row is resolved against the endpoint registry. With config.toml
+		// unreadable at boot, that used to fail per row — after the queue had been
+		// marked resumed — so the jobs sat untouched until the next restart.
+		const s = seed();
+		leftover(s);
+		setResourceGroupPaused(endpoint(), true);
+		mocks.configError = new Error('config.toml: unexpected token');
+		const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+		resumeGenerationJobs();
+		expect(getInFlightEntries(s.conv.id)).toEqual([]);
+		err.mockRestore();
+
+		mocks.configError = null;
 		resumeGenerationJobs();
 		expect(getInFlightEntries(s.conv.id)).toHaveLength(1);
 	});
