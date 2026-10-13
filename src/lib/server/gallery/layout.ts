@@ -14,6 +14,7 @@
  * fingerprint invalidation are as they were.
  */
 
+import { createHash } from 'node:crypto';
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { getDb } from '../db/client';
 import { media } from '../db/schema';
@@ -50,7 +51,11 @@ type GalleryUnitOpts = {
  *  the thin `GalleryUnit`s. */
 interface UnitSourceRow extends StackableMedia {
 	kind: MediaKind;
+	/** Capped at UNIT_TEXT_CAP; see `capUnitText`. */
 	promptExcerpt: string | null;
+	/** A prompt stack's label (the run's original prompt, else the excerpt),
+	 *  capped. `originalPrompt` itself holds a hash here; see `promptKey`. */
+	labelPrompt: string | null;
 	/** Starred, so a unit can carry a `favoriteCount` for the tile badge without
 	 *  the grid ever holding full member rows. */
 	favorite: boolean;
@@ -104,12 +109,39 @@ function loadGalleryUnitSource(userId: string, opts: GalleryUnitOpts): UnitSourc
 
 	return attachConversationTitles(
 		userId,
-		rows.map(({ favoritedAt, ...r }) => ({
+		rows.map(({ favoritedAt, originalPrompt, promptFull, promptExcerpt, ...r }) => ({
 			...r,
+			// Stacking compares these only for equality, so the cached rows keep a
+			// hash rather than the untruncated prompt (an enhanced prompt runs to
+			// thousands of characters).
+			originalPrompt: promptKey(originalPrompt),
+			promptFull: promptKey(promptFull),
+			promptExcerpt: capUnitText(promptExcerpt),
+			labelPrompt: capUnitText(originalPrompt ?? promptExcerpt),
 			favorite: favoritedAt != null,
 			conversationTitle: null as string | null,
 		})),
 	);
+}
+
+/**
+ * How much prompt text a unit carries. A tile clamps its caption to two lines
+ * (~60-90 characters), and the stored excerpt is 500, so most of what
+ * /api/media/units shipped was never shown: about 1 MB over a full scroll of
+ * 2,000 items. The full prompt is one click away in the lightbox.
+ */
+const UNIT_TEXT_CAP = 160;
+
+function capUnitText(text: string | null): string | null {
+	if (text == null || text.length <= UNIT_TEXT_CAP) return text;
+	return `${text.slice(0, UNIT_TEXT_CAP - 1).trimEnd()}…`;
+}
+
+/** An equality key for a prompt: equal text gives an equal key. Empty and null
+ *  pass through, because stacking treats both as "no prompt" and a hash would
+ *  turn them into one that matches every other empty prompt. */
+function promptKey(text: string | null): string | null {
+	return text ? createHash('sha1').update(text).digest('base64url') : text;
 }
 
 /** One media row → a solo unit (the "stacking off" firehose path). */
@@ -151,9 +183,7 @@ function unitFromGroup(
 		// Stack label: conversation title, or the run's shared ORIGINAL prompt
 		// (not the leader's enhanced excerpt, which describes only one image).
 		label:
-			g.kind === 'conversation'
-				? (g.title ?? 'Untitled chat')
-				: (leader.originalPrompt ?? leader.promptExcerpt ?? 'Untitled'),
+			g.kind === 'conversation' ? (g.title ?? 'Untitled chat') : (leader.labelPrompt ?? 'Untitled'),
 		conversationId: g.conversationId,
 		title: g.title,
 	};
@@ -225,25 +255,22 @@ const gallerySourceCache = new Map<
 >();
 const GALLERY_SOURCE_CACHE_MAX = 64;
 /** Total prompt characters held across all source entries — the same reasoning
- *  as `GALLERY_UNITS_CACHE_MAX_UNITS`, and it binds harder here. A stacked
- *  `GalleryUnit` keeps <=4 previews and a count, while a source row keeps every
- *  item's id, excerpt and *untruncated* `promptFull`, so 64 entries x a large
- *  library is worse than the units cache it sits next to. 20M chars is ~40MB of
- *  UTF-16 — roughly one 30k-item library's worth of prompts, so the common case
- *  caches whole and only a pathological one trims. */
+ *  as `GALLERY_UNITS_CACHE_MAX_UNITS`. A source row keeps every item, so 64
+ *  entries x a large library still adds up, though each row now holds only
+ *  hashes and two capped strings (under ~400 chars) rather than the untruncated
+ *  prompts it once did. 20M chars is ~40MB of UTF-16. */
 const GALLERY_SOURCE_CACHE_MAX_CHARS = 20_000_000;
 let gallerySourceCachedChars = 0;
 
 /** Retained prompt text in one source row. Budgeting on characters rather than
- *  a row count (the units cache's bound) because these rows are dominated by
- *  `promptFull`, which is stored untruncated — an enhanced image prompt runs
- *  hundreds to a few thousand chars, so equal row counts can differ by an order
- *  of magnitude in bytes. Ids/timestamps are ignored: they're a rounding error
- *  next to the prompts, and the point is a ceiling, not an audit. */
+ *  a row count (the units cache's bound) because conversation titles are
+ *  uncapped, so equal row counts can still differ in bytes. Ids/timestamps are
+ *  ignored: the point is a ceiling, not an audit. */
 function sourceRowChars(r: UnitSourceRow): number {
 	return (
 		(r.promptFull?.length ?? 0) +
 		(r.originalPrompt?.length ?? 0) +
+		(r.labelPrompt?.length ?? 0) +
 		(r.promptExcerpt?.length ?? 0) +
 		(r.conversationTitle?.length ?? 0)
 	);

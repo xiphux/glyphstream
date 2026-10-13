@@ -138,6 +138,40 @@ describe('gallery units: same-prompt run stacking', () => {
 		expect(computeGalleryLayout(u.id, TZ).totalUnits).toBe(1);
 	});
 
+	it('labels a run with its original prompt, capped, and caps the excerpt', () => {
+		const u = seedUser();
+		const long = 'x'.repeat(2000);
+		for (let m = 0; m < 2; m++) {
+			makeGen(u.id, at(2024, 6, 15, 12, m), {
+				originalPrompt: long,
+				promptFull: `${long} [${m}]`,
+				promptExcerpt: 'y'.repeat(500),
+			});
+		}
+		const [unit] = allUnits(u.id);
+		expect(unit.memberCount).toBe(2);
+		expect(unit.label.length).toBeLessThanOrEqual(160);
+		expect(unit.label.endsWith('…')).toBe(true);
+		expect(unit.excerpt!.length).toBeLessThanOrEqual(160);
+	});
+
+	it('still requires the WHOLE prompt to match, not just what the cap keeps', () => {
+		// Grouping compares a hash of the full prompt; two prompts that agree on
+		// their first 2,000 characters are still different runs.
+		const u = seedUser();
+		const prefix = 'p'.repeat(2000);
+		makeGen(u.id, at(2024, 6, 15, 12, 0), { originalPrompt: `${prefix} A`, promptFull: 'f' });
+		makeGen(u.id, at(2024, 6, 15, 12, 1), { originalPrompt: `${prefix} B`, promptFull: 'f' });
+		expect(allUnits(u.id).map((x) => x.groupKind)).toEqual(['solo', 'solo']);
+	});
+
+	it('does not stack items whose prompts are empty', () => {
+		const u = seedUser();
+		makeGen(u.id, at(2024, 6, 15, 12, 0), { originalPrompt: '', promptFull: '' });
+		makeGen(u.id, at(2024, 6, 15, 12, 1), { originalPrompt: '', promptFull: '' });
+		expect(allUnits(u.id).map((x) => x.groupKind)).toEqual(['solo', 'solo']);
+	});
+
 	it('does NOT merge the same prompt regenerated beyond the time-gap', () => {
 		const u = seedUser();
 		makeGen(u.id, at(2024, 6, 15, 9, 0), { originalPrompt: 'moon', promptFull: 'moon' });
