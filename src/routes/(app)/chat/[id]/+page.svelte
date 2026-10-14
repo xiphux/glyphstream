@@ -1380,6 +1380,10 @@
 		const conv = convId;
 		const first = messages[0]?.id;
 		if (!hasEarlier || !first) return 'none';
+		// Not mid-turn: an edit or retry of the oldest loaded message leaves its
+		// optimistic, never-persisted copy first, which no server branch knows.
+		// The sentinel tries again when the turn ends (see `observeTop`).
+		if (!through && turn.busy) return 'none';
 		// Anything since the request went out (a switch, or a refresh that
 		// replaced the window) makes the answer about some other list.
 		const stale = () => conv !== convId || messages[0]?.id !== first;
@@ -1476,7 +1480,7 @@
 	// sentinel still in view once a window landed would never ask for the next.
 	const observeTop = (node: HTMLElement) => {
 		void messages[0]?.id;
-		if (!earlierArmed || earlierFailed) return;
+		if (!earlierArmed || earlierFailed || turn.busy) return;
 		return observeSentinel(
 			scrollContainer,
 			node,
