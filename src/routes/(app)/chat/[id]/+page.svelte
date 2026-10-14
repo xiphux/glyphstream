@@ -1866,13 +1866,13 @@
 			void refreshAll();
 			// That reload reconciles the interruption. With nothing still in
 			// flight, nothing else will read the flags (a running turn's catch
-			// still needs them), so drop them rather than reloading the whole
-			// branch again on every later return to the tab.
+			// still needs them), so drop them rather than reloading the page's
+			// window again on every later return to the tab.
 			if (!turn.busy && !fanout.streaming) turn.clearInterruptedFlags();
 		} else {
 			// A draw reconciles through the cheap probe, not a reload: a turn is over
 			// in seconds, a draw takes minutes, and a full `refreshAll()` per
-			// refocus across those minutes re-downloads a branch that cannot have
+			// refocus across those minutes re-downloads a window that cannot have
 			// changed. The controller owns the scoping and the no-clear-here rule —
 			// see `reconcileIfOwed`.
 			avatarDraw.reconcileIfOwed();

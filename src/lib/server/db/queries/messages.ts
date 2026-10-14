@@ -411,7 +411,7 @@ function hydrateBranch(
  * the active-branch size in orphaned sibling subtrees; the previous
  * single-query load pulled all of their JSON for no consumer.
  *
- *   1. Skeleton scan of (id, parent_message_id, created_at) — every row
+ *   1. Skeleton scan of (id, parent_message_id, role, created_at) — every row
  *      in the conversation, but each is a few dozen bytes. Drives the
  *      sibling-grouping for branch-aware rendering and lets us walk the
  *      parent chain to compute the active-branch id list.
