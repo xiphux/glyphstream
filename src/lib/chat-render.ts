@@ -10,6 +10,7 @@
 import { unhandled } from './exhaustive';
 import type { ChatMessage, MessagePart, ModelEntry } from './types/api';
 import { arrangeForDisplay, isCompactionSummary } from './chat-compaction';
+import { friendlyModelName } from './model-ids';
 
 /** Who an assistant bubble presents itself as: the name above it, and the
  *  avatar beside that name (null for every message the conversation's own
@@ -51,14 +52,7 @@ export function assistantIdentityForMessage(
 	}
 	const found = models.find((x) => x.id === m.modelUsed);
 	if (found) return { label: found.displayName, avatarMediaId: null };
-	const afterEndpoint = m.modelUsed.includes('::')
-		? m.modelUsed.slice(m.modelUsed.indexOf('::') + 2)
-		: m.modelUsed;
-	const slash = afterEndpoint.lastIndexOf('/');
-	return {
-		label: slash >= 0 ? afterEndpoint.slice(slash + 1) : afterEndpoint,
-		avatarMediaId: null,
-	};
+	return { label: friendlyModelName(m.modelUsed), avatarMediaId: null };
 }
 
 // --- block shape --------------------------------------------------------

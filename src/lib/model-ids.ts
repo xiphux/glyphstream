@@ -80,7 +80,15 @@ export function mediaSourceModelId(
  */
 export function friendlyModelName(internalId: string): string {
 	const sep = internalId.indexOf('::');
-	const afterEndpoint = sep >= 0 ? internalId.slice(sep + 2) : internalId;
-	const slash = afterEndpoint.lastIndexOf('/');
-	return slash >= 0 ? afterEndpoint.slice(slash + 1) : afterEndpoint;
+	return stripModelOwner(sep >= 0 ? internalId.slice(sep + 2) : internalId);
+}
+
+/**
+ * A model name without its `owner/` prefix: `meta-llama/Llama-3-70b` →
+ * `Llama-3-70b`. HuggingFace-shaped ids carry one, and in a tight label the
+ * owner takes the room the model's own name needs.
+ */
+export function stripModelOwner(name: string): string {
+	const slash = name.lastIndexOf('/');
+	return slash >= 0 ? name.slice(slash + 1) : name;
 }

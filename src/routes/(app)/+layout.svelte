@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { stripModelOwner } from '#lib/model-ids.js';
 	import type { LayoutData } from './$types';
 	import { browser } from '$app/env';
 	import { resolve } from '$app/paths';
@@ -583,9 +584,7 @@
 			}
 			const base = baseById.get(id);
 			if (!base) continue;
-			const slash = base.displayName.lastIndexOf('/');
-			const label = slash >= 0 ? base.displayName.slice(slash + 1) : base.displayName;
-			out.push({ value: id, label, kind: base.kind });
+			out.push({ value: id, label: stripModelOwner(base.displayName), kind: base.kind });
 		}
 		return out;
 	});

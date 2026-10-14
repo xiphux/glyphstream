@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { stripModelOwner } from '#lib/model-ids.js';
 	import { tick, untrack } from 'svelte';
 	import { Popover } from 'bits-ui';
 	import {
@@ -559,10 +560,6 @@
 	 * name. The full owner/model is still shown in the open dropdown row.
 	 * Custom presets get their full user-given name preserved.
 	 */
-	function stripOwner(label: string): string {
-		const slash = label.lastIndexOf('/');
-		return slash >= 0 ? label.slice(slash + 1) : label;
-	}
 	const triggerLabel = $derived.by(() => {
 		// A comparison of 2+ reads as "N models" (or "N variations" for media,
 		// where the same model may be sampled multiple times). The "Comparing"
@@ -574,7 +571,7 @@
 		}
 		if (compareMode && compareTotal === 1) {
 			const m = models.find((x) => x.id === compareSelections[0].modelId);
-			if (m) return stripOwner(m.displayName);
+			if (m) return stripModelOwner(m.displayName);
 		}
 		if (!selected) return 'Choose a model…';
 		if (selected.isCustom) return selected.label;
@@ -582,7 +579,7 @@
 		// model is the one selected — show the preset's name so the thread
 		// doesn't appear to have switched off it on the first follow-up.
 		if (presetLabel && presetModelId && value === presetModelId) return presetLabel;
-		return stripOwner(selected.label);
+		return stripModelOwner(selected.label);
 	});
 
 	let labelEl = $state<HTMLElement | null>(null);
