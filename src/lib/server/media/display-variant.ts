@@ -81,28 +81,32 @@ async function generate(
 	storagePath: string,
 	variantAbs: string,
 ): Promise<DisplayVariantRef | null> {
-	let original: Buffer;
+	let job: { encoded: Buffer; originalBytes: number } | null;
 	try {
-		original = await readFile(resolve(mediaDir(), storagePath));
-	} catch (e) {
-		if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-			console.warn(`[display-variant] original for ${storagePath} unreadable:`, e);
-		}
-		return null;
-	}
-	let encoded: Buffer;
-	try {
-		encoded = await withGenerationSlot(() =>
+		// The original is read INSIDE the slot: read ahead of it, every queued
+		// image (a long thread opened for the first time) held its whole file in
+		// memory while it waited.
+		job = await withGenerationSlot(async () => {
+			let original: Buffer;
+			try {
+				original = await readFile(resolve(mediaDir(), storagePath));
+			} catch (e) {
+				if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
+					console.warn(`[display-variant] original for ${storagePath} unreadable:`, e);
+				}
+				return null;
+			}
 			// `animated`: every frame, not just the first. Without it an animated GIF
 			// or WebP came out as one still frame, which is always smaller, so the
 			// size check below served it and the thread stopped animating.
-			sharp(original, { limitInputPixels: MAX_DECODE_PIXELS, animated: true })
+			const encoded = await sharp(original, { limitInputPixels: MAX_DECODE_PIXELS, animated: true })
 				// EXIF orientation first; the re-encode drops metadata.
 				.rotate()
 				.resize(DISPLAY_MAX_DIM, DISPLAY_MAX_DIM, { fit: 'inside', withoutEnlargement: true })
 				.webp({ quality: DISPLAY_QUALITY })
-				.toBuffer(),
-		);
+				.toBuffer();
+			return { encoded, originalBytes: original.byteLength };
+		});
 	} catch (e) {
 		// An image sharp can't make a copy of (undecodable, or an animated one
 		// with a 90° EXIF rotation) fails the same way every time: remember it,
@@ -111,7 +115,9 @@ async function generate(
 		console.warn(`[display-variant] could not encode ${storagePath}:`, e);
 		return null;
 	}
-	if (encoded.byteLength >= original.byteLength) {
+	if (job === null) return null;
+	const { encoded, originalBytes } = job;
+	if (encoded.byteLength >= originalBytes) {
 		decline(storagePath);
 		return null;
 	}

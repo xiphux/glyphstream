@@ -21,6 +21,7 @@ import {
 	getOrCreateDisplayVariant,
 } from '#lib/server/media/display-variant.js';
 import { DiskMediaStore } from '#lib/server/media/disk-store.js';
+import { withGenerationSlot } from '#lib/server/media/thumbnail.js';
 
 function write(storagePath: string, bytes: Buffer): void {
 	const abs = resolve(mocks.dir, storagePath);
@@ -86,6 +87,21 @@ describe('getOrCreateDisplayVariant', () => {
 		expect(await getOrCreateDisplayVariant('ab/cd/broken.png')).toBeNull();
 		expect(await getOrCreateDisplayVariant('ab/cd/broken.png')).toBeNull();
 		expect(warn).toHaveBeenCalledTimes(1);
+	});
+
+	it('reads the original only once it holds a generation slot', async () => {
+		write('ab/cd/queued.png', await photoPng(3000, 2000));
+		// Occupy every slot, so the request has to queue.
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		const holders = Array.from({ length: 16 }, () => withGenerationSlot(() => held));
+		const pending = getOrCreateDisplayVariant('ab/cd/queued.png');
+		await new Promise((r) => setTimeout(r, 50));
+		// Gone while queued: a read taken ahead of the slot would still encode it.
+		rmSync(resolve(mocks.dir, 'ab/cd/queued.png'));
+		release();
+		await Promise.all(holders);
+		expect(await pending).toBeNull();
 	});
 
 	it('keeps every frame of an animated GIF', async () => {

@@ -160,31 +160,30 @@ async function generateVisionVariant(
 	imageQuality: number,
 	maxImageDim: number,
 ): Promise<VisionVariant | null> {
-	// A media row can outlive its bytes, so a MISSING original is ordinary and
-	// `readFileOrNull` stays quiet about it. An original that is present but
-	// unreadable is not ordinary, and it is the failure a remote MEDIA_DIR
-	// actually produces — a soft NFS mount reports EIO, not ENOENT. Suppressing
-	// that would leave a volume that had stopped answering degrading every image
-	// in silence.
-	const original = await readFileOrNull(sourceAbs, `original for ${storagePath}`);
-	if (original === null) return null;
-
 	try {
-		// Inside the try, not ahead of it. This creates a directory under
-		// DERIVED_DIR, which since that became separately configurable may be a
-		// volume that is absent, read-only, or unmounted while MEDIA_DIR is
-		// perfectly healthy — EACCES and EROFS are reachable here in a way they
-		// were not when the two roots were the same directory and the original
-		// had already been read out of it. Throwing would break this function's
-		// contract (see the header: a send must not fail over a cache that
-		// didn't cooperate) and take down the request; the catch below degrades
-		// to inlining the original, which is the right answer.
+		// Inside the try. This creates a directory under DERIVED_DIR, which since
+		// that became separately configurable may be a volume that is absent,
+		// read-only, or unmounted while MEDIA_DIR is perfectly healthy — EACCES and
+		// EROFS are reachable here. Throwing would break this function's contract
+		// (see the header: a send must not fail over a cache that didn't cooperate)
+		// and take down the request; the catch below degrades to inlining the
+		// original, which is the right answer.
 		mkdirSync(dirname(variantAbs), { recursive: true });
 
 		// Under the thumbnail module's generation slots, so a burst of fresh images
 		// (a fan-out, a long thread's first send) decodes at most a few at a time.
-		const encoded = await withGenerationSlot(() =>
-			sharp(original, { limitInputPixels: MAX_DECODE_PIXELS })
+		// The original is read INSIDE the slot: read ahead of it, every queued
+		// image held its whole file in memory while it waited.
+		const job = await withGenerationSlot(async () => {
+			// A media row can outlive its bytes, so a MISSING original is ordinary
+			// and `readFileOrNull` stays quiet about it. An original that is present
+			// but unreadable is not ordinary, and it is the failure a remote
+			// MEDIA_DIR actually produces — a soft NFS mount reports EIO, not
+			// ENOENT. Suppressing that would leave a volume that had stopped
+			// answering degrading every image in silence.
+			const original = await readFileOrNull(sourceAbs, `original for ${storagePath}`);
+			if (original === null) return null;
+			const encoded = await sharp(original, { limitInputPixels: MAX_DECODE_PIXELS })
 				// EXIF orientation first: the re-encode drops metadata, so without this
 				// the model was sent a portrait phone photo lying on its side.
 				.rotate()
@@ -195,14 +194,17 @@ async function generateVisionVariant(
 				// these images are viewed in practice.
 				.flatten({ background: '#ffffff' })
 				.jpeg({ quality: imageQuality, mozjpeg: true })
-				.toBuffer(),
-		);
+				.toBuffer();
+			return { encoded, originalBytes: original.byteLength };
+		});
+		if (job === null) return null;
+		const { encoded, originalBytes } = job;
 
 		// Re-encoding a small, already-efficient image can come out BIGGER (a 200px
 		// JPEG icon round-tripped through sharp, say). Inlining that would make the
 		// payload worse while also losing quality, so keep the original instead —
 		// and remember, so we don't pay the decode again next turn.
-		if (encoded.byteLength >= original.byteLength) {
+		if (encoded.byteLength >= originalBytes) {
 			if (declined.size >= DECLINED_MAX) declined.clear();
 			declined.add(storagePath);
 			return null;
