@@ -36,6 +36,7 @@ import {
 	computeCompactionCut,
 	DEFAULT_KEEP_TURNS,
 	estimateContentTokens,
+	MIN_COMPACTIBLE_TOKENS,
 	isCompactionSummary,
 	summaryMaxTokens,
 	upstreamBranch,
@@ -88,8 +89,14 @@ export interface CompactionPlan {
 
 /**
  * Plan a compaction without calling the model. Returns null when there's
- * nothing worth compacting (too short, only a prior summary to fold) or the
- * conversation's model can't be resolved. Cheap: no upstream request.
+ * nothing worth compacting (too short, only a prior summary to fold, or less
+ * history to fold than `MIN_COMPACTIBLE_TOKENS`) or the conversation's model
+ * can't be resolved. Cheap: no upstream request.
+ *
+ * The size floor is applied here, on the whole branch, as well as on the
+ * client: the chat page may hold only the branch's newest window, where it
+ * can't always tell, and without the floor an overhead-heavy thread compacts on
+ * every send for almost nothing.
  */
 export async function prepareCompaction(
 	conversationId: string,
@@ -113,6 +120,7 @@ export async function prepareCompaction(
 	const view = upstreamBranch(branch);
 	const cut = computeCompactionCut(view, keepTurns);
 	if (!cut) return null;
+	if (estimateContentTokens(view.slice(0, cut.cutIndex)) < MIN_COMPACTIBLE_TOKENS) return null;
 
 	// Serialize the slice to summarize per-message — NOT via
 	// serializeBranchForUpstream, which would re-trim around the very summary

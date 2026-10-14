@@ -62,6 +62,9 @@ afterEach(() => closeTestDb());
 
 /** A thread long enough to be past `keepTurns`, whose FIRST turn carries an
  *  assistant `tool_call` with no answering `tool` row on the branch. */
+/** ~250 tokens of text per turn, so the folded history is worth compacting. */
+const FILLER = 'lorem ipsum dolor sit amet '.repeat(40);
+
 function seedBranchWithOrphan(): { conversationId: string; userId: string } {
 	const u = seedUser();
 	const conv = createConversation({
@@ -99,15 +102,41 @@ function seedBranchWithOrphan(): { conversationId: string; userId: string } {
 			arguments: '{"emoji":"🎉"}',
 		},
 	]);
-	// Enough further turns that the orphan lands inside the folded slice.
+	// Enough further turns that the orphan lands inside the folded slice — each
+	// long enough that the slice clears the size floor compaction applies.
 	for (let i = 0; i < 8; i++) {
-		add('user', [{ type: 'text', text: `turn ${i}` }]);
+		add('user', [{ type: 'text', text: `turn ${i} ${FILLER}` }]);
 		add('assistant', [{ type: 'text', text: `reply ${i}` }]);
 	}
 	return { conversationId: conv.id, userId: u.id };
 }
 
 describe('prepareCompaction', () => {
+	it('has nothing to compact when the history it would fold is under the size floor', async () => {
+		// Enough turns for a cut, but each a few words: folding them saves nothing,
+		// and the chat page — which may hold only the newest window — relies on the
+		// server to refuse rather than summarize on every send.
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'mock',
+			modelId: 'mock::mock-chat',
+			modelKind: 'chat',
+		});
+		let parent: string | null = null;
+		for (let i = 0; i < 6; i++) {
+			for (const role of ['user', 'assistant'] as const) {
+				parent = appendMessage({
+					conversationId: conv.id,
+					parentMessageId: parent,
+					role,
+					parts: [{ type: 'text', text: `${role} ${i}` }],
+				}).id;
+			}
+		}
+		expect(await prepareCompaction(conv.id, u.id, { keepTurns: 2 })).toBeNull();
+	});
+
 	it('strips an unanswered tool_call from the summarization payload', async () => {
 		const { conversationId, userId } = seedBranchWithOrphan();
 
@@ -157,7 +186,7 @@ describe('prepareCompaction', () => {
 		add('tool', [{ type: 'tool_result', toolCallId: 'call_t', result: '{"iso":"now"}' }]);
 		add('assistant', [{ type: 'text', text: "It's now." }]);
 		for (let i = 0; i < 8; i++) {
-			add('user', [{ type: 'text', text: `turn ${i}` }]);
+			add('user', [{ type: 'text', text: `turn ${i} ${FILLER}` }]);
 			add('assistant', [{ type: 'text', text: `reply ${i}` }]);
 		}
 

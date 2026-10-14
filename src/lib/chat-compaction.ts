@@ -287,11 +287,13 @@ export function summaryMaxTokens(promptTokens: number, contextWindow: number | n
  * structural `canCompact`).
  *
  * `truncatedAbove`: `branch` is only the newest window of a longer branch (the
- * chat page), so the history it would fold is at least what's here and likely
- * more. Then a possible cut is enough: estimating from the window alone could
- * wrongly disable the button on a long thread, while a compaction that finds
- * nothing worth folding is a no-op on the server, which decides from the whole
- * branch.
+ * chat page). When the window holds the latest summary AND the message it
+ * resumes from, the model-visible view starts inside the window and the
+ * estimate is exact. Otherwise the view reaches above the window, the estimate
+ * is only a lower bound, and a possible cut is taken as enough rather than
+ * wrongly disabling the button on a long thread. The server applies the same
+ * floor to the whole branch (`prepareCompaction`), so an optimistic answer here
+ * costs at most a request that comes back as nothing to compact.
  */
 export function compactionWorthwhile(
 	branch: ChatMessage[],
@@ -302,11 +304,19 @@ export function compactionWorthwhile(
 	const view = upstreamBranch(branch);
 	const cut = computeCompactionCut(view, keepTurns);
 	if (!cut) return false;
-	if (opts?.truncatedAbove) return true;
+	if (opts?.truncatedAbove && !viewStartsInside(branch)) return true;
 	// The messages that would be folded into the summary = everything before the
 	// verbatim tail. (For a repeat compaction this includes the prior summary,
 	// which is correctly re-folded.)
 	return estimateContentTokens(view.slice(0, cut.cutIndex)) >= minTokens;
+}
+
+/** Whether the latest summary and the message it resumes from are both in
+ *  `branch` — i.e. the model-visible view begins within it. */
+function viewStartsInside(branch: ChatMessage[]): boolean {
+	const { summary } = splitAtCompaction(branch);
+	const resumeId = summary?.compactionResumeFromMessageId;
+	return !!resumeId && branch.some((m) => m.id === resumeId);
 }
 
 /** Sum of an assistant message's reported prompt + completion tokens, or 0. */

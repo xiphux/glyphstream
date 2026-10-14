@@ -296,6 +296,28 @@ describe('compactionWorthwhile', () => {
 		expect(compactionWorthwhile(turns(2), 2, undefined, { truncatedAbove: true })).toBe(false);
 	});
 
+	it('estimates normally when the window holds the latest summary and its resume point', () => {
+		// A long thread compacted recently: the summary and the turn it resumes
+		// from are both in the newest window, so the view is fully visible and a
+		// tiny fold is still not worth a summarization on every send.
+		const loaded = [...turns(5).slice(4), summary('S', 'u3', 100)];
+		loaded.push(
+			msg('user', { id: 'u5', createdAt: 101 }),
+			// Over the auto-compaction threshold, as an overhead-heavy thread is.
+			msg('assistant', { id: 'a5', createdAt: 102, tokensIn: 900, tokensOut: 10 }),
+		);
+		expect(compactionWorthwhile(loaded, 2, undefined, { truncatedAbove: true })).toBe(false);
+		expect(
+			shouldAutoCompact({
+				branch: loaded,
+				enabled: true,
+				contextWindow: 1000,
+				threshold: 1,
+				truncatedAbove: true,
+			}),
+		).toBe(false);
+	});
+
 	it('respects an explicit minTokens override', () => {
 		expect(compactionWorthwhile(turns(4), 2, 1)).toBe(true); // tiny floor → worthwhile
 	});
