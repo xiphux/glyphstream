@@ -9,6 +9,18 @@ arrived.
 
 ## Unreleased
 
+### Breaking
+
+- **The Docker image runs as uid 1000, not root.** Before starting it on an
+  existing install, give uid 1000 everything the old container wrote — `./data`,
+  plus any separate `MEDIA_DIR` / `DERIVED_DIR` mount, which on NFS means
+  changing ownership on the server ([details](docs/deployment.md)). The server
+  logs which directory it can't write.
+- **The server refuses to start when `AUTH_SECRET` is missing or shorter than
+  32 characters** (and `MCP_SECRET_KEY`, when set), naming the problem. If you
+  have to replace a short `AUTH_SECRET` and haven't set `MCP_SECRET_KEY`, users
+  re-enter their per-user MCP tokens, which were encrypted with the old one.
+
 ### Added
 
 - An optional cap on how many generations one non-admin user can have queued
@@ -17,11 +29,6 @@ arrived.
 
 ### Security
 
-- **Upgrading needs a `chown`:** the Docker image now runs as an unprivileged
-  user (uid 1000) instead of root. Before starting it on an existing install,
-  give uid 1000 everything the old container wrote — `./data`, plus any
-  separate `MEDIA_DIR` / `DERIVED_DIR` mount ([details](docs/deployment.md)).
-  The server logs which directory it can't write.
 - Python in the code interpreter is now held to a memory ceiling (1 GB per
   interpreter by default, `python_memory_mb` under `[code_interpreter]`). A
   script that asks for more gets Python's `MemoryError` instead of taking memory
@@ -71,11 +78,6 @@ arrived.
 - A tool result over a million characters (a Python script printing in a
   loop, an MCP server dumping a huge response) is kept in the conversation as
   its beginning and end, with the middle dropped and marked.
-- The server refuses to start when `AUTH_SECRET` is missing or shorter than 32
-  characters (and `MCP_SECRET_KEY`, when set), naming the problem, instead of
-  starting and failing at the first sign-in or accepting a trivially short key.
-  Replacing a short `AUTH_SECRET` with no `MCP_SECRET_KEY` set means users
-  re-enter their per-user MCP tokens, which were encrypted with the old one.
 - The server uses about 50 MB less memory. Code highlighting now loads each
   language the first time a reply uses it, instead of all of them at startup.
 - Thumbnails and video posters are made as soon as an image or video is

@@ -247,8 +247,11 @@ tests/e2e/            # playwright (production-build webServer)
   effect is invisible from outside, it gets no entry; that is the common case.
 
   Keep entries to a line or two: the changelog says what arrived, `docs/` says
-  how it works. Subheadings are `### Added`, `### Changed`, `### Fixed`,
-  `### Security`.
+  how it works. Subheadings are `### Breaking`, `### Added`, `### Changed`,
+  `### Fixed`, `### Security`. `### Breaking` comes first and holds anything an
+  operator must act on to upgrade (a chown, a config value the server now
+  refuses), so it can't be missed; the entry says what to do, not just what
+  changed.
 
   At release, a `## vX.Y.Z` heading is inserted directly BELOW `## Unreleased`,
   taking the entries that were under it, in the same `Version X.Y.Z` commit
