@@ -16,6 +16,7 @@
  * rotated sample with these exact arguments.
  */
 import { open } from 'node:fs/promises';
+import sharp, { type Metadata } from 'sharp';
 import { MAX_DECODE_PIXELS } from './decode-limits';
 import { runFfmpeg } from './ffmpeg';
 
@@ -79,16 +80,26 @@ export class HeicConversionError extends Error {
 	}
 }
 
+export interface DeclaredImage {
+	/** The largest `ispe` (image spatial extent) any item in `meta` declares. */
+	width: number;
+	height: number;
+	/** The first `irot` property's rotation, in quarter turns (0-3). */
+	quarterTurns: number;
+}
+
 /**
- * The largest image size any `ispe` (image spatial extent) property in the
- * file's `meta` box declares, in pixels; null if there is none.
+ * What the file's `meta` box declares: the largest image any `ispe` property
+ * gives, and the first `irot` rotation. Null when there is no `meta` box in the
+ * header or no `ispe` in it.
  *
- * ffmpeg's `-max_pixels` bounds each decoder, and in a HEIC that is one 512 px
- * tile. This refuses a file that openly claims to be enormous, against the same
- * ceiling sharp gets, before ffmpeg sees it; it does not bound the canvas a
- * crafted grid makes ffmpeg stitch (see `oneAtATime`).
+ * The size refuses a file that openly claims to be enormous, against the same
+ * ceiling sharp gets, before ffmpeg sees it. It does not bound the canvas a
+ * crafted grid makes ffmpeg stitch (`-max_pixels` bounds each 512 px tile's
+ * decoder, not that); see `oneAtATime`. Both values also check the result:
+ * see `convertHeicToJpeg`.
  */
-export function largestDeclaredPixels(header: Uint8Array): number | null {
+export function readDeclaredImage(header: Uint8Array): DeclaredImage | null {
 	const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
 	const type = (at: number) => String.fromCharCode(...header.subarray(at, at + 4));
 	// Top-level boxes until `meta`; its children are searched for `ispe`.
@@ -101,24 +112,38 @@ export function largestDeclaredPixels(header: Uint8Array): number | null {
 		if (size < 8) return null;
 		if (type(offset + 4) === 'meta') {
 			const end = Math.min(offset + size, header.byteLength);
-			let largest: number | null = null;
-			// ispe is a FullBox: size, 'ispe', version+flags, width, height.
-			for (let i = offset + 8; i + 16 <= end; i++) {
-				if (type(i) !== 'ispe') continue;
-				const pixels = view.getUint32(i + 8) * view.getUint32(i + 12);
-				largest = Math.max(largest ?? 0, pixels);
+			let largest: DeclaredImage | null = null;
+			let quarterTurns: number | null = null;
+			for (let i = offset + 8; i + 5 <= end; i++) {
+				const t = type(i);
+				// ispe is a FullBox: size, 'ispe', version+flags, width, height.
+				if (t === 'ispe' && i + 16 <= end) {
+					const width = view.getUint32(i + 8);
+					const height = view.getUint32(i + 12);
+					if (!largest || width * height > largest.width * largest.height) {
+						largest = { width, height, quarterTurns: 0 };
+					}
+				} else if (t === 'irot' && quarterTurns === null) {
+					// irot: size, 'irot', one byte whose low two bits are the angle.
+					quarterTurns = header[i + 4] & 3;
+				}
 			}
-			return largest;
+			return largest && { ...largest, quarterTurns: quarterTurns ?? 0 };
 		}
 		offset += size;
 	}
 	return null;
 }
 
+/** How far each output dimension may fall short of the declared one (a clean-
+ *  aperture crop trims a few pixels) and still count as the whole photo. */
+const SIZE_TOLERANCE = 0.9;
+
 /**
  * Convert the HEIC at `sourceAbs` to a JPEG at `outputAbs`, upright. Throws
  * `HeicConversionError` for a file that isn't a readable, reasonably sized
- * HEIC; never leaves a partial output behind as a success.
+ * HEIC, or when the JPEG isn't the whole photo the file declares, upright;
+ * never reports a partial or wrong output as a success.
  */
 export async function convertHeicToJpeg(sourceAbs: string, outputAbs: string): Promise<void> {
 	const handle = await open(sourceAbs, 'r');
@@ -130,11 +155,12 @@ export async function convertHeicToJpeg(sourceAbs: string, outputAbs: string): P
 	} finally {
 		await handle.close();
 	}
-	const declared = largestDeclaredPixels(header);
+	const declared = readDeclaredImage(header);
 	if (declared === null) throw new HeicConversionError('Not a HEIC photo this server can read');
-	if (declared > MAX_DECODE_PIXELS) {
+	const declaredPixels = declared.width * declared.height;
+	if (declaredPixels > MAX_DECODE_PIXELS) {
 		throw new HeicConversionError(
-			`Photo is too large to convert (${declared} pixels; max ${MAX_DECODE_PIXELS})`,
+			`Photo is too large to convert (${declaredPixels} pixels; max ${MAX_DECODE_PIXELS})`,
 		);
 	}
 
@@ -173,5 +199,29 @@ export async function convertHeicToJpeg(sourceAbs: string, outputAbs: string): P
 		);
 	} catch (e) {
 		throw new HeicConversionError('Could not convert this HEIC photo', { cause: e });
+	}
+
+	// The JPEG is the only copy kept, so check it is the whole photo, upright.
+	// An ffmpeg too old to stitch tiles or apply the rotation (older distro
+	// builds) can still exit 0, having written one 512 px tile, the embedded
+	// thumbnail, or the photo on its side; storing that would lose the photo.
+	let out: Metadata;
+	try {
+		out = await sharp(outputAbs).metadata();
+	} catch (e) {
+		throw new HeicConversionError('Could not convert this HEIC photo', { cause: e });
+	}
+	const turned = declared.quarterTurns % 2 === 1;
+	const wantW = turned ? declared.height : declared.width;
+	const wantH = turned ? declared.width : declared.height;
+	const near = (got: number | undefined, want: number) =>
+		got !== undefined && got <= want && got >= want * SIZE_TOLERANCE;
+	if (!near(out.width, wantW) || !near(out.height, wantH)) {
+		throw new HeicConversionError('Could not convert this HEIC photo', {
+			cause: new Error(
+				`ffmpeg wrote ${out.width}x${out.height}, expected ${wantW}x${wantH}; ` +
+					'it may be too old to read tiled or rotated HEIC (7.1 or newer is needed)',
+			),
+		});
 	}
 }

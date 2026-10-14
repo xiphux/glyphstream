@@ -11,6 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
 	runFfmpeg: vi.fn(async (_args: string[], _budgetMs: number, _out: string) => {}),
+	/** What the stand-in ffmpeg writes: the sample, stitched and turned upright. */
+	output: { width: 768, height: 1024 },
 }));
 vi.mock('#lib/server/media/ffmpeg.js', () => ({ runFfmpeg: mocks.runFfmpeg }));
 
@@ -18,9 +20,18 @@ import {
 	convertHeicToJpeg,
 	HeicConversionError,
 	isHeicUpload,
-	largestDeclaredPixels,
+	readDeclaredImage,
 } from '#lib/server/media/heic.js';
 import { MAX_DECODE_PIXELS } from '#lib/server/media/decode-limits.js';
+import sharp from 'sharp';
+
+/** A stand-in ffmpeg that writes a JPEG of `mocks.output`'s size. */
+async function writeOutput(_args: string[], _budgetMs: number, out: string) {
+	const { width, height } = mocks.output;
+	await sharp({ create: { width, height, channels: 3, background: '#888' } })
+		.jpeg()
+		.toFile(out);
+}
 
 const SAMPLE = readFileSync(new URL('../image-smoke/tiled-rotated.heic', import.meta.url));
 
@@ -61,19 +72,22 @@ describe('isHeicUpload', () => {
 	});
 });
 
-describe('largestDeclaredPixels', () => {
-	it('reads the grid size of an iPhone-style tiled HEIC', () => {
-		expect(largestDeclaredPixels(SAMPLE)).toBe(1024 * 768);
+describe('readDeclaredImage', () => {
+	it('reads the grid size and rotation of an iPhone-style tiled, rotated HEIC', () => {
+		// Stored landscape, flagged 270° anticlockwise: it displays portrait.
+		expect(readDeclaredImage(SAMPLE)).toEqual({ width: 1024, height: 768, quarterTurns: 3 });
 	});
 
-	it('reads a declared size', () => {
-		expect(largestDeclaredPixels(heifWithIspe(8064, 6048))).toBe(8064 * 6048);
+	it('reads a declared size, unrotated', () => {
+		expect(readDeclaredImage(heifWithIspe(8064, 6048))).toEqual({
+			width: 8064,
+			height: 6048,
+			quarterTurns: 0,
+		});
 	});
 
 	it('finds nothing in a file that is not HEIF', () => {
-		expect(largestDeclaredPixels(new TextEncoder().encode('just some text, not a photo'))).toBe(
-			null,
-		);
+		expect(readDeclaredImage(new TextEncoder().encode('just some text, not a photo'))).toBe(null);
 	});
 });
 
@@ -81,7 +95,8 @@ describe('convertHeicToJpeg', () => {
 	let dir: string;
 	beforeEach(() => {
 		dir = mkdtempSync(join(tmpdir(), 'gs-heic-test-'));
-		mocks.runFfmpeg.mockClear();
+		mocks.runFfmpeg.mockReset().mockImplementation(writeOutput);
+		mocks.output = { width: 768, height: 1024 };
 	});
 	afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -114,10 +129,11 @@ describe('convertHeicToJpeg', () => {
 	it('converts one photo at a time', async () => {
 		let running = 0;
 		let peak = 0;
-		mocks.runFfmpeg.mockImplementation(async () => {
+		mocks.runFfmpeg.mockImplementation(async (args, budget, out) => {
 			running++;
 			peak = Math.max(peak, running);
 			await new Promise((r) => setTimeout(r, 10));
+			await writeOutput(args, budget, out);
 			running--;
 		});
 		for (const n of [1, 2, 3]) writeFileSync(join(dir, `in${n}.heic`), SAMPLE);
@@ -126,7 +142,6 @@ describe('convertHeicToJpeg', () => {
 		);
 		expect(mocks.runFfmpeg).toHaveBeenCalledTimes(3);
 		expect(peak).toBe(1);
-		mocks.runFfmpeg.mockImplementation(async () => {});
 	});
 
 	it('keeps converting after one fails', async () => {
@@ -135,6 +150,28 @@ describe('convertHeicToJpeg', () => {
 		await expect(convertHeicToJpeg(join(dir, 'in.heic'), join(dir, 'a.jpg'))).rejects.toThrow();
 		await expect(
 			convertHeicToJpeg(join(dir, 'in.heic'), join(dir, 'b.jpg')),
+		).resolves.toBeUndefined();
+	});
+
+	it.each([
+		['a single tile', { width: 512, height: 512 }],
+		['the photo on its side', { width: 1024, height: 768 }],
+		['the embedded thumbnail', { width: 240, height: 320 }],
+	])('refuses an ffmpeg result that is %s, not the whole photo upright', async (_name, size) => {
+		// What an ffmpeg too old to stitch tiles or apply the rotation can write
+		// while still exiting 0.
+		mocks.output = size;
+		writeFileSync(join(dir, 'in.heic'), SAMPLE);
+		await expect(convertHeicToJpeg(join(dir, 'in.heic'), join(dir, 'out.jpg'))).rejects.toThrow(
+			HeicConversionError,
+		);
+	});
+
+	it('accepts a result a few pixels short of the declared size (a clean-aperture crop)', async () => {
+		mocks.output = { width: 760, height: 1016 };
+		writeFileSync(join(dir, 'in.heic'), SAMPLE);
+		await expect(
+			convertHeicToJpeg(join(dir, 'in.heic'), join(dir, 'out.jpg')),
 		).resolves.toBeUndefined();
 	});
 
