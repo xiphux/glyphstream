@@ -2,7 +2,7 @@
  * Per-conversation Pyodide worker pool.
  *
  * State machine mirrors `src/lib/server/mcp/registry.ts`:
- *   ready | starting | idle | failed
+ *   ready | starting | failed  (no entry = spawn on the next call)
  * with `starting` playing the same promise-coalescing role as MCP's
  * `reconnecting`. The key difference is the per-worker mutex: Pyodide
  * runs a single Python interpreter per worker, so two concurrent

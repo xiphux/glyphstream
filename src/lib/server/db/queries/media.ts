@@ -1646,7 +1646,7 @@ export function claimAbandonedUploads(olderThanMs: number, limit = 500): PurgeCa
  * trusted-maintenance scoping as `findPurgeCandidates`. Served by the partial
  * `idx_media_trash`, which holds only the trash.
  *
- * Claim-then-unlink, not unlink-then-mark like the upload phase, because a
+ * Claim-then-unlink, like the upload phase, and here it matters more: a
  * trashed row can be RESTORED. Marking after an awaited unlink left a window
  * in which a restore cleared `deleted_at`, the unlink took the bytes anyway,
  * and the row came back to the gallery as a permanently broken tile. Here the

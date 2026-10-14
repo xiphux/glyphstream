@@ -212,7 +212,8 @@ export type CompactionResult =
  * Synchronous compaction — plan, call the model once (blocking), persist.
  * Used by the non-streaming branch of `POST /api/conversations/[id]/compact`
  * (the streaming branch uses `streamCompaction` instead). Returns
- * `{status:'noop'}` when there's nothing to compact; throws `UpstreamError` if
+ * `{status:'noop'}` when there's nothing to compact, `{status:'stale'}` when
+ * the branch moved on before the summary could be saved; throws `UpstreamError` if
  * the summarization call fails (callers decide fatal vs. swallowed).
  */
 export async function runCompaction(

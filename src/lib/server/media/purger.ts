@@ -30,9 +30,9 @@
  *          `unreferenced_since` (e.g. orphans from a crash between
  *          insertMedia and linkMessageMedia). They re-enter the
  *          grace-period clock.
- *       2. Find uploaded rows where `unreferenced_since < now - graceMs`
- *          AND `deleted_at IS NULL`, unlink the file from disk
- *          via MediaStore, and stamp `deleted_at` + `purged_at`.
+ *       2. Claim uploaded rows where `unreferenced_since < now - graceMs`
+ *          AND `deleted_at IS NULL` (stamp `deleted_at` + `purged_at`),
+ *          then unlink the file from disk via MediaStore.
  *       3. Claim trashed rows where `deleted_at < now - retention`
  *          AND `purged_at IS NULL` (stamp `purged_at`), then unlink.
  *   - We bound batch size per phase (500) so a backlog after a long

@@ -1,7 +1,8 @@
 /**
  * Shared URL policy for every server-side outbound path that forwards a
- * model-controlled URL. Today's callers: `fetch_url`, and (incoming with
- * the code interpreter) the Pyodide worker's global `fetch` shim. Future
+ * model-controlled URL. Today's callers: `fetch_url`, and the code
+ * interpreter's host-side network proxy (`net-proxy.ts`), which every
+ * fetch from Python is relayed to. Future
  * callers — any tool that emits HTTP from inside the Node process based
  * on model-supplied input — should route through here so the
  * "what we refuse and why" answer lives in exactly one place.
@@ -33,12 +34,10 @@
  * Inputs are model-controlled, so all errors throw `UrlPolicyError` with
  * messages safe to surface back to the model (no internal-state leaks).
  *
- * Module split: the pure (env-free) parts live in `url-policy-base.ts`
- * so the code-interpreter worker — bundled standalone via esbuild outside
- * the SvelteKit transform pipeline — can import them without dragging the
- * env and config.toml layer along. This file adds the config-using
- * `assertNotConfiguredBackend` and the forbidden-host accessor used by
- * the pool to pass the set into the worker at init.
+ * Module split: the pure (env-free) parts live in `url-policy-base.ts`, for
+ * callers that must stay clear of the env and config.toml layer. This file
+ * adds the config-using `assertNotConfiguredBackend` and the forbidden-host
+ * accessor the interpreter pool hands to the proxy on each fetch.
  */
 
 import { loadEndpoints, loadSearchConfig } from '../endpoints/config';
@@ -121,13 +120,10 @@ function getForbiddenHosts(): Set<string> {
 }
 
 /**
- * Snapshot of the forbidden-host set for callers that need to ship it
- * across a process boundary — specifically, the code-interpreter pool
- * passes this list to its workers at init time so the worker's network
- * shim can apply the same check without itself needing the SvelteKit
- * env / config layer (which doesn't bundle cleanly into a standalone
- * worker via esbuild). Returns a fresh array; mutating it has no effect
- * on the cached set.
+ * Snapshot of the forbidden-host set, for the code-interpreter pool to hand
+ * to `proxyInterpreterFetch`, which takes the set as an argument rather than
+ * reaching into the config layer itself. Returns a fresh array; mutating it
+ * has no effect on the cached set.
  */
 export function listForbiddenHosts(): string[] {
 	return Array.from(getForbiddenHosts());

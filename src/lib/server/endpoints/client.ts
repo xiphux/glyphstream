@@ -850,7 +850,8 @@ export async function fetchUpstreamBytes(
 
 /**
  * POST /v1/chat/completions against `endpoint`. Non-streaming only — used
- * for the JSON-mode response path (no `?stream=1`).
+ * by the background and one-shot tasks (titles, topics, summaries, memory
+ * consolidation, compaction, prompt enhancement).
  *
  * `signal` is composed with the per-request timeout (same pattern as
  * `imageGeneration`), so a caller on an interruptible path — e.g. the image
