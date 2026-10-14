@@ -1484,7 +1484,14 @@
 		if (!hasEarlier) return false;
 		// A jump the reader asked for: say so if it can't happen, rather than
 		// leave them where they were (the retry link is at the top, out of view).
-		if ((await loadEarlier(id)) === 'failed') {
+		let result = await loadEarlier(id);
+		// 'none' with the target still missing: a refresh replaced the window while
+		// the request was out, so the answer was about the old one. Once more,
+		// from the window there is now.
+		if (result === 'none' && hasEarlier && !messages.some((m) => m.id === id)) {
+			result = await loadEarlier(id);
+		}
+		if (result === 'failed') {
 			toast.error("Couldn't load that message. Try again.");
 			return false;
 		}
