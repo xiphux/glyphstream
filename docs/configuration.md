@@ -768,7 +768,8 @@ own guide:
 The annotated [`.env.example`](../.env.example) is canonical. Highlights:
 
 - `AUTH_SECRET` — required; random 32+ byte hex string
-  (`openssl rand -hex 32`).
+  (`openssl rand -hex 32`). Unless `MCP_SECRET_KEY` is set, changing it makes
+  users re-enter their per-user MCP tokens.
 - `EXTERNAL_BASE_URL` — the public origin, used to build OAuth callback URLs
   and the WebAuthn relying-party ID. See the
   [authentication guide](authentication.md) for the footguns.

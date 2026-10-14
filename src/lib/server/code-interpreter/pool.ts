@@ -389,7 +389,7 @@ async function doStart(
 	const cfg = getCodeInterpreterConfig();
 	// Outer handle so the catch can terminate a worker whose Pyodide init failed.
 	// The worker signals init failure by posting {type:'error'} and does NOT
-	// self-exit, so without an explicit terminate() the thread would leak — and
+	// self-exit, so without an explicit terminate() the process would leak — and
 	// because the entry becomes 'failed', the next runPython re-spawns (leaking
 	// again), and enforcePoolCap counts only ready/starting entries so the
 	// orphans are invisible and unevictable.
@@ -513,7 +513,7 @@ async function doStart(
 		};
 		return ready;
 	} catch (err) {
-		// Terminate the worker whose init failed so its thread doesn't leak.
+		// Terminate the worker whose init failed so its process doesn't leak.
 		await workerHandle?.terminate().catch(() => {});
 		const msg = err instanceof Error ? err.message : String(err);
 		return { state: 'failed', conversationId, error: msg };

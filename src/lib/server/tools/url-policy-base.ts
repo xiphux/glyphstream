@@ -1,15 +1,14 @@
 /**
  * URL-policy primitives that are PURE (no env / config.toml dependencies).
- * Lives in its own module so the
- * code-interpreter worker — which is bundled standalone via esbuild and
- * loaded by node:worker_threads outside Vite's transform pipeline — can
- * import these without dragging in the env layer.
+ * Lives in its own module so code that must stay clear of the config layer
+ * can import these without dragging it in.
  *
  * The full `url-policy.ts` re-exports everything here AND layers on
  * `assertNotConfiguredBackend`, which uses `loadEndpoints` / `loadSearchConfig`
- * from the SvelteKit-aware endpoints/config module. Callers in the main
- * SvelteKit code path should keep importing from `url-policy.ts`; only the
- * worker reaches into this base.
+ * from the SvelteKit-aware endpoints/config module. Callers that want that
+ * check should import from `url-policy.ts`; the endpoint client, the code
+ * interpreter's network proxy and the push-subscribe route take only the
+ * primitives, from here.
  */
 
 import dns from 'node:dns';
