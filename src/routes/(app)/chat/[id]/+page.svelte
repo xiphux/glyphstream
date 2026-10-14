@@ -1354,6 +1354,7 @@
 	// so they don't fade in.
 	let prependingEarlier = false;
 	let earlierLoad: { convId: string; promise: Promise<EarlierResult> } | null = null;
+	let earlierLoadSeq = 0;
 	type EarlierResult = 'loaded' | 'none' | 'gone' | 'failed';
 
 	/**
@@ -1387,6 +1388,9 @@
 		// Anything since the request went out (a switch, or a refresh that
 		// replaced the window) makes the answer about some other list.
 		const stale = () => conv !== convId || messages[0]?.id !== first;
+		// The flags below are this page's, not this load's: a load the reader has
+		// switched away from must not clear them under the next conversation's.
+		const seq = ++earlierLoadSeq;
 		loadingEarlier = true;
 		try {
 			const query = new URLSearchParams({ before: first });
@@ -1417,11 +1421,14 @@
 			}
 			return 'loaded';
 		} catch {
+			if (conv !== convId) return 'none';
 			earlierFailed = true;
 			return 'failed';
 		} finally {
-			prependingEarlier = false;
-			loadingEarlier = false;
+			if (seq === earlierLoadSeq) {
+				prependingEarlier = false;
+				loadingEarlier = false;
+			}
 		}
 	}
 
