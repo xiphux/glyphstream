@@ -159,6 +159,35 @@ describe('runPython — happy path + isolation', () => {
 		expect(Date.now() - started).toBeLessThan(1000);
 	});
 
+	it('re-checks the files a run hands back, whatever the process claims', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		setWorkerFactoryForTests(() => {
+			const w = new MockWorker();
+			// What model code posting its own `result` could send.
+			w.onRun = ({ callId }) =>
+				w.emit('message', {
+					type: 'result',
+					callId,
+					newFiles: [
+						{ filename: '../../etc/cron.d/x', bytes: new Uint8Array(1), sha256: '' },
+						{ filename: 'not-bytes.txt', bytes: 'hello', sha256: '' },
+						{ filename: 'huge.bin', bytes: new Uint8Array(26 * 1024 * 1024), sha256: '' },
+						{ filename: 'ok.csv', bytes: new Uint8Array([1, 2, 3]), sha256: 'abc' },
+					],
+				});
+			createdWorkers.push(w);
+			return w;
+		});
+		const res = await runPython({
+			conversationId: 'forged',
+			userId: 'u-forged',
+			code: '1',
+			disabledFeatures: [],
+		});
+		expect(res.newFiles.map((f) => f.filename)).toEqual(['ok.csv']);
+		expect(warn).toHaveBeenCalledTimes(1);
+	});
+
 	it("ignores a late error from a replaced worker instead of failing its successor's entry", async () => {
 		setWorkerFactoryForTests(() => {
 			const w = new MockWorker();

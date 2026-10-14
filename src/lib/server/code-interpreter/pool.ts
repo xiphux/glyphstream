@@ -29,6 +29,7 @@ import { isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getCodeInterpreterConfig } from './config';
 import { listForbiddenHosts } from '../tools/url-policy';
+import { acceptGeneratedFiles } from './generated-files';
 import { proxyInterpreterFetch, type ProxyFetchRequest } from './net-proxy';
 import { cachePyodideWheel } from './package-cache';
 import { pyodideModuleUrl, spawnInterpreterProcess, type ManagedWorker } from './spawn';
@@ -419,7 +420,7 @@ async function doStart(
 				stderr?: string;
 				result?: unknown;
 				message?: string;
-				newFiles?: RunPythonPostFile[];
+				newFiles?: unknown;
 				fetchId?: unknown;
 				request?: unknown;
 			};
@@ -440,7 +441,8 @@ async function doStart(
 					stdout: msg.stdout ?? '',
 					stderr: msg.stderr ?? '',
 					result: msg.result ?? null,
-					newFiles: msg.newFiles ?? [],
+					// Re-checked here: the process can post a `result` of its own.
+					newFiles: acceptGeneratedFiles(msg.newFiles),
 				});
 			} else if (msg.type === 'error' && typeof msg.callId === 'number') {
 				const resolver = pendingResolvers.get(msg.callId);
