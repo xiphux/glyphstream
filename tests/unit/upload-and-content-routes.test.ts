@@ -25,6 +25,22 @@ vi.mock('#lib/server/env.js', async (importOriginal) => ({
 	mediaDir: () => mocks.root,
 	derivedDir: () => mocks.root,
 }));
+const heic = vi.hoisted(() => ({ fail: false }));
+vi.mock('#lib/server/media/heic.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/server/media/heic.js')>();
+	const { default: sharp } = await import('sharp');
+	return {
+		...actual,
+		// The image's ffmpeg is proven by the Docker build; here, a stand-in that
+		// writes a real JPEG where the route expects one.
+		convertHeicToJpeg: async (_src: string, out: string) => {
+			if (heic.fail) throw new actual.HeicConversionError('Could not convert this HEIC photo');
+			await sharp({ create: { width: 30, height: 40, channels: 3, background: '#c00' } })
+				.jpeg()
+				.toFile(out);
+		},
+	};
+});
 const displayVariant = vi.hoisted(() => ({ calls: [] as string[] }));
 vi.mock('#lib/server/media/display-variant.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('#lib/server/media/display-variant.js')>();
@@ -183,6 +199,31 @@ describe('POST /api/uploads', () => {
 		);
 		const res = await call(upload as Handler, req);
 		expect(res.status).toBe(413);
+	});
+
+	it.each([
+		['image/heic', 'IMG_0001.HEIC'],
+		['', 'IMG_0002.heic'], // a browser with no .heic mapping sends it untyped
+	])('stores a HEIC photo (%j, %s) as the JPEG it converts to', async (type, name) => {
+		heic.fail = false;
+		const body = await uploaded(new File([new Uint8Array([1, 2, 3, 4])], name, { type }));
+		expect(body).toMatchObject({ kind: 'image', originalFilename: null });
+		const row = mocks.testDb.select().from(media).where(eq(media.id, body.id)).get()!;
+		expect(row.contentType).toBe('image/jpeg');
+		const res = await getContent(body.id);
+		expect(res.headers.get('content-type')).toBe('image/jpeg');
+		expect(new Uint8Array(await res.arrayBuffer()).subarray(0, 2)).toEqual(
+			new Uint8Array([0xff, 0xd8]),
+		);
+	});
+
+	it('refuses a HEIC that will not convert, storing nothing', async () => {
+		heic.fail = true;
+		const file = new File([new Uint8Array([1, 2, 3])], 'IMG_0003.HEIC', { type: 'image/heic' });
+		const res = await call(upload as Handler, uploadRequest(file));
+		expect(res.status).toBe(415);
+		expect(mocks.testDb.select().from(media).all()).toEqual([]);
+		heic.fail = false;
 	});
 
 	it('applies the per-kind limit: an image over the image cap is 413', async () => {

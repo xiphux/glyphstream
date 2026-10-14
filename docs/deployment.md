@@ -6,9 +6,9 @@ Multi-stage Alpine Docker image, ~260 MB uncompressed (linux/amd64). Bind-mount 
 persistence and mount `config.toml` read-only.
 
 The image carries a small **decode-and-remux ffmpeg** (~5 MB), built by its own
-stage rather than installed, and used for two things: extracting a frame for a
-video's gallery thumbnail, and re-wrapping a stored mp4 so its index sits at
-the front. It decodes H.264, HEVC, VP8, VP9, AV1 and MJPEG in MP4/MOV and
+stage rather than installed, and used for three things: extracting a frame for
+a video's gallery thumbnail, re-wrapping a stored mp4 so its index sits at the
+front, and converting an uploaded HEIC photo (an iPhone's default) to JPEG. It decodes H.264, HEVC, VP8, VP9, AV1 and MJPEG in MP4/MOV and
 WebM/MKV containers — anything else stores fine and simply gets no thumbnail.
 It cannot **encode** video at all: the re-wrap is a stream copy, which is why
 adding it cost about 188 KB rather than pulling in x264 and the rest.
@@ -23,8 +23,10 @@ client-side fallback behind it. Second, and quietly: **new videos keep their
 index at the end**, so playback over a slow link waits for most of the file
 before it starts. That one surfaces no error anywhere — the video is intact and
 plays correctly, just late — so if remote playback feels like it buffers
-forever, check that `ffmpeg` is on `PATH` before looking anywhere else. Images,
-uploads, and playback once started are unaffected. **Put `data/` on an SSD if you
+forever, check that `ffmpeg` is on `PATH` before looking anywhere else. Third,
+**HEIC photos are refused at upload**, with nothing to convert them; a distro
+ffmpeg converts them fine. Other images, uploads, and playback once started are
+unaffected. **Put `data/` on an SSD if you
 have one** — SQLite reads are synchronous, so every one that misses the page
 cache blocks the whole process for the length of the physical read, and on
 spinning disks that is the dominant cost of a cold load. Never put the

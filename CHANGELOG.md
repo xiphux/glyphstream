@@ -23,6 +23,9 @@ arrived.
 
 ### Added
 
+- iPhone photos in HEIC format can be attached. They're converted to JPEG on
+  upload, so they show in every browser and reach vision models as an image
+  they can read. They used to upload but show as a broken image.
 - An optional cap on how many generations one non-admin user can have queued
   (`[limits] max_queued_generations_per_user`). Off by default; admins are
   never capped.

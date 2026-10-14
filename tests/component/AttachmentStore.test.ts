@@ -61,4 +61,30 @@ describe('AttachmentStore', () => {
 		store.remove(store.items[0].clientId);
 		expect(store.blocksSend).toBe(false);
 	});
+
+	it("previews the server's copy of a photo it converted, not the HEIC the browser cannot draw", async () => {
+		fetchMock.mockResolvedValueOnce(
+			Response.json({ id: 'h1', kind: 'image', contentType: 'image/jpeg', byteSize: 1234 }),
+		);
+		const store = new AttachmentStore();
+		await store.addFiles([
+			new File([new Uint8Array([0, 0, 0, 24])], 'IMG_1.HEIC', { type: 'image/heic' }),
+		]);
+		expect(store.items[0]).toMatchObject({
+			mediaId: 'h1',
+			objectUrl: '/api/media/h1/thumbnail',
+			contentType: 'image/jpeg',
+			status: 'ready',
+		});
+		expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:x');
+	});
+
+	it('keeps the local preview when the server stored what was sent', async () => {
+		fetchMock.mockResolvedValueOnce(
+			Response.json({ id: 'p1', kind: 'image', contentType: 'image/png', byteSize: 4 }),
+		);
+		const store = new AttachmentStore();
+		await store.addFiles([png()]);
+		expect(store.items[0].objectUrl).toBe('blob:x');
+	});
 });

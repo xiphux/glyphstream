@@ -31,8 +31,8 @@ import type { ModelKind } from '#lib/types/api.js';
 //   - animated formats (GIF) where re-encoding collapses to a single frame
 //   - vector formats (SVG) — canvas would rasterize at an arbitrary size
 //   - HEIC/HEIF — only Safari can natively decode these in a canvas, and
-//     even there reliability varies. iPhone Safari typically auto-converts
-//     to JPEG at <input type="file"> picker time anyway, so this is rare.
+//     even there reliability varies. The server converts them to JPEG on
+//     upload instead (iPhone Safari often already has, at picker time).
 
 const RESIZE_SKIP_BELOW_BYTES = 500 * 1024;
 const RESIZE_TARGET_BYTES = 300 * 1024;
@@ -335,17 +335,31 @@ export class AttachmentStore {
 				throw new Error((msg ?? `HTTP ${res.status}`) + proxyHint);
 			}
 			const body = (await res.json()) as UploadResponse;
-			this.items = this.items.map((it) =>
-				it.clientId === clientId
-					? {
-							...it,
-							mediaId: body.id,
-							kind: body.kind,
-							filename: body.originalFilename ?? it.filename ?? null,
-							status: 'ready' as const,
-						}
-					: it,
-			);
+			// The server converted it (a HEIC photo arrives back as a JPEG): the
+			// local blob is still the original, which most browsers can't draw,
+			// so preview the server's copy instead.
+			const converted =
+				body.kind === 'image' &&
+				typeof body.contentType === 'string' &&
+				body.contentType !== uploadFile.type;
+			this.items = this.items.map((it) => {
+				if (it.clientId !== clientId) return it;
+				if (converted && it.objectUrl.startsWith('blob:')) URL.revokeObjectURL(it.objectUrl);
+				return {
+					...it,
+					mediaId: body.id,
+					kind: body.kind,
+					filename: body.originalFilename ?? it.filename ?? null,
+					...(converted
+						? {
+								objectUrl: `/api/media/${body.id}/thumbnail`,
+								contentType: body.contentType,
+								byteSize: body.byteSize,
+							}
+						: {}),
+					status: 'ready' as const,
+				};
+			});
 		} catch (e) {
 			this.items = this.items.map((it) =>
 				it.clientId === clientId

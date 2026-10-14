@@ -22,13 +22,25 @@
  * a sensible filename and the attachment chip can label them clearly.
  */
 
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { insertMedia } from '#lib/server/db/queries/media.js';
 import { getMediaStore } from '#lib/server/media/disk-store.js';
-import { classifyUpload, MAX_UPLOAD_BYTES_FILE } from '#lib/server/uploads/classify.js';
+import { normalizeContentType } from '#lib/server/media/content-type.js';
+import { convertHeicToJpeg, HeicConversionError, isHeicUpload } from '#lib/server/media/heic.js';
+import {
+	classifyUpload,
+	MAX_UPLOAD_BYTES_FILE,
+	MAX_UPLOAD_BYTES_IMAGE,
+	type UploadClassification,
+} from '#lib/server/uploads/classify.js';
 import { MAX_FILENAME_CHARS } from '#lib/server/text-limits.js';
 import type { RequestHandler } from './$types';
 
@@ -83,7 +95,13 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	}
 
 	const contentType = file.type || 'application/octet-stream';
-	const classification = classifyUpload(contentType);
+	// A HEIC photo is stored as the JPEG it converts to (see media/heic.ts),
+	// recognised by name too because a browser on an OS without a `.heic`
+	// mapping sends it untyped.
+	const heic = isHeicUpload(normalizeContentType(contentType), file.name);
+	const classification: UploadClassification | null = heic
+		? { kind: 'image', maxBytes: MAX_UPLOAD_BYTES_IMAGE }
+		: classifyUpload(contentType);
 	if (!classification) {
 		error(415, `Unsupported content type: ${contentType}`);
 	}
@@ -98,11 +116,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	// `file.arrayBuffer()` first: that copy held a second whole-file buffer
 	// beside the form's own at the peak of every upload.
 	const store = getMediaStore();
-	const ref = await store.putStream({
-		stream: Readable.fromWeb(file.stream() as NodeReadableStream<Uint8Array>),
-		contentType,
-		kind: classification.kind,
-	});
+	const upload = () => Readable.fromWeb(file.stream() as NodeReadableStream<Uint8Array>);
+	const ref = heic
+		? await storeHeicAsJpeg(upload())
+		: await store.putStream({ stream: upload(), contentType, kind: classification.kind });
 	// `file.size` comes from the multipart framing; a corrupted part can still
 	// read as zero bytes. Same refusal, after the fact.
 	if (ref.byteSize === 0) {
@@ -140,3 +157,32 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		originalFilename,
 	});
 };
+
+/** Convert an uploaded HEIC to JPEG and store that. ffmpeg needs a seekable
+ *  file, so both sides go through a private temp directory, removed whatever
+ *  happens. A file that won't convert is refused, not stored as a HEIC nothing
+ *  can display. */
+async function storeHeicAsJpeg(source: Readable) {
+	const dir = await mkdtemp(join(tmpdir(), 'gs-heic-'));
+	try {
+		const heicAbs = join(dir, 'in.heic');
+		const jpegAbs = join(dir, 'out.jpg');
+		await pipeline(source, createWriteStream(heicAbs));
+		try {
+			await convertHeicToJpeg(heicAbs, jpegAbs);
+		} catch (e) {
+			if (e instanceof HeicConversionError) {
+				console.warn('[uploads] HEIC conversion failed:', e.cause ?? e.message);
+				error(415, e.message);
+			}
+			throw e;
+		}
+		return await getMediaStore().putStream({
+			stream: createReadStream(jpegAbs),
+			contentType: 'image/jpeg',
+			kind: 'image',
+		});
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+}

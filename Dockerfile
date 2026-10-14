@@ -119,6 +119,14 @@ RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
 # iOS 11), vp8/vp9 for webm, mjpeg for older cameras, and the mov demuxer for
 # .mp4 and .mov alike.
 #
+# The same hevc decoder and mov demuxer read HEIC photos, which uploads convert
+# to JPEG (media/heic.ts). That costs one filter: an iPhone HEIC is a grid of
+# 512 px tiles, and ffmpeg stitches it back with `xstack`. Without it every
+# HEIC fails with "No such filter: 'xstack'" — and a small, untiled HEIC
+# still decodes, which is why the probe below uses a tiled one. (`crop`, and the
+# transpose/flip a rotated photo needs, ffmpeg's CLI selects for itself; see
+# the probe comment below.)
+#
 # AV1 comes from libdav1d, NOT from ffmpeg's built-in `av1` decoder. That one is
 # a hwaccel-only wrapper: it builds and it lists in `-decoders`, and then every
 # software decode fails with "Your platform doesn't support hardware accelerated
@@ -178,7 +186,7 @@ RUN ./configure \
       --enable-demuxer=mov,matroska \
       --enable-encoder=mjpeg \
       --enable-muxer=image2,mp4,mov,matroska,webm \
-      --enable-filter=scale,format,null,copy \
+      --enable-filter=scale,format,null,copy,xstack \
       --enable-protocol=file \
       --enable-swscale \
     && make -j"$(nproc)" \
@@ -216,8 +224,15 @@ RUN ./configure \
 # field rather than hardcoded — the length ffmpeg writes there is a detail of
 # its version, and a probe that asserts a constant would start failing on an
 # upgrade for a reason that has nothing to do with what it is testing.
+#
+# The HEIC probe is a committed sample (macOS's encoder made it; no Linux tool
+# writes iPhone-style HEIC): 1024x768 stored as tiles, flagged to display rotated
+# 90°. It runs the argument list from media/heic.ts, then asserts the JPEG is
+# 768x1024 — portrait — which only holds if the tiles were stitched AND the
+# rotation applied.
 # (The one pipe feeds `wc -l` into a `test` that fails unless it counts 3; `set -- $(od …)` splits on purpose.)
 # hadolint ignore=DL4006,SC2046
+COPY tests/image-smoke/tiled-rotated.heic /tmp/probe.heic
 RUN apk add --no-cache ffmpeg \
     && ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=size=320x240:rate=30 \
          -frames:v 3 -c:v libx264 -y /tmp/probe.mp4 \
@@ -241,7 +256,12 @@ RUN apk add --no-cache ffmpeg \
     && test $(( $(ffprobe -v error -show_entries stream=index -of csv=p=0 /tmp/probe-fs.mp4 | wc -l) )) -eq 3 \
     && set -- $(od -An -tu1 -N4 -j0 /tmp/probe-fs.mp4) \
     && test "$(dd if=/tmp/probe-fs.mp4 bs=1 \
-         skip=$(( $1*16777216 + $2*65536 + $3*256 + $4 + 4 )) count=4 2>/dev/null)" = moov
+         skip=$(( $1*16777216 + $2*65536 + $3*256 + $4 + 4 )) count=4 2>/dev/null)" = moov \
+    && /opt/ff/bin/ffmpeg -hide_banner -loglevel error -nostdin -threads 1 \
+         -max_pixels 100000000 -protocol_whitelist file -i /tmp/probe.heic -frames:v 1 \
+         -q:v 2 -f image2 -y /tmp/probe-heic.jpg \
+    && test "$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height \
+         -of csv=p=0 /tmp/probe-heic.jpg)" = "768,1024"
 
 # --- runtime-base -----------------------------------------------------
 # The runtime's operating system: node:26-alpine plus our packages, minus what

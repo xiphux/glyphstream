@@ -185,7 +185,7 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   generation, ref-counted, and purged only after a grace period with zero
   references.
 - Attach images and files to messages (drag-drop, paste); images are resized
-  client-side before upload.
+  client-side before upload, and iPhone HEIC photos are converted to JPEG.
 
 ### Tools & agents
 

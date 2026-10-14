@@ -20,9 +20,10 @@
  * full dev install. `bundle` catches that; the bundled libraries' BEHAVIOUR
  * is e2e's to cover, since Playwright runs this same production build.
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { fork, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -179,6 +180,40 @@ const checks = {
 			if (result !== 42) throw new Error(`6 * 7 returned ${JSON.stringify(result)}`);
 		} finally {
 			child.kill('SIGKILL');
+		}
+	},
+
+	// A HEIC upload as the upload route converts it: copied into a fresh
+	// directory under the OS temp dir (which must be writable by the image's
+	// user), then decoded by the image's ffmpeg with media/heic.ts's arguments.
+	// The sample is tiled and flagged to display rotated, so a portrait result
+	// means both the tile stitching and the rotation work in the shipped binary.
+	async heic() {
+		const { default: sharp } = await import('sharp');
+		const dir = mkdtempSync(join(tmpdir(), 'gs-heic-'));
+		try {
+			const src = join(dir, 'in.heic');
+			const out = join(dir, 'out.jpg');
+			copyFileSync(join(dirname(fileURLToPath(import.meta.url)), 'tiled-rotated.heic'), src);
+			// Mirrors convertHeicToJpeg in src/lib/server/media/heic.ts.
+			const r = spawnSync(
+				'ffmpeg',
+				[
+					...['-hide_banner', '-loglevel', 'error', '-nostdin', '-threads', '1'],
+					...['-max_pixels', '100000000', '-protocol_whitelist', 'file', '-i', src],
+					...['-frames:v', '1', '-q:v', '2', '-f', 'image2', '-y', out],
+				],
+				{ encoding: 'utf8' },
+			);
+			if (r.error || r.status !== 0) {
+				throw new Error(`ffmpeg: ${r.stderr?.trim() || r.error?.message || `exit ${r.status}`}`);
+			}
+			const meta = await sharp(out).metadata();
+			if (meta.width !== 768 || meta.height !== 1024) {
+				throw new Error(`converted to ${meta.width}x${meta.height}, expected 768x1024`);
+			}
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
 		}
 	},
 
