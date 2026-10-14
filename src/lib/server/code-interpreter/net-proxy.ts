@@ -44,6 +44,13 @@ export interface ProxyFetchResponse {
 	url: string;
 }
 
+/** Response bytes a run may still download (`remainingBytes`, drawn down as
+ *  chunks arrive) out of `limitBytes`. */
+export interface FetchBudget {
+	remainingBytes: number;
+	limitBytes: number;
+}
+
 export interface ProxyPolicy {
 	/** The conversation has its `web` feature category turned off. */
 	webDisabled: boolean;
@@ -54,7 +61,7 @@ export interface ProxyPolicy {
 	/** Response bytes the run may still download, shared by all its requests
 	 *  and drawn down as chunks arrive. Every response is buffered here, in the
 	 *  server's own memory, before the interpreter sees it. */
-	budget?: { remainingBytes: number };
+	budget?: FetchBudget;
 }
 
 const MAX_REDIRECTS = 3;
@@ -151,7 +158,7 @@ export async function proxyInterpreterFetch(
 async function readCapped(
 	res: Response,
 	cap: number,
-	budget?: { remainingBytes: number },
+	budget?: FetchBudget,
 ): Promise<Uint8Array<ArrayBuffer>> {
 	if (!res.body) return new Uint8Array(0);
 	const reader = res.body.getReader();
@@ -170,7 +177,7 @@ async function readCapped(
 			if (budget.remainingBytes < 0) {
 				await reader.cancel().catch(() => {});
 				throw new UrlPolicyError(
-					'Refused: this run has downloaded as much as one run may. Fetch less, or split the work across runs.',
+					`Refused: this run has downloaded its limit of ${Math.round(budget.limitBytes / 1024 / 1024)} MB. Fetch less, or split the work across runs.`,
 				);
 			}
 		}

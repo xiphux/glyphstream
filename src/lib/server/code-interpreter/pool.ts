@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 import { getCodeInterpreterConfig } from './config';
 import { listForbiddenHosts } from '../tools/url-policy';
 import { acceptGeneratedFiles } from './generated-files';
-import { proxyInterpreterFetch, type ProxyFetchRequest } from './net-proxy';
+import { proxyInterpreterFetch, type FetchBudget, type ProxyFetchRequest } from './net-proxy';
 import { cachePyodideWheel } from './package-cache';
 import { pyodideModuleUrl, spawnInterpreterProcess, type ManagedWorker } from './spawn';
 
@@ -121,7 +121,7 @@ interface ActiveCall {
 	fetchesInFlight: number;
 	fetchWaiters: Array<() => void>;
 	/** Shared by every fetch in the call; see `MAX_FETCH_BYTES_PER_CALL`. */
-	fetchBudget: { remainingBytes: number };
+	fetchBudget: FetchBudget;
 }
 
 /**
@@ -313,7 +313,10 @@ export async function runPython(params: RunPythonParams): Promise<WorkerRunResul
 						abort: new AbortController(),
 						fetchesInFlight: 0,
 						fetchWaiters: [],
-						fetchBudget: { remainingBytes: MAX_FETCH_BYTES_PER_CALL },
+						fetchBudget: {
+							remainingBytes: MAX_FETCH_BYTES_PER_CALL,
+							limitBytes: MAX_FETCH_BYTES_PER_CALL,
+						},
 					};
 					entry.worker.postMessage({
 						type: 'run',
@@ -617,8 +620,12 @@ async function acquireFetchSlot(call: ActiveCall): Promise<boolean> {
 	// A released slot passes straight to the next waiter (the count never
 	// drops), so a newcomer can't overtake the queue.
 	await new Promise<void>((resolve) => {
-		call.fetchWaiters.push(resolve);
-		call.abort.signal.addEventListener('abort', () => resolve(), { once: true });
+		const onAbort = () => resolve();
+		call.abort.signal.addEventListener('abort', onAbort, { once: true });
+		call.fetchWaiters.push(() => {
+			call.abort.signal.removeEventListener('abort', onAbort);
+			resolve();
+		});
 	});
 	// Woken by the call ending rather than by a slot: the call is over, so its
 	// counts no longer matter.

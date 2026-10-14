@@ -11,7 +11,8 @@
  * (`Function` and `import()` reach everything back). A separate process with
  * permissions enforced by Node itself does:
  *
- *   - `env: {}` — the child sees no environment variables at all;
+ *   - an empty environment but for `TZ` — none of the server's variables,
+ *     which is where its secrets live;
  *   - `--permission` with fs READ granted only for the worker bundle and the
  *     Pyodide package — not the database, media store, config, `.env`, or
  *     `/proc/self/environ`; no fs write grant at all;

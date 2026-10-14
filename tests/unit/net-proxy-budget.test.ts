@@ -20,17 +20,17 @@ const policy = { webDisabled: false, forbiddenHosts: new Set<string>() };
 
 describe('proxyInterpreterFetch byte budget', () => {
 	it('draws each response from the shared budget', async () => {
-		const budget = { remainingBytes: 2500 };
+		const budget = { remainingBytes: 2500, limitBytes: 2500 };
 		await proxyInterpreterFetch(request, { ...policy, budget });
 		await proxyInterpreterFetch(request, { ...policy, budget });
 		expect(budget.remainingBytes).toBe(500);
 	});
 
 	it('refuses the response that would overdraw it', async () => {
-		const budget = { remainingBytes: 1500 };
+		const budget = { remainingBytes: 1500, limitBytes: 1500 };
 		await proxyInterpreterFetch(request, { ...policy, budget });
 		await expect(proxyInterpreterFetch(request, { ...policy, budget })).rejects.toThrow(
-			/downloaded as much as one run may/,
+			/downloaded its limit of/,
 		);
 	});
 });
