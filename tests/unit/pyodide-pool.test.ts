@@ -159,6 +159,28 @@ describe('runPython — happy path + isolation', () => {
 		expect(Date.now() - started).toBeLessThan(1000);
 	});
 
+	it("ignores a late error from a replaced worker instead of failing its successor's entry", async () => {
+		setWorkerFactoryForTests(() => {
+			const w = new MockWorker();
+			w.onRun = ({ callId }) => replyOk(w, callId, 1);
+			createdWorkers.push(w);
+			return w;
+		});
+		const run = () =>
+			runPython({ conversationId: 'late', userId: 'u-late', code: '1', disabledFeatures: [] });
+
+		await run();
+		createdWorkers[0].emit('error', new Error('first worker broke'));
+		await run();
+		expect(createdWorkers).toHaveLength(2);
+
+		// The first worker's process reports again, after it was replaced.
+		createdWorkers[0].emit('error', new Error('first worker, again'));
+		await run();
+		expect(createdWorkers).toHaveLength(2);
+		expect(listWorkerStates().find((w) => w.conversationId === 'late')?.state).toBe('ready');
+	});
+
 	it('terminates the worker when Pyodide init fails (no thread leak)', async () => {
 		setWorkerFactoryForTests(() => {
 			const w = new MockWorker();

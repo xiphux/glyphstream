@@ -450,7 +450,12 @@ async function doStart(
 
 		worker.on('error', (err: Error) => {
 			failInit?.(err);
-			markFailed(conversationId, err.message);
+			// Only this worker's own entry: a replaced worker's late error must
+			// not fail the successor, which would orphan it and spawn another.
+			const entry = entries.get(conversationId);
+			if (entry?.state === 'ready' && entry.worker === worker) {
+				markFailed(conversationId, err.message);
+			}
 		});
 
 		worker.on('exit', (code: number) => {
