@@ -8,15 +8,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Buffer } from 'node:buffer';
 
-const mocks = vi.hoisted(() => ({ fetchUpstreamBytes: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+	fetchUpstreamBytes: vi.fn(),
+	put: vi.fn(async () => ({ storagePath: 'p', contentType: 'image/png', byteSize: 3 })),
+}));
 vi.mock('#lib/server/endpoints/client.js', async (orig) => ({
 	...(await orig<typeof import('#lib/server/endpoints/client.js')>()),
 	fetchUpstreamBytes: mocks.fetchUpstreamBytes,
 }));
 vi.mock('#lib/server/media/disk-store.js', () => ({
-	getMediaStore: () => ({
-		put: vi.fn(async () => ({ storagePath: 'p', contentType: 'image/png', byteSize: 3 })),
-	}),
+	getMediaStore: () => ({ put: mocks.put }),
 }));
 vi.mock('#lib/server/db/queries/media.js', () => ({
 	insertMedia: vi.fn(() => ({ id: 'media-1' })),
@@ -44,7 +45,7 @@ async function persistUrl(baseUrl: string, url: string) {
 		urlOrB64: { url },
 	});
 	// The opts (3rd) arg passed to fetchUpstreamBytes carries guardRedirects.
-	return mocks.fetchUpstreamBytes.mock.calls[0][2] as { guardRedirects?: boolean } | undefined;
+	return mocks.fetchUpstreamBytes.mock.calls[0]?.[2] as { guardRedirects?: boolean } | undefined;
 }
 
 describe('persister SSRF trust classification (by origin)', () => {
@@ -99,11 +100,23 @@ describe('persister SSRF trust classification (by origin)', () => {
 		);
 	});
 
-	it.each(['file:///etc/passwd', 'data:image/png;base64,AAAA', 'ftp://backend.local/x'])(
-		'refuses a non-http(s) URL: %s',
-		async (url) => {
-			await expect(persistUrl('http://backend.local:8080/v1', url)).rejects.toThrow(/http/);
-			expect(mocks.fetchUpstreamBytes).not.toHaveBeenCalled();
-		},
-	);
+	it('decodes an inline data: image instead of fetching it', async () => {
+		mocks.put.mockClear();
+		await persistUrl('http://backend.local:8080/v1', 'data:image/webp;base64,AQID');
+		expect(mocks.fetchUpstreamBytes).not.toHaveBeenCalled();
+		expect(mocks.put).toHaveBeenCalledWith(
+			expect.objectContaining({ bytes: Buffer.from([1, 2, 3]), contentType: 'image/webp' }),
+		);
+	});
+
+	it.each([
+		'file:///etc/passwd',
+		'data:image/svg+xml;base64,PHN2Zz4=',
+		'data:text/html;base64,AAAA',
+		'data:image/png,not-base64',
+		'ftp://backend.local/x',
+	])('refuses a non-http(s) URL: %s', async (url) => {
+		await expect(persistUrl('http://backend.local:8080/v1', url)).rejects.toThrow(/http/);
+		expect(mocks.fetchUpstreamBytes).not.toHaveBeenCalled();
+	});
 });

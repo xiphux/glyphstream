@@ -159,6 +159,11 @@ export async function persistGeneratedVideo(input: PersistVideoInput): Promise<s
 	return id;
 }
 
+/** A base64 `data:` URL of a raster type the image pipeline accepts. Not SVG:
+ *  a generated image is never a scriptable document. */
+const DATA_IMAGE_URL =
+	/^data:(image\/(?:png|jpeg|webp|gif|avif))(?:;[^,;]*=[^,;]*)*;base64,([\s\S]*)$/i;
+
 async function resolveBytes(
 	endpoint: LoadedEndpoint,
 	urlOrB64: { url?: string; b64_json?: string },
@@ -170,6 +175,13 @@ async function resolveBytes(
 		return { bytes: Buffer.from(urlOrB64.b64_json, 'base64'), contentType: 'image/png' };
 	}
 	if (urlOrB64.url) {
+		// Some OpenAI-compatible servers inline the image as a `data:` URL in
+		// `url` instead of using `b64_json`. It names no host, so decode it here
+		// rather than fetch it; any other scheme is refused below.
+		const inline = DATA_IMAGE_URL.exec(urlOrB64.url);
+		if (inline) {
+			return { bytes: Buffer.from(inline[2], 'base64'), contentType: inline[1].toLowerCase() };
+		}
 		// Resolve FIRST, then decide trust on the result. A relative URL (e.g.
 		// "/v1/files/abc/content") lands on the endpoint's own origin and is
 		// trusted by construction. Anything that resolves elsewhere is the
