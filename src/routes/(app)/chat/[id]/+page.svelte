@@ -770,7 +770,12 @@
 				data.conversation.messages,
 			);
 			messages = merged.messages;
-			if (!merged.keptEarlier) hasEarlier = fresh;
+			if (!merged.keptEarlier) {
+				hasEarlier = fresh;
+				// A new window: a failure loading above the old one is no reason
+				// for this one's sentinel to stand down.
+				earlierFailed = false;
+			}
 		} else {
 			messages = data.conversation.messages;
 			hasEarlier = fresh;
