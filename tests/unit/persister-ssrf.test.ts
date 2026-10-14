@@ -109,6 +109,13 @@ describe('persister SSRF trust classification (by origin)', () => {
 		);
 	});
 
+	it('refuses a crafted data: URL in linear time', async () => {
+		const url = 'data:image/png' + ';a=a=a=a=a'.repeat(5000) + 'X';
+		const started = Date.now();
+		await expect(persistUrl('http://backend.local:8080/v1', url)).rejects.toThrow(/http/);
+		expect(Date.now() - started).toBeLessThan(500);
+	});
+
 	it.each([
 		'file:///etc/passwd',
 		'data:image/svg+xml;base64,PHN2Zz4=',

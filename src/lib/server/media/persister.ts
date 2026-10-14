@@ -160,9 +160,11 @@ export async function persistGeneratedVideo(input: PersistVideoInput): Promise<s
 }
 
 /** A base64 `data:` URL of a raster type the image pipeline accepts. Not SVG:
- *  a generated image is never a scriptable document. */
+ *  a generated image is never a scriptable document. A parameter's name may not
+ *  contain `=`: if it could, `;a=a=a…` splits several ways per parameter and a
+ *  response without `;base64,` backtracks exponentially on the one Node thread. */
 const DATA_IMAGE_URL =
-	/^data:(image\/(?:png|jpeg|webp|gif|avif))(?:;[^,;]*=[^,;]*)*;base64,([\s\S]*)$/i;
+	/^data:(image\/(?:png|jpeg|webp|gif|avif))(?:;[^,;=]*=[^,;]*)*;base64,([\s\S]*)$/i;
 
 async function resolveBytes(
 	endpoint: LoadedEndpoint,
