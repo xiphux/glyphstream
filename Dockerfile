@@ -193,6 +193,11 @@ RUN ./configure \
     && make install \
     && strip /opt/ff/bin/ffmpeg
 
+# The HEIC probe's sample (see below). Copied before the comment block so the
+# `hadolint ignore` pragma stays directly on the RUN it excuses: a pragma
+# applies only to the next instruction.
+COPY tests/image-smoke/tiled-rotated.heic /tmp/probe.heic
+
 # Prove the whole pipeline, not just that it compiled. `-decoders` (checked in
 # the runtime stage) covers the link; this covers the half --disable-everything
 # is most likely to strip by accident — the mjpeg encoder, the image2 muxer, the
@@ -232,7 +237,6 @@ RUN ./configure \
 # rotation applied.
 # (The one pipe feeds `wc -l` into a `test` that fails unless it counts 3; `set -- $(od …)` splits on purpose.)
 # hadolint ignore=DL4006,SC2046
-COPY tests/image-smoke/tiled-rotated.heic /tmp/probe.heic
 RUN apk add --no-cache ffmpeg \
     && ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=size=320x240:rate=30 \
          -frames:v 3 -c:v libx264 -y /tmp/probe.mp4 \
