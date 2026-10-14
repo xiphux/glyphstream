@@ -80,6 +80,14 @@ describe('getOrCreateDisplayVariant', () => {
 		expect(await getOrCreateDisplayVariant('ab/cd/small.jpg')).toBeNull();
 	});
 
+	it('remembers an image it cannot encode instead of decoding it on every view', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		write('ab/cd/broken.png', Buffer.from('not an image at all'));
+		expect(await getOrCreateDisplayVariant('ab/cd/broken.png')).toBeNull();
+		expect(await getOrCreateDisplayVariant('ab/cd/broken.png')).toBeNull();
+		expect(warn).toHaveBeenCalledTimes(1);
+	});
+
 	it('keeps every frame of an animated GIF', async () => {
 		const frame = (r: number) =>
 			sharp({ create: { width: 200, height: 200, channels: 3, background: { r, g: 40, b: 90 } } })

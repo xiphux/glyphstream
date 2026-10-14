@@ -40,11 +40,18 @@ export interface DisplayVariantRef {
 	contentType: 'image/webp';
 }
 
-/** Images whose variant came out no smaller than the original. In memory, so a
- *  declined image costs one wasted encode per process rather than one per view;
- *  bounded so a large library can't grow it without limit. */
+/** Images whose variant came out no smaller than the original, or couldn't be
+ *  encoded at all. In memory, so a declined image costs one wasted encode per
+ *  process rather than one per view; bounded so a large library can't grow it
+ *  without limit. A failed WRITE isn't remembered: that's the volume, not the
+ *  image, and it may be fixed without a restart. */
 const declined = new Set<string>();
 const DECLINED_MAX = 4096;
+
+function decline(storagePath: string): void {
+	if (declined.size >= DECLINED_MAX) declined.clear();
+	declined.add(storagePath);
+}
 
 const generating = new Map<string, Promise<DisplayVariantRef | null>>();
 
@@ -83,9 +90,9 @@ async function generate(
 		}
 		return null;
 	}
-	const tmp = `${variantAbs}.${randomUUID()}.tmp`;
+	let encoded: Buffer;
 	try {
-		const encoded = await withGenerationSlot(() =>
+		encoded = await withGenerationSlot(() =>
 			// `animated`: every frame, not just the first. Without it an animated GIF
 			// or WebP came out as one still frame, which is always smaller, so the
 			// size check below served it and the thread stopped animating.
@@ -96,11 +103,20 @@ async function generate(
 				.webp({ quality: DISPLAY_QUALITY })
 				.toBuffer(),
 		);
-		if (encoded.byteLength >= original.byteLength) {
-			if (declined.size >= DECLINED_MAX) declined.clear();
-			declined.add(storagePath);
-			return null;
-		}
+	} catch (e) {
+		// An image sharp can't make a copy of (undecodable, or an animated one
+		// with a 90° EXIF rotation) fails the same way every time: remember it,
+		// or every view re-reads and re-decodes the whole original.
+		decline(storagePath);
+		console.warn(`[display-variant] could not encode ${storagePath}:`, e);
+		return null;
+	}
+	if (encoded.byteLength >= original.byteLength) {
+		decline(storagePath);
+		return null;
+	}
+	const tmp = `${variantAbs}.${randomUUID()}.tmp`;
+	try {
 		mkdirSync(dirname(variantAbs), { recursive: true });
 		// Atomic: a torn write must never be served (immutable for a year).
 		await writeFile(tmp, encoded);
@@ -108,7 +124,7 @@ async function generate(
 		return { absolutePath: variantAbs, byteSize: encoded.byteLength, contentType: 'image/webp' };
 	} catch (e) {
 		await unlink(tmp).catch(() => {});
-		console.warn(`[display-variant] generation failed for ${storagePath}:`, e);
+		console.warn(`[display-variant] could not save the copy of ${storagePath}:`, e);
 		return null;
 	}
 }
