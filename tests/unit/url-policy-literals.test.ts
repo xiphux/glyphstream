@@ -24,6 +24,8 @@ describe('isPrivateIp — IPv6 forms', () => {
 		'::ffff:a9fe:a9fe', // 169.254.169.254
 		'::ffff:a00:1', // 10.0.0.1
 		'::7f00:1', // deprecated IPv4-compatible 127.0.0.1
+		'::ffff:0:7f00:1', // IPv4-translated (SIIT) 127.0.0.1
+		'::ffff:0:a9fe:a9fe',
 		'64:ff9b::a9fe:a9fe', // NAT64 to 169.254.169.254
 		'64:ff9b::7f00:1',
 		'64:ff9b:1::1', // local-use NAT64
@@ -49,6 +51,7 @@ describe('isPrivateIp — IPv6 forms', () => {
 		'::ffff:808:808', // 8.8.8.8, mapped
 		'::ffff:8.8.8.8',
 		'64:ff9b::808:808', // NAT64 to 8.8.8.8
+		'::ffff:0:808:808', // IPv4-translated 8.8.8.8
 		'2002:808:808::1', // 6to4 of 8.8.8.8
 	])('allows %s', (ip) => {
 		expect(isPrivateIp(ip)).toBe(false);
