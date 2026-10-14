@@ -26,7 +26,11 @@ vi.mock('#lib/server/env.js', () => ({
 	derivedDir: () => state.root,
 }));
 
-import { getOrCreateThumbnail } from '#lib/server/media/thumbnail.js';
+import {
+	getOrCreateThumbnail,
+	legacyThumbStoragePath,
+	thumbStoragePath,
+} from '#lib/server/media/thumbnail.js';
 
 function writeOriginal(storagePath: string, bytes: Buffer) {
 	const abs = resolve(state.root, storagePath);
@@ -53,7 +57,7 @@ const FORMATS = {
 
 describe('getOrCreateThumbnail with real sharp', () => {
 	it.each(Object.keys(FORMATS) as Array<keyof typeof FORMATS>)(
-		'decodes a %s original into a ≤512px JPEG, aspect preserved',
+		'decodes a %s original into a ≤512px WebP, aspect preserved',
 		async (ext) => {
 			const original = await FORMATS[ext](sharp(await photoPng(1200, 800))).toBuffer();
 			const storagePath = `ab/cd/photo.${ext}`;
@@ -65,8 +69,9 @@ describe('getOrCreateThumbnail with real sharp', () => {
 			expect(thumb!.byteSize).toBe(bytes.length);
 
 			const meta = await sharp(bytes).metadata();
-			expect(meta).toMatchObject({ format: 'jpeg', width: 512, height: 341 });
-			// A 512px photo-like JPEG at q75 is tens of KB. A thumb anywhere near the
+			expect(meta).toMatchObject({ format: 'webp', width: 512, height: 341 });
+			expect(thumb!.contentType).toBe('image/webp');
+			// A 512px photo-like thumbnail is tens of KB. A thumb anywhere near the
 			// original's size means the encode settings stopped applying.
 			expect(bytes.length).toBeLessThan(80_000);
 		},
@@ -76,7 +81,7 @@ describe('getOrCreateThumbnail with real sharp', () => {
 		writeOriginal('ab/cd/small.png', await photoPng(200, 120));
 		const thumb = await getOrCreateThumbnail('ab/cd/small.png', 'image');
 		const meta = await sharp(await readFile(thumb!.absolutePath)).metadata();
-		expect(meta).toMatchObject({ format: 'jpeg', width: 200, height: 120 });
+		expect(meta).toMatchObject({ format: 'webp', width: 200, height: 120 });
 	});
 
 	it('applies EXIF orientation, so a phone photo is not sideways', async () => {
@@ -113,6 +118,53 @@ describe('getOrCreateThumbnail with real sharp', () => {
 		writeOriginal('ab/cd/pano.png', bilevelPng(15_000, 4_000));
 		const thumb = await getOrCreateThumbnail('ab/cd/pano.png', 'image');
 		expect(thumb).not.toBeNull();
+	});
+
+	it('keeps transparency, which the JPEG thumbnails flattened', async () => {
+		const clear = await sharp({
+			create: { width: 64, height: 64, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+		})
+			.png()
+			.toBuffer();
+		writeOriginal('ab/cd/clear.png', clear);
+		const thumb = await getOrCreateThumbnail('ab/cd/clear.png', 'image');
+		const { data } = await sharp(await readFile(thumb!.absolutePath))
+			.raw()
+			.toBuffer({ resolveWithObject: true });
+		expect(data[3]).toBe(0);
+	});
+
+	it('replaces a pre-WebP JPEG thumbnail, then deletes it', async () => {
+		writeOriginal('ab/cd/old.png', await photoPng(800, 600));
+		const legacyAbs = resolve(state.root, legacyThumbStoragePath('ab/cd/old.png'));
+		writeFileSync(
+			legacyAbs,
+			await sharp(await photoPng(512, 384))
+				.jpeg()
+				.toBuffer(),
+		);
+
+		const thumb = await getOrCreateThumbnail('ab/cd/old.png', 'image');
+
+		expect(thumb!.absolutePath).toBe(resolve(state.root, thumbStoragePath('ab/cd/old.png')));
+		expect((await sharp(await readFile(thumb!.absolutePath)).metadata()).format).toBe('webp');
+		expect(readdirSync(resolve(state.root, 'ab/cd')).sort()).toEqual([
+			'old.png',
+			'old.png.thumb.webp',
+		]);
+	});
+
+	it('serves the pre-WebP JPEG when a WebP cannot be made', async () => {
+		// Better than the alternative for an image: streaming the full original.
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+		writeOriginal('ab/cd/broken.png', Buffer.from('\x89PNG\r\n\x1a\nno longer readable'));
+		const legacyAbs = resolve(state.root, legacyThumbStoragePath('ab/cd/broken.png'));
+		writeFileSync(legacyAbs, 'old jpeg thumbnail');
+
+		const thumb = await getOrCreateThumbnail('ab/cd/broken.png', 'image');
+
+		expect(thumb).toEqual({ absolutePath: legacyAbs, byteSize: 18, contentType: 'image/jpeg' });
+		vi.restoreAllMocks();
 	});
 
 	it('returns null for bytes sharp cannot decode, leaving no partial thumb', async () => {

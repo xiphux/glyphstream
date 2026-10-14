@@ -246,7 +246,7 @@ RUN apk add --no-cache ffmpeg \
          /opt/ff/bin/ffmpeg -hide_banner -loglevel error -nostdin -threads 1 \
            -max_pixels 33177600 -protocol_whitelist file -ss 0 -i /tmp/$f.mp4 -frames:v 1 \
            -vf "scale=w='min(512,iw)':h='min(512,ih)':force_original_aspect_ratio=decrease" \
-           -q:v 8 -f image2 -y /tmp/$f.jpg \
+           -q:v 2 -f image2 -y /tmp/$f.jpg \
          && test -s /tmp/$f.jpg || exit 1; \
        done \
     && ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=size=320x240:rate=15:d=1 \

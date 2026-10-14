@@ -3,7 +3,7 @@
  *
  * ffmpeg is mocked rather than executed. What's ours is the invocation and the
  * fallbacks around it: whether a video takes the ffmpeg path at all, what gets
- * asked of it, and — the parts with teeth — that a clip too short to seek into
+ * asked of it, that its frame then goes through sharp to become the WebP, and — the parts with teeth — that a clip too short to seek into
  * still produces a tile, and that a decode failure comes back as null instead of
  * escaping into the request. Whether ffmpeg itself can turn an mp4 into a JPEG is
  * ffmpeg's business, verified against real files when the build was chosen.
@@ -43,6 +43,8 @@ const state = vi.hoisted(() => ({
 	/** Consumed one per invocation; the last entry repeats once exhausted. */
 	outcomes: ['ok'] as FfmpegOutcome[],
 	sharpCalls: 0,
+	/** What each sharp() was given, in order. */
+	sharpInputs: [] as string[],
 	sharpFails: false,
 	/** Fake-clock ms each ffmpeg invocation should appear to consume. */
 	advanceMs: 0,
@@ -104,16 +106,17 @@ vi.mock('node:child_process', () => ({
 }));
 
 vi.mock('sharp', () => ({
-	default: () => {
+	default: (input: string) => {
 		state.sharpCalls++;
+		state.sharpInputs.push(input);
 		const chain = {
 			rotate: () => chain,
 			resize: () => chain,
-			jpeg: () => chain,
+			webp: () => chain,
 			toFile: (p: string) => {
 				if (state.sharpFails) return Promise.reject(new Error('sharp: unsupported image'));
 				mkdirSync(dirname(p), { recursive: true });
-				writeFileSync(p, 'image-thumb-bytes');
+				writeFileSync(p, 'webp-thumb-bytes');
 				return Promise.resolve();
 			},
 		};
@@ -121,7 +124,7 @@ vi.mock('sharp', () => ({
 	},
 }));
 
-const { getOrCreateThumbnail, thumbStoragePath, FAILED_TTL_MS } =
+const { getOrCreateThumbnail, legacyThumbStoragePath, thumbStoragePath, FAILED_TTL_MS } =
 	await import('#lib/server/media/thumbnail.js');
 
 const VIDEO_PATH = 'ab/cd/clip.mp4';
@@ -143,6 +146,7 @@ beforeEach(() => {
 	state.calls = [];
 	state.outcomes = ['ok'];
 	state.sharpCalls = 0;
+	state.sharpInputs = [];
 	state.sharpFails = false;
 	state.advanceMs = 0;
 });
@@ -153,25 +157,71 @@ afterEach(() => {
 });
 
 describe('video thumbnails', () => {
-	it('decodes with ffmpeg and never touches sharp', async () => {
+	it('decodes a frame with ffmpeg, then has sharp encode that frame as WebP', async () => {
 		writeSource(VIDEO_PATH);
 		const thumb = await getOrCreateThumbnail(VIDEO_PATH, 'video');
 
 		expect(thumb).not.toBeNull();
 		expect(state.calls).toHaveLength(1);
-		expect(state.sharpCalls).toBe(0);
+		// sharp reads the frame ffmpeg wrote, never the video itself.
+		const frame = state.calls[0].args.at(-1)!;
+		expect(state.sharpInputs).toEqual([frame]);
 		// Same name, same root, same content type as an image thumb — a video tile
 		// is not a second kind of cached artifact, it is the same one.
 		expect(thumb!.absolutePath).toBe(resolve(state.derived, thumbStoragePath(VIDEO_PATH)));
-		expect(thumb!.contentType).toBe('image/jpeg');
+		expect(thumb!.contentType).toBe('image/webp');
+		// The intermediate frame is gone.
+		expect(readdirSync(dirname(thumb!.absolutePath)).sort()).toEqual(['clip.mp4.thumb.webp']);
 	});
 
-	it('still routes images through sharp', async () => {
+	it('removes the frame when the WebP encode fails', async () => {
+		state.sharpFails = true;
+		writeSource(VIDEO_PATH);
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		await expect(getOrCreateThumbnail(VIDEO_PATH, 'video')).resolves.toBeNull();
+		const shard = resolve(state.derived, dirname(thumbStoragePath(VIDEO_PATH)));
+		expect(readdirSync(shard)).toEqual([]);
+		vi.restoreAllMocks();
+	});
+
+	it('replaces a pre-WebP JPEG thumbnail, then deletes it', async () => {
+		writeSource(VIDEO_PATH);
+		const legacyAbs = resolve(state.derived, legacyThumbStoragePath(VIDEO_PATH));
+		mkdirSync(dirname(legacyAbs), { recursive: true });
+		writeFileSync(legacyAbs, 'old jpeg poster');
+
+		const thumb = await getOrCreateThumbnail(VIDEO_PATH, 'video');
+
+		expect(thumb!.contentType).toBe('image/webp');
+		expect(state.calls).toHaveLength(1);
+		expect(existsSync(legacyAbs)).toBe(false);
+	});
+
+	it('serves the pre-WebP JPEG when the video no longer decodes, and while that is remembered', async () => {
+		// Rather than the 404 a video with no thumbnail gets: a blank tile.
+		state.outcomes = ['fail'];
+		writeSource(VIDEO_PATH);
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const legacyAbs = resolve(state.derived, legacyThumbStoragePath(VIDEO_PATH));
+		mkdirSync(dirname(legacyAbs), { recursive: true });
+		writeFileSync(legacyAbs, 'old jpeg poster');
+		const expected = { absolutePath: legacyAbs, byteSize: 15, contentType: 'image/jpeg' };
+
+		await expect(getOrCreateThumbnail(VIDEO_PATH, 'video')).resolves.toEqual(expected);
+		const calls = state.calls.length;
+		await expect(getOrCreateThumbnail(VIDEO_PATH, 'video')).resolves.toEqual(expected);
+		expect(state.calls).toHaveLength(calls); // memoized: no second decode
+		expect(existsSync(legacyAbs)).toBe(true);
+		vi.restoreAllMocks();
+	});
+
+	it('still routes images through sharp alone', async () => {
 		writeSource('ab/cd/pic.png');
 		const thumb = await getOrCreateThumbnail('ab/cd/pic.png', 'image');
 
 		expect(thumb).not.toBeNull();
-		expect(state.sharpCalls).toBe(1);
+		expect(state.sharpInputs).toEqual([resolve(state.media, 'ab/cd/pic.png')]);
 		expect(state.calls).toHaveLength(0);
 	});
 
@@ -300,7 +350,7 @@ describe('video thumbnails', () => {
 		// The first attempt can write bytes and still fail (ENOSPC mid-write on
 		// DERIVED_DIR). If the second then exits 0 having written nothing — ffmpeg
 		// 5/6's short-clip report — the stat would see the first attempt's partial
-		// JPEG and rename a truncated frame into a year-long immutable cache.
+		// JPEG and encode a truncated frame into a year-long immutable cache.
 		state.outcomes = ['partial-then-fail', 'empty'];
 		writeSource(VIDEO_PATH);
 		vi.spyOn(console, 'warn').mockImplementation(() => {});

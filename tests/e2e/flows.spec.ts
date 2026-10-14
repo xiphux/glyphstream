@@ -113,7 +113,7 @@ test.describe('flow: generate image + regenerate from gallery', () => {
 		expect(src).toBeTruthy();
 		const thumbRes = await page.request.get(src!);
 		expect(thumbRes.status()).toBe(200);
-		expect(thumbRes.headers()['content-type']).toBe('image/jpeg');
+		expect(thumbRes.headers()['content-type']).toBe('image/webp');
 
 		await thumb.click();
 

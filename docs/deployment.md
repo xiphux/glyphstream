@@ -188,8 +188,8 @@ you do it:
   slow volume: a cold gallery viewport asks for 30-60 thumbnails at once, and
   a vision variant is re-read on _every turn_ for the life of a conversation.
   Budget about a tenth of `MEDIA_DIR` and you will usually have room to
-  spare. Measured over generated PNGs: a thumbnail is ~1/70th of its original
-  (~33 KB against ~2.4 MB) and exists for every image you have looked at in
+  spare. Measured over generated PNGs: a thumbnail is ~1/90th of its original
+  (~26 KB against ~2.4 MB) and exists for every image you have looked at in
   the gallery, while a vision variant is ~1/13th and exists only for images
   actually sent to a model. A library where every image had both would come to
   roughly 1/11th of the originals; a generation-heavy one lands well below
@@ -209,10 +209,10 @@ DERIVED=/srv/glyphstream-fast/derived
 
 mkdir -p "$DERIVED"
 cd "$MEDIA"     # cpio copies the paths it is given, so run it from the root
-find . \( -name '*.thumb.jpg' -o -name '*.vision.jpg' \) | cpio -pdm "$DERIVED"
+find . \( -name '*.thumb.webp' -o -name '*.thumb.jpg' -o -name '*.vision.jpg' -o -name '*.display.webp' \) | cpio -pdm "$DERIVED"
 
 # Only after DERIVED_DIR is set and the app restarted:
-find "$MEDIA" \( -name '*.thumb.jpg' -o -name '*.vision.jpg' \) -delete
+find "$MEDIA" \( -name '*.thumb.webp' -o -name '*.thumb.jpg' -o -name '*.vision.jpg' -o -name '*.display.webp' \) -delete
 ```
 
 Do the second `find` only once you have set `DERIVED_DIR` and restarted.

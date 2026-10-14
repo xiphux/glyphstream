@@ -105,7 +105,13 @@ const checks = {
 		const jpeg = await sharp(png).resize({ width: 16 }).jpeg({ mozjpeg: true }).toBuffer();
 		const meta = await sharp(jpeg).metadata();
 		if (meta.format !== 'jpeg' || meta.width !== 16) {
-			throw new Error(`unexpected thumbnail: ${meta.format} ${meta.width}px`);
+			throw new Error(`unexpected vision variant: ${meta.format} ${meta.width}px`);
+		}
+		// Gallery thumbnails and display variants are WebP.
+		const webp = await sharp(png).resize({ width: 16 }).webp({ quality: 60, effort: 6 }).toBuffer();
+		const webpMeta = await sharp(webp).metadata();
+		if (webpMeta.format !== 'webp' || webpMeta.width !== 16) {
+			throw new Error(`unexpected thumbnail: ${webpMeta.format} ${webpMeta.width}px`);
 		}
 	},
 

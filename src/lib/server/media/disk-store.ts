@@ -15,7 +15,7 @@ import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { derivedDir, mediaDir } from '../env';
 import { normalizeContentType } from './content-type';
-import { thumbStoragePath } from './thumbnail';
+import { legacyThumbStoragePath, thumbStoragePath } from './thumbnail';
 import { visionStoragePath } from './vision-variant';
 import { displayStoragePath } from './display-variant';
 import type {
@@ -206,6 +206,8 @@ export class DiskMediaStore implements MediaStore {
 		// disk indefinitely.
 		for (const derived of [
 			thumbStoragePath(storagePath),
+			// A pre-WebP thumbnail that was never viewed again, so never replaced.
+			legacyThumbStoragePath(storagePath),
 			visionStoragePath(storagePath),
 			displayStoragePath(storagePath),
 		]) {

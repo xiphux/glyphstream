@@ -37,7 +37,7 @@ vi.mock('sharp', () => {
 		const chain = {
 			rotate: () => chain,
 			resize: () => chain,
-			jpeg: () => chain,
+			webp: () => chain,
 			toFile: (p: string) => {
 				outPath.value = p;
 				state.started++;
@@ -46,7 +46,7 @@ vi.mock('sharp', () => {
 				return new Promise<void>((res) => {
 					state.pending.push(() => {
 						mkdirSync(dirname(p), { recursive: true });
-						writeFileSync(p, 'jpeg-bytes');
+						writeFileSync(p, 'webp-bytes');
 						state.live--;
 						res();
 					});
@@ -136,7 +136,7 @@ describe('getOrCreateThumbnail', () => {
 		// Every caller still gets a usable ref.
 		for (const r of results) {
 			expect(r).not.toBeNull();
-			expect(r!.contentType).toBe('image/jpeg');
+			expect(r!.contentType).toBe('image/webp');
 		}
 	});
 

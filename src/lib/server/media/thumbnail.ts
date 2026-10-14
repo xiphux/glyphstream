@@ -9,9 +9,14 @@
  *
  * Lazy strategy: on first GET for a given media's thumbnail, the
  * original is downsized to <=512px on the long side and encoded as
- * a JPEG. Subsequent GETs stream that cached file directly. New
+ * WebP. Subsequent GETs stream that cached file directly. New
  * media generates a thumb on first gallery view; existing media
  * never needed a backfill migration.
+ *
+ * Thumbnails used to be JPEG (`.thumb.jpg`). Those are migrated the
+ * same lazy way: a request with no `.thumb.webp` yet generates one,
+ * then deletes the old JPEG. The JPEG is only served if the new
+ * thumbnail can't be made — see `legacyThumbStoragePath`.
  *
  * VIDEO goes through the same path, with ffmpeg decoding one frame
  * where sharp would decode an image — same cache, same dedup, same
@@ -74,27 +79,47 @@ import { FfmpegDeadline, runFfmpeg } from './ffmpeg';
 // will never see at this surface.
 const THUMB_MAX_DIM = 512;
 
-// 75 is the conventional "good enough for thumbnails" quality:
-// noticeable JPEG artifacts only on close inspection, ~5x smaller
-// than quality=90. mozjpeg trims another ~10-15% via better
-// Huffman tables / progressive scans, free of charge.
-const THUMB_QUALITY = 75;
+// WebP quality and effort, chosen by measuring against what they replaced:
+// the old mozjpeg q75 JPEG. Over a library of generated images, q60 at
+// effort 6 matched its PSNR (slightly above it) at ~22% fewer bytes, ~26 KB a
+// tile against ~34 KB, and looked the same side by side at 2x zoom. WebP's
+// quality scale is not JPEG's, so 60 is not a lower bar than 75. Effort 6 is
+// the slowest setting and buys ~5% over the default 4 for ~13 ms more per
+// encode, which is small beside decoding the original.
+const THUMB_QUALITY = 60;
+const THUMB_EFFORT = 6;
 
 export interface ThumbnailRef {
 	/** Absolute path on disk — for the endpoint to stream from. */
 	absolutePath: string;
 	byteSize: number;
-	contentType: 'image/jpeg';
+	/** JPEG only for a pre-WebP thumbnail served because a new one couldn't
+	 *  be made; see `legacyThumbStoragePath`. */
+	contentType: 'image/webp' | 'image/jpeg';
 }
 
-/** Convention: a thumb takes the original's RELATIVE path plus `.thumb.jpg`,
+/** Convention: a thumb takes the original's RELATIVE path plus `.thumb.webp`,
  *  under `derivedDir()`. That is the original's own directory unless
  *  DERIVED_DIR says otherwise, so the two are siblings in the common case and
  *  merely same-named on different volumes otherwise. Either way the derived
  *  path is a pure function of the original's, which is what keeps cleanup
- *  trivial (delete-original also unlinks the .thumb.jpg — see disk-store.ts)
+ *  trivial (delete-original also unlinks the .thumb.webp — see disk-store.ts)
  *  and a glob able to find every thumb under one root. */
 export function thumbStoragePath(storagePath: string): string {
+	return `${storagePath}.thumb.webp`;
+}
+
+/**
+ * Where a thumbnail lived before thumbnails were WebP. Nothing new is written
+ * here. A request that finds one generates the WebP anyway and deletes this
+ * after, so a library converts as it is viewed, with no backfill.
+ *
+ * It is still served when the WebP can't be made, rather than falling back
+ * to the original (an image) or a 404 (a video): a JPEG thumbnail that
+ * decoded once is a better tile than either. `DiskMediaStore.delete` removes
+ * both names, so one that is never viewed again still goes with its original.
+ */
+export function legacyThumbStoragePath(storagePath: string): string {
 	return `${storagePath}.thumb.jpg`;
 }
 
@@ -197,14 +222,13 @@ export type ThumbnailSourceKind = 'image' | 'video';
 const VIDEO_SCALE_FILTER = `scale=w='min(${THUMB_MAX_DIM},iw)':h='min(${THUMB_MAX_DIM},ih)':force_original_aspect_ratio=decrease`;
 
 /**
- * ffmpeg's mjpeg scale runs 2 (best) to 31 — inverted from sharp's 1-100 and
- * not a conversion of it, so this was chosen by measuring rather than mapping.
- * Against generated video it lands around 30 KB, which is where THUMB_QUALITY
- * puts the image thumbnails (33 KB median in a real library). Matching the
- * BYTES is the point: both kinds share a grid, a cache lifetime, and whatever
- * disk DERIVED_DIR is pointed at.
+ * The frame ffmpeg writes is an intermediate, not the thumbnail: the image's
+ * decode-only ffmpeg has mjpeg as its one encoder, so it writes a JPEG and
+ * sharp re-encodes that as WebP with the image path's settings. 2 is the best
+ * of mjpeg's 2-31 scale, so the second encode starts from nearly what was
+ * decoded. The intermediate is ≤512 px and deleted straight after.
  */
-const VIDEO_JPEG_QSCALE = '8';
+const VIDEO_JPEG_QSCALE = '2';
 
 /**
  * How far into the clip to grab the frame.
@@ -277,12 +301,20 @@ async function encodeImageThumb(sourceAbs: string, tmpAbs: string): Promise<void
 			fit: 'inside',
 			withoutEnlargement: true,
 		})
-		.jpeg({ quality: THUMB_QUALITY, mozjpeg: true })
+		.webp({ quality: THUMB_QUALITY, effort: THUMB_EFFORT })
+		.toFile(tmpAbs);
+}
+
+/** The video path's second step: the frame ffmpeg wrote, as a WebP. Already
+ *  scaled by ffmpeg, so only the encode is left. */
+async function encodeFrameThumb(frameAbs: string, tmpAbs: string): Promise<void> {
+	await sharp(frameAbs, { limitInputPixels: MAX_DECODE_PIXELS })
+		.webp({ quality: THUMB_QUALITY, effort: THUMB_EFFORT })
 		.toFile(tmpAbs);
 }
 
 /**
- * One decoded frame, written as a JPEG.
+ * One decoded frame, written as a JPEG (see VIDEO_JPEG_QSCALE).
  *
  * The retry exists because a clip shorter than SEEK_SECONDS has nothing at that
  * timestamp, and ffmpeg reports that by exiting 0 having written NOTHING rather
@@ -308,8 +340,9 @@ async function encodeVideoThumb(sourceAbs: string, tmpAbs: string): Promise<void
 	// failing — an ENOSPC mid-write on DERIVED_DIR is the ordinary way — and both
 	// attempts share this path. If the second attempt then took the exit-0-wrote-
 	// nothing branch (ffmpeg 5/6's short-clip report), the stat inside `frameAt`
-	// would see the FIRST attempt's partial JPEG, call it 'ok', and rename a
-	// truncated frame into a cache the endpoint serves immutable for a year.
+	// would see the FIRST attempt's partial JPEG, call it 'ok', and hand a
+	// truncated frame to the WebP encode, whose output the endpoint serves
+	// immutable for a year.
 	//
 	// This was genuinely safe until the retry was widened to fire on errors as
 	// well as on empty output; before that, an attempt that wrote bytes and threw
@@ -536,23 +569,44 @@ export async function getOrCreateThumbnail(
 	// viewed once, so it's checked before any locking.
 	const cached = await statOrNull(thumbAbs);
 	if (cached) {
-		return { absolutePath: thumbAbs, byteSize: cached.size, contentType: 'image/jpeg' };
+		return { absolutePath: thumbAbs, byteSize: cached.size, contentType: 'image/webp' };
 	}
 
 	// Checked AFTER the disk probe, not before: a thumb that appeared since the
 	// failure (a backfill, a manual copy, a rebuilt DERIVED_DIR) should win over
 	// a stale memo, and the probe is one stat either way.
-	if (recentlyFailed(thumbAbs)) return null;
+	if (recentlyFailed(thumbAbs)) return legacyThumbnail(storagePath);
 
-	const existing = inFlight.get(thumbAbs);
-	if (existing) return existing;
+	let job = inFlight.get(thumbAbs);
+	if (!job) {
+		const source = resolve(mediaDir(), storagePath);
+		job = generateThumbnail(source, thumbAbs, storagePath, kind).finally(() => {
+			inFlight.delete(thumbAbs);
+		});
+		inFlight.set(thumbAbs, job);
+	}
+	return (await job) ?? legacyThumbnail(storagePath);
+}
 
-	const source = resolve(mediaDir(), storagePath);
-	const job = generateThumbnail(source, thumbAbs, storagePath, kind).finally(() => {
-		inFlight.delete(thumbAbs);
-	});
-	inFlight.set(thumbAbs, job);
-	return job;
+/** A pre-WebP thumbnail, when there is one: what's served when a WebP can't
+ *  be made. See `legacyThumbStoragePath`. */
+async function legacyThumbnail(storagePath: string): Promise<ThumbnailRef | null> {
+	const legacyAbs = resolve(derivedDir(), legacyThumbStoragePath(storagePath));
+	const st = await statOrNull(legacyAbs);
+	return st && { absolutePath: legacyAbs, byteSize: st.size, contentType: 'image/jpeg' };
+}
+
+/** The pre-WebP thumbnail is replaced now, so delete it. Best-effort: one left
+ *  behind is harmless, and `DiskMediaStore.delete` removes it with its
+ *  original. */
+async function removeLegacyThumb(storagePath: string): Promise<void> {
+	try {
+		await unlink(resolve(derivedDir(), legacyThumbStoragePath(storagePath)));
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
+			console.warn(`[thumbnail] could not remove the old JPEG for ${storagePath}:`, e);
+		}
+	}
 }
 
 async function generateThumbnail(
@@ -573,11 +627,11 @@ async function generateThumbnail(
 		// the very generation that produced this file.
 		const raced = await statOrNull(thumbAbs);
 		if (raced) {
-			return { absolutePath: thumbAbs, byteSize: raced.size, contentType: 'image/jpeg' };
+			return { absolutePath: thumbAbs, byteSize: raced.size, contentType: 'image/webp' };
 		}
 
 		// Write to a unique temp path and rename into place, so a reader can never
-		// observe a half-written JPEG. rename(2) is atomic within a filesystem, and
+		// observe a half-written thumbnail. rename(2) is atomic within a filesystem, and
 		// the temp file sits beside the thumb so it always is. Mirrors
 		// DiskMediaStore.put.
 		const tmpAbs = `${thumbAbs}.${process.pid}.${randomUUID()}.tmp`;
@@ -593,7 +647,21 @@ async function generateThumbnail(
 
 			try {
 				if (kind === 'video') {
-					await encodeVideoThumb(sourceAbs, tmpAbs);
+					// The frame gets its own temp path: ffmpeg writes a JPEG there,
+					// and sharp turns that into the WebP at tmpAbs.
+					const frameAbs = `${tmpAbs}.frame`;
+					try {
+						await encodeVideoThumb(sourceAbs, frameAbs);
+						await encodeFrameThumb(frameAbs, tmpAbs);
+					} catch (e) {
+						// Not awaited after a deadline, for the reason given in the
+						// outer catch below; `runFfmpeg` reclaims the path if the
+						// child ever wakes.
+						if (e instanceof FfmpegDeadline) void unlink(frameAbs).catch(() => {});
+						else await unlink(frameAbs).catch(() => {});
+						throw e;
+					}
+					await unlink(frameAbs).catch(() => {});
 				} else {
 					await encodeImageThumb(sourceAbs, tmpAbs);
 				}
@@ -608,7 +676,8 @@ async function generateThumbnail(
 			}
 			await rename(tmpAbs, thumbAbs);
 			const stats = await stat(thumbAbs);
-			return { absolutePath: thumbAbs, byteSize: stats.size, contentType: 'image/jpeg' };
+			await removeLegacyThumb(storagePath);
+			return { absolutePath: thumbAbs, byteSize: stats.size, contentType: 'image/webp' };
 		} catch (e) {
 			// A deadline means the filesystem stopped answering, so awaiting an
 			// unlink against it would hang exactly the way the child did — and take

@@ -9,6 +9,13 @@ arrived.
 
 ## Unreleased
 
+### Changed
+
+- Gallery thumbnails and video posters are WebP, about a fifth smaller than the
+  JPEGs they replace, and a transparent image's thumbnail keeps its
+  transparency. Existing thumbnails convert as they're viewed; nothing needs
+  doing on upgrade.
+
 ## v0.45.0
 
 ### Breaking

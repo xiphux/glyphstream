@@ -36,7 +36,8 @@ vi.mock('#lib/server/endpoints/config.js', () => ({
 }));
 
 const { derivedDir, mediaDir } = await import('#lib/server/env.js');
-const { getOrCreateThumbnail, thumbStoragePath } = await import('#lib/server/media/thumbnail.js');
+const { getOrCreateThumbnail, legacyThumbStoragePath, thumbStoragePath } =
+	await import('#lib/server/media/thumbnail.js');
 const { getVisionVariant, visionStoragePath } = await import('#lib/server/media/vision-variant.js');
 const { DiskMediaStore } = await import('#lib/server/media/disk-store.js');
 
@@ -176,5 +177,18 @@ describe('DiskMediaStore.delete with a separate derived root', () => {
 		expect(existsSync(resolve(media, STORAGE_PATH))).toBe(false);
 		expect(existsSync(thumbAbs)).toBe(false);
 		expect(existsSync(variantAbs)).toBe(false);
+	});
+
+	it('reaps a pre-WebP JPEG thumbnail that was never replaced', async () => {
+		// Old thumbnails are only converted when viewed, so an image nobody has
+		// opened in the gallery since the switch still has its .thumb.jpg.
+		writeOriginal(await photoPng(400, 300));
+		const legacyAbs = resolve(derived, legacyThumbStoragePath(STORAGE_PATH));
+		mkdirSync(dirname(legacyAbs), { recursive: true });
+		writeFileSync(legacyAbs, 'old jpeg thumbnail');
+
+		await new DiskMediaStore().delete(STORAGE_PATH);
+
+		expect(existsSync(legacyAbs)).toBe(false);
 	});
 });

@@ -14,7 +14,9 @@ import {
 import type { RequestHandler } from './$types';
 
 /**
- * Serve a small JPEG standing in for a stored image or video.
+ * Serve a small WebP standing in for a stored image or video (a JPEG, for a
+ * thumbnail made before they were WebP that cannot be remade; see
+ * `legacyThumbStoragePath`).
  *
  * Consumed as an `<img src>` by the gallery's tile grid and the avatar
  * surfaces (AssistantAvatar, AvatarMenu, settings/models — all
@@ -25,7 +27,7 @@ import type { RequestHandler } from './$types';
  * it is NOT swapped out when a frame decodes — HTML's show-poster flag
  * is cleared only by `play()` or a completed seek, not by reaching
  * HAVE_CURRENT_DATA. So what the viewer sees until they press play is
- * this JPEG, upscaled on any surface bigger than a grid tile. Accepted:
+ * this thumbnail, upscaled on any surface bigger than a grid tile. Accepted:
  * the alternative was the browser's own frame, which on iOS Safari is
  * frequently no frame at all.
  *
@@ -49,7 +51,7 @@ import type { RequestHandler } from './$types';
  * all (iOS Safari frequently doesn't), and a non-faststart mp4 — which
  * is most of what ComfyUI writes — makes it spend three range requests
  * finding the index before it could even try. The visible result was
- * blank tiles. A cached 30 KB JPEG costs one request and always works.
+ * blank tiles. A cached ~25 KB thumbnail costs one request and always works.
  */
 export const GET: RequestHandler = async ({ locals, params, url }) => {
 	requireUser(locals);

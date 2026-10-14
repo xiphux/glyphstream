@@ -45,7 +45,7 @@ export function mediaDir(): string {
 }
 
 /**
- * Where lazily-derived assets live — gallery thumbnails (`*.thumb.jpg`) and the
+ * Where lazily-derived assets live — gallery thumbnails (`*.thumb.webp`) and the
  * downscaled JPEGs inlined into vision requests (`*.vision.jpg`).
  *
  * Defaults to `mediaDir()`, which is where they have always been written, so an
@@ -54,8 +54,9 @@ export function mediaDir(): string {
  *
  * Worth separating when MEDIA_DIR is slow or remote storage, because derived
  * assets have the opposite profile to the originals they come from. They are
- * tiny (a thumbnail measures ~1/70th of its source — 33 KB against 2.4 MB over
- * generated PNGs here), they are read far more often than they are written (a
+ * tiny (a thumbnail measures well under 1/70th of its source — 33 KB against
+ * 2.4 MB over generated PNGs here, measured when thumbnails were still JPEG;
+ * WebP brought them ~22% lower), they are read far more often than they are written (a
  * gallery grid is 30-60 of them at once; a vision variant is re-read on every
  * turn for the life of a conversation), and losing one costs a re-encode rather
  * than data. So they want the fast disk while the originals want the big one,
