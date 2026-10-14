@@ -2359,9 +2359,13 @@
 	// changes — messages added or new tokens streaming in.
 	//
 	// Keyed on the LEAF, not the length: loading earlier messages grows the list
-	// at the top, which must not count as new content arriving at the bottom.
+	// at the top, which must not count as new content arriving at the bottom. A
+	// $derived, not `messages[...]` read in the effect: that read subscribes to
+	// the whole array, so a prepend would re-run the effect anyway; the derived
+	// only notifies when the leaf id itself changes.
+	const leafId = $derived(messages[messages.length - 1]?.id);
 	$effect(() => {
-		void messages[messages.length - 1]?.id;
+		void leafId;
 		void turn.inFlightSegments;
 		if (!untrack(() => isNearBottom)) return;
 		void tick().then(() => scrollToBottom());
