@@ -301,22 +301,34 @@ export function compactionWorthwhile(
 	minTokens: number = MIN_COMPACTIBLE_TOKENS,
 	opts?: { truncatedAbove?: boolean },
 ): boolean {
+	const start = opts?.truncatedAbove ? viewStart(branch) : 'inside';
+	// The latest summary is loaded but the message it resumes from isn't: the
+	// window can't even see the verbatim tail, so its cut check would under-count
+	// (it reads the summary's pointer as dangling) and wrongly report nothing to
+	// fold. The server decides from the whole branch.
+	if (start === 'resume-above') return true;
 	const view = upstreamBranch(branch);
 	const cut = computeCompactionCut(view, keepTurns);
 	if (!cut) return false;
-	if (opts?.truncatedAbove && !viewStartsInside(branch)) return true;
+	if (start === 'above') return true;
 	// The messages that would be folded into the summary = everything before the
 	// verbatim tail. (For a repeat compaction this includes the prior summary,
 	// which is correctly re-folded.)
 	return estimateContentTokens(view.slice(0, cut.cutIndex)) >= minTokens;
 }
 
-/** Whether the latest summary and the message it resumes from are both in
- *  `branch` — i.e. the model-visible view begins within it. */
-function viewStartsInside(branch: ChatMessage[]): boolean {
+/**
+ * Where the model-visible view of a windowed `branch` begins:
+ * - `'inside'`: the latest summary and the message it resumes from are both
+ *   loaded, so the view starts within the window and the estimate is exact;
+ * - `'resume-above'`: the summary is loaded but its resume point isn't;
+ * - `'above'`: no summary is loaded, so the view reaches above the window.
+ */
+function viewStart(branch: ChatMessage[]): 'inside' | 'resume-above' | 'above' {
 	const { summary } = splitAtCompaction(branch);
-	const resumeId = summary?.compactionResumeFromMessageId;
-	return !!resumeId && branch.some((m) => m.id === resumeId);
+	if (!summary) return 'above';
+	const resumeId = summary.compactionResumeFromMessageId;
+	return resumeId && branch.some((m) => m.id === resumeId) ? 'inside' : 'resume-above';
 }
 
 /** Sum of an assistant message's reported prompt + completion tokens, or 0. */

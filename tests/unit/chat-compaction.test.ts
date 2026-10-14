@@ -296,6 +296,20 @@ describe('compactionWorthwhile', () => {
 		expect(compactionWorthwhile(turns(2), 2, undefined, { truncatedAbove: true })).toBe(false);
 	});
 
+	it('counts compaction as possible when the window holds a summary but not its resume point', () => {
+		// The verbatim tail the summary kept is longer than the window: the window
+		// sees the summary and two turns after it, which alone has no cut.
+		const loaded = [
+			summary('S', 'u0', 100),
+			msg('user', { id: 'u8', createdAt: 101 }),
+			msg('assistant', { id: 'a8', createdAt: 102 }),
+			msg('user', { id: 'u9', createdAt: 103 }),
+			msg('assistant', { id: 'a9', createdAt: 104 }),
+		];
+		expect(compactionWorthwhile(loaded, 2)).toBe(false);
+		expect(compactionWorthwhile(loaded, 2, undefined, { truncatedAbove: true })).toBe(true);
+	});
+
 	it('estimates normally when the window holds the latest summary and its resume point', () => {
 		// A long thread compacted recently: the summary and the turn it resumes
 		// from are both in the newest window, so the view is fully visible and a
