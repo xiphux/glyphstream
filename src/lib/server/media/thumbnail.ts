@@ -156,9 +156,10 @@ function releaseSlot(): void {
 }
 
 /**
- * Run `fn` in one of the shared generation slots. Exported for the vision
- * variant encoder, so every sharp/ffmpeg decode in the process sits under the
- * one MAX_CONCURRENT_GENERATIONS bound.
+ * Run `fn` in one of the shared generation slots. Exported for the vision and
+ * display variant encoders, so every sharp/ffmpeg decode on the read path sits
+ * under the one MAX_CONCURRENT_GENERATIONS bound. (HEIC upload conversion runs
+ * in a slot of its own; see media/heic.ts.)
  */
 export async function withGenerationSlot<T>(fn: () => Promise<T>): Promise<T> {
 	await acquireSlot();

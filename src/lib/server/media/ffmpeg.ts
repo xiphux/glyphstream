@@ -18,15 +18,16 @@ const execFileAsync = promisify(execFile);
  * promise settles — its callback runs off the child's `close` event, and the
  * only path from the timeout to that callback is `child.kill()` itself
  * throwing. A process blocked in uninterruptible I/O (a hard NFS mount gone
- * away, a failing device) cannot be reaped, so the promise never settles, the
- * `finally` that releases the generation slot never runs, and the `inFlight`
- * entry keeps handing that dead promise to every later caller — who then await
- * it forever, with no response.
+ * away, a failing device) cannot be reaped, so the promise never settles and
+ * the caller's slot never comes back. For the thumbnail that is one of three
+ * generation slots, and its `inFlight` entry then hands the dead promise to
+ * every later caller, who await it forever; for HEIC it is the one conversion
+ * slot, and every later upload waits behind it.
  *
  * Racing an independent timer means the slot comes back whether or not the
  * child ever does. It does NOT reap the child; nothing in Node can. That is the
  * OS's problem, and one leaked process is a great deal better than one leaked
- * slot out of three shared with every image thumbnail.
+ * slot.
  */
 export class FfmpegDeadline extends Error {
 	constructor(seconds: number) {
@@ -84,9 +85,10 @@ export async function runFfmpeg(
 		if (e instanceof FfmpegDeadline) {
 			// We have given up on this child, but it may still be alive and may yet
 			// create its output — after the caller's own cleanup has run. Nothing
-			// will ever reference this path again, and nothing sweeps DERIVED_DIR,
-			// so reclaim it whenever the child finally settles. Not awaited: the
-			// point of the deadline is that this may be never.
+			// will ever reference this path again, and nothing sweeps where it
+			// lives (DERIVED_DIR, for a thumbnail), so reclaim it whenever the child
+			// finally settles. Not awaited: the point of the deadline is that this
+			// may be never.
 			void run.finally(() => unlink(outputAbs).catch(() => {})).catch(() => {});
 		}
 		throw e;

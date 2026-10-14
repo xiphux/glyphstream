@@ -24,9 +24,11 @@ index at the end**, so playback over a slow link waits for most of the file
 before it starts. That one surfaces no error anywhere — the video is intact and
 plays correctly, just late — so if remote playback feels like it buffers
 forever, check that `ffmpeg` is on `PATH` before looking anywhere else. Third,
-**HEIC photos are refused at upload**, with nothing to convert them; a distro
-ffmpeg converts them fine. Other images, uploads, and playback once started are
-unaffected. **Put `data/` on an SSD if you
+**HEIC photos are refused at upload**, with nothing to convert them. A distro
+ffmpeg works if it is **7.1 or newer**: an iPhone photo is a grid of tiles with
+a rotation flag, and older builds can't put it back together (the upload is
+refused, saying so in the log). Other image uploads, and playback once started,
+are unaffected. **Put `data/` on an SSD if you
 have one** — SQLite reads are synchronous, so every one that misses the page
 cache blocks the whole process for the length of the physical read, and on
 spinning disks that is the dominant cost of a cold load. Never put the
