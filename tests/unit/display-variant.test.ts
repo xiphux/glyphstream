@@ -80,6 +80,24 @@ describe('getOrCreateDisplayVariant', () => {
 		expect(await getOrCreateDisplayVariant('ab/cd/small.jpg')).toBeNull();
 	});
 
+	it('keeps every frame of an animated GIF', async () => {
+		const frame = (r: number) =>
+			sharp({ create: { width: 200, height: 200, channels: 3, background: { r, g: 40, b: 90 } } })
+				.raw()
+				.toBuffer();
+		const frames = await Promise.all([0, 80, 160, 240].map(frame));
+		const gif = await sharp(Buffer.concat(frames), {
+			raw: { width: 200, height: 800, channels: 3, pageHeight: 200 },
+		})
+			.gif({ loop: 0, delay: [100, 100, 100, 100] })
+			.toBuffer();
+		expect((await sharp(gif).metadata()).pages).toBe(4);
+		write('ab/cd/anim.gif', gif);
+		const v = await getOrCreateDisplayVariant('ab/cd/anim.gif');
+		expect(v).not.toBeNull();
+		expect((await sharp(v!.absolutePath).metadata()).pages).toBe(4);
+	});
+
 	it('encodes once for concurrent requests', async () => {
 		write('ab/cd/fan.png', await photoPng(2400, 1600));
 		const toBuffer = vi.spyOn(sharp.prototype, 'toBuffer');

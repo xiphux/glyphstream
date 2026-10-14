@@ -86,7 +86,10 @@ async function generate(
 	const tmp = `${variantAbs}.${randomUUID()}.tmp`;
 	try {
 		const encoded = await withGenerationSlot(() =>
-			sharp(original, { limitInputPixels: MAX_DECODE_PIXELS })
+			// `animated`: every frame, not just the first. Without it an animated GIF
+			// or WebP came out as one still frame, which is always smaller, so the
+			// size check below served it and the thread stopped animating.
+			sharp(original, { limitInputPixels: MAX_DECODE_PIXELS, animated: true })
 				// EXIF orientation first; the re-encode drops metadata.
 				.rotate()
 				.resize(DISPLAY_MAX_DIM, DISPLAY_MAX_DIM, { fit: 'inside', withoutEnlargement: true })
