@@ -39,7 +39,6 @@ import {
 	synthesizeSkillActivations,
 	type SyntheticActivationEvent,
 } from '#lib/server/chat/synthesize-skill-activation.js';
-import { logLevel } from '#lib/server/env.js';
 import { mediaIdToDataUrl } from '#lib/server/media/data-url.js';
 import {
 	clearInFlight,
@@ -50,12 +49,14 @@ import { startStreamingRelay } from '#lib/server/streaming/relay.js';
 import { submitGenerationJob } from '#lib/server/generation/jobs.js';
 import { sseResponse } from '#lib/server/streaming/sse-transport.js';
 
-const DEBUG = logLevel() === 'debug';
 import { isMediaKind } from '#lib/fanout.js';
 import { isModelKind } from '#lib/types/api.js';
 import type { EarlierMessagesResponse, ModelEntry, SendMessageRequest } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
 import { enforceGenerationCap } from '#lib/server/generation/user-cap.js';
+import { createLogger } from '#lib/server/log.js';
+
+const log = createLogger('messages');
 
 /**
  * Older messages of the active branch, for the chat page, which loads only the
@@ -259,9 +260,9 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		});
 	}
 
-	if (DEBUG) {
-		console.debug(
-			`[messages] dispatch conversation=${params.id} modelKind=${meta.modelKind} modelId=${meta.modelId} stream=${url.searchParams.get('stream') === '1'}${isRetry ? ' retry=1' : ''}`,
+	if (log.enabled('debug')) {
+		log.debug(
+			`dispatch conversation=${params.id} modelKind=${meta.modelKind} modelId=${meta.modelId} stream=${url.searchParams.get('stream') === '1'}${isRetry ? ' retry=1' : ''}`,
 		);
 	}
 
@@ -329,10 +330,8 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			}
 			aspectRatio = resolveAspectRatio(body.aspectRatio, modelEntry);
 		}
-		if (DEBUG && kind === 'video' && dispatchMediaIds.length > 0) {
-			console.debug(
-				`[messages] i2v from ${dispatchMediaIds[0]} prompt="${promptText.slice(0, 60)}"`,
-			);
+		if (log.enabled('debug') && kind === 'video' && dispatchMediaIds.length > 0) {
+			log.debug(`i2v from ${dispatchMediaIds[0]} prompt="${promptText.slice(0, 60)}"`);
 		}
 		// Same admission cap as a chat fan-out (see below), checked AFTER the await
 		// so it stays synchronous with the job's own registration.

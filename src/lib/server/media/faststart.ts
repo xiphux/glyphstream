@@ -37,6 +37,9 @@ import { open, rename, stat, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import process from 'node:process';
 import { Buffer } from 'node:buffer';
+import { createLogger } from '../log';
+
+const log = createLogger('faststart');
 
 const execFileAsync = promisify(execFile);
 
@@ -321,8 +324,8 @@ export async function makeFaststart(path: string): Promise<number | null> {
 
 	const budgetMs = remuxBudgetMs(sourceBytes);
 	if (budgetMs === null) {
-		console.warn(
-			`[faststart] declining ${path}: ${Math.round(sourceBytes / BYTES_PER_MB)} MB would not ` +
+		log.warn(
+			`declining ${path}: ${Math.round(sourceBytes / BYTES_PER_MB)} MB would not ` +
 				`finish within ${REMUX_MAX_MS / 1000}s, leaving the index where it is`,
 		);
 		return null;
@@ -336,15 +339,13 @@ export async function makeFaststart(path: string): Promise<number | null> {
 		// that isn't faststart means the assumption behind this whole module was
 		// wrong for this file, and the original is the safer thing to keep.
 		if ((await isFaststart(tmp)) !== true) {
-			console.warn(
-				`[faststart] remux of ${path} did not produce a faststart file; keeping original`,
-			);
+			log.warn(`remux of ${path} did not produce a faststart file; keeping original`);
 			await unlink(tmp).catch(() => {});
 			return null;
 		}
 		const { size } = await stat(tmp);
 		if (size === 0) {
-			console.warn(`[faststart] remux of ${path} produced an empty file; keeping original`);
+			log.warn(`remux of ${path} produced an empty file; keeping original`);
 			await unlink(tmp).catch(() => {});
 			return null;
 		}
@@ -366,10 +367,10 @@ export async function makeFaststart(path: string): Promise<number | null> {
 		// at the end with nothing anywhere to say so. This runs once per video,
 		// never in a loop, so there is no log-volume argument against it.
 		if (e instanceof RemuxDeadline) {
-			console.warn(`[faststart] ${path}: ${e.message}; keeping original`);
+			log.warn(`${path}: ${e.message}; keeping original`);
 			void unlink(tmp).catch(() => {});
 		} else {
-			console.warn(`[faststart] remux failed for ${path}, keeping original:`, e);
+			log.warn(`remux failed for ${path}, keeping original:`, e);
 			await unlink(tmp).catch(() => {});
 		}
 		return null;

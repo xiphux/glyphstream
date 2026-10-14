@@ -65,6 +65,8 @@ function effectiveSetupToken(): string {
 	if (!generatedToken) {
 		generatedToken = randomBytes(24).toString('base64url');
 		const base = publicBaseUrl().replace(/\/+$/, '');
+		// console, not the server logger: without this URL nobody can finish
+		// setup, so it prints whatever LOG_LEVEL says.
 		console.warn(
 			`\n[setup] No SETUP_TOKEN configured. First-run setup requires this one-time URL:\n` +
 				`[setup]   ${base}/setup?token=${generatedToken}\n` +

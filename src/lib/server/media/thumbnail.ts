@@ -73,6 +73,9 @@ import { dirname, resolve } from 'node:path';
 import { derivedDir, mediaDir } from '../env';
 import { MAX_DECODE_PIXELS } from './decode-limits';
 import { FfmpegDeadline, runFfmpeg } from './ffmpeg';
+import { createLogger } from '../log';
+
+const log = createLogger('thumbnail');
 
 // Tuned for typical gallery grid cells (max 5-6 columns at sm+,
 // 2-3 on mobile, so each cell is ~150-300px wide). 512px gives
@@ -606,7 +609,7 @@ async function removeLegacyThumb(storagePath: string): Promise<void> {
 		await unlink(resolve(derivedDir(), legacyThumbStoragePath(storagePath)));
 	} catch (e) {
 		if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-			console.warn(`[thumbnail] could not remove the old JPEG for ${storagePath}:`, e);
+			log.warn(`could not remove the old JPEG for ${storagePath}:`, e);
 		}
 	}
 }
@@ -698,7 +701,7 @@ async function generateThumbnail(
 			// 404s — a `poster` pointing at an mp4 renders nothing. See the
 			// endpoint's own comment.
 			const reason = e instanceof DecodeError ? e.cause : e;
-			console.warn(`[thumbnail] generation failed for ${storagePath}:`, reason);
+			log.warn(`generation failed for ${storagePath}:`, reason);
 			// Only what came from trying to read the source is worth remembering.
 			// A failed mkdir, rename or stat says something about the volume, and
 			// the volume gets fixed.

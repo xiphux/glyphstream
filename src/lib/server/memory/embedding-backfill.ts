@@ -28,6 +28,9 @@ import { encodeVector } from '../retrieval/vector';
 import { listMemoriesNeedingEmbedding, setMemoryEmbedding } from '../db/queries/memories';
 import { listMediaNeedingEmbedding, setMediaEmbedding } from '../db/queries/media';
 import { createSweeper } from '../util/sweeper';
+import { createLogger } from '../log';
+
+const log = createLogger('embedding-backfill');
 
 // Rows per /embeddings request. Kept small to stay within the per-request batch
 // ceilings embedding backends (notably llama-server) enforce — memories are
@@ -74,13 +77,13 @@ async function drainQueue(
 			);
 		} catch (e) {
 			// Endpoint down / timeout — leave the rows for the next sweep.
-			console.warn(`[${label}-backfill] embedding request failed, retrying next sweep:`, e);
+			createLogger(`${label}-backfill`).warn(`embedding request failed, retrying next sweep:`, e);
 			break;
 		}
 
 		const data = resp.data;
 		if (!Array.isArray(data)) {
-			console.warn(`[${label}-backfill] non-array embeddings response; retrying next sweep`);
+			createLogger(`${label}-backfill`).warn(`non-array embeddings response; retrying next sweep`);
 			break;
 		}
 		// Pair returned vectors to rows by their response `index` (we sent one
@@ -116,8 +119,8 @@ async function drainQueue(
 		// unembeddable rows forever within one sweep. Say so: a batch that keeps
 		// landing here never shrinks the queue, and nothing else would show it.
 		if (progressed === 0) {
-			console.warn(
-				`[${label}-backfill] no vectors from a ${rows.length}-row batch were stored (${data.length} returned); retrying next sweep`,
+			createLogger(`${label}-backfill`).warn(
+				`no vectors from a ${rows.length}-row batch were stored (${data.length} returned); retrying next sweep`,
 			);
 			break;
 		}
@@ -154,7 +157,7 @@ export async function runBackfillSweep(): Promise<{ embedded: number }> {
 			(id, text, blob) => setMediaEmbedding(id, text, blob, cfg.modelId),
 		);
 
-		if (embedded > 0) console.log(`[embedding-backfill] sweep done: embedded=${embedded}`);
+		if (embedded > 0) log.info(`sweep done: embedded=${embedded}`);
 		return { embedded };
 	} finally {
 		running = false;

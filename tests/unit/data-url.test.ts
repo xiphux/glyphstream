@@ -30,7 +30,6 @@ vi.mock('#lib/server/env.js', () => ({
 	// reads tripping up the mock.
 	dbPath: () => './data/glyphstream.db',
 	configPath: () => './config.toml',
-	logLevel: () => 'info',
 }));
 
 import {

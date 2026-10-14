@@ -37,6 +37,9 @@ import { runPython, type RunPythonPreFile } from '../code-interpreter/pool';
 import { collectConversationFiles, persistGeneratedFiles } from '../code-interpreter/files';
 import { register } from './registry';
 import type { OpenAIToolDefinition, Tool, ToolContext, ToolExecution } from './types';
+import { createLogger } from '../log';
+
+const log = createLogger('run_skill_script');
 
 const ACTIVATE_DESCRIPTION =
 	'Load the full instructions for one of your available skills (listed in <available_skills>). Call this when the current task matches a skill, BEFORE attempting the task — the returned instructions tell you how to proceed. Returns the skill body plus a manifest of any bundled resource files you can then load with read_skill_file.';
@@ -243,7 +246,7 @@ export const runSkillScriptTool: Tool = {
 		try {
 			conversationFiles = await collectConversationFiles(ctx.conversationId, ctx.userId);
 		} catch (e) {
-			console.warn('[run_skill_script] collectConversationFiles failed:', e);
+			log.warn('collectConversationFiles failed:', e);
 		}
 		const preFiles = dedupeByFilename([...conversationFiles, ...materialized.value.preFiles]);
 
@@ -265,7 +268,7 @@ export const runSkillScriptTool: Tool = {
 						files: result.newFiles,
 					});
 				} catch (e) {
-					console.warn('[run_skill_script] persistGeneratedFiles failed:', e);
+					log.warn('persistGeneratedFiles failed:', e);
 				}
 			}
 

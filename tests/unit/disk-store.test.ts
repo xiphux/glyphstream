@@ -21,7 +21,6 @@ vi.mock('#lib/server/env.js', () => ({
 	mediaDir: () => mocks.mediaDir,
 	derivedDir: () => mocks.derivedDir || mocks.mediaDir,
 	dbPath: () => ':memory:',
-	logLevel: () => 'info',
 	configPath: () => '/tmp/nope.toml',
 	authSecret: () => 'test-secret',
 	githubClientId: () => 'test',

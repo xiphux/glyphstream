@@ -29,7 +29,6 @@ vi.mock('#lib/server/env.js', () => ({
 	// `graceMs` on `mocks` only because earlier tests reference it for
 	// their own cutoff math, not because the purger consumes it.
 	dbPath: () => ':memory:',
-	logLevel: () => 'info',
 	configPath: () => '/tmp/nope.toml',
 	authSecret: () => 'test-secret',
 	githubClientId: () => 'test',

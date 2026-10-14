@@ -12,6 +12,9 @@
 
 import webpush, { type PushSubscription as WebPushSubscription } from 'web-push';
 import { loadNotificationsConfig, type LoadedNotificationsConfig } from '../endpoints/config';
+import { createLogger } from '../log';
+
+const log = createLogger('push');
 
 let initialized = false;
 let loadedConfig: LoadedNotificationsConfig | null = null;
@@ -30,7 +33,7 @@ function init(): LoadedNotificationsConfig | null {
 	} catch (e) {
 		if (!initFailureLogged) {
 			const msg = e instanceof Error ? e.message : String(e);
-			console.warn('[push] notifications config invalid; push disabled:', msg);
+			log.warn('notifications config invalid; push disabled:', msg);
 			initFailureLogged = true;
 		}
 		loadedConfig = null;

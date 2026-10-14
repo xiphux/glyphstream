@@ -57,6 +57,10 @@ import {
 	headerBlockBytes,
 	trimToBudget,
 } from '#lib/server/util/header-budget.js';
+import { createLogger } from '#lib/server/log.js';
+
+const authLog = createLogger('auth');
+const serverErrorLog = createLogger('server error');
 
 // Refuse to start if the auth-method toggles leave no way in. Better to
 // crash at boot with a clear message than serve a /login page with zero
@@ -356,7 +360,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		try {
 			ensureAdminBootstrap();
 		} catch (err) {
-			console.error('[auth] ensureAdminBootstrap failed:', err);
+			authLog.error('ensureAdminBootstrap failed:', err);
 		}
 		// Before this request's own reads: a page load right after a restart
 		// should already see the resumed queue in flight. Never throws.
@@ -664,9 +668,7 @@ export const handleError: HandleServerError = (input) => {
 				? (input.error.stack ?? input.error.message)
 				: String(input.error);
 
-	console.error(
-		`[server error] ${event.request.method} ${event.url.pathname} → ${status}:\n${stack}`,
-	);
+	serverErrorLog.error(`${event.request.method} ${event.url.pathname} → ${status}:\n${stack}`);
 
 	return undefined;
 };

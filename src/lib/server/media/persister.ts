@@ -21,6 +21,9 @@ import { makeFaststart } from './faststart';
 import { mediaDir } from '../env';
 import { resolve } from 'node:path';
 import { truncateEllipsis } from '#lib/text.js';
+import { createLogger } from '../log';
+
+const log = createLogger('persister');
 
 const PROMPT_EXCERPT_MAX = 500;
 
@@ -229,6 +232,6 @@ async function resolveBytes(
  */
 function prewarmThumbnail(storagePath: string, kind: ThumbnailSourceKind): void {
 	void getOrCreateThumbnail(storagePath, kind).catch((e: unknown) => {
-		console.warn(`[persister] thumbnail prewarm failed for ${storagePath}:`, e);
+		log.warn(`thumbnail prewarm failed for ${storagePath}:`, e);
 	});
 }

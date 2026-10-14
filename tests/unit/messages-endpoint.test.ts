@@ -17,7 +17,6 @@ const mocks = vi.hoisted(() => ({
 	createUserMessage: vi.fn<(...a: unknown[]) => unknown>(),
 	getEndpoint: vi.fn<(...a: unknown[]) => unknown>(),
 	listAllModels: vi.fn<(...a: unknown[]) => unknown>(),
-	logLevel: vi.fn<(...a: unknown[]) => string>(),
 }));
 
 vi.mock('#lib/server/db/queries/conversations.js', () => ({
@@ -37,9 +36,7 @@ vi.mock('#lib/server/endpoints/list-models.js', () => ({
 	listAllModels: (...a: unknown[]) => mocks.listAllModels(...a),
 }));
 
-vi.mock('#lib/server/env.js', () => ({
-	logLevel: (...a: unknown[]) => mocks.logLevel(...a),
-}));
+vi.mock('#lib/server/env.js', () => ({}));
 
 // ---- imports after mocks --------------------------------------------------
 
@@ -88,7 +85,6 @@ afterEach(() => {
 
 describe('POST /messages — setup window cleanup (A3 fix)', () => {
 	beforeEach(() => {
-		mocks.logLevel.mockReturnValue('info');
 		mocks.getConversationMeta.mockReturnValue({
 			id: 'c1',
 			modelId: 'ep::sd3',

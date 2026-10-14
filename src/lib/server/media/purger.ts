@@ -54,6 +54,9 @@ import {
 import { getMediaStore } from './disk-store';
 import { TRASH_RETENTION_MS } from './trash';
 import { createSweeper } from '../util/sweeper';
+import { createLogger } from '../log';
+
+const log = createLogger('purger');
 
 const BATCH_SIZE = 500;
 const SWEEP_INTERVAL_MS = 15 * 60 * 1000;
@@ -89,7 +92,7 @@ async function unlinkAll(candidates: PurgeCandidate[]): Promise<void> {
 					await store.delete(c.storagePath);
 				} catch (e) {
 					// Log and continue — one bad row shouldn't block the batch.
-					console.warn(`[purger] failed to delete bytes of ${c.id}:`, e);
+					log.warn(`failed to delete bytes of ${c.id}:`, e);
 				}
 			}),
 		);
@@ -122,8 +125,8 @@ export async function runPurgeSweep(): Promise<{
 		const trashExpired = claimed.length;
 
 		if (stamped > 0 || hardDeleted > 0 || trashExpired > 0) {
-			console.log(
-				`[purger] sweep done: stamped=${stamped}, hardDeleted=${hardDeleted}, trashExpired=${trashExpired}`,
+			log.info(
+				`sweep done: stamped=${stamped}, hardDeleted=${hardDeleted}, trashExpired=${trashExpired}`,
 			);
 		}
 		return { stamped, hardDeleted, trashExpired };

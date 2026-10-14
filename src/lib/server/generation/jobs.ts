@@ -79,6 +79,10 @@ import {
 } from '../streaming/media-relay';
 import { errorMessage, sseWriter } from '../streaming/sse-transport';
 import type { StreamErrorEvent } from '#lib/types/api.js';
+import { createLogger } from '../log';
+
+const log = createLogger('generation-jobs');
+const avatarLog = createLogger('avatar');
 
 /**
  * What a generation is for. Decides everything the submitting route used to
@@ -233,13 +237,13 @@ export function resumeGenerationJobs(): void {
 		// hasn't taken it back. A transient failure (a busy database at boot, a
 		// config file being edited) must not strand it until the next restart —
 		// the fallback timer retries, as does the next submit.
-		console.error('[generation-jobs] could not read the queue to resume it:', errorMessage(e));
+		log.error('could not read the queue to resume it:', errorMessage(e));
 		scheduleGenerationJobResume();
 		return;
 	}
 	// Set once the read succeeded, and before anything below can re-enter.
 	processState[RESUMED] = true;
-	if (rows.length > 0) console.log(`[generation-jobs] resuming ${rows.length} generation(s)`);
+	if (rows.length > 0) log.info(`resuming ${rows.length} generation(s)`);
 
 	// Failed AFTER everything resumable is registered: a grid branch failing here
 	// asks "am I the last of my grid?" of the registry, and must not find it empty
@@ -281,17 +285,17 @@ export function resumeGenerationJobs(): void {
 			// `runJob` is built not to reject, but nothing awaits this run: a
 			// rejection that slipped through would be unhandled, which is fatal.
 			runJob(row, entry, NO_LISTENER).catch((e: unknown) =>
-				console.error(`[generation-jobs] resumed job ${row.id} failed:`, errorMessage(e)),
+				log.error(`resumed job ${row.id} failed:`, errorMessage(e)),
 			);
 		} catch (e) {
-			console.error(`[generation-jobs] could not resume job ${row.id}:`, errorMessage(e));
+			log.error(`could not resume job ${row.id}:`, errorMessage(e));
 		}
 	}
 	for (const { row, message } of failures) {
 		try {
 			failAtResume(row, message);
 		} catch (e) {
-			console.error(`[generation-jobs] could not fail job ${row.id}:`, errorMessage(e));
+			log.error(`could not fail job ${row.id}:`, errorMessage(e));
 		}
 	}
 }
@@ -400,7 +404,7 @@ async function runJob(
 				});
 			}
 		} catch (e) {
-			console.error(`[generation-jobs] could not settle job ${row.id}:`, errorMessage(e));
+			log.error(`could not settle job ${row.id}:`, errorMessage(e));
 		}
 	};
 
@@ -468,8 +472,8 @@ async function runJob(
 							// reaped, between persist and now) — worth a log line, not a
 							// failure of a generation that otherwise worked.
 							if (!result.ok) {
-								console.warn(
-									`[avatar] could not apply portrait to ${row.conversationId}: ${result.reason}`,
+								avatarLog.warn(
+									`could not apply portrait to ${row.conversationId}: ${result.reason}`,
 								);
 							}
 						}
@@ -565,7 +569,7 @@ async function runJob(
 	} catch (e) {
 		// The relay turns every generation failure into an event; reaching here
 		// means something outside it broke (a DB error, a malformed row).
-		console.error(`[generation-jobs] job ${row.id} failed:`, errorMessage(e));
+		log.error(`job ${row.id} failed:`, errorMessage(e));
 		// Whatever bridge job this run held — reattached, or created here — has
 		// nobody left to collect it once the row is deleted below.
 		const endpoint = endpointFor(row);
@@ -587,7 +591,7 @@ async function runJob(
 		try {
 			deleteGenerationJob(row.id);
 		} catch (e) {
-			console.error(`[generation-jobs] could not delete job ${row.id}:`, errorMessage(e));
+			log.error(`could not delete job ${row.id}:`, errorMessage(e));
 		}
 		settle();
 	}
@@ -647,7 +651,7 @@ function persistFailure(
 		}).id;
 	} catch (e) {
 		if (!(e instanceof GenerationDiscardedError)) {
-			console.warn(`[generation-jobs] could not persist failure for ${row.id}:`, errorMessage(e));
+			log.warn(`could not persist failure for ${row.id}:`, errorMessage(e));
 		}
 		deleteGenerationJob(row.id);
 		return undefined;

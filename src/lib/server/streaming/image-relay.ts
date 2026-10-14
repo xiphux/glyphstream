@@ -14,7 +14,6 @@
  */
 
 import { imageEdit, imageGeneration, type ImageEditInputFile } from '../endpoints/client';
-import { logLevel } from '../env';
 import { parseRatio } from '../../aspect-ratio';
 import { loadMediaBytes } from '../media/data-url';
 import { persistGeneratedImage } from '../media/persister';
@@ -29,8 +28,9 @@ import {
 } from './media-relay';
 import { errorMessage, isAbortError } from './sse-transport';
 import type { StreamErrorEvent, StreamProgressEvent } from '#lib/types/api.js';
+import { createLogger } from '../log';
 
-const DEBUG = logLevel() === 'debug';
+const log = createLogger('image-relay');
 
 export interface ImageRelayParams extends MediaRelayParams {
 	/** The bare upstream model id sent to the endpoint. */
@@ -203,7 +203,7 @@ function buildImageRelay(params: ImageRelayParams): [MediaRelayScaffoldParams, M
 				return null;
 			}
 			const msg = errorMessage(e);
-			if (DEBUG) console.error('[image-relay] generation failed:', msg);
+			log.debug('generation failed:', msg);
 			return { error: msg };
 		}
 	};

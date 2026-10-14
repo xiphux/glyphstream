@@ -17,6 +17,9 @@ import { bumpUserLastLogin } from '#lib/server/db/queries/users.js';
 import { findCredentialById, findUserForCredential } from '#lib/server/db/queries/passkey.js';
 import { passkeyLoginEnabled } from '#lib/server/env.js';
 import type { RequestHandler } from './$types';
+import { createLogger } from '#lib/server/log.js';
+
+const log = createLogger('passkey/login');
 
 export const POST: RequestHandler = async ({ cookies, request }) => {
 	if (!passkeyLoginEnabled()) error(403, 'Passkey login is disabled');
@@ -48,7 +51,7 @@ export const POST: RequestHandler = async ({ cookies, request }) => {
 	// `disabled_at IS NULL` filter in validateSessionToken; new logins
 	// are refused here.
 	if (owner.disabledAt !== null) {
-		console.warn(`[passkey/login] Rejecting credential ${credential.id} — bound user is disabled`);
+		log.warn(`Rejecting credential ${credential.id} — bound user is disabled`);
 		error(403, 'This account is not authorized to use this instance.');
 	}
 

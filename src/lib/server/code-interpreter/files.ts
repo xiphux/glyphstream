@@ -36,6 +36,9 @@ import { insertMedia } from '../db/queries/media';
 import type { MediaKind } from '#lib/types/api.js';
 import { getMediaStore } from '../media/disk-store';
 import type { RunPythonPreFile, RunPythonPostFile } from './pool';
+import { createLogger } from '../log';
+
+const log = createLogger('code_interpreter');
 
 /**
  * Caps on what a single call may mount into `/workspace/`.
@@ -123,14 +126,12 @@ export async function collectConversationFiles(
 		// sees them absent from /workspace/ and can adjust, which is how a
 		// missing file already behaves here.
 		if (r.byteSize > MAX_PREFILE_BYTES) {
-			console.warn(
-				`[code_interpreter] skipping "${filename}" (${r.byteSize} bytes) — over the per-file mount cap`,
-			);
+			log.warn(`skipping "${filename}" (${r.byteSize} bytes) — over the per-file mount cap`);
 			continue;
 		}
 		if (totalBytes + r.byteSize > MAX_PREFILE_TOTAL_BYTES) {
-			console.warn(
-				`[code_interpreter] skipping "${filename}" — would exceed the ${MAX_PREFILE_TOTAL_BYTES}-byte mount budget`,
+			log.warn(
+				`skipping "${filename}" — would exceed the ${MAX_PREFILE_TOTAL_BYTES}-byte mount budget`,
 			);
 			continue;
 		}

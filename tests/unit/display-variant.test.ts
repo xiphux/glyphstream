@@ -12,7 +12,6 @@ vi.mock('#lib/server/env.js', () => ({
 	derivedDir: () => mocks.dir,
 	dbPath: () => './data/glyphstream.db',
 	configPath: () => './config.toml',
-	logLevel: () => 'info',
 }));
 
 import {

@@ -20,7 +20,6 @@
  * continue.
  */
 
-import { logLevel } from '../env';
 import { stripReasoningTags } from '../util/reasoning-tags';
 import { chatCompletionSync, UpstreamError } from '../endpoints/client';
 import { isAbortError } from './sse-transport';
@@ -40,8 +39,9 @@ import {
 	VIDEO_STYLE_INSTRUCTIONS,
 	type VideoPromptStyle,
 } from './prompt-styles-video';
+import { createLogger } from '../log';
 
-const DEBUG = logLevel() === 'debug';
+const log = createLogger('prompt-enhancer');
 
 /** Which medium's template pack the enhancer rewrites into. Image and video
  *  keep separate taxonomies + base prompts (see `prompt-styles*.ts`). */
@@ -193,7 +193,7 @@ export async function enhancePrompt(input: EnhancePromptInput): Promise<EnhanceP
 		if (isAbortError(e) || input.signal?.aborted) throw e;
 		const cause =
 			e instanceof UpstreamError ? e.message : e instanceof Error ? e.message : String(e);
-		if (DEBUG) console.debug(`[prompt-enhancer] call failed, using original: ${cause}`);
+		log.debug(`call failed, using original: ${cause}`);
 		return { enhanced: original, changed: false };
 	}
 
@@ -202,7 +202,7 @@ export async function enhancePrompt(input: EnhancePromptInput): Promise<EnhanceP
 		matched === null ? input.style : null,
 	);
 	if (!enhanced) {
-		if (DEBUG) console.debug('[prompt-enhancer] empty/garbage response, using original');
+		log.debug('empty/garbage response, using original');
 		return { enhanced: original, changed: false };
 	}
 
@@ -212,10 +212,10 @@ export async function enhancePrompt(input: EnhancePromptInput): Promise<EnhanceP
 	// surrounding whitespace) doesn't surface a spurious split — when the only
 	// diff is that noise, we treat it as unchanged and keep the user's prompt.
 	const changed = trivialNormalize(enhanced) !== trivialNormalize(trimmed);
-	if (DEBUG && changed) {
+	if (log.enabled('debug') && changed) {
 		const mode = matched ? ' (preserve)' : '';
-		console.debug(
-			`[prompt-enhancer] style=${input.style ?? 'clarify-only'}${mode} "${trimmed.slice(0, 40)}…" → "${enhanced.slice(0, 40)}…"`,
+		log.debug(
+			`style=${input.style ?? 'clarify-only'}${mode} "${trimmed.slice(0, 40)}…" → "${enhanced.slice(0, 40)}…"`,
 		);
 	}
 	return { enhanced, changed };

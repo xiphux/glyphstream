@@ -43,6 +43,10 @@ import {
 import { isUniqueViolation } from '../../db/errors';
 import { CODE_VERIFIER_COOKIE, LINK_STATE_COOKIE, STATE_COOKIE } from './cookies';
 import type { OAuthProfile, OAuthProvider } from './types';
+import { createLogger } from '../../log';
+
+const log = createLogger('oauth/callback');
+const joinLog = createLogger('auth/join');
 
 interface SetupCarry {
 	displayName: string;
@@ -148,7 +152,7 @@ async function fetchProfileOr(
 		return await provider.fetchProfile(code, codeVerifier);
 	} catch (e) {
 		if (e instanceof OAuth2RequestError) reasons.oauthError();
-		console.error(`[oauth/callback] ${provider.id} profile fetch failed:`, e);
+		log.error(`${provider.id} profile fetch failed:`, e);
 		reasons.upstreamError();
 	}
 }
@@ -289,7 +293,7 @@ async function handleJoin(args: {
 		// error rather than claiming "already registered".
 		if (e instanceof InviteConsumedError) joinError('invite_invalid');
 		if (isUniqueViolation(e)) joinError('already_registered');
-		console.error(`[auth/join] unexpected error finalizing ${provider.id} join:`, e);
+		joinLog.error(`unexpected error finalizing ${provider.id} join:`, e);
 		joinError('signup_failed');
 	}
 
@@ -371,20 +375,20 @@ async function handleLogin(args: {
 
 	if (!binding) {
 		if (countUsers() === 0) {
-			console.warn(
-				`[oauth/callback] Rejecting ${provider.id} user "${profile.username ?? externalId}" — no operator account exists yet`,
+			log.warn(
+				`Rejecting ${provider.id} user "${profile.username ?? externalId}" — no operator account exists yet`,
 			);
 			loginError('setup_required');
 		}
-		console.warn(
-			`[oauth/callback] Rejecting ${provider.id} user "${profile.username ?? externalId}" — not bound to any account`,
+		log.warn(
+			`Rejecting ${provider.id} user "${profile.username ?? externalId}" — not bound to any account`,
 		);
 		loginError('provider_not_bound');
 	}
 
 	if (binding.disabledAt !== null) {
-		console.warn(
-			`[oauth/callback] Rejecting ${provider.id} user "${profile.username ?? externalId}" — bound user is disabled`,
+		log.warn(
+			`Rejecting ${provider.id} user "${profile.username ?? externalId}" — bound user is disabled`,
 		);
 		loginError('not_authorized');
 	}

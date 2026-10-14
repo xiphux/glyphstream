@@ -15,6 +15,9 @@
 // that doubles as a type — the instance type is a separate named export.
 import MarkdownItCtor, { type MarkdownIt, type Token } from 'markdown-it';
 import { bundledLanguagesInfo, createHighlighter, type Highlighter } from 'shiki';
+import { createLogger } from '../log';
+
+const log = createLogger('markdown');
 
 const LIGHT_THEME = 'github-light';
 const DARK_THEME = 'github-dark';
@@ -213,7 +216,7 @@ async function loadFenceLanguages(md: MarkdownIt, tokens: Token[]): Promise<void
 		} catch (e) {
 			// Leave it unloaded: codeToHtml throws for it and the fence renders
 			// as plain code, as an unsupported language would.
-			console.warn(`[markdown] could not load the ${lang} grammar:`, e);
+			log.warn(`could not load the ${lang} grammar:`, e);
 		}
 	}
 }

@@ -27,6 +27,9 @@ import type {
 	MediaStoredRef,
 } from './store';
 import { MediaTooLargeError } from './store';
+import { createLogger } from '../log';
+
+const log = createLogger('disk-store');
 
 const EXT_BY_CONTENT_TYPE: Record<string, string> = {
 	'image/png': 'png',
@@ -193,7 +196,7 @@ export class DiskMediaStore implements MediaStore {
 		} catch (e) {
 			// missing is fine; anything else we ignore (best-effort)
 			if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-				console.warn(`[disk-store] delete(${storagePath}) failed:`, e);
+				log.warn(`delete(${storagePath}) failed:`, e);
 			}
 		}
 		// Also remove the lazy-generated derived assets, if there are any:
@@ -219,7 +222,7 @@ export class DiskMediaStore implements MediaStore {
 				await unlink(resolve(derivedDir(), derived));
 			} catch (e) {
 				if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-					console.warn(`[disk-store] delete ${derived} failed:`, e);
+					log.warn(`delete ${derived} failed:`, e);
 				}
 			}
 		}
@@ -257,7 +260,7 @@ export async function unlinkMediaFiles(
 			try {
 				await store.delete(m.storagePath);
 			} catch (e) {
-				console.warn(`[${logTag}] failed to unlink media ${m.id} at ${m.storagePath}:`, e);
+				createLogger(logTag).warn(`failed to unlink media ${m.id} at ${m.storagePath}:`, e);
 			}
 		}),
 	);

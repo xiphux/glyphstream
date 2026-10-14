@@ -43,6 +43,9 @@ import {
 } from '#lib/server/uploads/classify.js';
 import { MAX_FILENAME_CHARS } from '#lib/server/text-limits.js';
 import type { RequestHandler } from './$types';
+import { createLogger } from '#lib/server/log.js';
+
+const log = createLogger('uploads');
 
 /** Headroom for multipart framing (boundaries, part headers, the trailing
  *  boundary) on top of the file itself, so the pre-check can't reject an upload
@@ -172,7 +175,7 @@ async function storeHeicAsJpeg(source: Readable) {
 			await convertHeicToJpeg(heicAbs, jpegAbs);
 		} catch (e) {
 			if (e instanceof HeicConversionError) {
-				console.warn('[uploads] HEIC conversion failed:', e.cause ?? e.message);
+				log.warn('HEIC conversion failed:', e.cause ?? e.message);
 				// 503 when the server couldn't convert (no ffmpeg, out of time), so it
 				// doesn't read as the photo being unacceptable.
 				error(e.unavailable ? 503 : 415, e.message);

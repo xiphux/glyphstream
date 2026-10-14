@@ -85,10 +85,6 @@ export function configPath(): string {
 	return readString('CONFIG_PATH', './config.toml');
 }
 
-export function logLevel(): string {
-	return readString('LOG_LEVEL', 'info');
-}
-
 // --- auth ----------------------------------------------------------------
 
 export function authSecret(): string {

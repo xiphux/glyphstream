@@ -12,6 +12,9 @@
 
 import { initializeMcpServers } from './registry';
 import { registerAllMcpTools } from './tool-bridge';
+import { createLogger } from '../log';
+
+const log = createLogger('mcp');
 
 let readyPromise: Promise<void> | null = null;
 let settled = false;
@@ -25,7 +28,7 @@ export function bootstrapMcp(): Promise<void> {
 		} catch (err) {
 			// Config-parse errors and other surprises end up here. Log and
 			// swallow — the app should still boot with MCP disabled.
-			console.error('[mcp] bootstrap failed:', err);
+			log.error('bootstrap failed:', err);
 		} finally {
 			// In the `finally` so a bootstrap that threw still counts as settled:
 			// isMcpReady answers "is the registry done changing", not "did it

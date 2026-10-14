@@ -35,6 +35,9 @@ import { derivedDir, mediaDir } from '../env';
 import { getVisionConfig } from '../endpoints/config';
 import { withGenerationSlot } from './thumbnail';
 import { MAX_DECODE_PIXELS } from './decode-limits';
+import { createLogger } from '../log';
+
+const log = createLogger('vision-variant');
 
 /** Convention mirrors `thumbStoragePath`: the original's RELATIVE path plus
  *  `.vision.jpg`, under `derivedDir()` — beside the original unless DERIVED_DIR
@@ -106,7 +109,7 @@ async function readFileOrNull(path: string, what: string): Promise<Buffer | null
 		return await readFile(path);
 	} catch (e) {
 		if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-			console.warn(`[vision-variant] ${what} unreadable:`, e);
+			log.warn(`${what} unreadable:`, e);
 		}
 		return null;
 	}
@@ -228,7 +231,7 @@ async function generateVisionVariant(
 	} catch (e) {
 		// Corrupt file, exotic codec, unreadable — degrade to the original rather
 		// than take down the send.
-		console.warn(`[vision-variant] generation failed for ${storagePath}:`, e);
+		log.warn(`generation failed for ${storagePath}:`, e);
 		return null;
 	}
 }

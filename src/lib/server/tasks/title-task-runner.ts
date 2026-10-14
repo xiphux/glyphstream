@@ -16,6 +16,9 @@
 import { getConversationMeta, getConversationTitleSource } from '../db/queries/conversations';
 import { generateConversationTitle } from './title-generator';
 import { getTaskModel, isTaskModelPrivate } from './task-model';
+import { createLogger } from '../log';
+
+const log = createLogger('title-task');
 
 /**
  * Kick off the title task for `conversationId` if (and only if) it's
@@ -44,7 +47,7 @@ export function startTitleTaskIfFirstExchange(
 	return generateConversationTitle(conversationId, userId).then(
 		(result) => (result && result.persisted ? result.title : null),
 		(e) => {
-			console.warn('[title-task] generator threw:', e);
+			log.warn('generator threw:', e);
 			return null;
 		},
 	);

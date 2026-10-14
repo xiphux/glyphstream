@@ -1,3 +1,4 @@
+import { createLogger } from '../log';
 /**
  * Shared lifecycle for the periodic background workers (media purger, embedding
  * backfiller, topic backfiller, dreaming, conversation summaries, expired
@@ -73,6 +74,7 @@ export interface Sweeper {
 
 export function createSweeper<T>(opts: SweeperOptions<T>): Sweeper {
 	const { name, intervalMs, initialDelayMs, enabled, sweep, isDrained, startedDetail } = opts;
+	const log = createLogger(name);
 
 	let timer: NodeJS.Timeout | null = null;
 	let generation = 0;
@@ -98,13 +100,13 @@ export function createSweeper<T>(opts: SweeperOptions<T>): Sweeper {
 						if (generation !== myGen) return;
 						if (isDrained?.(result)) {
 							timer = null;
-							console.log(`[${name}] backlog drained; worker stopped`);
+							log.info(`backlog drained; worker stopped`);
 							return;
 						}
 						rearm(myGen, tick);
 					},
 					(e) => {
-						console.error(`[${name}] sweep failed:`, e);
+						log.error(`sweep failed:`, e);
 						rearm(myGen, tick);
 					},
 				);
@@ -112,10 +114,8 @@ export function createSweeper<T>(opts: SweeperOptions<T>): Sweeper {
 
 			timer = setTimeout(tick, initialDelayMs);
 			timer?.unref();
-			console.log(
-				`[${name}] started; sweep every ${intervalMs / 60000}min${
-					startedDetail ? `, ${startedDetail}` : ''
-				}`,
+			log.info(
+				`started; sweep every ${intervalMs / 60000}min${startedDetail ? `, ${startedDetail}` : ''}`,
 			);
 		},
 

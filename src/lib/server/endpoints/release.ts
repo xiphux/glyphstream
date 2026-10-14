@@ -17,10 +17,10 @@
  * endpoint.
  */
 
-import { logLevel } from '../env';
 import type { LoadedEndpoint } from './config';
+import { createLogger } from '../log';
 
-const DEBUG = logLevel() === 'debug';
+const log = createLogger('release');
 
 /** Strategies an endpoint can name via `release = "…"` in config.toml. */
 export const RELEASE_STRATEGIES = ['llama-cpp-router'] as const;
@@ -292,8 +292,7 @@ export async function releaseEndpointResources(
 			if (!res.ok) throw new Error(`POST ${root}/models/unload → HTTP ${res.status}`);
 			const gone = await waitUntilUnloaded(root, endpoint, model, budgetEnd, signal);
 			if (gone.ok) {
-				if (DEBUG)
-					console.debug(`[release] ${endpoint.id}: ${model} unloaded in ${gone.waitedMs}ms`);
+				log.debug(`${endpoint.id}: ${model} unloaded in ${gone.waitedMs}ms`);
 			} else {
 				warnRelease(endpoint, `${model} did not unload within ${gone.waitedMs}ms`);
 				allFreed = false;
@@ -316,5 +315,5 @@ function describe(e: unknown): string {
 }
 
 function warnRelease(endpoint: LoadedEndpoint, detail: string): void {
-	console.warn(`[release] ${endpoint.id}: ${detail}`);
+	log.warn(`${endpoint.id}: ${detail}`);
 }

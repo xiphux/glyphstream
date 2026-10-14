@@ -23,6 +23,9 @@ import { registerUserMcpTools } from '../mcp/tool-bridge';
 import { isReactionTool } from '#lib/chat-render.js';
 import type { Tool, ToolExecution } from '../tools/types';
 import { truncateToolResultUncached } from '../endpoints/serialize-upstream';
+import { createLogger } from '../log';
+
+const log = createLogger('tool-execution');
 
 /** Largest tool result kept in the transcript: far beyond anything a person
  *  reads, small enough that one runaway result can't bloat the database. */
@@ -261,7 +264,7 @@ export async function executeOneToolCall(
 		// persisted before it reaches here first — register them and look again
 		// rather than failing the approval as an unknown tool.
 		await registerUserMcpTools(userId).catch((e: unknown) => {
-			console.warn('[tool-execution] could not load per-user MCP tools:', e);
+			log.warn('could not load per-user MCP tools:', e);
 		});
 		tool = getTool(part.toolName);
 	}

@@ -32,7 +32,6 @@ vi.mock('#lib/server/env.js', () => ({
 	derivedDir: () => mocks.derivedDir || mocks.mediaDir,
 	dbPath: () => './data/glyphstream.db',
 	configPath: () => './config.toml',
-	logLevel: () => 'info',
 }));
 vi.mock('#lib/server/endpoints/config.js', () => ({
 	getVisionConfig: () => ({

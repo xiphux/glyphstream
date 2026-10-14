@@ -9,6 +9,9 @@ import {
 	fetchRoutable,
 	UrlPolicyError,
 } from '../tools/url-policy-base';
+import { createLogger } from '../log';
+
+const log = createLogger('videoCancel');
 
 /** Redirect cap for the guarded (untrusted, off-host) media-fetch path. */
 const MAX_UPSTREAM_REDIRECTS = 5;
@@ -704,7 +707,7 @@ export async function videoCancel(endpoint: LoadedEndpoint, videoId: string): Pr
 			signal: AbortSignal.timeout(10_000),
 		});
 	} catch (e) {
-		console.warn(`[videoCancel] best-effort DELETE for ${videoId} failed:`, e);
+		log.warn(`best-effort DELETE for ${videoId} failed:`, e);
 	}
 }
 

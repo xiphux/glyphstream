@@ -37,6 +37,7 @@ import {
 	type PasskeyCredentialRow,
 	type PasskeyDeviceType,
 } from '../db/queries/passkey';
+import { createLogger } from '../log';
 
 /** Short-lived httpOnly cookies that carry the challenge between the
  *  "options" and "verify" halves of each ceremony. Mirrors the shape of
@@ -268,8 +269,8 @@ export async function verifyStoredCredentialAssertion(
 ): Promise<void> {
 	const handleUserId = decodeUserHandle(response.response?.userHandle ?? null);
 	if (handleUserId && handleUserId !== credential.userId) {
-		console.warn(
-			`[${logTag}] userHandle mismatch on credential ${credential.id}: ${handleUserId} vs row ${credential.userId}`,
+		createLogger(logTag).warn(
+			`userHandle mismatch on credential ${credential.id}: ${handleUserId} vs row ${credential.userId}`,
 		);
 		error(401, 'Credential identity mismatch');
 	}
@@ -295,8 +296,8 @@ export async function verifyStoredCredentialAssertion(
 
 	const newCounter = verification.authenticationInfo.newCounter;
 	if (credential.counter > 0 && newCounter <= credential.counter) {
-		console.warn(
-			`[${logTag}] Counter regression on credential ${credential.id}: stored=${credential.counter} new=${newCounter}. Possible clone.`,
+		createLogger(logTag).warn(
+			`Counter regression on credential ${credential.id}: stored=${credential.counter} new=${newCounter}. Possible clone.`,
 		);
 		error(401, 'Possible cloned credential');
 	}

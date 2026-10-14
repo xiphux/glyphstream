@@ -41,7 +41,6 @@ import type { InFlightEntry } from './in-flight';
 import { chatCompletionStream, type ChatCompletionRequest } from '../endpoints/client';
 import { appendMessage } from '../db/queries/messages';
 import { getConversationMeta } from '../db/queries/conversations';
-import { logLevel } from '../env';
 import { fenceCode, renderMarkdown } from '../markdown/render';
 import { notifyConversationComplete } from '../push/notify';
 import type { NotifyModality } from '#lib/types/push.js';
@@ -52,6 +51,10 @@ import { errorMessage, isAbortError, sseWriter, type SseWriter } from './sse-tra
 import { executeToolCalls } from './tool-execution';
 import type { Tool } from '../tools/types';
 import { CODE_ARG_TOOLS, isReactionTool } from '#lib/chat-render.js';
+import { createLogger } from '../log';
+
+const log = createLogger('stream/relay');
+const upstreamLog = createLogger('stream/upstream');
 
 // Generous budget because the SSE channel stays open *in the background*
 // after `done` has already settled the in-flight UI on the client.
@@ -63,8 +66,6 @@ const TITLE_DELIVERY_BUDGET_MS = 20_000;
  *  Overridable per turn via RelayParams.maxToolLoopIterations (config-driven in
  *  the route handlers); kept here so the relay has no config dependency. */
 const DEFAULT_MAX_TOOL_LOOP_ITERATIONS = 8;
-
-const DEBUG = logLevel() === 'debug';
 
 /**
  * Server-side pre-render of a code-shaped tool's primary argument
@@ -537,7 +538,7 @@ async function runChatTurn(
 					conversationTitle: params.conversationTitle ?? 'New conversation',
 					previewText: finalTextPreview,
 					modality: relayModalityFor(params.modelKind),
-				}).catch((e) => console.warn('[stream/relay] notify failed:', e));
+				}).catch((e) => log.warn('notify failed:', e));
 			}
 		}
 
@@ -626,7 +627,7 @@ function persistTurnErrorSibling(
 		});
 	} catch (e) {
 		if (conversationIsGone(params)) return;
-		console.warn('[stream/relay] failed to persist error sibling:', errorMessage(e));
+		log.warn('failed to persist error sibling:', errorMessage(e));
 	}
 }
 
@@ -684,12 +685,10 @@ async function runOneIteration(args: {
 		parentMessageId,
 	}).catch((e) => {
 		if (conversationIsGone(params)) {
-			console.info(
-				`[stream/relay] conversation ${params.conversationId} was deleted mid-turn; dropping the reply`,
-			);
+			log.info(`conversation ${params.conversationId} was deleted mid-turn; dropping the reply`);
 			throw new ConversationGoneError(params.conversationId, e);
 		}
-		console.error('[stream/relay] recorder branch failed:', e);
+		log.error('recorder branch failed:', e);
 		throw e;
 	});
 	// Awaited only after the client loop below finishes. If the recorder
@@ -774,7 +773,7 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 
 	try {
 		for await (const record of parseSSEStream(upstream)) {
-			if (DEBUG) console.debug(`[stream/upstream] ${params.endpoint.id}:`, record.data);
+			upstreamLog.debug(`${params.endpoint.id}:`, record.data);
 			const result = norm.process(record);
 			applyDeltas(result.deltas);
 			if (result.finishReason) finishReason = result.finishReason;

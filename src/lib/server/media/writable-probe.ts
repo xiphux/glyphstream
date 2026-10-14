@@ -16,6 +16,9 @@ import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
 import { derivedDir, mediaDir } from '../env';
+import { createLogger } from '../log';
+
+const log = createLogger('storage');
 
 export async function probeMediaDirsWritable(
 	dirs: Array<[label: string, dir: string]> = [
@@ -35,8 +38,8 @@ export async function probeMediaDirsWritable(
 			await unlink(probe);
 		} catch (e) {
 			const uid = process.getuid?.();
-			console.error(
-				`[storage] ${label} (${abs}) is not writable by uid ${uid ?? '?'}: ` +
+			log.error(
+				`${label} (${abs}) is not writable by uid ${uid ?? '?'}: ` +
 					`${e instanceof Error ? e.message : String(e)}. Uploads and generated ` +
 					`media will fail until it is, e.g. \`sudo chown -R 1000:1000 <that dir>\` ` +
 					`on the host for the Docker image (on an NFS share, on the server).`,

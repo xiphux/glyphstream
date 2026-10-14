@@ -20,6 +20,9 @@ import type { LoadedEndpoint } from '../endpoints/config';
 import { rerank, type RerankQuirk } from '../endpoints/client';
 import { composeSignals } from '../util/abort';
 import type { ScoredChunk } from './bm25';
+import { createLogger } from '../log';
+
+const log = createLogger('retrieval');
 
 export interface RerankConfig {
 	endpoint: LoadedEndpoint;
@@ -72,7 +75,7 @@ export async function rerankDocs(
 		}
 		return ranked.length > 0 ? ranked : null;
 	} catch (e) {
-		console.warn('[retrieval] rerank failed, keeping fused order:', e);
+		log.warn('rerank failed, keeping fused order:', e);
 		return null;
 	}
 }

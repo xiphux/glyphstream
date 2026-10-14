@@ -18,6 +18,9 @@ import type {
 	ModelFacet,
 	MonthPeriod,
 } from '#lib/types/api.js';
+import { createLogger } from '../../log';
+
+const log = createLogger('gallery-search');
 export type { ConversationOrphanCounts, ModelFacet, MonthPeriod };
 
 export interface MediaInsertInput {
@@ -749,7 +752,7 @@ export async function searchMediaForUser(
 		for (const it of getMediaListItemsByIds(userId, missing)) byId.set(it.id, it);
 		return orderedIds.map((id) => byId.get(id)).filter((x): x is MediaListItem => !!x);
 	} catch (e) {
-		console.warn('[gallery-search] dense leg failed; keyword-only:', e);
+		log.warn('dense leg failed; keyword-only:', e);
 		return ftsItems.slice(0, limit);
 	}
 }

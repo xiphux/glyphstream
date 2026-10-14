@@ -43,6 +43,9 @@ import {
 	type MemoryForDreaming,
 } from '../db/queries/memories';
 import { createSweeper } from '../util/sweeper';
+import { createLogger } from '../log';
+
+const log = createLogger('dreaming');
 
 /** How long one dream waits for an endpoint slot before giving up the sweep. */
 const DREAM_SLOT_WAIT_MS = 15 * 60_000;
@@ -91,17 +94,17 @@ export async function runDreamSweep(
 					// Endpoint-level failure (shared — down / timeout): end the sweep
 					// rather than hammer it once per remaining user. Watermark unadvanced,
 					// so everyone retries next window.
-					console.warn(`[dreaming] endpoint error; ending sweep, retry next window:`, e);
+					log.warn(`endpoint error; ending sweep, retry next window:`, e);
 					break;
 				}
 				// A per-user failure (rare — the parse is defensive and apply is simple):
 				// skip just this user so one deterministic error can't starve those
 				// ordered after it; their watermark is unadvanced, so they retry.
-				console.warn(`[dreaming] user ${userId} failed, skipping:`, e);
+				log.warn(`user ${userId} failed, skipping:`, e);
 			}
 		}
 		if (opsApplied > 0 || purged > 0) {
-			console.log(`[dreaming] sweep: users=${usersProcessed} ops=${opsApplied} purged=${purged}`);
+			log.info(`sweep: users=${usersProcessed} ops=${opsApplied} purged=${purged}`);
 		}
 		return { purged, usersProcessed, opsApplied };
 	} finally {

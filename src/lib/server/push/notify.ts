@@ -36,6 +36,9 @@ import { isAppLockActive } from '../auth/app-lock';
 import { isConversationBeingViewed } from './presence';
 import { truncateEllipsis } from '#lib/text.js';
 import { sendPushNotification, type WebPushSubscription } from './web-push';
+import { createLogger } from '../log';
+
+const log = createLogger('push');
 
 const MAX_TITLE_CHARS = 60;
 const MAX_PREVIEW_CHARS = 140;
@@ -169,7 +172,7 @@ export async function notifyConversationComplete(
 				if (result.statusCode === 404 || result.statusCode === 410) {
 					stale.push(sub.endpoint);
 				} else if (result.statusCode !== undefined) {
-					console.warn(`[push] send failed status=${result.statusCode} endpoint=${sub.endpoint}`);
+					log.warn(`send failed status=${result.statusCode} endpoint=${sub.endpoint}`);
 				}
 			}
 		}),

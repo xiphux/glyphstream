@@ -23,6 +23,7 @@
  */
 
 import { getEndpoint } from '../endpoints/registry';
+import { createLogger } from '../log';
 
 export interface OptionalEndpointConfigOptions<Cfg, Resolved> {
 	/** Log prefix, without brackets — both legs log under `retrieval`. */
@@ -62,7 +63,7 @@ export function createOptionalEndpointConfig<Cfg, Resolved>(
 			try {
 				value = load();
 			} catch (e) {
-				console.warn(`[${name}] could not load ${block} config; ${disabledNote}:`, e);
+				createLogger(name).warn(`could not load ${block} config; ${disabledNote}:`, e);
 			}
 			cache = { value };
 		}

@@ -47,6 +47,9 @@ import type {
 	StreamStartEvent,
 	StreamTitleEvent,
 } from '#lib/types/api.js';
+import { createLogger } from '../log';
+
+const log = createLogger('media-relay');
 
 // Title gen has been running since generation started (the prompt is the
 // topic), so it's almost always ready by the time the asset lands — a short
@@ -318,7 +321,7 @@ export async function runMediaRelay(
 					return;
 				}
 				// Non-abort: best-effort — log and proceed to generation.
-				console.warn('[media-relay] prepare step failed (continuing):', errorMessage(e));
+				log.warn('prepare step failed (continuing):', errorMessage(e));
 			}
 		}
 
@@ -412,7 +415,7 @@ export async function runMediaRelay(
 				// below, just without a handle to the (absent) row. A discarded
 				// outcome is the expected case, not worth a warning.
 				if (!(e instanceof GenerationDiscardedError)) {
-					console.warn('[media-relay] failed to persist error sibling:', errorMessage(e));
+					log.warn('failed to persist error sibling:', errorMessage(e));
 				}
 			}
 			// The terminal `error` frame is emitted HERE, not by the generate step,
@@ -469,8 +472,8 @@ export async function runMediaRelay(
 						);
 					}
 				} catch (cleanupError) {
-					console.warn(
-						`[media-relay] could not delete discarded media ${produced.mediaId}:`,
+					log.warn(
+						`could not delete discarded media ${produced.mediaId}:`,
 						errorMessage(cleanupError),
 					);
 				}
@@ -489,7 +492,7 @@ export async function runMediaRelay(
 		try {
 			params.onMediaPersisted?.(produced.mediaId);
 		} catch (e) {
-			console.warn('[media-relay] onMediaPersisted failed:', errorMessage(e));
+			log.warn('onMediaPersisted failed:', errorMessage(e));
 		}
 
 		// A fan-out branch suppresses its own notify; the route fires one
@@ -502,7 +505,7 @@ export async function runMediaRelay(
 				conversationTitle: params.conversationTitle ?? 'New conversation',
 				previewText: '',
 				modality: produced.modality,
-			}).catch((e) => console.warn('[media-relay] notify failed:', e));
+			}).catch((e) => log.warn('notify failed:', e));
 		}
 
 		safeWrite({ type: 'done', assistantMessage } satisfies StreamDoneEvent);

@@ -29,6 +29,9 @@ import {
 	type SkillFileContent,
 	type SkillStore,
 } from './store';
+import { createLogger } from '../log';
+
+const log = createLogger('skill-store');
 
 function root(): string {
 	const r = resolve(skillsDir());
@@ -176,7 +179,7 @@ export class DiskSkillStore implements SkillStore {
 			await rm(abs, { recursive: true, force: true });
 		} catch (e) {
 			if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-				console.warn(`[skill-store] deleteBundle(${storagePath}) failed:`, e);
+				log.warn(`deleteBundle(${storagePath}) failed:`, e);
 			}
 		}
 	}

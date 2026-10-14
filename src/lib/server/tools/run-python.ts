@@ -27,6 +27,9 @@ import { getCodeInterpreterConfig, isCodeInterpreterEnabled } from '../code-inte
 import { runPython } from '../code-interpreter/pool';
 import { collectConversationFiles, persistGeneratedFiles } from '../code-interpreter/files';
 import type { RunPythonPreFile } from '../code-interpreter/pool';
+import { createLogger } from '../log';
+
+const log = createLogger('run_python');
 
 // Memoized at module scope: building the description requires reading
 // `config.toml`, and SvelteKit's analyse postbuild loads every server
@@ -151,7 +154,7 @@ export const runPythonTool: Tool = {
 			// log the collection failure in stderr-shape so the model
 			// knows files might be missing.
 			preFiles = [];
-			console.warn('[run_python] collectConversationFiles failed:', e);
+			log.warn('collectConversationFiles failed:', e);
 		}
 
 		try {
@@ -176,7 +179,7 @@ export const runPythonTool: Tool = {
 					// output — surface the filenames in stderr-ish form so
 					// the model knows the files were produced but couldn't
 					// be saved, and the user can re-ask.
-					console.warn('[run_python] persistGeneratedFiles failed:', e);
+					log.warn('persistGeneratedFiles failed:', e);
 				}
 			}
 

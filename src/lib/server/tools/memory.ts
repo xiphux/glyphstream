@@ -46,6 +46,9 @@ import {
 } from '../memory/limits';
 import { register } from './registry';
 import type { Tool, ToolExecution } from './types';
+import { createLogger } from '../log';
+
+const log = createLogger('memory');
 
 /** How many recalled memories to hand back to the model per query. */
 const RECALL_TOP_K = 8;
@@ -267,7 +270,7 @@ function finishRecall(userId: string, rows: MemoryRecallRow[]): ToolExecution {
 			matches.map((m) => m.id),
 		);
 	} catch (e) {
-		console.warn('[memory] recording recall frequency failed (returning matches anyway):', e);
+		log.warn('recording recall frequency failed (returning matches anyway):', e);
 	}
 	return { content: JSON.stringify({ matches }) };
 }
@@ -304,7 +307,7 @@ async function denseRank(
 			score: sc.score,
 		}));
 	} catch (e) {
-		console.warn('[memory] recall dense leg failed, falling back to BM25:', e);
+		log.warn('recall dense leg failed, falling back to BM25:', e);
 		return null;
 	}
 }

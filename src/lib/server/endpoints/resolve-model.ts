@@ -31,6 +31,7 @@
 import { getEndpoint } from './registry';
 import { parseModelId } from './model-id';
 import type { LoadedEndpoint } from './config';
+import { createLogger } from '../log';
 
 /** The part every resolved model has; `build` decorates it with block-specific knobs. */
 export interface ResolvedModelBase {
@@ -82,15 +83,15 @@ export function createModelResolver<Cfg, Resolved extends ResolvedModelBase>(
 			const parsed = parseModelId(rawId);
 			if (!parsed) {
 				// The loader already validated the shape, so this is belt-and-suspenders.
-				console.warn(`[${name}] model "${rawId}" failed to parse; ignoring`);
+				createLogger(name).warn(`model "${rawId}" failed to parse; ignoring`);
 				cached = { resolved: null };
 				return null;
 			}
 
 			const endpoint = getEndpoint(parsed.endpointId);
 			if (!endpoint) {
-				console.warn(
-					`[${name}] model "${rawId}" references endpoint "${parsed.endpointId}" which is not configured; ignoring`,
+				createLogger(name).warn(
+					`model "${rawId}" references endpoint "${parsed.endpointId}" which is not configured; ignoring`,
 				);
 				cached = { resolved: null };
 				return null;

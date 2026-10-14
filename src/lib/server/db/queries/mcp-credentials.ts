@@ -10,6 +10,9 @@ import { generateId } from '../../util/id';
 import { getDb } from '../client';
 import { mcpCredentials } from '../schema';
 import { decryptSecret, encryptSecret } from '../../crypto/secret-box';
+import { createLogger } from '../../log';
+
+const log = createLogger('mcp');
 
 /** The table's natural key — `(userId, serverId)` — used by every lookup below. */
 const byUserServer = (userId: string, serverId: string) =>
@@ -32,8 +35,8 @@ export function getMcpCredential(userId: string, serverId: string): string | nul
 		// the MCP connection hard-failing with a crypto error — but log it, since
 		// a wave of these after a deploy is the tell-tale sign MCP_SECRET_KEY (or
 		// the AUTH_SECRET it falls back to) changed.
-		console.warn(
-			`[mcp] could not decrypt credential for server "${serverId}" (user ${userId}) — ` +
+		log.warn(
+			`could not decrypt credential for server "${serverId}" (user ${userId}) — ` +
 				`treating as not configured; likely the encryption key changed. ` +
 				`Cause: ${e instanceof Error ? e.message : String(e)}`,
 		);

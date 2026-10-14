@@ -20,6 +20,9 @@ import {
 import { cancelInFlightGenerations } from '#lib/server/streaming/cancel.js';
 import { validateDisabledFeaturesOrThrow400 } from '#lib/server/util/validate-features.js';
 import type { RequestHandler } from './$types';
+import { createLogger } from '#lib/server/log.js';
+
+const log = createLogger('conversations.delete');
 
 export const GET: RequestHandler = ({ locals, params, url }) => {
 	requireUser(locals);
@@ -159,7 +162,7 @@ export const DELETE: RequestHandler = async ({ locals, params, url }) => {
 	// partial commit lands after the rows are gone; the relay treats that as
 	// an expected end (ConversationGoneError), not a failure.
 	void cancelInFlightGenerations(params.id).catch((e: unknown) => {
-		console.warn('[conversations.delete] cancelling in-flight generation failed:', e);
+		log.warn('cancelling in-flight generation failed:', e);
 	});
 
 	return new Response(null, { status: 204 });

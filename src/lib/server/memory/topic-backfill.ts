@@ -22,6 +22,9 @@ import { getTaskModel } from '../tasks/task-model';
 import { generateMemoryTopic, fallbackTopic } from '../tasks/topic-generator';
 import { listMemoriesNeedingTopic, setMemoryTopic } from '../db/queries/memories';
 import { createSweeper } from '../util/sweeper';
+import { createLogger } from '../log';
+
+const log = createLogger('topic-backfill');
 
 // One completion per row (topic gen can't batch cleanly like embeddings), so
 // keep the per-sweep ceiling lower than the embedding backfiller's 400: 8 × 25 =
@@ -63,7 +66,7 @@ export async function runTopicBackfillSweep(): Promise<{ filled: number; drained
 					// Endpoint down / timeout — stop and leave the rest for the next
 					// sweep rather than fallback-labelling everything while the model
 					// is unavailable.
-					console.warn('[topic-backfill] task model call failed, retrying next sweep:', e);
+					log.warn('task model call failed, retrying next sweep:', e);
 					return { filled, drained: false };
 				}
 				// Model returned nothing usable → content-derived fallback so the row

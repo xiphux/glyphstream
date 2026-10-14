@@ -11,6 +11,9 @@ import { generateId } from '../../util/id';
 import { getDb, type Tx } from '../client';
 import { conversations, media, users } from '../schema';
 import type { UserRole, UserSummary } from '#lib/types/api.js';
+import { createLogger } from '../../log';
+
+const log = createLogger('auth');
 export type { UserRole, UserSummary };
 
 export interface CreateUserInput {
@@ -184,8 +187,8 @@ export function ensureAdminBootstrap(): string | null {
 		.get();
 	if (!earliest) return null;
 	db.update(users).set({ role: 'admin' }).where(eq(users.id, earliest.id)).run();
-	console.warn(
-		`[auth] No admin account found on boot; promoted earliest user (${earliest.id}) to admin ` +
+	log.warn(
+		`No admin account found on boot; promoted earliest user (${earliest.id}) to admin ` +
 			`— single-user → multi-user upgrade recovery.`,
 	);
 	return earliest.id;

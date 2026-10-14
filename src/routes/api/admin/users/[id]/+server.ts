@@ -27,6 +27,9 @@ import {
 	setUserDisabled,
 } from '#lib/server/db/queries/users.js';
 import type { RequestHandler } from './$types';
+import { createLogger } from '#lib/server/log.js';
+
+const log = createLogger('admin.users.delete');
 
 /** True when acting on `targetId` would drop the active-admin count to zero. */
 function wouldStrandAdmins(targetId: string): boolean {
@@ -101,7 +104,7 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 	// aborts are synchronous; the video bridge cancels aren't awaited.
 	for (const conversationId of deleted.conversationIds) {
 		void cancelInFlightGenerations(conversationId).catch((e: unknown) => {
-			console.warn('[admin.users.delete] cancelling in-flight generation failed:', e);
+			log.warn('cancelling in-flight generation failed:', e);
 		});
 	}
 	// The cascade removed the media rows; the bytes (and their thumbnails and

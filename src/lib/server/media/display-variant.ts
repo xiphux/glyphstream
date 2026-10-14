@@ -24,6 +24,9 @@ import { dirname, resolve } from 'node:path';
 import { derivedDir, mediaDir } from '../env';
 import { MAX_DECODE_PIXELS } from './decode-limits';
 import { withGenerationSlot } from './thumbnail';
+import { createLogger } from '../log';
+
+const log = createLogger('display-variant');
 
 /** Long-side ceiling, in pixels. */
 export const DISPLAY_MAX_DIM = 1280;
@@ -92,7 +95,7 @@ async function generate(
 				original = await readFile(resolve(mediaDir(), storagePath));
 			} catch (e) {
 				if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-					console.warn(`[display-variant] original for ${storagePath} unreadable:`, e);
+					log.warn(`original for ${storagePath} unreadable:`, e);
 				}
 				return null;
 			}
@@ -112,7 +115,7 @@ async function generate(
 		// with a 90° EXIF rotation) fails the same way every time: remember it,
 		// or every view re-reads and re-decodes the whole original.
 		decline(storagePath);
-		console.warn(`[display-variant] could not encode ${storagePath}:`, e);
+		log.warn(`could not encode ${storagePath}:`, e);
 		return null;
 	}
 	if (job === null) return null;
@@ -130,7 +133,7 @@ async function generate(
 		return { absolutePath: variantAbs, byteSize: encoded.byteLength, contentType: 'image/webp' };
 	} catch (e) {
 		await unlink(tmp).catch(() => {});
-		console.warn(`[display-variant] could not save the copy of ${storagePath}:`, e);
+		log.warn(`could not save the copy of ${storagePath}:`, e);
 		return null;
 	}
 }

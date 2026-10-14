@@ -27,7 +27,6 @@ import {
 } from '../endpoints/client';
 import { errorMessage, isAbortError, type SseWriter } from './sse-transport';
 import { parseModelId } from '../endpoints/model-id';
-import { logLevel } from '../env';
 import { persistGeneratedVideo } from '../media/persister';
 import { runPromptEnhancement } from './media-enhance';
 import {
@@ -40,8 +39,9 @@ import {
 	type MediaRelaySink,
 } from './media-relay';
 import type { StreamErrorEvent, StreamProgressEvent } from '#lib/types/api.js';
+import { createLogger } from '../log';
 
-const DEBUG = logLevel() === 'debug';
+const log = createLogger('video-relay');
 
 // Polling cadence: starts tight so the first status flip surfaces fast,
 // then backs off by 50% per tick to a 3s ceiling so a 10-minute job
@@ -183,16 +183,14 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 			if (params.aspectRatio) {
 				req.aspectRatio = params.aspectRatio;
 			}
-			if (DEBUG) {
+			if (log.enabled('debug')) {
 				const refSummary = inputReference
 					? `, input_reference=${inputReference.contentType}:${inputReference.bytes.byteLength}B`
 					: '';
-				console.debug(
-					`[video-relay] POST /videos to ${params.endpoint.id} model=${req.model}${refSummary}`,
-				);
+				log.debug(`POST /videos to ${params.endpoint.id} model=${req.model}${refSummary}`);
 			}
 			job = await videoCreate(params.endpoint, req, abortSignal);
-			if (DEBUG) console.debug(`[video-relay] created job`, job);
+			log.debug(`created job`, job);
 			params.onJobId?.(job.id);
 		} catch (e) {
 			// A Stop click mid-create aborts the upstream fetch — treat it as a
@@ -202,7 +200,7 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 				return null;
 			}
 			const msg = errorMessage(e);
-			console.error(`[video-relay] videoCreate failed:`, msg);
+			log.error(`videoCreate failed:`, msg);
 			// No `error` frame here — the scaffold emits it after persisting the
 			// durable error sibling, so it can carry that row's id (see MediaFailure).
 			const message = `Could not start video job: ${msg}`;
@@ -215,7 +213,7 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 		// The bridge no longer knows the reattached job — it restarted too, or
 		// evicted it. Start over with a new job if the caller allows the re-run.
 		const replaceLostJob = async (lostId: string, cause: unknown) => {
-			console.warn(`[video-relay] job ${lostId} is gone upstream:`, errorMessage(cause));
+			log.warn(`job ${lostId} is gone upstream:`, errorMessage(cause));
 			// Best-effort, and a no-op for the usual 404. But any permanent 4xx counts
 			// as "lost", and a bridge that answered, say, 422 may still be rendering
 			// it — which must not run on beside its replacement (or the failure).
@@ -238,7 +236,7 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 			const { upstreamJobId } = params.reattach;
 			try {
 				job = await videoStatus(params.endpoint, upstreamJobId);
-				if (DEBUG) console.debug(`[video-relay] reattached to job`, job);
+				log.debug(`reattached to job`, job);
 				params.onJobId?.(job.id);
 			} catch (e) {
 				// The user's own signal only. `videoStatus` takes none of it — its one
@@ -253,7 +251,7 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 				if (!isPermanentRequestError(e)) {
 					// A blip, not an answer: assume it's still rendering and let the poll
 					// loop keep asking, exactly as it would mid-job.
-					console.warn(`[video-relay] could not reach job ${upstreamJobId} to reattach:`, e);
+					log.warn(`could not reach job ${upstreamJobId} to reattach:`, e);
 					job = {
 						id: upstreamJobId,
 						status: 'in_progress',
@@ -290,7 +288,7 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 			// cancellation error. We don't persist an assistant message for
 			// cancelled video jobs.
 			if (abortSignal?.aborted) {
-				if (DEBUG) console.debug(`[video-relay] cancellation observed for job ${job.id}`);
+				log.debug(`cancellation observed for job ${job.id}`);
 				await videoCancel(params.endpoint, job.id);
 				write({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
 				return null;
@@ -306,10 +304,7 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 			try {
 				job = await videoStatus(params.endpoint, job.id);
 				unconfirmedReattach = false;
-				if (DEBUG)
-					console.debug(
-						`[video-relay] poll job=${job.id} status=${job.status} progress=${job.progress}`,
-					);
+				log.debug(`poll job=${job.id} status=${job.status} progress=${job.progress}`);
 			} catch (e) {
 				if (unconfirmedReattach && isPermanentRequestError(e)) {
 					// See `unconfirmedReattach`: the bridge restarted and lost it.
@@ -333,7 +328,7 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 					return { error: message };
 				}
 				// Transient upstream blip — keep polling unless we've burned the budget.
-				console.warn(`[video-relay] poll error for job ${job.id}:`, e);
+				log.warn(`poll error for job ${job.id}:`, e);
 				continue;
 			}
 			emitProgress(write, job, warnedStatuses);
@@ -446,7 +441,7 @@ function phaseLabel(status: VideoStatus, warned: Set<string>): string | undefine
 	// Poll ticks every 1.5–3s, so warn once per distinct status per job.
 	if (!warned.has(shown)) {
 		warned.add(shown);
-		console.warn(`[video-relay] unrecognized job status ${JSON.stringify(shown)}`);
+		log.warn(`unrecognized job status ${JSON.stringify(shown)}`);
 	}
 	return shown;
 }

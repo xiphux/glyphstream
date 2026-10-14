@@ -1,3 +1,6 @@
+import { createLogger } from '../log';
+
+const log = createLogger('code-interpreter');
 /**
  * The rules for files a Python run hands back out of /workspace/, shared by
  * the interpreter process (which applies them while diffing the workspace)
@@ -61,7 +64,7 @@ export function acceptGeneratedFiles(raw: unknown): GeneratedFile[] {
 			bytes.byteLength > MAX_GENERATED_FILE_BYTES ||
 			total + bytes.byteLength > MAX_GENERATED_TOTAL_BYTES
 		) {
-			console.warn(`[code-interpreter] host dropped generated file ${filename}: over the size cap`);
+			log.warn(`host dropped generated file ${filename}: over the size cap`);
 			continue;
 		}
 		total += bytes.byteLength;

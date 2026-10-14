@@ -12,10 +12,7 @@ vi.mock('#lib/server/env.js', async () => {
 	const { tmpdir } = await import('node:os');
 	const { join } = await import('node:path');
 	const dir = mkdtempSync(join(tmpdir(), 'gs-synth-test-'));
-	// `logLevel` is pulled in transitively (endpoints/config → endpoints/release),
-	// and a partial mock of this module has to answer for everything the import
-	// graph reaches, not just what this test calls.
-	return { skillsDir: () => dir, logLevel: () => 'info' };
+	return { skillsDir: () => dir };
 });
 
 // Register the activate_skill tool so executeToolCalls can resolve it.

@@ -12,6 +12,9 @@ import {
 } from '../endpoints/client';
 import { acquireEndpointSlot } from '../endpoints/concurrency';
 import type { ResolvedMemoryModel } from '../tasks/memory-model';
+import { createLogger } from '../log';
+
+const log = createLogger('memory');
 
 /** char/4 — the same model-agnostic heuristic `estimateContentTokens` uses, for
  *  budgeting plain strings. */
@@ -135,8 +138,8 @@ export async function withOverflowRetry<T>(
 			const next =
 				attempt < MAX_OVERFLOW_RETRIES ? shrinkBudgetAfterOverflow(e, budget, opts) : null;
 			if (next === null) throw e;
-			console.warn(
-				`[memory] upstream rejected a ${budget}-token input budget as over-window; retrying at ${next}`,
+			log.warn(
+				`upstream rejected a ${budget}-token input budget as over-window; retrying at ${next}`,
 			);
 			budget = next;
 		}

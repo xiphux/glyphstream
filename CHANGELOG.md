@@ -11,6 +11,8 @@ arrived.
 
 ### Changed
 
+- `LOG_LEVEL` now applies to every server log line, so `warn` or `error`
+  quiets the routine ones; it used to only switch debug output on.
 - Gallery thumbnails and video posters are WebP, about a fifth smaller than the
   JPEGs they replace, and a transparent image's thumbnail keeps its
   transparency. Existing thumbnails convert as they're viewed; nothing needs

@@ -16,6 +16,9 @@ import { embeddings } from '../endpoints/client';
 import { composeSignals } from '../util/abort';
 import type { ScoredChunk } from './bm25';
 import { cosineRank, type Vec } from './vector';
+import { createLogger } from '../log';
+
+const log = createLogger('retrieval');
 
 export interface RelevanceConfig {
 	endpoint: LoadedEndpoint;
@@ -124,7 +127,7 @@ export async function embedAndRankCached(
 		const docVecs = docInputs.map((d) => cache.get(keyFor(d)) as Vec);
 		return cosineRank(queryVec, docVecs);
 	} catch (e) {
-		console.warn('[retrieval] cached embedding ranking failed, falling back to BM25:', e);
+		log.warn('cached embedding ranking failed, falling back to BM25:', e);
 		return null;
 	}
 }
@@ -151,7 +154,7 @@ export async function embedQuery(
 		if (!Array.isArray(vec) || vec.length === 0) return null;
 		return vec;
 	} catch (e) {
-		console.warn('[retrieval] query embedding failed, falling back to BM25:', e);
+		log.warn('query embedding failed, falling back to BM25:', e);
 		return null;
 	}
 }
@@ -198,7 +201,7 @@ async function embedInputs(
 		}
 		return vecs;
 	} catch (e) {
-		console.warn('[retrieval] embedding request failed, falling back to BM25:', e);
+		log.warn('embedding request failed, falling back to BM25:', e);
 		return null;
 	}
 }

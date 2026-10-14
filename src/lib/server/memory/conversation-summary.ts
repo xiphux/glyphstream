@@ -34,6 +34,9 @@ import { walkActiveBranch } from '../db/queries/messages';
 import { listAllModels } from '../endpoints/list-models';
 import { formatModelId } from '../endpoints/model-id';
 import { createSweeper } from '../util/sweeper';
+import { createLogger } from '../log';
+
+const log = createLogger('conversation-summary');
 
 const SWEEP_INTERVAL_MS = 15 * 60 * 1000;
 // Phase-offset from dreaming's 30s so their sweeps don't reliably start together
@@ -82,7 +85,7 @@ export async function runSummarySweep(
 					// systemic auth failure (401 / 403 / 407): the rest of this sweep would
 					// fail the same way, so end it and retry next tick rather than burning
 					// the whole backlog on doomed calls.
-					console.warn('[conversation-summary] endpoint error; ending sweep:', e);
+					log.warn('endpoint error; ending sweep:', e);
 					return { summarized, overviewsUpdated: 0 };
 				}
 				// A permanent per-request rejection (e.g. 400 context-size overflow) or a
@@ -90,7 +93,7 @@ export async function runSummarySweep(
 				// 4xx recurs every sweep, so bailing here would let one poison conversation
 				// wedge the entire oldest-first backlog behind it. The watermark is left
 				// unadvanced, so it retries once a bigger margin / config fix lets it fit.
-				console.warn(`[conversation-summary] conversation ${id} failed, skipping:`, e);
+				log.warn(`conversation ${id} failed, skipping:`, e);
 			}
 		}
 
@@ -102,19 +105,17 @@ export async function runSummarySweep(
 				if (await rebuildOverview(model, userId, contextWindow, now)) overviewsUpdated++;
 			} catch (e) {
 				if (e instanceof UpstreamError && !isPermanentRequestError(e)) {
-					console.warn('[conversation-summary] endpoint error during overviews; ending:', e);
+					log.warn('endpoint error during overviews; ending:', e);
 					break;
 				}
 				// Permanent per-request rejection or a non-upstream error: skip this user's
 				// overview and keep going, so one user can't stall everyone behind them.
-				console.warn(`[conversation-summary] overview for user ${userId} failed, skipping:`, e);
+				log.warn(`overview for user ${userId} failed, skipping:`, e);
 			}
 		}
 
 		if (summarized > 0 || overviewsUpdated > 0) {
-			console.log(
-				`[conversation-summary] sweep: summarized=${summarized} overviews=${overviewsUpdated}`,
-			);
+			log.info(`sweep: summarized=${summarized} overviews=${overviewsUpdated}`);
 		}
 		return { summarized, overviewsUpdated };
 	} finally {

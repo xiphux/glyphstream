@@ -9,6 +9,9 @@ import {
 	type McpCallResult,
 } from './client';
 import { getMcpCredential } from '../db/queries/mcp-credentials';
+import { createLogger } from '../log';
+
+const log = createLogger('mcp');
 
 // --- connection keying ----------------------------------------------------
 //
@@ -619,7 +622,7 @@ async function doConnect(
 		await client?.close().catch(() => {});
 		const msg = err instanceof Error ? err.message : String(err);
 		if (firstTime && userId === null) {
-			console.warn(`[mcp] failed to connect to "${serverId}": ${msg}`);
+			log.warn(`failed to connect to "${serverId}": ${msg}`);
 		}
 		return { serverId, userId, state: 'failed', cfg, error: msg };
 	}

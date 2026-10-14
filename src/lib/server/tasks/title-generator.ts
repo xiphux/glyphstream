@@ -21,7 +21,6 @@
  * title in place.
  */
 
-import { logLevel } from '../env';
 import { chatCompletionSync, UpstreamError } from '../endpoints/client';
 import { acquireEndpointSlot } from '../endpoints/concurrency';
 import type { LoadedEndpoint } from '../endpoints/config';
@@ -32,8 +31,9 @@ import {
 import { getTaskModel, type ResolvedTaskModel } from './task-model';
 import { sanitizeModelLabel } from './sanitize-label';
 import { truncateEllipsis } from '#lib/text.js';
+import { createLogger } from '../log';
 
-const DEBUG = logLevel() === 'debug';
+const log = createLogger('title-gen');
 
 const PROMPT_TRUNCATE_CHARS = 500;
 const MAX_TITLE_CHARS = 100;
@@ -71,19 +71,19 @@ export async function generateConversationTitle(
 ): Promise<GenerateTitleResult | null> {
 	const taskModel = opts.taskModel === undefined ? getTaskModel() : opts.taskModel;
 	if (!taskModel) {
-		if (DEBUG) console.debug('[title-gen] no task_model configured; skipping');
+		log.debug('no task_model configured; skipping');
 		return null;
 	}
 
 	const exchange = getConversationFirstExchange(conversationId, userId);
 	if (!exchange) {
-		if (DEBUG) console.debug(`[title-gen] no first exchange for ${conversationId}; skipping`);
+		log.debug(`no first exchange for ${conversationId}; skipping`);
 		return null;
 	}
 
 	const promptMessages = buildTitlePrompt(exchange);
 	if (!promptMessages) {
-		if (DEBUG) console.debug(`[title-gen] empty prompt for ${conversationId}; skipping`);
+		log.debug(`empty prompt for ${conversationId}; skipping`);
 		return null;
 	}
 
@@ -93,21 +93,20 @@ export async function generateConversationTitle(
 	} catch (e) {
 		const cause =
 			e instanceof UpstreamError ? e.message : e instanceof Error ? e.message : String(e);
-		if (DEBUG) console.debug(`[title-gen] task model call failed for ${conversationId}: ${cause}`);
+		log.debug(`task model call failed for ${conversationId}: ${cause}`);
 		return null;
 	}
 
 	const title = sanitizeTitle(upstreamContent);
 	if (!title) {
-		if (DEBUG) console.debug(`[title-gen] task model returned empty/garbage for ${conversationId}`);
+		log.debug(`task model returned empty/garbage for ${conversationId}`);
 		return null;
 	}
 
 	const persisted = setConversationTitleIfFallback(conversationId, userId, title);
-	if (DEBUG)
-		console.debug(
-			`[title-gen] ${conversationId} → "${title}" (${persisted ? 'persisted' : 'skipped: user/ai title already set'})`,
-		);
+	log.debug(
+		`${conversationId} → "${title}" (${persisted ? 'persisted' : 'skipped: user/ai title already set'})`,
+	);
 	return { title, persisted };
 }
 
