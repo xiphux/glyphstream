@@ -278,6 +278,9 @@ async function handleHostMessage(msg: HostMessage): Promise<void> {
 				newFiles,
 			});
 		} catch (err) {
+			// A failure before the run itself (a package that wouldn't load, a
+			// bad pre-file) skips the inner `finally`; the call is over either way.
+			currentCall = null;
 			sendToHost({
 				type: 'error',
 				callId: msg.callId,
