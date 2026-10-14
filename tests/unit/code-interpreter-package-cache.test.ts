@@ -54,4 +54,13 @@ describe('cachePyodideWheel', () => {
 		expect(readdirSync(elsewhere)).toEqual([]);
 		expect(readdirSync(dir)).toContain('demo-1.0-py3-none-any.whl');
 	});
+
+	it('reads the lockfile again after a failed read, and per directory', async () => {
+		const late = mkdtempSync(join(tmpdir(), 'pyodide-late-'));
+		expect(await cachePyodideWheel('demo-1.0-py3-none-any.whl', wheel, late)).toBe(false);
+		writeFileSync(join(late, 'pyodide-lock.json'), readFileSync(join(dir, 'pyodide-lock.json')));
+		expect(await cachePyodideWheel('demo-1.0-py3-none-any.whl', wheel, late)).toBe(true);
+		// A directory read earlier doesn't answer for another one.
+		expect(await cachePyodideWheel('demo-1.0-py3-none-any.whl', wheel, dir)).toBe(true);
+	});
 });

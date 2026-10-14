@@ -21,11 +21,14 @@ import { basename, join } from 'node:path';
 import process from 'node:process';
 import { pyodidePackageDir } from './spawn';
 
-let lockedHashes: Map<string, string> | null = null;
+/** Per package directory. Only a lockfile that was read is remembered, so one
+ *  unreadable at first (a volume still mounting) is retried on the next wheel. */
+const lockedHashes = new Map<string, Map<string, string>>();
 
 /** file_name → sha256 for every package in Pyodide's lockfile. */
 function lockfileHashes(dir: string): Map<string, string> {
-	if (lockedHashes) return lockedHashes;
+	const cached = lockedHashes.get(dir);
+	if (cached) return cached;
 	const map = new Map<string, string>();
 	try {
 		const lock = JSON.parse(readFileSync(join(dir, 'pyodide-lock.json'), 'utf8')) as {
@@ -37,9 +40,10 @@ function lockfileHashes(dir: string): Map<string, string> {
 			}
 		}
 	} catch {
-		// No lockfile → nothing is cacheable; imports still work uncached.
+		// No lockfile → nothing is cacheable this time; imports still work uncached.
+		return map;
 	}
-	lockedHashes = map;
+	lockedHashes.set(dir, map);
 	return map;
 }
 
@@ -75,5 +79,5 @@ export async function cachePyodideWheel(
 
 /** Test-only: forget the parsed lockfile. */
 export function resetPyodideWheelCacheForTests(): void {
-	lockedHashes = null;
+	lockedHashes.clear();
 }
