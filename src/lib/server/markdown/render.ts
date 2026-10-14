@@ -13,7 +13,7 @@
 
 // markdown-it 15's default export is a callable value, not a class binding
 // that doubles as a type — the instance type is a separate named export.
-import MarkdownItCtor, { type MarkdownIt } from 'markdown-it';
+import MarkdownItCtor, { type MarkdownIt, type Token } from 'markdown-it';
 import { createHighlighter, type Highlighter } from 'shiki';
 
 const LIGHT_THEME = 'github-light';
@@ -176,8 +176,12 @@ export async function renderMarkdown(text: string): Promise<string | null> {
 	const trimmed = text.trim();
 	if (!trimmed) return null;
 	const md = await getMarkdownIt();
-	await loadFenceLanguages(text);
-	return md.render(text);
+	// `md.render` is parse + render; split so the fences come from the same
+	// parse that renders, without parsing twice.
+	const env = {};
+	const tokens = md.parse(text, env);
+	await loadFenceLanguages(md, tokens);
+	return md.renderer.render(tokens, md.options, env);
 }
 
 const SUPPORTED = new Set(SUPPORTED_LANGS);
@@ -188,18 +192,20 @@ function resolveLang(langSpec: string): string {
 }
 
 /**
- * Load the grammar for every supported language a fence in `text` names and
+ * Load the grammar for every supported language a fence in `tokens` names and
  * the highlighter doesn't have yet. Highlighting runs synchronously inside
  * markdown-it's render, so the grammar has to be there before it starts.
- * Over-matching (a fence-like line inside another fence) only loads a grammar
- * early; it can't change the output.
+ * Reads markdown-it's own fence tokens, which are flat however deeply the
+ * fence is nested (a list item, a blockquote), and derives the language name
+ * the way its fence renderer does, so it names exactly what `highlight` gets.
  */
-async function loadFenceLanguages(text: string): Promise<void> {
+async function loadFenceLanguages(md: MarkdownIt, tokens: Token[]): Promise<void> {
 	const highlighter = await getHighlighter();
 	const loaded = new Set(highlighter.getLoadedLanguages());
 	const wanted = new Set<string>();
-	for (const m of text.matchAll(/^ {0,3}(?:`{3,}|~{3,})[ \t]*([^\s`{]+)/gm)) {
-		const lang = resolveLang(m[1]);
+	for (const token of tokens) {
+		if (token.type !== 'fence' || !token.info) continue;
+		const lang = resolveLang(md.utils.unescapeAll(token.info).trim().split(/\s+/)[0]);
 		if (SUPPORTED.has(lang) && !loaded.has(lang)) wanted.add(lang);
 	}
 	for (const lang of wanted) {

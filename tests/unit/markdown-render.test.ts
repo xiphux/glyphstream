@@ -153,6 +153,15 @@ describe('renderMarkdown — grammars load on demand', () => {
 		expect(await renderMarkdown(text)).toBe(await renderMarkdown(text));
 	});
 
+	it('highlights fences nested in a list item or a blockquote on their first render', async () => {
+		// An indented or `>`-prefixed fence is still a fence; a line-start scan
+		// missed both, so they rendered plain until something else loaded the grammar.
+		const html = (await renderMarkdown(
+			'1. Query:\n\n    ```sql\n    SELECT 1;\n    ```\n\n> ```lua\n> local x = 1\n> ```',
+		))!;
+		expect(html.match(/class="shiki/g)).toHaveLength(2);
+	});
+
 	it('resolves an alias to its lazily loaded grammar', async () => {
 		expect(await renderMarkdown('```rs\nfn main() {}\n```')).toContain('class="shiki');
 	});
