@@ -52,7 +52,7 @@ export function redirectUnauthenticatedPage(locals: App.Locals, url: URL): never
  * 500 instead of a 302. But `await parent()` also sets SvelteKit's
  * `uses.parent`, which makes the page re-run — and re-serialize everything it
  * returns — whenever the layout re-runs. For a page whose payload is large
- * (the chat route ships the whole active branch, `content_html` included),
+ * (the chat route ships a window of the active branch, `content_html` included),
  * that turns a targeted `invalidate('app:conversations')` into a full
  * conversation refetch.
  *

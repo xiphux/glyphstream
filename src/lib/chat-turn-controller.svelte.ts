@@ -652,7 +652,7 @@ export class ChatTurnController {
 					// Plain single-iteration append: both new rows are already canonical
 					// in `messages` — `onStart` swapped the optimistic user bubble for
 					// the persisted row, `onDone` appended the assistant row — so
-					// re-reading the conversation would re-download the entire branch,
+					// re-reading the conversation would re-download its loaded window,
 					// `content_html` and all, to learn nothing. Refresh just the sidebar,
 					// which still needs the generated title and the updated_at re-sort.
 					await invalidate('app:conversations');

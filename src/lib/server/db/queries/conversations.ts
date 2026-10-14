@@ -274,7 +274,7 @@ export function getFanoutParent(conversationId: string, userId: string): string 
 	return row?.p ?? null;
 }
 
-/** Returns the conversation with active-branch messages. Null if not found OR not owned by `userId`. */
+/** The whole active branch, or only its newest window when `messageWindow` is set. */
 function branchFor(
 	id: string,
 	messageWindow: number | undefined,
@@ -292,7 +292,7 @@ function branchFor(
  * The conversation and its active branch. With `messageWindow`, only the
  * branch's newest window of about that many messages is loaded, with
  * `hasEarlierMessages` saying whether there is more (the chat page); without
- * it, the whole branch.
+ * it, the whole branch. Null if not found OR not owned by `userId`.
  */
 export function getConversationDetail(
 	id: string,

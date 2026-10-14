@@ -157,9 +157,11 @@ tests/e2e/            # playwright (production-build webServer)
   re-serializes everything it returns. A page with a big payload should
   instead guard with `requireUserPage(locals, url)` (`server/auth/guard.ts`),
   which reaches the layout's exact redirect from the layout's exact condition,
-  so the race is benign. `chat/[id]` does this — it ships the whole active
-  branch with `content_html`, and the coupling was making every completed turn
-  _and_ every tab refocus refetch the entire conversation (measured 35 KB → 4 KB
+  so the race is benign. `chat/[id]` does this — it ships a window of the
+  active branch with `content_html` (older messages come from
+  `GET /api/conversations/:id/messages` as the reader scrolls up), and the
+  coupling was making every completed turn _and_ every tab refocus refetch it
+  — the entire conversation, before windowing (measured 35 KB → 4 KB
   on a 40-turn thread; megabytes on a long code-heavy one). Re-adding
   `await parent()` there regresses nothing visible; the `NO_PARENT` list in
   `route-auth-guard-sweep.test.ts` is what fails.

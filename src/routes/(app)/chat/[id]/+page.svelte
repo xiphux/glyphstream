@@ -1703,8 +1703,8 @@
 	 *
 	 * Purely local: nothing on this page reads the flag except the open lightbox,
 	 * so there's no `invalidate` to run — and this route deliberately avoids one
-	 * (it ships the whole active branch with `content_html`, so re-running its load
-	 * to move a star would re-serialize the conversation). The gallery re-reads the
+	 * (it ships a window of the active branch with `content_html`, so re-running its
+	 * load to move a star would re-serialize all of it). The gallery re-reads the
 	 * truth from the server on its own next load.
 	 */
 	async function toggleLightboxFavorite(mediaId: string, next: boolean) {
