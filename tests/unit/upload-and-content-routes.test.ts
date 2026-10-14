@@ -25,9 +25,21 @@ vi.mock('#lib/server/env.js', async (importOriginal) => ({
 	mediaDir: () => mocks.root,
 	derivedDir: () => mocks.root,
 }));
+const displayVariant = vi.hoisted(() => ({ calls: [] as string[] }));
+vi.mock('#lib/server/media/display-variant.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/server/media/display-variant.js')>();
+	return {
+		...actual,
+		getOrCreateDisplayVariant: (storagePath: string) => {
+			displayVariant.calls.push(storagePath);
+			return actual.getOrCreateDisplayVariant(storagePath);
+		},
+	};
+});
 
 import { POST as upload } from '../../src/routes/api/uploads/+server';
 import { GET as content } from '../../src/routes/api/media/[id]/content/+server';
+import { GET as display } from '../../src/routes/api/media/[id]/display/+server';
 import { createSession, validateSessionToken } from '#lib/server/auth/session.js';
 import { insertMedia, purgeTrashForUser, trashMediaForUser } from '#lib/server/db/queries/media.js';
 import { media } from '#lib/server/db/schema.js';
@@ -250,6 +262,30 @@ describe('GET /api/media/[id]/content', () => {
 			expect(res.headers.get('content-disposition')).toMatch(/^attachment;/);
 			expect(res.headers.get('content-type')).toBe('image/svg+xml');
 		}
+	});
+
+	it('serves an SVG as itself on the display route, never as a raster copy', async () => {
+		displayVariant.calls = [];
+		const id = await stored('image/svg+xml', 'image', 'chart.svg');
+		const res = await call(
+			display as Handler,
+			new Request(`https://chat.example.test/api/media/${id}/display`),
+			{ id },
+		);
+		expect(res.status).toBe(200);
+		expect(res.headers.get('content-type')).toBe('image/svg+xml');
+		expect(res.headers.get('content-disposition')).toMatch(/^attachment;/);
+		expect(await res.text()).toBe('0123456789');
+		expect(displayVariant.calls).toEqual([]);
+
+		// A raster still asks for its display copy.
+		const png = await stored('image/png', 'image');
+		await call(
+			display as Handler,
+			new Request(`https://chat.example.test/api/media/${png}/display`),
+			{ id: png },
+		);
+		expect(displayVariant.calls).toHaveLength(1);
 	});
 
 	it('404s a trashed asset on its live URL, and serves it only to the trash view', async () => {

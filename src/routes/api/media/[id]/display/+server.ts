@@ -25,7 +25,13 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
 	if (!row || !servableForRequest(row, url)) error(404, 'Media not found');
 	if (row.kind !== 'image') error(404, 'No display copy for this media kind');
 
-	const variant = await getOrCreateDisplayVariant(row.storagePath);
+	// A vector stays a vector: a raster copy of an SVG (a matplotlib chart from
+	// the code interpreter, say) is sized to its intrinsic dimensions and blurs
+	// on a high-density screen, where the original scales cleanly.
+	const variant =
+		normalizeContentType(row.contentType) === 'image/svg+xml'
+			? null
+			: await getOrCreateDisplayVariant(row.storagePath);
 	if (variant) {
 		const stream = Readable.toWeb(
 			createReadStream(variant.absolutePath),
