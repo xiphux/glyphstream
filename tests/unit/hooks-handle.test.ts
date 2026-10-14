@@ -38,6 +38,9 @@ vi.mock('#lib/server/media/purger.js', () => ({
 	startMediaPurger: vi.fn(),
 	stopMediaPurger: vi.fn(),
 }));
+vi.mock('#lib/server/media/writable-probe.js', () => ({
+	probeMediaDirsWritable: async () => {},
+}));
 vi.mock('#lib/server/auth/session-sweeper.js', () => ({
 	startSessionSweeper: vi.fn(),
 	stopSessionSweeper: vi.fn(),

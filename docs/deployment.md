@@ -66,18 +66,30 @@ token is correct either way.
 Drizzle migrations apply automatically on first DB open. Subsequent config
 or env changes only need `docker compose restart` — no rebuild.
 
-**The container runs as the unprivileged `node` user (uid 1000), not root.** A
-fresh `./data` works as-is. If you're upgrading from a version that ran as root,
-hand the existing data directory over once before starting the new image:
+**The container runs as the unprivileged `node` user (uid 1000), not root.**
+Every directory it writes must be writable by uid 1000. A `./data` you create
+yourself works if your user is uid 1000; otherwise (or if `mkdir` needed `sudo`)
+chown it too. If you're upgrading from a version that ran as root, hand over
+everything the old container wrote, once, before starting the new image:
 
 ```sh
 sudo chown -R 1000:1000 ./data
+# …and every separate mount: MEDIA_DIR, DERIVED_DIR, SKILLS_DIR if you moved it
+sudo chown -R 1000:1000 /srv/fast/glyphstream-derived
 ```
 
-Skip it and the server starts but can't write its database: pages fail, and the
-log says `Cannot write the database … sudo chown -R 1000:1000 ./data`. (The
-health check doesn't open the database, so the container still reports
-healthy.)
+- **Media on NFS/SMB** ([below](#splitting-storage-across-volumes)): a client-side
+  `sudo chown` fails under root squash. Change ownership on the server (a NAS's
+  own shell or file manager), or map the share's users to a uid-1000 account in
+  its export settings. Mount options on the Docker host can't remap it.
+- **A named volume** the root image created stays root-owned:
+  `docker run --rm -v <volume>:/v alpine chown -R 1000:1000 /v`.
+
+Skip it and the server still starts. An unwritable database fails every page,
+with `Cannot write the database …` in the log; an unwritable media or derived
+directory logs `[storage] MEDIA_DIR (…) is not writable by uid 1000` at boot, and
+uploads and generated media fail until it's fixed. (The health check doesn't
+touch either, so the container still reports healthy.)
 
 ## Faststart backfill (one-shot)
 

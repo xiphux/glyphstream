@@ -26,6 +26,7 @@ import {
 import { ensureAdminBootstrap } from '#lib/server/db/queries/users.js';
 import { startMediaPurger, stopMediaPurger } from '#lib/server/media/purger.js';
 import { startSessionSweeper, stopSessionSweeper } from '#lib/server/auth/session-sweeper.js';
+import { probeMediaDirsWritable } from '#lib/server/media/writable-probe.js';
 import {
 	startEmbeddingBackfiller,
 	stopEmbeddingBackfiller,
@@ -90,6 +91,11 @@ installPersistedPauses();
 // visiting — never at module load, for the same reason the admin bootstrap
 // isn't (below).
 scheduleGenerationJobResume();
+
+// Say so at boot if the media or derived directory isn't writable — a mount
+// left root-owned by an older root-run image otherwise fails per request with
+// no explanation. Logs only; never blocks startup.
+void probeMediaDirsWritable();
 
 // Start the media purge sweeper at module load — runs once per Node process.
 // Using top-level rather than the first-request handler so the sweep clock

@@ -17,10 +17,11 @@ arrived.
 
 ### Security
 
-- **Upgrading needs one command:** the Docker image now runs as an
-  unprivileged user (uid 1000) instead of root. Before starting it on an
-  existing install, run `sudo chown -R 1000:1000 ./data`. Otherwise the server
-  can't write its database, and its log says so.
+- **Upgrading needs a `chown`:** the Docker image now runs as an unprivileged
+  user (uid 1000) instead of root. Before starting it on an existing install,
+  give uid 1000 everything the old container wrote — `./data`, plus any
+  separate `MEDIA_DIR` / `DERIVED_DIR` mount ([details](docs/deployment.md)).
+  The server logs which directory it can't write.
 - Python in the code interpreter is now held to a memory ceiling (1 GB per
   interpreter by default, `python_memory_mb` under `[code_interpreter]`). A
   script that asks for more gets Python's `MemoryError` instead of taking memory
