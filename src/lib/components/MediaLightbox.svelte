@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatBytes } from '#lib/format.js';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { MediaQuery } from 'svelte/reactivity';
@@ -408,12 +409,6 @@
 		clearTimeout(scrollSettleTimer);
 	});
 
-	function fmtBytes(n: number): string {
-		if (n < 1024) return `${n} B`;
-		if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-		return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-	}
-
 	function fmtDate(ms: number): string {
 		return new Date(ms).toLocaleString();
 	}
@@ -492,7 +487,7 @@
 		// doesn't report a ratio — which is most of them, so this segment is the
 		// exception rather than the rule.
 		if (m.aspectRatio) parts.push(m.aspectRatio);
-		parts.push(fmtBytes(m.byteSize), m.contentType);
+		parts.push(formatBytes(m.byteSize), m.contentType);
 		return parts.join(' · ');
 	}
 

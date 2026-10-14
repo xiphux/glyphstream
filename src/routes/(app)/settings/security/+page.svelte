@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatShortDate } from '#lib/format.js';
 	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
 	import { afterNavigate, goto, invalidate, refreshAll } from '$app/navigation';
 	import { page } from '$app/state';
@@ -124,19 +125,8 @@
 	let renamingId = $state<string | null>(null);
 	let renameDraft = $state('');
 
-	function formatDate(ms: number): string {
-		const d = new Date(ms);
-		const now = new Date();
-		const sameYear = d.getFullYear() === now.getFullYear();
-		return d.toLocaleDateString(undefined, {
-			month: 'short',
-			day: 'numeric',
-			year: sameYear ? undefined : 'numeric',
-		});
-	}
-
 	function displayName(p: PasskeySummary): string {
-		return p.name ?? `Passkey · added ${formatDate(p.createdAt)}`;
+		return p.name ?? `Passkey · added ${formatShortDate(p.createdAt)}`;
 	}
 
 	/** Coarse "last active" — the point is spotting a session you don't
@@ -150,7 +140,7 @@
 		if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
 		const days = Math.floor(hours / 24);
 		if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`;
-		return formatDate(ms);
+		return formatShortDate(ms);
 	}
 
 	/**
@@ -592,8 +582,8 @@
 											</span>
 										</div>
 										<div class="mt-1 text-xs text-fg-muted">
-											Added {formatDate(p.createdAt)} · Last used
-											{p.lastUsedAt ? formatDate(p.lastUsedAt) : 'never'}
+											Added {formatShortDate(p.createdAt)} · Last used
+											{p.lastUsedAt ? formatShortDate(p.lastUsedAt) : 'never'}
 										</div>
 									{/if}
 								</div>
@@ -717,7 +707,9 @@
 								{/if}
 							</div>
 							<div class="mt-1 text-xs text-fg-muted">
-								Signed in {formatDate(s.createdAt)} · Last active {formatLastSeen(s.lastSeenAt)}
+								Signed in {formatShortDate(s.createdAt)} · Last active {formatLastSeen(
+									s.lastSeenAt,
+								)}
 							</div>
 						</div>
 						<button

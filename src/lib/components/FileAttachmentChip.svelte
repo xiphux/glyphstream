@@ -15,6 +15,7 @@
 	caller without coupling to either store's shape.
 -->
 <script lang="ts">
+	import { formatBytes } from '#lib/format.js';
 	import { AlertCircle, FileText, X } from '@lucide/svelte';
 
 	let {
@@ -42,12 +43,6 @@
 		 *  Omit for persisted-message rendering where removal isn't a thing. */
 		onRemove?: (() => void) | null;
 	} = $props();
-
-	function humanSize(bytes: number): string {
-		if (bytes < 1024) return `${bytes} B`;
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-		return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-	}
 </script>
 
 <div
@@ -79,7 +74,7 @@
 		{:else}
 			<span class="truncate text-fg-primary">{filename}</span>
 		{/if}
-		<span class="text-fg-muted">{humanSize(byteSize)}</span>
+		<span class="text-fg-muted">{formatBytes(byteSize)}</span>
 	</div>
 
 	{#if onRemove}

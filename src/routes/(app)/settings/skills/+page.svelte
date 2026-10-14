@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatShortDate } from '#lib/format.js';
 	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
 	import { invalidate } from '$app/navigation';
 	import { Trash2, Upload, FolderUp } from '@lucide/svelte';
@@ -13,17 +14,6 @@
 	let busyId = $state<string | null>(null);
 	let filesInput = $state<HTMLInputElement | null>(null);
 	let folderInput = $state<HTMLInputElement | null>(null);
-
-	function formatDate(ms: number): string {
-		const d = new Date(ms);
-		const now = new Date();
-		const sameYear = d.getFullYear() === now.getFullYear();
-		return d.toLocaleDateString(undefined, {
-			month: 'short',
-			day: 'numeric',
-			year: sameYear ? undefined : 'numeric',
-		});
-	}
 
 	/** Pull SvelteKit's `{ message }` error body, falling back to the status. */
 	async function errorMessage(res: Response): Promise<string> {
@@ -231,7 +221,7 @@
 									<p class="mt-0.5 break-words text-xs text-fg-muted">{s.description}</p>
 								</div>
 								<div class="flex shrink-0 flex-col items-end gap-1.5">
-									<span class="text-xs text-fg-muted">{formatDate(s.createdAt)}</span>
+									<span class="text-xs text-fg-muted">{formatShortDate(s.createdAt)}</span>
 									<div class="flex items-center gap-1">
 										<button
 											type="button"

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatShortDate } from '#lib/format.js';
 	import { goto, refreshAll } from '$app/navigation';
 	import { DropdownMenu } from 'bits-ui';
 	import { ArchiveRestore, MoreVertical, Trash2 } from '@lucide/svelte';
@@ -12,17 +13,6 @@
 
 	let busyId = $state<string | null>(null);
 	let deleteTargetId = $state<string | null>(null);
-
-	function formatDate(ms: number): string {
-		const d = new Date(ms);
-		const now = new Date();
-		const sameYear = d.getFullYear() === now.getFullYear();
-		return d.toLocaleDateString(undefined, {
-			month: 'short',
-			day: 'numeric',
-			year: sameYear ? undefined : 'numeric',
-		});
-	}
 
 	async function unarchive(id: string) {
 		if (busyId) return;
@@ -84,7 +74,7 @@
 							class="flex w-full items-center justify-between gap-3 rounded-md py-2.5 pl-3 pr-10 text-left text-sm transition hover:bg-surface-sunken/70"
 						>
 							<span class="min-w-0 flex-1 truncate">{c.title ?? 'Untitled'}</span>
-							<span class="shrink-0 text-xs text-fg-muted">{formatDate(c.updatedAt)}</span>
+							<span class="shrink-0 text-xs text-fg-muted">{formatShortDate(c.updatedAt)}</span>
 						</button>
 						<DropdownMenu.Root>
 							<DropdownMenu.Trigger

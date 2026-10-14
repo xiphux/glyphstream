@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatShortDate } from '#lib/format.js';
 	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
 	import { invalidate } from '$app/navigation';
 	import { RotateCcw, Trash2 } from '@lucide/svelte';
@@ -25,17 +26,6 @@
 	// until the background pass has built one.
 	let overview = $derived(data.conversationOverview?.overview ?? null);
 	let overviewUpdatedAt = $derived(data.conversationOverview?.updatedAt ?? null);
-
-	function formatDate(ms: number): string {
-		const d = new Date(ms);
-		const now = new Date();
-		const sameYear = d.getFullYear() === now.getFullYear();
-		return d.toLocaleDateString(undefined, {
-			month: 'short',
-			day: 'numeric',
-			year: sameYear ? undefined : 'numeric',
-		});
-	}
 
 	function truncate(text: string, max: number): string {
 		if (text.length <= max) return text;
@@ -107,7 +97,9 @@
 							class="flex items-start gap-3 rounded-md py-2.5 pl-3 pr-10 text-sm transition hover:bg-surface-sunken/70"
 						>
 							<span class="min-w-0 flex-1 whitespace-pre-wrap break-words">{m.content}</span>
-							<span class="shrink-0 pt-0.5 text-xs text-fg-muted">{formatDate(m.createdAt)}</span>
+							<span class="shrink-0 pt-0.5 text-xs text-fg-muted"
+								>{formatShortDate(m.createdAt)}</span
+							>
 						</div>
 						<button
 							type="button"
@@ -153,7 +145,9 @@
 									{/if}
 								</span>
 							</span>
-							<span class="shrink-0 pt-0.5 text-xs text-fg-muted">{formatDate(m.deletedAt)}</span>
+							<span class="shrink-0 pt-0.5 text-xs text-fg-muted"
+								>{formatShortDate(m.deletedAt)}</span
+							>
 						</div>
 						<button
 							type="button"
@@ -179,7 +173,7 @@
 				the assistant knows what past chats it can search. It's rebuilt from your conversations
 				periodically, so it isn't edited here — to change it, manage the underlying conversations.
 				{#if overviewUpdatedAt}
-					<span class="whitespace-nowrap">Updated {formatDate(overviewUpdatedAt)}.</span>
+					<span class="whitespace-nowrap">Updated {formatShortDate(overviewUpdatedAt)}.</span>
 				{/if}
 			</p>
 			<div

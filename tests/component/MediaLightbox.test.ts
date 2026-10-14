@@ -146,7 +146,7 @@ describe('MediaLightbox — header metadata', () => {
 		// Anchored PAST the separator: `/^bridge-dev ·/` matched the broken
 		// `bridge-dev ·5/1/2026` rendering too, which is how a swallowed space
 		// shipped. The date is locale-dependent, hence `.+` in the middle.
-		expect(screen.getByText(/^bridge-dev · .+ · 100\.0 KB · image\/png$/)).toBeInTheDocument();
+		expect(screen.getByText(/^bridge-dev · .+ · 100 KB · image\/png$/)).toBeInTheDocument();
 	});
 
 	it('reports the aspect ratio between the date and the size', () => {
@@ -160,9 +160,7 @@ describe('MediaLightbox — header metadata', () => {
 				onClose: vi.fn(),
 			},
 		});
-		expect(
-			screen.getByText(/^bridge-dev · .+ · 16:9 · 100\.0 KB · image\/png$/),
-		).toBeInTheDocument();
+		expect(screen.getByText(/^bridge-dev · .+ · 16:9 · 100 KB · image\/png$/)).toBeInTheDocument();
 	});
 
 	it('omits the aspect ratio when none was recorded', () => {
@@ -179,7 +177,7 @@ describe('MediaLightbox — header metadata', () => {
 				onClose: vi.fn(),
 			},
 		});
-		expect(screen.getByText(/^bridge-dev · .+ · 100\.0 KB · image\/png$/)).toBeInTheDocument();
+		expect(screen.getByText(/^bridge-dev · .+ · 100 KB · image\/png$/)).toBeInTheDocument();
 	});
 
 	it('omits the endpoint from the metadata line when none is recorded', () => {
@@ -192,7 +190,7 @@ describe('MediaLightbox — header metadata', () => {
 		});
 		expect(screen.queryByText(/^bridge/)).toBeNull();
 		// No endpoint => no leading segment and no stray separator.
-		expect(screen.getByText(/^.+ · 100\.0 KB · image\/png$/)).toBeInTheDocument();
+		expect(screen.getByText(/^.+ · 100 KB · image\/png$/)).toBeInTheDocument();
 	});
 });
 
