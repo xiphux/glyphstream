@@ -1070,7 +1070,7 @@ export function listConversationsForMedia(mediaId: string, userId: string): Medi
  * caught it. `galleryUserFingerprint` detects a favorite change from
  * `(count, max(favorited_at))`, and unstarring one row while starring another
  * leaves the count where it was; if both writes land in the same millisecond the
- * max is unchanged too, so the gallery's 30s memo serves the old starred set.
+ * max is unchanged too, so the gallery's memo serves the old starred set.
  * Nudging the stamp forward makes any star move the max, with no extra work in
  * the read path (the alternative was folding row identity into an aggregate that
  * runs on every gallery request).
@@ -1082,8 +1082,8 @@ export function listConversationsForMedia(mediaId: string, userId: string): Medi
  * `galleryUserFingerprint`'s `max()`, which cares that the value MOVED rather than
  * what it says, and no surface shows it to a user. The counter restarts at 0 with
  * the process, so a star after a restart could in principle repeat a stamp an
- * earlier process wrote — that needs the clock to have gone backwards, and the 30s
- * cache TTL is the backstop if it ever did.
+ * earlier process wrote — that needs the clock to have gone backwards, and the
+ * cache TTL (`GALLERY_UNITS_TTL_MS`) is the backstop if it ever did.
  */
 let lastFavoritedAt = 0;
 

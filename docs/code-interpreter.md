@@ -98,7 +98,9 @@ heap that `worker_memory_mb` caps; `python_memory_mb` limits it through V8's own
 WebAssembly page limit. An allocation past it fails inside Python with
 `MemoryError`, which the script can catch, and the interpreter keeps running.
 A warm interpreter with the scientific stack loaded sits around 500 MB, so the
-default leaves headroom; raise it for big data work. A process-level limit
+default leaves headroom; raise it for big data work. These two limits bound the
+ordinary heaps, not every byte: Python can still reach JavaScript through
+Pyodide's `js` module and allocate buffers outside both. A process-level limit
 (`mem_limit` in docker-compose, `MemoryMax=` under systemd) is still a sensible
 backstop for the whole server.
 

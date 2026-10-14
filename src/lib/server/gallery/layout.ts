@@ -392,7 +392,7 @@ function evictUnitsEntry(key: string): void {
  *  the O(library) pass over and over. Insert and delete, the only invalidators
  *  before favorites existed, are each already expensive or rare.
  *
- *  What that trades away: an unfiltered entry can now serve a ≤30s-stale badge
+ *  What that trades away: an unfiltered entry can now serve a TTL-stale badge
  *  COUNT to a second tab or device (and to the starring client itself if it
  *  navigates away and back inside the TTL). That is the same staleness class the
  *  TTL already accepts a few lines up, and the starring client patches its own
