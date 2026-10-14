@@ -18,7 +18,7 @@
 import { open } from 'node:fs/promises';
 import sharp, { type Metadata } from 'sharp';
 import { MAX_DECODE_PIXELS } from './decode-limits';
-import { runFfmpeg } from './ffmpeg';
+import { FfmpegDeadline, runFfmpeg } from './ffmpeg';
 
 const HEIC_TYPES = new Set([
 	'image/heic',
@@ -74,9 +74,14 @@ function oneAtATime<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 export class HeicConversionError extends Error {
-	constructor(message: string, options?: { cause?: unknown }) {
+	/** True when the failure is the server's, not the file's: no ffmpeg to run,
+	 *  or a conversion that ran out of time. Worth a retry, or an operator's
+	 *  attention, rather than telling the user their photo is unreadable. */
+	readonly unavailable: boolean;
+	constructor(message: string, options?: { cause?: unknown; unavailable?: boolean }) {
 		super(message, options);
 		this.name = 'HeicConversionError';
+		this.unavailable = options?.unavailable ?? false;
 	}
 }
 
@@ -198,6 +203,18 @@ export async function convertHeicToJpeg(sourceAbs: string, outputAbs: string): P
 			),
 		);
 	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+			throw new HeicConversionError(
+				"HEIC photos can't be converted on this server (ffmpeg isn't installed)",
+				{ cause: e, unavailable: true },
+			);
+		}
+		if (e instanceof FfmpegDeadline || (e as { killed?: boolean }).killed === true) {
+			throw new HeicConversionError('Converting this photo took too long; try again', {
+				cause: e,
+				unavailable: true,
+			});
+		}
 		throw new HeicConversionError('Could not convert this HEIC photo', { cause: e });
 	}
 

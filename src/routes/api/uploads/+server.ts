@@ -173,7 +173,9 @@ async function storeHeicAsJpeg(source: Readable) {
 		} catch (e) {
 			if (e instanceof HeicConversionError) {
 				console.warn('[uploads] HEIC conversion failed:', e.cause ?? e.message);
-				error(415, e.message);
+				// 503 when the server couldn't convert (no ffmpeg, out of time), so it
+				// doesn't read as the photo being unacceptable.
+				error(e.unavailable ? 503 : 415, e.message);
 			}
 			throw e;
 		}

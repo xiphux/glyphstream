@@ -14,7 +14,10 @@ const mocks = vi.hoisted(() => ({
 	/** What the stand-in ffmpeg writes: the sample, stitched and turned upright. */
 	output: { width: 768, height: 1024 },
 }));
-vi.mock('#lib/server/media/ffmpeg.js', () => ({ runFfmpeg: mocks.runFfmpeg }));
+vi.mock('#lib/server/media/ffmpeg.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/server/media/ffmpeg.js')>()),
+	runFfmpeg: mocks.runFfmpeg,
+}));
 
 import {
 	convertHeicToJpeg,
@@ -175,11 +178,34 @@ describe('convertHeicToJpeg', () => {
 		).resolves.toBeUndefined();
 	});
 
+	it('says the server cannot convert when ffmpeg is not installed', async () => {
+		mocks.runFfmpeg.mockRejectedValueOnce(
+			Object.assign(new Error('spawn ffmpeg ENOENT'), { code: 'ENOENT' }),
+		);
+		writeFileSync(join(dir, 'in.heic'), SAMPLE);
+		const err = await convertHeicToJpeg(join(dir, 'in.heic'), join(dir, 'out.jpg')).catch(
+			(e: unknown) => e,
+		);
+		expect(err).toBeInstanceOf(HeicConversionError);
+		expect((err as HeicConversionError).unavailable).toBe(true);
+		expect((err as HeicConversionError).message).toMatch(/ffmpeg/);
+	});
+
+	it("treats a conversion that ran out of time as the server's failure, not the photo's", async () => {
+		mocks.runFfmpeg.mockRejectedValueOnce(
+			Object.assign(new Error('Command failed'), { killed: true, signal: 'SIGKILL' }),
+		);
+		writeFileSync(join(dir, 'in.heic'), SAMPLE);
+		await expect(
+			convertHeicToJpeg(join(dir, 'in.heic'), join(dir, 'out.jpg')),
+		).rejects.toMatchObject({ unavailable: true });
+	});
+
 	it("reports ffmpeg's failure as a conversion error", async () => {
 		mocks.runFfmpeg.mockRejectedValueOnce(new Error('Invalid data found when processing input'));
 		writeFileSync(join(dir, 'in.heic'), SAMPLE);
-		await expect(convertHeicToJpeg(join(dir, 'in.heic'), join(dir, 'out.jpg'))).rejects.toThrow(
-			HeicConversionError,
-		);
+		await expect(
+			convertHeicToJpeg(join(dir, 'in.heic'), join(dir, 'out.jpg')),
+		).rejects.toMatchObject({ name: 'HeicConversionError', unavailable: false });
 	});
 });

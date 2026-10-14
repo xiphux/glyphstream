@@ -25,7 +25,7 @@ vi.mock('#lib/server/env.js', async (importOriginal) => ({
 	mediaDir: () => mocks.root,
 	derivedDir: () => mocks.root,
 }));
-const heic = vi.hoisted(() => ({ fail: false }));
+const heic = vi.hoisted(() => ({ fail: false, unavailable: false }));
 vi.mock('#lib/server/media/heic.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('#lib/server/media/heic.js')>();
 	const { default: sharp } = await import('sharp');
@@ -34,7 +34,11 @@ vi.mock('#lib/server/media/heic.js', async (importOriginal) => {
 		// The image's ffmpeg is proven by the Docker build; here, a stand-in that
 		// writes a real JPEG where the route expects one.
 		convertHeicToJpeg: async (_src: string, out: string) => {
-			if (heic.fail) throw new actual.HeicConversionError('Could not convert this HEIC photo');
+			if (heic.fail) {
+				throw new actual.HeicConversionError('Could not convert this HEIC photo', {
+					unavailable: heic.unavailable,
+				});
+			}
 			await sharp({ create: { width: 30, height: 40, channels: 3, background: '#c00' } })
 				.jpeg()
 				.toFile(out);
@@ -215,6 +219,17 @@ describe('POST /api/uploads', () => {
 		expect(new Uint8Array(await res.arrayBuffer()).subarray(0, 2)).toEqual(
 			new Uint8Array([0xff, 0xd8]),
 		);
+	});
+
+	it('answers 503, not 415, when the server cannot convert, storing nothing', async () => {
+		heic.fail = true;
+		heic.unavailable = true;
+		const file = new File([new Uint8Array([1, 2, 3])], 'IMG_0004.HEIC', { type: 'image/heic' });
+		const res = await call(upload as Handler, uploadRequest(file));
+		expect(res.status).toBe(503);
+		expect(mocks.testDb.select().from(media).all()).toEqual([]);
+		heic.fail = false;
+		heic.unavailable = false;
 	});
 
 	it('refuses a HEIC that will not convert, storing nothing', async () => {
