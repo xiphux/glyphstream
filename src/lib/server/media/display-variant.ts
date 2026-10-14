@@ -5,7 +5,7 @@
  * generated PNG of 1–2 MB, per image, every time a long thread opened. This
  * serves a WebP at most DISPLAY_MAX_DIM on the long side instead, crisp on a
  * high-density screen at bubble width and typically a tenth of the bytes.
- * WebP rather than the thumbnails' JPEG because it keeps transparency: a
+ * WebP rather than the vision variant's JPEG because it keeps transparency: a
  * background-removal result must not turn up on a black or white box. The
  * lightbox, downloads and image-to-image still use the original.
  *

@@ -30,7 +30,8 @@
  * give up and render nothing. Which many did.
  *
  * Failure mode: if the input can't be decoded (corrupt file,
- * unsupported codec) we return null. For an image the endpoint
+ * unsupported codec) we return the pre-WebP JPEG if there is one,
+ * and otherwise null. For an image the endpoint
  * falls back to streaming the original — a slow tile, not a broken
  * one. For a VIDEO there is no such fallback, since a `poster`
  * pointing at an mp4 is meaningless; the endpoint 404s and the
@@ -294,7 +295,7 @@ class DecodeError extends Error {
 async function encodeImageThumb(sourceAbs: string, tmpAbs: string): Promise<void> {
 	await sharp(sourceAbs, { limitInputPixels: MAX_DECODE_PIXELS })
 		// Apply EXIF orientation first. Phones store landscape sensor pixels plus
-		// an orientation tag, and the JPEG written below carries no metadata, so
+		// an orientation tag, and the WebP written below carries no metadata, so
 		// without this a portrait photo's thumbnail came out sideways.
 		.rotate()
 		.resize(THUMB_MAX_DIM, THUMB_MAX_DIM, {
@@ -456,8 +457,8 @@ async function runFrameAt(
 			VIDEO_SCALE_FILTER,
 			'-q:v',
 			VIDEO_JPEG_QSCALE,
-			// Pinned rather than inferred from the extension: tmpAbs ends in `.tmp`,
-			// which ffmpeg cannot guess a muxer from.
+			// Pinned rather than inferred from the extension: the frame's path ends
+			// in `.frame`, which ffmpeg cannot guess a muxer from.
 			'-f',
 			'image2',
 			'-y',
@@ -547,9 +548,10 @@ function recentlyFailed(thumbAbs: string): boolean {
  * is one production caller and it always knew the kind.
  *
  * Returns the cached thumbnail if it exists, otherwise generates one
- * lazily, writes it to disk, and returns it. Returns null if neither
- * is possible: the source is missing, or the decoder — sharp for an
- * image, ffmpeg for a video — could not read it. An image caller
+ * lazily, writes it to disk, and returns it. If neither is possible
+ * (the source is missing, or the decoder — sharp for an image, ffmpeg
+ * for a video — could not read it), returns the pre-WebP JPEG when
+ * there is one (see `legacyThumbStoragePath`), else null. An image caller
  * should fall back to streaming the original; a video caller has no
  * such fallback and 404s (see the endpoint).
  *
@@ -689,10 +691,12 @@ async function generateThumbnail(
 			} else {
 				await unlink(tmpAbs).catch(() => {});
 			}
-			// One bad input shouldn't kill the endpoint. Log + null: for an IMAGE
-			// the caller then falls back to streaming the original, but for a VIDEO
-			// there is no such fallback and the endpoint 404s — a `poster` pointing
-			// at an mp4 renders nothing. See the endpoint's own comment.
+			// One bad input shouldn't kill the endpoint. Log + null, which
+			// `getOrCreateThumbnail` turns into the pre-WebP JPEG if there is one.
+			// Failing that, for an IMAGE the caller falls back to streaming the
+			// original, but for a VIDEO there is no such fallback and the endpoint
+			// 404s — a `poster` pointing at an mp4 renders nothing. See the
+			// endpoint's own comment.
 			const reason = e instanceof DecodeError ? e.cause : e;
 			console.warn(`[thumbnail] generation failed for ${storagePath}:`, reason);
 			// Only what came from trying to read the source is worth remembering.
