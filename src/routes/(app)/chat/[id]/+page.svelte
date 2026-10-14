@@ -1426,7 +1426,9 @@
 			}
 			return 'loaded';
 		} catch {
-			if (conv !== convId) return 'none';
+			// A failure about a window the reader no longer has (another
+			// conversation, or one a refresh replaced) is no failure of this one.
+			if (stale()) return 'none';
 			earlierFailed = true;
 			return 'failed';
 		} finally {
@@ -1468,7 +1470,12 @@
 			}
 		};
 		const onScroll = () => {
-			if (Math.abs(el.scrollTop - set) < 1) return;
+			// One-shot: only the event the write itself fired. A reader who later
+			// scrolls back to that exact position is followed like any other.
+			if (Math.abs(el.scrollTop - set) < 1) {
+				set = NaN;
+				return;
+			}
 			const r = row();
 			if (r) want = r.getBoundingClientRect().top;
 		};
@@ -1493,11 +1500,12 @@
 		if (!hasEarlier) return false;
 		// A jump the reader asked for: say so if it can't happen, rather than
 		// leave them where they were (the retry link is at the top, out of view).
+		const conv = convId;
 		let result = await loadEarlier(id);
 		// 'none' with the target still missing: a refresh replaced the window while
 		// the request was out, so the answer was about the old one. Once more,
-		// from the window there is now.
-		if (result === 'none' && hasEarlier && !messages.some((m) => m.id === id)) {
+		// from the window there is now — unless the reader has left the conversation.
+		if (result === 'none' && conv === convId && hasEarlier && !messages.some((m) => m.id === id)) {
 			result = await loadEarlier(id);
 		}
 		if (result === 'failed') {
