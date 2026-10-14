@@ -13,7 +13,7 @@ const noop = () => {};
 
 /** The two props that only back the breakdown popover; every readout/Compact
  *  assertion below is indifferent to them. */
-const panelProps = { conversationId: 'c1', revision: 0 };
+const panelProps = { conversationId: 'c1', revision: 'm0' };
 
 describe('ContextBudgetBar — readout', () => {
 	it('hides the token count when zero', () => {

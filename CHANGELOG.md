@@ -74,6 +74,10 @@ arrived.
 
 ### Changed
 
+- Long conversations open much faster. A chat loads its newest ~40 messages and
+  fetches older ones as you scroll up, instead of the whole thread at once (a
+  200-turn thread was an 8 MB page). Search results and links to an older
+  message load back to it.
 - Images in a chat load as a display-sized copy (at most 1280 px, WebP, keeping
   transparency) instead of the full original: a 10 MB image arrives as about
   200 KB. Opening an image still shows the original.

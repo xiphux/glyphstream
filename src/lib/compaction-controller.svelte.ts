@@ -47,6 +47,9 @@ export interface CompactionDeps {
 	convId(): string;
 	/** The rendered message list (the branch being compacted). */
 	getMessages(): ChatMessage[];
+	/** Whether `getMessages()` is only the newest window of a longer branch
+	 *  (older messages not loaded yet). Optional: absent means the whole branch. */
+	hasEarlierMessages?(): boolean;
 	/** True while a turn is streaming — compaction must not race it. */
 	turnBusy(): boolean;
 	/** True while a fan-out comparison is parked (see the header note). */
@@ -101,7 +104,12 @@ export class CompactionController {
 	 * button stays disabled rather than running for ~no benefit.
 	 */
 	get compactable(): boolean {
-		return !this.#blocked && compactionWorthwhile(this.#deps.getMessages());
+		return (
+			!this.#blocked &&
+			compactionWorthwhile(this.#deps.getMessages(), undefined, undefined, {
+				truncatedAbove: this.#deps.hasEarlierMessages?.() ?? false,
+			})
+		);
 	}
 
 	/**
@@ -250,6 +258,7 @@ export class CompactionController {
 		if (
 			!shouldAutoCompact({
 				branch: this.#deps.getMessages(),
+				truncatedAbove: this.#deps.hasEarlierMessages?.() ?? false,
 				enabled: true,
 				contextWindow: this.#deps.contextWindow(),
 				threshold: this.#deps.autoCompactionThreshold(),

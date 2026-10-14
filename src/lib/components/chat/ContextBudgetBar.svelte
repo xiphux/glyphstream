@@ -27,9 +27,9 @@
 		compacting?: boolean;
 		/** Backs the itemized breakdown popover behind the readout. */
 		conversationId: string;
-		/** Bumped on each completed turn, so the open panel refetches instead of
-		 *  showing the previous turn's numbers. */
-		revision: number;
+		/** The branch's newest message id: changes on each completed turn, so the
+		 *  open panel refetches instead of showing the previous turn's numbers. */
+		revision: string;
 	}
 
 	let {

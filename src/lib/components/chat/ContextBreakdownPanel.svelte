@@ -16,8 +16,10 @@
 
 	interface Props {
 		conversationId: string;
-		/** Bumped by the parent on every completed turn — invalidates the cache. */
-		revision: number;
+		/** Changes whenever the branch's newest message does (the parent passes its
+		 *  id) — invalidates the cache. Not a count: loading earlier messages
+		 *  lengthens the list without changing what's sent. */
+		revision: string;
 	}
 
 	let { conversationId, revision }: Props = $props();
@@ -62,7 +64,7 @@
 	let error = $state<string | null>(null);
 	let loading = $state(false);
 	// Plain `let`, not $state — a re-fetch guard read only inside the loader.
-	let loadedRevision = -1;
+	let loadedRevision: string | null = null;
 
 	async function load() {
 		if (loading || loadedRevision === revision) return;

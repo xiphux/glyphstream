@@ -147,9 +147,16 @@ export function upstreamBranch(branch: ChatMessage[]): ChatMessage[] {
  * via `isCompactionSummary`) as collapsed dividers and everything else inline.
  *
  * Handles repeated compaction (multiple summaries) by placing each before its
- * own resume target; a summary whose target is missing is appended at the end.
+ * own resume target. A summary whose target is missing goes at the end — or,
+ * with `truncatedAbove` (the chat page has loaded only the branch's newest
+ * window), at the START: its target is then simply older than anything loaded,
+ * so the divider belongs above the window, and moves into place once loading
+ * earlier messages brings the target in.
  */
-export function arrangeForDisplay(branch: ChatMessage[]): ChatMessage[] {
+export function arrangeForDisplay(
+	branch: ChatMessage[],
+	opts?: { truncatedAbove?: boolean },
+): ChatMessage[] {
 	const summaries = branch.filter(isCompactionSummary);
 	if (summaries.length === 0) return branch;
 
@@ -166,12 +173,11 @@ export function arrangeForDisplay(branch: ChatMessage[]): ChatMessage[] {
 		if (s) out.push(s);
 		out.push(m);
 	}
-	// Any summary whose resume target wasn't found — keep it visible at the end.
+	// Any summary whose resume target wasn't found — keep it visible: above the
+	// window when its target hasn't been loaded yet, else at the end.
 	const placed = new Set(out.filter(isCompactionSummary).map((s) => s.id));
-	for (const s of summaries) {
-		if (!placed.has(s.id)) out.push(s);
-	}
-	return out;
+	const unplaced = summaries.filter((s) => !placed.has(s.id));
+	return opts?.truncatedAbove ? [...unplaced, ...out] : [...out, ...unplaced];
 }
 
 /** Whether a manual/auto compaction is structurally possible (enough turns to
@@ -279,15 +285,24 @@ export function summaryMaxTokens(promptTokens: number, contextWindow: number | n
  * possible AND the history it would fold is large enough to be worth it. This is
  * the gate the manual button and auto-compaction actually use (vs. the purely
  * structural `canCompact`).
+ *
+ * `truncatedAbove`: `branch` is only the newest window of a longer branch (the
+ * chat page), so the history it would fold is at least what's here and likely
+ * more. Then a possible cut is enough: estimating from the window alone could
+ * wrongly disable the button on a long thread, while a compaction that finds
+ * nothing worth folding is a no-op on the server, which decides from the whole
+ * branch.
  */
 export function compactionWorthwhile(
 	branch: ChatMessage[],
 	keepTurns: number = DEFAULT_KEEP_TURNS,
 	minTokens: number = MIN_COMPACTIBLE_TOKENS,
+	opts?: { truncatedAbove?: boolean },
 ): boolean {
 	const view = upstreamBranch(branch);
 	const cut = computeCompactionCut(view, keepTurns);
 	if (!cut) return false;
+	if (opts?.truncatedAbove) return true;
 	// The messages that would be folded into the summary = everything before the
 	// verbatim tail. (For a repeat compaction this includes the prior summary,
 	// which is correctly re-folded.)
@@ -351,6 +366,8 @@ export function shouldAutoCompact(opts: {
 	/** Percent of the window, 0–100. */
 	threshold: number;
 	keepTurns?: number;
+	/** `branch` is only the newest window of the branch; see `compactionWorthwhile`. */
+	truncatedAbove?: boolean;
 }): boolean {
 	const { branch, enabled, contextWindow, threshold } = opts;
 	if (!enabled) return false;
@@ -358,5 +375,7 @@ export function shouldAutoCompact(opts: {
 	if (threshold <= 0) return false;
 	const used = currentContextTokens(branch);
 	if (used < (contextWindow * threshold) / 100) return false;
-	return compactionWorthwhile(branch, opts.keepTurns ?? DEFAULT_KEEP_TURNS);
+	return compactionWorthwhile(branch, opts.keepTurns ?? DEFAULT_KEEP_TURNS, undefined, {
+		truncatedAbove: opts.truncatedAbove,
+	});
 }

@@ -190,6 +190,25 @@ describe('arrangeForDisplay', () => {
 		]);
 	});
 
+	it('puts a summary whose target is older than the loaded window above the window', () => {
+		// The page holds only the newest window: u3 onwards. The summary resumes
+		// from u1, which isn't loaded yet, so its divider sits at the top until it is.
+		const loaded = [...turns(5).slice(6), summary('S', 'u1', 100)];
+		expect(arrangeForDisplay(loaded, { truncatedAbove: true }).map((m) => m.id)).toEqual([
+			'S',
+			'u3',
+			'a3',
+			'u4',
+			'a4',
+		]);
+		// With the whole branch loaded, a missing target still means the end.
+		expect(
+			arrangeForDisplay(loaded)
+				.map((m) => m.id)
+				.at(-1),
+		).toBe('S');
+	});
+
 	it('places each of multiple summaries before its own target', () => {
 		const branch = [
 			...turns(2),
@@ -266,6 +285,15 @@ describe('compactionWorthwhile', () => {
 	it('is true once the foldable history clears the floor', () => {
 		// 4 big turns, keep 2 → folds 2 (~1200 tokens) > MIN_COMPACTIBLE_TOKENS.
 		expect(compactionWorthwhile(bigTurns(4), 2)).toBe(true);
+	});
+
+	it('counts a possible cut as worthwhile when the branch is only its newest window', () => {
+		// Tiny turns would say "not worth it" — but older, unloaded history is
+		// folded too, and the server decides from the whole branch.
+		expect(compactionWorthwhile(turns(4), 2)).toBe(false);
+		expect(compactionWorthwhile(turns(4), 2, undefined, { truncatedAbove: true })).toBe(true);
+		// Still not when no cut is possible at all.
+		expect(compactionWorthwhile(turns(2), 2, undefined, { truncatedAbove: true })).toBe(false);
 	});
 
 	it('respects an explicit minTokens override', () => {

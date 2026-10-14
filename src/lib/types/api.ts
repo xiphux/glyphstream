@@ -910,13 +910,28 @@ export interface ConversationDetail extends ConversationSummary {
 	 *  null falls back to the preset (or to no avatar at all). */
 	avatarMediaId: string | null;
 	activeLeafMessageId: string | null;
+	/** The active branch, root → leaf — or, for the chat page, only its newest
+	 *  window (see `hasEarlierMessages`). */
 	messages: ChatMessage[];
+	/** Set when `messages` is a window: whether older messages exist before it,
+	 *  to be fetched from GET /api/conversations/:id/messages. */
+	hasEarlierMessages?: boolean;
 	/**
 	 * Per-conversation opt-outs (see FEATURE_CATEGORIES). Always normalized
 	 * to an array (never null) so consumers don't have to branch — an empty
 	 * array means "all features on".
 	 */
 	disabledFeatures: FeatureCategory[];
+}
+
+/** GET /api/conversations/:id/messages response: the active branch's messages
+ *  before `?before=<id>` (the client's earliest loaded), root → leaf. With
+ *  `&through=<id>`, every message back through that one (a deep link). A 409
+ *  means a cursor is no longer on the active branch. */
+export interface EarlierMessagesResponse {
+	messages: ChatMessage[];
+	/** Whether the branch has messages older than these. */
+	hasEarlier: boolean;
 }
 
 /** POST /api/conversations request body.

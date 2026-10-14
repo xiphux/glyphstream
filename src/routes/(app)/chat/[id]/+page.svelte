@@ -9,6 +9,7 @@
 	import { navigating } from '$app/state';
 	import { getModelCatalogue } from '#lib/model-catalogue.svelte.js';
 	import { observeSentinel } from '#lib/observe-sentinel.js';
+	import { mergeRefreshedWindow } from '#lib/message-window.js';
 	import { FanoutController } from '#lib/fanout-controller.svelte.js';
 	import { ChatTurnController } from '#lib/chat-turn-controller.svelte.js';
 	import { preferredFirstName } from '#lib/greeting.js';
@@ -90,6 +91,7 @@
 	import type {
 		ChatMessage,
 		ConversationMediaRef,
+		EarlierMessagesResponse,
 		FeatureCategory,
 		MediaListItem,
 		ModelKind,
@@ -273,6 +275,14 @@
 	// conversation on every turn and not.
 	// svelte-ignore state_referenced_locally
 	let messages = $state.raw<ChatMessage[]>(data.conversation.messages);
+	// The page loads only the branch's newest window (see +page.server.ts);
+	// whether older messages exist above it, fetched by `loadEarlier` as the
+	// reader scrolls up.
+	// svelte-ignore state_referenced_locally
+	let hasEarlier = $state(data.conversation.hasEarlierMessages ?? false);
+	// A load of earlier messages failed: the sentinel stops asking and offers a
+	// retry instead of hammering a failing request on every scroll.
+	let earlierFailed = $state(false);
 
 	// The image models this user can draw with, and the one they'll draw with
 	// now: their saved choice if it still resolves, else the first available.
@@ -750,7 +760,22 @@
 	$effect(() => {
 		if (data.conversation === seededFromConversation) return;
 		seededFromConversation = data.conversation;
-		messages = data.conversation.messages;
+		// A refresh of THIS conversation brings back only the newest window: keep
+		// the older messages the reader already loaded above it, unless the
+		// branch changed up there (see mergeRefreshedWindow).
+		const fresh = data.conversation.hasEarlierMessages ?? false;
+		if (data.conversation.id === untrack(() => convId)) {
+			const merged = mergeRefreshedWindow(
+				untrack(() => messages),
+				data.conversation.messages,
+			);
+			messages = merged.messages;
+			if (!merged.keptEarlier) hasEarlier = fresh;
+		} else {
+			messages = data.conversation.messages;
+			hasEarlier = fresh;
+			earlierFailed = false;
+		}
 		title = data.conversation.title;
 		modelId = data.conversation.modelId;
 		convId = data.conversation.id;
@@ -840,7 +865,7 @@
 	// tools — non-empty hides the composer until the user posts
 	// decisions to /tool-approval. All three derive from the same
 	// messages array via a single pass to avoid three walks per update.
-	const rendered = $derived(buildRenderedConversation(messages));
+	const rendered = $derived(buildRenderedConversation(messages, { truncatedAbove: hasEarlier }));
 	const visibleMessages = $derived(rendered.visibleMessages);
 	const toolResultsByCallId = $derived(rendered.toolResultsByCallId);
 	const pendingApprovals = $derived(rendered.pendingApprovals);
@@ -1059,6 +1084,7 @@
 	const compaction = new CompactionController({
 		convId: () => data.conversation.id,
 		getMessages: () => messages,
+		hasEarlierMessages: () => hasEarlier,
 		turnBusy: () => turn.busy,
 		fanoutComparing: () => fanout.comparing,
 		contextWindow: () => modelContextWindow,
@@ -1068,13 +1094,20 @@
 			// Scroll to + briefly highlight the new summary so the result is visible:
 			// the token number barely moves and the divider lands up-thread, so
 			// without this a successful compaction looks like nothing happened.
-			const el = document.getElementById(`summary-${summaryId}`);
-			if (!el) return;
-			el.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
-			highlightedMessageId = summaryId;
-			setTimeout(() => {
-				if (highlightedMessageId === summaryId) highlightedMessageId = null;
-			}, 1500);
+			void (async () => {
+				// The divider sits just above the message it resumes from; load back
+				// to that first if it's older than the window, or the jump would land
+				// on the divider parked at the top of the window instead.
+				const resumeId = messages.find((m) => m.id === summaryId)?.compactionResumeFromMessageId;
+				if (resumeId) await ensureMessageLoaded(resumeId);
+				const el = document.getElementById(`summary-${summaryId}`);
+				if (!el) return;
+				el.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+				highlightedMessageId = summaryId;
+				setTimeout(() => {
+					if (highlightedMessageId === summaryId) highlightedMessageId = null;
+				}, 1500);
+			})();
 		},
 	});
 
@@ -1307,6 +1340,150 @@
 			rootMargin: '0px 0px 100px 0px',
 		});
 
+	// Loading earlier messages. The page opens on the branch's newest window; a
+	// sentinel above the first message loads the window before it as the reader
+	// nears the top, until there is nothing earlier. Prepending is the one change
+	// the scroll model here didn't have to handle before: everything else arrives
+	// at the bottom.
+	let loadingEarlier = $state(false);
+	// Off until the conversation has been placed on entry: before that the list
+	// sits at scrollTop 0 for a moment, and the sentinel would read as "reader at
+	// the top" and load a window nobody scrolled to.
+	let earlierArmed = $state(false);
+	// Read by `messageIntro` as the prepended rows mount: they were always there,
+	// so they don't fade in.
+	let prependingEarlier = false;
+	let earlierLoad: Promise<EarlierResult> | null = null;
+	type EarlierResult = 'loaded' | 'none' | 'gone' | 'failed';
+
+	/**
+	 * Load the window before the earliest loaded message — or, given `through`,
+	 * every message back through that one (a jump to it), in which case the
+	 * caller does the scrolling. One load at a time; a jump that arrives during
+	 * one waits for it and then goes again.
+	 */
+	function loadEarlier(through?: string): Promise<EarlierResult> {
+		if (earlierLoad) {
+			return through === undefined ? earlierLoad : earlierLoad.then(() => loadEarlier(through));
+		}
+		const load = fetchEarlier(through).finally(() => {
+			if (earlierLoad === load) earlierLoad = null;
+		});
+		earlierLoad = load;
+		return load;
+	}
+
+	async function fetchEarlier(through?: string): Promise<EarlierResult> {
+		const conv = convId;
+		const first = messages[0]?.id;
+		if (!hasEarlier || !first) return 'none';
+		// Anything since the request went out (a switch, or a refresh that
+		// replaced the window) makes the answer about some other list.
+		const stale = () => conv !== convId || messages[0]?.id !== first;
+		loadingEarlier = true;
+		try {
+			const query = new URLSearchParams({ before: first });
+			if (through) query.set('through', through);
+			const res = await fetch(`/api/conversations/${conv}/messages?${query}`);
+			if (stale()) return 'none';
+			if (res.status === 409) {
+				// For a jump, the target isn't on this branch. Otherwise the branch
+				// changed under the reader: reload the window.
+				if (!through) await refreshAll();
+				return 'gone';
+			}
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const body = (await res.json()) as EarlierMessagesResponse;
+			if (stale()) return 'none';
+			const anchor = document.getElementById(`msg-${first}`);
+			const anchorTop = anchor?.getBoundingClientRect().top;
+			prependingEarlier = true;
+			messages = [...body.messages, ...messages];
+			hasEarlier = body.hasEarlier;
+			earlierFailed = false;
+			await tick();
+			prependingEarlier = false;
+			// The entry hold, while it lasts, owns the position (the bottom); so does
+			// a jump's caller.
+			if (!through && !releaseEntryHold && anchorTop !== undefined && scrollContainer) {
+				holdAnchor(scrollContainer, first, anchorTop);
+			}
+			return 'loaded';
+		} catch {
+			earlierFailed = true;
+			return 'failed';
+		} finally {
+			prependingEarlier = false;
+			loadingEarlier = false;
+		}
+	}
+
+	/**
+	 * Keep the row the reader was looking at where it was on screen.
+	 *
+	 * Correcting from the row's position rather than from the change in height is
+	 * what makes this right whatever the browser did: Chromium's own scroll
+	 * anchoring may already have held the row in place (the correction is then
+	 * zero), Safari's has none. Held for a few seconds rather than once, because
+	 * images in the prepended rows carry no stored size and grow as they load,
+	 * above the reader — which, with no anchoring, pushes the view down. The
+	 * reader's own scrolling moves the target with them.
+	 */
+	let releaseAnchorHold: (() => void) | null = null;
+	function holdAnchor(el: HTMLElement, anchorId: string, top: number) {
+		releaseAnchorHold?.();
+		let want = top;
+		const row = () => document.getElementById(`msg-${anchorId}`);
+		const correct = () => {
+			const r = row();
+			if (!r) return;
+			const delta = r.getBoundingClientRect().top - want;
+			if (Math.abs(delta) >= 1) el.scrollTop += delta;
+		};
+		const onScroll = () => {
+			const r = row();
+			if (r) want = r.getBoundingClientRect().top;
+		};
+		correct();
+		const ro = new ResizeObserver(correct);
+		if (messageListEl) ro.observe(messageListEl);
+		el.addEventListener('scroll', onScroll, { passive: true });
+		const release = () => {
+			ro.disconnect();
+			el.removeEventListener('scroll', onScroll);
+			clearTimeout(cap);
+			if (releaseAnchorHold === release) releaseAnchorHold = null;
+		};
+		const cap = setTimeout(release, 3000);
+		releaseAnchorHold = release;
+	}
+	onDestroy(() => releaseAnchorHold?.());
+
+	/** Load back through `id` unless it's already loaded. True if it's loaded now. */
+	async function ensureMessageLoaded(id: string): Promise<boolean> {
+		if (messages.some((m) => m.id === id)) return true;
+		if (!hasEarlier) return false;
+		await loadEarlier(id);
+		await tick();
+		return messages.some((m) => m.id === id);
+	}
+
+	// An attachment, like the bottom sentinel's. Reading the first message's id
+	// re-attaches it after each load: an observer reports only CHANGES, so a
+	// sentinel still in view once a window landed would never ask for the next.
+	const observeTop = (node: HTMLElement) => {
+		void messages[0]?.id;
+		if (!earlierArmed || earlierFailed) return;
+		return observeSentinel(
+			scrollContainer,
+			node,
+			(visible) => {
+				if (visible) void loadEarlier();
+			},
+			{ rootMargin: '600px 0px 0px 0px' },
+		);
+	};
+
 	// Reference to the ChatComposer instance so the focus effect below
 	// can land focus in its textarea. The composer owns the ref + the
 	// auto-resize; the page owns the *when* of focusing.
@@ -1372,7 +1549,9 @@
 		const match = to?.url.hash.match(/^#msg-(.+)$/);
 		if (!match) return;
 		const targetId = decodeURIComponent(match[1]);
-		void tick().then(() => {
+		void tick().then(async () => {
+			// Older than the loaded window: load back through it first.
+			if (!(await ensureMessageLoaded(targetId))) return;
 			const el = document.getElementById(`msg-${targetId}`);
 			if (!el) return;
 			el.scrollIntoView({ block: 'center', behavior: 'auto' });
@@ -1406,7 +1585,7 @@
 	 *  - otherwise → the subtle opacity-only arrival fade.
 	 */
 	function messageIntro(_node: Element, p: { streamed: boolean }) {
-		if (!listMounted || reduceMotion || p.streamed) return { duration: 0 };
+		if (!listMounted || prependingEarlier || reduceMotion || p.streamed) return { duration: 0 };
 		if (branchSwitchDir !== null) {
 			const dir = branchSwitchDir;
 			return {
@@ -2166,8 +2345,11 @@
 	// causing a snap-to-bottom mid-scroll the moment the observer flipped
 	// the flag true. We only want this effect to fire on actual content
 	// changes — messages added or new tokens streaming in.
+	//
+	// Keyed on the LEAF, not the length: loading earlier messages grows the list
+	// at the top, which must not count as new content arriving at the bottom.
 	$effect(() => {
-		void messages.length;
+		void messages[messages.length - 1]?.id;
 		void turn.inFlightSegments;
 		if (!untrack(() => isNearBottom)) return;
 		void tick().then(() => scrollToBottom());
@@ -2217,6 +2399,17 @@
 		if (id === enteredConvId) return;
 		enteredConvId = id;
 		releaseEntryHold?.();
+		releaseAnchorHold?.();
+		// Disarm "load earlier" until the conversation is positioned (see
+		// `earlierArmed`); a frame after the tick that places it.
+		earlierArmed = false;
+		const arm = () =>
+			void tick().then(() =>
+				requestAnimationFrame(() => {
+					if (data.conversation.id === id) earlierArmed = true;
+				}),
+			);
+		arm();
 		if (/^#msg-/.test(location.hash)) return;
 		const place = () => {
 			if (untrack(() => fanout.comparing) && fanoutGridEl) {
@@ -2519,6 +2712,9 @@
 			// new data and the DOM to reflect it, then scroll the sibling
 			// into the middle of the viewport.
 			await tick();
+			// A switch far up the thread brings back the new branch's newest
+			// window, which needn't reach the sibling the reader clicked.
+			await ensureMessageLoaded(targetMessageId);
 			const target = document.getElementById(`msg-${targetMessageId}`);
 			target?.scrollIntoView({ block: 'center', behavior: 'auto' });
 			// Image parts carry no stored dimensions and render lazily, so a
@@ -2622,6 +2818,30 @@
 				class="mx-auto min-w-0 max-w-3xl space-y-4"
 				style="padding-bottom: {composerHeight + 24}px"
 			>
+				{#if hasEarlier}
+					<!-- Fixed height so the text appearing and going doesn't move the
+					 rows below it while the reader is looking at them. -->
+					<div
+						{@attach observeTop}
+						class="flex h-8 items-center justify-center text-xs text-fg-muted"
+						aria-live="polite"
+					>
+						{#if earlierFailed}
+							<button
+								type="button"
+								class="underline underline-offset-2"
+								onclick={() => {
+									earlierFailed = false;
+									void loadEarlier();
+								}}
+							>
+								Couldn't load earlier messages. Try again
+							</button>
+						{:else if loadingEarlier}
+							Loading earlier messages…
+						{/if}
+					</div>
+				{/if}
 				{#each visibleMessages as m (m.id)}
 					{#if isCompactionSummary(m)}
 						<!-- A compaction summary: collapsed divider, not a bubble. The
@@ -2678,8 +2898,9 @@
 				-->
 						<!--
 						Do NOT put `content-visibility: auto` on this wrapper. It was
-						tried and reverted — see ROADMAP "Virtualized message list".
-						Off-screen rows collapse to their `contain-intrinsic-size`
+						tried and reverted (and measured unneeded: scrolling held 60 fps
+						through 400 turns; what grew was the payload, which loading the
+						branch in windows now bounds). Off-screen rows collapse to their `contain-intrinsic-size`
 						placeholder, which makes the scroll container's `scrollHeight`
 						an ESTIMATE (measured 20638px against a real 42537px on a
 						40-turn thread). Pin-to-bottom here is
@@ -2876,7 +3097,7 @@
 							canCompact={compaction.compactable}
 							compacting={compaction.compacting}
 							conversationId={convId}
-							revision={messages.length}
+							revision={messages[messages.length - 1]?.id ?? ''}
 						/>
 					{/if}
 					<ChatComposer

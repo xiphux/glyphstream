@@ -7,11 +7,13 @@ import {
 	updateConversationModel,
 } from '#lib/server/db/queries/conversations.js';
 import {
+	BRANCH_WINDOW_SIZE,
 	findUserMessageAncestor,
 	getMessage,
 	restoreActiveLeafIfUnchanged,
 	setActiveLeafMessageId,
 	walkActiveBranch,
+	walkActiveBranchWindow,
 } from '#lib/server/db/queries/messages.js';
 import { createUserMessage } from '#lib/server/messages/create-user-message.js';
 import type { ChatCompletionRequest } from '#lib/server/endpoints/client.js';
@@ -51,9 +53,36 @@ import { sseResponse } from '#lib/server/streaming/sse-transport.js';
 const DEBUG = logLevel() === 'debug';
 import { isMediaKind } from '#lib/fanout.js';
 import { isModelKind } from '#lib/types/api.js';
-import type { ModelEntry, SendMessageRequest } from '#lib/types/api.js';
+import type { EarlierMessagesResponse, ModelEntry, SendMessageRequest } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
 import { enforceGenerationCap } from '#lib/server/generation/user-cap.js';
+
+/**
+ * Older messages of the active branch, for the chat page, which loads only the
+ * newest window (see getConversationDetail's `messageWindow`). `?before=` is the
+ * client's earliest loaded message; `&through=` loads back through a given one
+ * however far, for a deep link or a jump to it.
+ */
+export const GET: RequestHandler = ({ locals, params, url }) => {
+	requireUser(locals);
+	// `messages` has no user_id: the conversation lookup is the ownership check.
+	requireFound(getConversationMeta(params.id, locals.user.id), 'Conversation not found');
+	const before = url.searchParams.get('before');
+	if (!before) error(400, 'Missing "before"');
+	const through = url.searchParams.get('through') ?? undefined;
+	const slice = walkActiveBranchWindow(params.id, {
+		limit: BRANCH_WINDOW_SIZE,
+		before,
+		through,
+	});
+	// The branch changed under the client (a switch or edit elsewhere): its
+	// cursor is gone, and the answer is to reload the page's window.
+	if (!slice) error(409, 'That message is no longer on this branch');
+	return Response.json({
+		messages: slice.messages,
+		hasEarlier: slice.hasEarlier,
+	} satisfies EarlierMessagesResponse);
+};
 
 export const POST: RequestHandler = async ({ locals, params, request, url }) => {
 	requireUser(locals);

@@ -12,7 +12,7 @@ import { getDb } from '../client';
 import { conversations, media, messages } from '../schema';
 import { reconcileOverviewAfterConversationDelete } from './users';
 import { parseDisabledFeatures, parseMessageParts, parseModelParameters } from './json-columns';
-import { walkActiveBranch } from './messages';
+import { walkActiveBranch, walkActiveBranchWindow } from './messages';
 import {
 	decrementMediaForMessages,
 	trashOrphanGeneratedMediaForMessages,
@@ -275,7 +275,30 @@ export function getFanoutParent(conversationId: string, userId: string): string 
 }
 
 /** Returns the conversation with active-branch messages. Null if not found OR not owned by `userId`. */
-export function getConversationDetail(id: string, userId: string): ConversationDetail | null {
+function branchFor(
+	id: string,
+	messageWindow: number | undefined,
+): Pick<ConversationDetail, 'messages' | 'hasEarlierMessages'> {
+	if (messageWindow === undefined) return { messages: walkActiveBranch(id) };
+	// Null only for a cursor off the branch, and this passes none.
+	const slice = walkActiveBranchWindow(id, { limit: messageWindow }) ?? {
+		messages: [],
+		hasEarlier: false,
+	};
+	return { messages: slice.messages, hasEarlierMessages: slice.hasEarlier };
+}
+
+/**
+ * The conversation and its active branch. With `messageWindow`, only the
+ * branch's newest window of about that many messages is loaded, with
+ * `hasEarlierMessages` saying whether there is more (the chat page); without
+ * it, the whole branch.
+ */
+export function getConversationDetail(
+	id: string,
+	userId: string,
+	options?: { messageWindow?: number },
+): ConversationDetail | null {
 	const db = getDb();
 	const row = db
 		.select({
@@ -312,7 +335,7 @@ export function getConversationDetail(id: string, userId: string): ConversationD
 		activeLeafMessageId: row.activeLeafMessageId,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
-		messages: walkActiveBranch(id),
+		...branchFor(id, options?.messageWindow),
 		disabledFeatures: parseDisabledFeatures(row.disabledFeaturesJson),
 		private: row.private,
 	};

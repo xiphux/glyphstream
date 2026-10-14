@@ -347,10 +347,9 @@ Modern browsers all negotiate zstd, so the common path stays cheap; the worst
 case is an older client falling back to gzip on a huge thread, which now costs
 that client latency rather than blocking in-flight SSE streams for everyone.
 (The pool is shared with file I/O and defaults to 4 threads, so enough
-concurrent huge responses can still queue behind each other.) If you have
-threads that big, the durable fix is not serving a payload that size — see the
-`ROADMAP.md` "Virtualized message list" entry, which measures where this
-actually starts to matter.
+concurrent huge responses can still queue behind each other.) A chat page
+now loads only a conversation's newest ~40 messages and fetches older ones as
+you scroll up, so a single response no longer grows with the thread.
 
 ## Diagnosing a slow load (the debug panel)
 

@@ -4,6 +4,10 @@ import { requireUserPage } from '#lib/server/auth/guard.js';
 import { listActiveCanvases } from '#lib/server/db/queries/artifacts.js';
 import { getConversationDetail } from '#lib/server/db/queries/conversations.js';
 import { getCustomModelForUser } from '#lib/server/db/queries/custom-models.js';
+import {
+	BRANCH_WINDOW_SIZE,
+	listModelsUsedInConversation,
+} from '#lib/server/db/queries/messages.js';
 import { friendlyModelName } from '#lib/model-ids.js';
 import { parseModelId } from '#lib/server/endpoints/model-id.js';
 import { listAllModelsWithErrors } from '#lib/server/endpoints/list-models.js';
@@ -34,7 +38,12 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	// dropping it costs nothing and restores the targeted invalidation the
 	// layout's `depends('app:conversations')` comment already describes.
 	requireUserPage(locals, url);
-	const conversation = timeDb(locals, () => getConversationDetail(params.id, locals.user.id));
+	// Only the branch's newest window: a long thread was otherwise megabytes of
+	// HTML on every open (8 MB at 200 turns). Older messages come from
+	// GET /api/conversations/:id/messages as the user scrolls up.
+	const conversation = timeDb(locals, () =>
+		getConversationDetail(params.id, locals.user.id, { messageWindow: BRANCH_WINDOW_SIZE }),
+	);
 	// Send the user home rather than 404, and let the new-chat page raise a
 	// toast. A 404 here is a dead end in the standalone PWA — no back button,
 	// no chrome, nothing to tap — and the most common way to reach one is a
@@ -145,7 +154,9 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 		...new Set(
 			[
 				conversation.modelId,
-				...conversation.messages.map((m) => m.modelUsed),
+				// The whole conversation, not the loaded window: an older message's
+				// model needs its name when the user scrolls up to it.
+				...timeDb(locals, () => listModelsUsedInConversation(conversation.id)),
 				...fanout.siblings.map((m) => m.modelUsed),
 				...fanout.pendingModelIds,
 			].filter((id): id is string => !!id),

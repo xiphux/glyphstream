@@ -516,7 +516,10 @@ export interface RenderedConversation {
  * each walked the array on its own, so a mid-stream tool result update
  * cost three array walks where one would do.
  */
-export function buildRenderedConversation(messages: ChatMessage[]): RenderedConversation {
+export function buildRenderedConversation(
+	messages: ChatMessage[],
+	opts?: { truncatedAbove?: boolean },
+): RenderedConversation {
 	const visibleMessages: ChatMessage[] = [];
 	const toolResultsByCallId = new Map<string, ToolResultEntry>();
 	const pendingApprovals: string[] = [];
@@ -534,7 +537,7 @@ export function buildRenderedConversation(messages: ChatMessage[]): RenderedConv
 	// Reposition any compaction summaries to their logical spot (just before the
 	// turn they resume from). Real messages stay visible inline; the summary
 	// renders as a collapsed divider. No-op when the thread has no summary.
-	for (const msg of arrangeForDisplay(messages)) {
+	for (const msg of arrangeForDisplay(messages, opts)) {
 		if (msg.role !== 'tool') {
 			if (msg.role === 'user') lastUserMessageId = msg.id;
 			else if (msg.role === 'assistant' && lastUserMessageId) {

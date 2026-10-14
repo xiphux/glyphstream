@@ -1,4 +1,4 @@
-import { eq, and, inArray, getTableColumns } from 'drizzle-orm';
+import { eq, and, inArray, isNotNull, getTableColumns } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import type { CompareSelection } from '#lib/fanout.js';
 import type { ChatMessage, MessagePart, MessageRole } from '#lib/types/api.js';
@@ -242,27 +242,6 @@ export interface WalkActiveBranchOptions {
 }
 
 /**
- * Walk the active branch root → leaf and return messages in order.
- *
- * Two-step load to keep the heavy columns (content_json, content_html,
- * reasoning_text, raw_response_json) bounded by the active branch length
- * rather than the whole conversation. Long-edited threads can carry 2-3x
- * the active-branch size in orphaned sibling subtrees; the previous
- * single-query load pulled all of their JSON for no consumer.
- *
- *   1. Skeleton scan of (id, parent_message_id, created_at) — every row
- *      in the conversation, but each is a few dozen bytes. Drives the
- *      sibling-grouping for branch-aware rendering and lets us walk the
- *      parent chain to compute the active-branch id list.
- *   2. Heavy fetch of full columns for just the active-branch ids.
- *
- * Pass `{ columns: 'serialization' }` to skip the read-time heavy columns
- * (`content_html`, `reasoning_text`, `raw_response_json`, token counts,
- * gen_ms) — the projection rows have these fields set to `null`. Use this
- * for serialization / tool-context / compaction callers that only need
- * `parts`, `role`, and metadata.
- */
-/**
  * The conversation's current active-leaf message id, or null. A cheap
  * single-column read — used by the canvas tools to stamp a version's
  * `created_by_message_id` (at tool-execution time the leaf is the assistant
@@ -279,10 +258,28 @@ export function getActiveLeafMessageId(conversationId: string, userId: string): 
 	return row?.activeLeaf ?? null;
 }
 
-export function walkActiveBranch(
-	conversationId: string,
-	options?: WalkActiveBranchOptions,
-): ChatMessage[] {
+interface SkeletonRow {
+	id: string;
+	parentMessageId: string | null;
+	role: string;
+	createdAt: number;
+}
+
+interface BranchSkeleton {
+	/** The active branch, LEAF → ROOT. */
+	branch: SkeletonRow[];
+	/** Every row in the conversation grouped by parent, each group in sibling
+	 *  order — what the sibling arrows on any branch message are computed from. */
+	byParent: Map<string | null, SkeletonRow[]>;
+}
+
+/**
+ * Step 1 of a branch read: a skeleton scan of every row in the conversation
+ * (served by `idx_messages_conv_created`, a few dozen bytes a row), grouped by
+ * parent, and the active branch walked up from the leaf. Null when the
+ * conversation has no active leaf.
+ */
+function loadBranchSkeleton(conversationId: string): BranchSkeleton | null {
 	const db = getDb();
 	const conv = db
 		.select({ activeLeaf: conversations.activeLeafMessageId })
@@ -290,12 +287,13 @@ export function walkActiveBranch(
 		.where(eq(conversations.id, conversationId))
 		.get();
 
-	if (!conv?.activeLeaf) return [];
+	if (!conv?.activeLeaf) return null;
 
 	const skeletons = db
 		.select({
 			id: messages.id,
 			parentMessageId: messages.parentMessageId,
+			role: messages.role,
 			createdAt: messages.createdAt,
 		})
 		.from(messages)
@@ -306,7 +304,7 @@ export function walkActiveBranch(
 	// Group by parent_message_id so we can compute sibling counts /
 	// positions for messages on the active branch in O(N) instead of
 	// O(N) per active-branch entry.
-	const byParent = new Map<string | null, typeof skeletons>();
+	const byParent = new Map<string | null, SkeletonRow[]>();
 	for (const r of skeletons) {
 		const key = r.parentMessageId ?? null;
 		const list = byParent.get(key);
@@ -317,15 +315,29 @@ export function walkActiveBranch(
 		list.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
 	}
 
-	// Walk parent chain to collect the active-branch id list (leaf → root).
-	const branchIds: string[] = [];
+	// Walk parent chain to collect the active branch (leaf → root).
+	const branch: SkeletonRow[] = [];
 	let cursor = skelById.get(conv.activeLeaf);
 	while (cursor) {
-		branchIds.push(cursor.id);
+		branch.push(cursor);
 		if (!cursor.parentMessageId) break;
 		cursor = skelById.get(cursor.parentMessageId);
 	}
+	return { branch, byParent };
+}
 
+/**
+ * Step 2: the heavy columns for `ids` (leaf → root), annotated with sibling
+ * data from the skeleton, returned root → leaf.
+ */
+function hydrateBranch(
+	conversationId: string,
+	ids: string[],
+	byParent: BranchSkeleton['byParent'],
+	options?: WalkActiveBranchOptions,
+): ChatMessage[] {
+	if (ids.length === 0) return [];
+	const db = getDb();
 	const useSerialization = options?.columns === 'serialization';
 
 	// Heavy fetch — projected for serialization-only callers to avoid
@@ -347,12 +359,12 @@ export function walkActiveBranch(
 				createdAt: messages.createdAt,
 			})
 			.from(messages)
-			.where(and(eq(messages.conversationId, conversationId), inArray(messages.id, branchIds)))
+			.where(and(eq(messages.conversationId, conversationId), inArray(messages.id, ids)))
 			.all();
 		const heavyById = new Map(projectedRows.map((r) => [r.id, r]));
 
 		const ordered: ChatMessage[] = [];
-		for (const id of branchIds) {
+		for (const id of ids) {
 			const row = heavyById.get(id);
 			if (!row) continue;
 			const siblings = byParent.get(row.parentMessageId ?? null) ?? [];
@@ -370,12 +382,12 @@ export function walkActiveBranch(
 	const heavyRows = db
 		.select(chatMessageColumns)
 		.from(messages)
-		.where(and(eq(messages.conversationId, conversationId), inArray(messages.id, branchIds)))
+		.where(and(eq(messages.conversationId, conversationId), inArray(messages.id, ids)))
 		.all();
 	const heavyById = new Map(heavyRows.map((r) => [r.id, r]));
 
 	const ordered: ChatMessage[] = [];
-	for (const id of branchIds) {
+	for (const id of ids) {
 		const row = heavyById.get(id);
 		if (!row) continue;
 		const siblings = byParent.get(row.parentMessageId ?? null) ?? [];
@@ -388,6 +400,134 @@ export function walkActiveBranch(
 		ordered.push(msg);
 	}
 	return ordered.reverse();
+}
+
+/**
+ * Walk the active branch root → leaf and return messages in order.
+ *
+ * Two-step load to keep the heavy columns (content_json, content_html,
+ * reasoning_text, raw_response_json) bounded by the active branch length
+ * rather than the whole conversation. Long-edited threads can carry 2-3x
+ * the active-branch size in orphaned sibling subtrees; the previous
+ * single-query load pulled all of their JSON for no consumer.
+ *
+ *   1. Skeleton scan of (id, parent_message_id, created_at) — every row
+ *      in the conversation, but each is a few dozen bytes. Drives the
+ *      sibling-grouping for branch-aware rendering and lets us walk the
+ *      parent chain to compute the active-branch id list.
+ *   2. Heavy fetch of full columns for just the active-branch ids.
+ *
+ * Pass `{ columns: 'serialization' }` to skip the read-time heavy columns
+ * (`content_html`, `reasoning_text`, `raw_response_json`, token counts,
+ * gen_ms) — the projection rows have these fields set to `null`. Use this
+ * for serialization / tool-context / compaction callers that only need
+ * `parts`, `role`, and metadata.
+ */
+export function walkActiveBranch(
+	conversationId: string,
+	options?: WalkActiveBranchOptions,
+): ChatMessage[] {
+	const skeleton = loadBranchSkeleton(conversationId);
+	if (!skeleton) return [];
+	return hydrateBranch(
+		conversationId,
+		skeleton.branch.map((r) => r.id),
+		skeleton.byParent,
+		options,
+	);
+}
+
+/**
+ * Every distinct model that answered a message in the conversation, on any
+ * branch. The chat page labels each assistant message by the model it names,
+ * and only loads a window of the branch — so the set it resolves names for
+ * can't come from the messages it happens to have loaded.
+ */
+export function listModelsUsedInConversation(conversationId: string): string[] {
+	return getDb()
+		.selectDistinct({ modelUsed: messages.modelUsed })
+		.from(messages)
+		.where(and(eq(messages.conversationId, conversationId), isNotNull(messages.modelUsed)))
+		.all()
+		.map((r) => r.modelUsed)
+		.filter((m): m is string => m !== null);
+}
+
+/** How many messages the chat page loads at a time (before snapping to a turn). */
+export const BRANCH_WINDOW_SIZE = 40;
+
+export interface BranchWindowOptions {
+	/** At most this many messages, before the turn snap below extends it. */
+	limit: number;
+	/** Only messages OLDER than this one (the client's earliest loaded). */
+	before?: string;
+	/** Load back as far as this message, ignoring `limit` (a deep link). */
+	through?: string;
+}
+
+/**
+ * Which part of a leaf → root branch a window covers: `[start, end)`, or null
+ * when `before` or `through` isn't on the branch (or `through` isn't older
+ * than `before`).
+ *
+ * The oldest message in a window is always a user message (or the root): a
+ * window that began mid-turn would split a tool call from its result, a
+ * reaction from the message it reacts to, and a run of assistant rows that
+ * render as one bubble — and retry walks back to the turn's user message.
+ */
+export function branchWindowBounds(
+	branch: ReadonlyArray<{ id: string; role: string }>,
+	options: BranchWindowOptions,
+): { start: number; end: number } | null {
+	let start = 0;
+	if (options.before !== undefined) {
+		const at = branch.findIndex((r) => r.id === options.before);
+		if (at === -1) return null;
+		start = at + 1;
+	}
+	let end: number;
+	if (options.through !== undefined) {
+		const at = branch.findIndex((r) => r.id === options.through);
+		if (at === -1 || at < start) return null;
+		end = at + 1;
+	} else {
+		end = Math.min(start + options.limit, branch.length);
+	}
+	while (end < branch.length && end > start && branch[end - 1].role !== 'user') end++;
+	return { start, end };
+}
+
+export interface BranchWindow {
+	/** Root → leaf, like `walkActiveBranch`. */
+	messages: ChatMessage[];
+	/** Whether the branch has messages older than these. */
+	hasEarlier: boolean;
+}
+
+/**
+ * A window of the active branch for the chat page: by default its newest
+ * `limit` messages (snapped back to a turn's start), or the ones before
+ * `before`, or back through `through`. Only the window's rows are hydrated;
+ * sibling data still covers the whole conversation. Null when a cursor isn't
+ * on the active branch — the branch changed under the caller.
+ */
+export function walkActiveBranchWindow(
+	conversationId: string,
+	options: BranchWindowOptions,
+): BranchWindow | null {
+	const skeleton = loadBranchSkeleton(conversationId);
+	if (!skeleton) {
+		return options.before === undefined && options.through === undefined
+			? { messages: [], hasEarlier: false }
+			: null;
+	}
+	const bounds = branchWindowBounds(skeleton.branch, options);
+	if (!bounds) return null;
+	const ids = skeleton.branch.slice(bounds.start, bounds.end).map((r) => r.id);
+	return {
+		messages: hydrateBranch(conversationId, ids, skeleton.byParent, { columns: 'all' }),
+		hasEarlier: bounds.end < skeleton.branch.length,
+	};
 }
 
 /**
