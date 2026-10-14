@@ -51,6 +51,10 @@ export interface ProxyPolicy {
 	forbiddenHosts: ReadonlySet<string>;
 	/** Aborts the request (the run_python call ended, or the worker died). */
 	signal?: AbortSignal;
+	/** Response bytes the run may still download, shared by all its requests
+	 *  and drawn down as chunks arrive. Every response is buffered here, in the
+	 *  server's own memory, before the interpreter sees it. */
+	budget?: { remainingBytes: number };
 }
 
 const MAX_REDIRECTS = 3;
@@ -128,7 +132,7 @@ export async function proxyInterpreterFetch(
 			continue;
 		}
 
-		const body = await readCapped(res, MAX_PROXY_RESPONSE_BYTES);
+		const body = await readCapped(res, MAX_PROXY_RESPONSE_BYTES, policy.budget);
 		const headers: Array<[string, string]> = [];
 		res.headers.forEach((value, key) => {
 			if (!DROPPED_RESPONSE_HEADERS.has(key)) headers.push([key, value]);
@@ -144,7 +148,11 @@ export async function proxyInterpreterFetch(
 	throw new UrlPolicyError(`Refused: exceeded ${MAX_REDIRECTS} redirects.`);
 }
 
-async function readCapped(res: Response, cap: number): Promise<Uint8Array<ArrayBuffer>> {
+async function readCapped(
+	res: Response,
+	cap: number,
+	budget?: { remainingBytes: number },
+): Promise<Uint8Array<ArrayBuffer>> {
 	if (!res.body) return new Uint8Array(0);
 	const reader = res.body.getReader();
 	const chunks: Uint8Array[] = [];
@@ -156,6 +164,15 @@ async function readCapped(res: Response, cap: number): Promise<Uint8Array<ArrayB
 		if (total > cap) {
 			await reader.cancel().catch(() => {});
 			throw new UrlPolicyError(`Refused: response larger than ${cap} bytes.`);
+		}
+		if (budget) {
+			budget.remainingBytes -= value.byteLength;
+			if (budget.remainingBytes < 0) {
+				await reader.cancel().catch(() => {});
+				throw new UrlPolicyError(
+					'Refused: this run has downloaded as much as one run may. Fetch less, or split the work across runs.',
+				);
+			}
 		}
 		chunks.push(value);
 	}

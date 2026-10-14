@@ -55,6 +55,10 @@ interpreter's behalf:
 3. Refuses any host configured as an `[[endpoints]]` upstream or as the
    SearxNG instance, so the model can't reach your bridge, upstream LLM, or
    search backend through the interpreter.
+4. Bounds what one run can pull through the server: 50 MB per response,
+   200 MB per run, and four requests at a time (up to 64 more wait their
+   turn). Responses are held in the server's memory on the way through, so
+   without this one script could exhaust it for every user.
 
 ## Resource limits
 

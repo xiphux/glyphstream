@@ -26,6 +26,17 @@ const mocks = vi.hoisted(() => ({
 	},
 }));
 const testConfig = mocks.testConfig;
+const proxy = vi.hoisted(() => ({
+	impl: null as null | ((...args: unknown[]) => Promise<unknown>),
+}));
+vi.mock('../../src/lib/server/code-interpreter/net-proxy', async (orig) => {
+	const actual = await orig<typeof import('../../src/lib/server/code-interpreter/net-proxy')>();
+	return {
+		...actual,
+		proxyInterpreterFetch: (...args: Parameters<typeof actual.proxyInterpreterFetch>) =>
+			proxy.impl ? proxy.impl(...args) : actual.proxyInterpreterFetch(...args),
+	};
+});
 vi.mock('#lib/server/code-interpreter/config.js', () => ({
 	getCodeInterpreterConfig: () => mocks.testConfig,
 	isCodeInterpreterEnabled: () => mocks.testConfig.enabled,
@@ -901,6 +912,53 @@ describe('runPython — worker network requests', () => {
 		});
 		await runPython({ conversationId: 'n2', userId: 'u', code: '1', disabledFeatures: ['web'] });
 		expect((await fetchReply(createdWorkers[0], 1)).error).toMatch(/web access is disabled/);
+	});
+
+	it("runs four of a call's fetches at a time, queues the next 64, refuses the rest", async () => {
+		let active = 0;
+		let peak = 0;
+		const gates: Array<() => void> = [];
+		proxy.impl = async () => {
+			active++;
+			peak = Math.max(peak, active);
+			await new Promise<void>((r) => gates.push(r));
+			active--;
+			return { status: 200, statusText: 'OK', headers: [], body: new Uint8Array(0), url: '' };
+		};
+		try {
+			setWorkerFactoryForTests(() => {
+				const w = new MockWorker();
+				w.onRun = ({ callId }) => {
+					for (let i = 0; i < 70; i++)
+						w.emit('message', { type: 'fetch', fetchId: 100 + i, request });
+					void (async () => {
+						// The two past the queue are refused straight away.
+						await fetchReply(w, 168);
+						await fetchReply(w, 169);
+						// Drain the rest, a gate at a time.
+						for (let done = 0; done < 68; done++) {
+							await vi.waitFor(() => {
+								if (gates.length === 0) throw new Error('no fetch running');
+							});
+							gates.shift()!();
+						}
+						await fetchReply(w, 167);
+						replyOk(w, callId);
+					})();
+				};
+				createdWorkers.push(w);
+				return w;
+			});
+			await runPython({ conversationId: 'n4', userId: 'u', code: '1', disabledFeatures: [] });
+			const w = createdWorkers[0];
+			expect((await fetchReply(w, 168)).error).toMatch(/too many network requests/);
+			expect((await fetchReply(w, 169)).error).toMatch(/too many network requests/);
+			expect((await fetchReply(w, 100)).response).toBeDefined();
+			expect((await fetchReply(w, 167)).response).toBeDefined();
+			expect(peak).toBe(4);
+		} finally {
+			proxy.impl = null;
+		}
 	});
 
 	it('refuses a malformed request without fetching', async () => {

@@ -117,7 +117,25 @@ interface ActiveCall {
 	webDisabled: boolean;
 	/** Aborted when the call settles, cancelling its outstanding fetches. */
 	abort: AbortController;
+	/** Fetches being proxied now, and those queued behind them. */
+	fetchesInFlight: number;
+	fetchWaiters: Array<() => void>;
+	/** Shared by every fetch in the call; see `MAX_FETCH_BYTES_PER_CALL`. */
+	fetchBudget: { remainingBytes: number };
 }
+
+/**
+ * What one run_python call may ask the host to fetch. Every proxied response is
+ * buffered in the SERVER's memory (up to 50 MB each) before it is handed to the
+ * interpreter, outside the interpreter's own memory limits, so without these a
+ * single `asyncio.gather` over a few hundred large URLs could exhaust the
+ * process every user shares. Four at a time keeps the ordinary "fetch a handful
+ * of pages concurrently" pattern working (the rest queue); past the queue, or
+ * past the byte budget, a fetch is refused with a message the model can act on.
+ */
+const MAX_FETCHES_IN_FLIGHT_PER_CALL = 4;
+const MAX_FETCHES_QUEUED_PER_CALL = 64;
+const MAX_FETCH_BYTES_PER_CALL = 200 * 1024 * 1024;
 
 interface FailedEntry {
 	state: 'failed';
@@ -293,6 +311,9 @@ export async function runPython(params: RunPythonParams): Promise<WorkerRunResul
 						callId,
 						webDisabled: params.disabledFeatures.includes('web'),
 						abort: new AbortController(),
+						fetchesInFlight: 0,
+						fetchWaiters: [],
+						fetchBudget: { remainingBytes: MAX_FETCH_BYTES_PER_CALL },
 					};
 					entry.worker.postMessage({
 						type: 'run',
@@ -561,16 +582,53 @@ async function answerWorkerFetch(
 		reply({ error: OUTSIDE_RUN });
 		return;
 	}
+	if (!(await acquireFetchSlot(call))) {
+		reply({
+			error: call.abort.signal.aborted
+				? OUTSIDE_RUN
+				: `Refused: too many network requests at once (${MAX_FETCHES_IN_FLIGHT_PER_CALL} run at a time, ${MAX_FETCHES_QUEUED_PER_CALL} more may wait). Await some before starting more.`,
+		});
+		return;
+	}
 	try {
 		const response = await proxyInterpreterFetch(request, {
 			webDisabled: call.webDisabled,
 			forbiddenHosts: new Set(listForbiddenHosts().map((h) => h.toLowerCase())),
 			signal: call.abort.signal,
+			budget: call.fetchBudget,
 		});
 		reply({ response });
 	} catch (err) {
 		reply({ error: err instanceof Error ? err.message : String(err) });
+	} finally {
+		releaseFetchSlot(call);
 	}
+}
+
+/** Take one of the call's fetch slots, queueing for it if all are busy.
+ *  False when the queue is full or the call ended while waiting. */
+async function acquireFetchSlot(call: ActiveCall): Promise<boolean> {
+	if (call.abort.signal.aborted) return false;
+	if (call.fetchesInFlight < MAX_FETCHES_IN_FLIGHT_PER_CALL) {
+		call.fetchesInFlight++;
+		return true;
+	}
+	if (call.fetchWaiters.length >= MAX_FETCHES_QUEUED_PER_CALL) return false;
+	// A released slot passes straight to the next waiter (the count never
+	// drops), so a newcomer can't overtake the queue.
+	await new Promise<void>((resolve) => {
+		call.fetchWaiters.push(resolve);
+		call.abort.signal.addEventListener('abort', () => resolve(), { once: true });
+	});
+	// Woken by the call ending rather than by a slot: the call is over, so its
+	// counts no longer matter.
+	return !call.abort.signal.aborted;
+}
+
+function releaseFetchSlot(call: ActiveCall): void {
+	const next = call.fetchWaiters.shift();
+	if (next) next();
+	else call.fetchesInFlight--;
 }
 
 function isProxyFetchRequest(value: unknown): value is ProxyFetchRequest {
