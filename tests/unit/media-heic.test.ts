@@ -111,6 +111,33 @@ describe('convertHeicToJpeg', () => {
 		expect(mocks.runFfmpeg).not.toHaveBeenCalled();
 	});
 
+	it('converts one photo at a time', async () => {
+		let running = 0;
+		let peak = 0;
+		mocks.runFfmpeg.mockImplementation(async () => {
+			running++;
+			peak = Math.max(peak, running);
+			await new Promise((r) => setTimeout(r, 10));
+			running--;
+		});
+		for (const n of [1, 2, 3]) writeFileSync(join(dir, `in${n}.heic`), SAMPLE);
+		await Promise.all(
+			[1, 2, 3].map((n) => convertHeicToJpeg(join(dir, `in${n}.heic`), join(dir, `out${n}.jpg`))),
+		);
+		expect(mocks.runFfmpeg).toHaveBeenCalledTimes(3);
+		expect(peak).toBe(1);
+		mocks.runFfmpeg.mockImplementation(async () => {});
+	});
+
+	it('keeps converting after one fails', async () => {
+		mocks.runFfmpeg.mockRejectedValueOnce(new Error('boom'));
+		writeFileSync(join(dir, 'in.heic'), SAMPLE);
+		await expect(convertHeicToJpeg(join(dir, 'in.heic'), join(dir, 'a.jpg'))).rejects.toThrow();
+		await expect(
+			convertHeicToJpeg(join(dir, 'in.heic'), join(dir, 'b.jpg')),
+		).resolves.toBeUndefined();
+	});
+
 	it("reports ffmpeg's failure as a conversion error", async () => {
 		mocks.runFfmpeg.mockRejectedValueOnce(new Error('Invalid data found when processing input'));
 		writeFileSync(join(dir, 'in.heic'), SAMPLE);

@@ -1,7 +1,8 @@
 /**
  * Running ffmpeg with a deadline that holds even when the child doesn't die.
  * Shared by the video thumbnail and the HEIC upload conversion, which both
- * decode untrusted uploads inside one of the three generation slots.
+ * decode untrusted uploads inside a slot that must come back (the thumbnail in
+ * one of the three generation slots, HEIC in its own).
  */
 import process from 'node:process';
 import { execFile } from 'node:child_process';

@@ -18,7 +18,6 @@
 import { open } from 'node:fs/promises';
 import { MAX_DECODE_PIXELS } from './decode-limits';
 import { runFfmpeg } from './ffmpeg';
-import { withGenerationSlot } from './thumbnail';
 
 const HEIC_TYPES = new Set([
 	'image/heic',
@@ -51,6 +50,28 @@ const HEIC_JPEG_QSCALE = '2';
  *  declare dimensions come before the image data in every HEIF writer. */
 const HEADER_BYTES = 256 * 1024;
 
+/**
+ * One conversion at a time, in a slot of its own rather than one of the three
+ * generation slots thumbnails and the display/vision copies share.
+ *
+ * Memory: the declared-size check bounds what the file claims, not the canvas
+ * ffmpeg stitches — that is sized from the grid's tiles, which a crafted file
+ * can make large while declaring a small image, up to libavutil's own ceiling
+ * of about 268 MP (~400 MB of frame, plus the copies the rotation and encode
+ * make). Bounding it exactly means resolving HEIF item associations; running
+ * one at a time caps the worst case at one such job instead of three.
+ *
+ * Isolation: picking a batch of iPhone photos uploads them all at once, each a
+ * conversion of a few seconds. In the shared slots that queued every thumbnail,
+ * chat image and vision send in the process behind the batch.
+ */
+let lastConversion: Promise<unknown> = Promise.resolve();
+function oneAtATime<T>(fn: () => Promise<T>): Promise<T> {
+	const run = lastConversion.then(fn, fn);
+	lastConversion = run.catch(() => {});
+	return run;
+}
+
 export class HeicConversionError extends Error {
 	constructor(message: string, options?: { cause?: unknown }) {
 		super(message, options);
@@ -63,10 +84,9 @@ export class HeicConversionError extends Error {
  * file's `meta` box declares, in pixels; null if there is none.
  *
  * ffmpeg's `-max_pixels` bounds each decoder, and in a HEIC that is one 512 px
- * tile — the stitched grid is allocated after, at whatever size the file
- * claims. A few KB of tiny tiles can claim a grid of billions of pixels, so the
- * claim is checked here, against the same ceiling sharp gets, before ffmpeg
- * ever sees the file.
+ * tile. This refuses a file that openly claims to be enormous, against the same
+ * ceiling sharp gets, before ffmpeg sees it; it does not bound the canvas a
+ * crafted grid makes ffmpeg stitch (see `oneAtATime`).
  */
 export function largestDeclaredPixels(header: Uint8Array): number | null {
 	const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
@@ -119,7 +139,7 @@ export async function convertHeicToJpeg(sourceAbs: string, outputAbs: string): P
 	}
 
 	try {
-		await withGenerationSlot(() =>
+		await oneAtATime(() =>
 			runFfmpeg(
 				[
 					'-hide_banner',
@@ -128,7 +148,7 @@ export async function convertHeicToJpeg(sourceAbs: string, outputAbs: string): P
 					'-nostdin',
 					'-threads',
 					'1',
-					// Per tile, so this is the backstop; the grid is bounded above.
+					// Per tile decoder, not the stitched canvas; see `oneAtATime`.
 					'-max_pixels',
 					String(MAX_DECODE_PIXELS),
 					// Only the file protocol: a distro ffmpeg (supported, see
