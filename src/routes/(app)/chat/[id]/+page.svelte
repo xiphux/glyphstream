@@ -1470,7 +1470,12 @@
 	async function ensureMessageLoaded(id: string): Promise<boolean> {
 		if (messages.some((m) => m.id === id)) return true;
 		if (!hasEarlier) return false;
-		await loadEarlier(id);
+		// A jump the reader asked for: say so if it can't happen, rather than
+		// leave them where they were (the retry link is at the top, out of view).
+		if ((await loadEarlier(id)) === 'failed') {
+			toast.error("Couldn't load that message. Try again.");
+			return false;
+		}
 		await tick();
 		return messages.some((m) => m.id === id);
 	}
