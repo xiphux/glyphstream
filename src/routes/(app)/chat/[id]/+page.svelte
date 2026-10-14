@@ -1353,7 +1353,7 @@
 	// Read by `messageIntro` as the prepended rows mount: they were always there,
 	// so they don't fade in.
 	let prependingEarlier = false;
-	let earlierLoad: Promise<EarlierResult> | null = null;
+	let earlierLoad: { convId: string; promise: Promise<EarlierResult> } | null = null;
 	type EarlierResult = 'loaded' | 'none' | 'gone' | 'failed';
 
 	/**
@@ -1363,13 +1363,16 @@
 	 * one waits for it and then goes again.
 	 */
 	function loadEarlier(through?: string): Promise<EarlierResult> {
-		if (earlierLoad) {
-			return through === undefined ? earlierLoad : earlierLoad.then(() => loadEarlier(through));
+		// A load still out for the conversation this page showed before a switch
+		// answers nothing here; start this one's own rather than wait on it.
+		const pending = earlierLoad?.convId === convId ? earlierLoad.promise : null;
+		if (pending) {
+			return through === undefined ? pending : pending.then(() => loadEarlier(through));
 		}
 		const load = fetchEarlier(through).finally(() => {
-			if (earlierLoad === load) earlierLoad = null;
+			if (earlierLoad?.promise === load) earlierLoad = null;
 		});
-		earlierLoad = load;
+		earlierLoad = { convId, promise: load };
 		return load;
 	}
 
