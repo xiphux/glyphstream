@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.45.0
+
 ### Breaking
 
 - **The Docker image runs as uid 1000, not root.** Before starting it on an
