@@ -255,6 +255,8 @@ describe('code-interpreter worker (real pyodide)', () => {
 				`js.process.getBuiltinModule("fs").writeFileSync("/tmp/glyphstream-pwn", "x")`,
 			],
 			['starting a process', `js.process.getBuiltinModule("child_process").execSync("id")`],
+			['signalling the host', `js.process.kill(js.process.ppid, 0)`],
+			['signalling through the raw binding', `js.process._kill(js.process.ppid, 0)`],
 		])('refuses %s', async (_name, expr) => {
 			const res = await run(probe(expr));
 			expect(res.type === 'result' && String(res.result)).toMatch(

@@ -3,7 +3,7 @@
  *
  * Runs as a CHILD PROCESS spawned by the pool (spawn.ts) under Node's
  * permission model: no environment, fs read limited to this bundle and the
- * Pyodide package, no fs write, no network, no child processes. Loads
+ * Pyodide package, no fs write, no network, no child processes, no signals. Loads
  * Pyodide on `init`, then executes model-written code against one persistent
  * interpreter per conversation.
  *
@@ -51,6 +51,19 @@ process.on('disconnect', () => process.exit(0));
 	const proc = process as unknown as { binding: (name: string) => unknown };
 	const realBinding = proc.binding.bind(process);
 	proc.binding = (name: string) => (name === 'constants' ? { fs: fsConstants } : realBinding(name));
+}
+
+// The permission model has no signal permission: `process.kill` would let
+// model-written code (via `js.process`) signal the host by `process.ppid`, or
+// any process the server's user owns. Nothing here needs to send a signal, so
+// replace both entry points and keep no reference to the originals.
+{
+	const refuse = (): never => {
+		throw new Error('Sending signals is not permitted in the code interpreter');
+	};
+	const proc = process as unknown as { kill: unknown; _kill?: unknown };
+	proc.kill = refuse;
+	if ('_kill' in proc) proc._kill = refuse;
 }
 
 /**
