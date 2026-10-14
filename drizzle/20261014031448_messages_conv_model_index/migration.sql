@@ -1,0 +1,1 @@
+CREATE INDEX `idx_messages_conv_model` ON `messages` (`conversation_id`,`model_used`);

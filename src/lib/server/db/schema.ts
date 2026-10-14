@@ -505,6 +505,11 @@ export const messages = sqliteTable(
 			t.role,
 			t.id,
 		),
+		// `listModelsUsedInConversation` (the chat page's model names, for a
+		// conversation it loads only a window of): `model_used` sits behind the
+		// heavy columns too, so without this the DISTINCT walked every row's
+		// overflow chain — the whole conversation's bytes, on every open.
+		index('idx_messages_conv_model').on(t.conversationId, t.modelUsed),
 	],
 );
 
