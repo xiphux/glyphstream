@@ -1452,14 +1452,23 @@
 	function holdAnchor(el: HTMLElement, anchorId: string, top: number) {
 		releaseAnchorHold?.();
 		let want = top;
+		// The scroll position this hold last set. Its own write fires a scroll
+		// event a frame later; re-reading `want` from it would fold in any growth
+		// that landed in between (an image finishing above the reader) and lose
+		// that correction — the drift this exists to prevent, on Safari.
+		let set = NaN;
 		const row = () => document.getElementById(`msg-${anchorId}`);
 		const correct = () => {
 			const r = row();
 			if (!r) return;
 			const delta = r.getBoundingClientRect().top - want;
-			if (Math.abs(delta) >= 1) el.scrollTop += delta;
+			if (Math.abs(delta) >= 1) {
+				el.scrollTop += delta;
+				set = el.scrollTop;
+			}
 		};
 		const onScroll = () => {
+			if (Math.abs(el.scrollTop - set) < 1) return;
 			const r = row();
 			if (r) want = r.getBoundingClientRect().top;
 		};
