@@ -162,6 +162,13 @@ describe('renderMarkdown — grammars load on demand', () => {
 		expect(html.match(/class="shiki/g)).toHaveLength(2);
 	});
 
+	it.each(['zsh', 'md', 'c++', 'kt', 'docker'])(
+		'highlights a fence tagged with the shiki alias %s',
+		async (tag) => {
+			expect(await renderMarkdown(`\`\`\`${tag}\nx\n\`\`\``)).toContain('class="shiki');
+		},
+	);
+
 	it('resolves an alias to its lazily loaded grammar', async () => {
 		expect(await renderMarkdown('```rs\nfn main() {}\n```')).toContain('class="shiki');
 	});

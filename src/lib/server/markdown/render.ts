@@ -14,12 +14,13 @@
 // markdown-it 15's default export is a callable value, not a class binding
 // that doubles as a type — the instance type is a separate named export.
 import MarkdownItCtor, { type MarkdownIt, type Token } from 'markdown-it';
-import { createHighlighter, type Highlighter } from 'shiki';
+import { bundledLanguagesInfo, createHighlighter, type Highlighter } from 'shiki';
 
 const LIGHT_THEME = 'github-light';
 const DARK_THEME = 'github-dark';
 
-// The languages that get highlighting. Anything else falls back to plain
+// The languages that get highlighting, plus every alias shiki defines for them
+// (`zsh`, `md`, `c++`, `kt`…). Anything else falls back to plain
 // `<pre><code>`. Add more here as needed.
 //
 // Only CORE_LANGS load with the highlighter; the rest load the first time a
@@ -64,16 +65,14 @@ const SUPPORTED_LANGS = [
 
 const CORE_LANGS = ['python', 'bash', 'javascript', 'typescript', 'json', 'markdown'];
 
-// Some common aliases users write that aren't shiki language ids.
-const LANG_ALIASES: Record<string, string> = {
-	js: 'javascript',
-	ts: 'typescript',
-	py: 'python',
-	rb: 'ruby',
-	rs: 'rust',
-	sh: 'bash',
-	yml: 'yaml',
-};
+// Every shiki language id and alias → its canonical id. Fence tags, the
+// supported set and grammar loads all go through it, so an alias is accepted
+// exactly when its grammar is (`bash` and `zsh` are both `shellscript`).
+const CANONICAL_LANG = new Map<string, string>();
+for (const info of bundledLanguagesInfo) {
+	CANONICAL_LANG.set(info.id, info.id);
+	for (const alias of info.aliases ?? []) CANONICAL_LANG.set(alias, info.id);
+}
 
 let highlighterPromise: Promise<Highlighter> | null = null;
 
@@ -184,11 +183,11 @@ export async function renderMarkdown(text: string): Promise<string | null> {
 	return md.renderer.render(tokens, md.options, env);
 }
 
-const SUPPORTED = new Set(SUPPORTED_LANGS);
+const SUPPORTED = new Set(SUPPORTED_LANGS.map(resolveLang));
 
 function resolveLang(langSpec: string): string {
 	const requested = langSpec.trim().toLowerCase();
-	return LANG_ALIASES[requested] ?? requested;
+	return CANONICAL_LANG.get(requested) ?? requested;
 }
 
 /**
