@@ -111,7 +111,15 @@ beforeAll(async () => {
 	httpUrl = `http://127.0.0.1:${(http.address() as AddressInfo).port}/`;
 
 	// A Python ceiling well under what one test asks for, to prove it holds.
-	worker = spawnInterpreterProcess({ workerPath: WORKER_JS, memoryMb: 512, pythonMemoryMb: 384 });
+	// The operator's TZ is the one variable the child inherits.
+	const hostTz = process.env.TZ;
+	process.env.TZ = 'Asia/Tokyo';
+	try {
+		worker = spawnInterpreterProcess({ workerPath: WORKER_JS, memoryMb: 512, pythonMemoryMb: 384 });
+	} finally {
+		if (hostTz === undefined) delete process.env.TZ;
+		else process.env.TZ = hostTz;
+	}
 	worker.on('message', (raw) => {
 		const m = raw as { type: string; fetchId?: number; request?: ProxyFetchRequest };
 		if (m.type === 'fetch') {
@@ -140,6 +148,11 @@ afterAll(async () => {
 });
 
 describe('code-interpreter worker (real pyodide)', () => {
+	it("keeps the operator's time zone", async () => {
+		const res = await run('import time\ntime.strftime("%z")');
+		expect(res).toMatchObject({ type: 'result', result: '+0900' });
+	});
+
 	it('captures stdout and converts the return value', async () => {
 		const res = await run('print("hello from python")\nsum(range(10))');
 		// The worker's batched stdout handler receives each line without its
@@ -233,7 +246,9 @@ describe('code-interpreter worker (real pyodide)', () => {
 		it('sees none of the host environment', async () => {
 			// macOS injects __CF_USER_TEXT_ENCODING into every process it starts;
 			// it carries nothing of the host's.
-			const hostKeys = Object.keys(process.env).filter((k) => k !== '__CF_USER_TEXT_ENCODING');
+			const hostKeys = Object.keys(process.env).filter(
+				(k) => k !== '__CF_USER_TEXT_ENCODING' && k !== 'TZ',
+			);
 			expect(hostKeys.length).toBeGreaterThan(0);
 			const res = await run(
 				`import js, json\nhost = set(json.loads(${JSON.stringify(JSON.stringify(hostKeys))}))\nsorted(host & set(js.process.env.object_keys()))`,

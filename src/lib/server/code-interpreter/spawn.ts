@@ -28,6 +28,7 @@ import { fork } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { constants as osConstants } from 'node:os';
 import { dirname, join } from 'node:path';
+import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 
 /**
@@ -85,7 +86,10 @@ export function spawnInterpreterProcess(opts: SpawnInterpreterOptions): ManagedW
 			// bound on a box whose RAM it shares with local inference.
 			...(opts.pythonMemoryMb ? [`--wasm-max-mem-pages=${opts.pythonMemoryMb * 16}`] : []),
 		],
-		env: {},
+		// Nothing of the host's environment, which holds the secrets — except
+		// TZ, which is no secret and is how an operator sets local time:
+		// without it Python's datetime.now() is UTC on the Alpine image.
+		env: process.env.TZ ? { TZ: process.env.TZ } : {},
 		serialization: 'advanced',
 		stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
 	});
