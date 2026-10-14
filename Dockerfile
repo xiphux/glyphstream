@@ -383,10 +383,16 @@ COPY --from=builder /app/package.json ./
 # chown's layer is small). Everything else stays root-owned and read-only.
 # A bind-mounted ./data from an older, root-run container must be handed over
 # once: `sudo chown -R 1000:1000 ./data` (docs/deployment.md).
-RUN mkdir -p /app/data \
-    && chown node:node /app/data \
-    && chown -R node:node "$(readlink -f /app/node_modules/pyodide)"
-USER node
+#
+# Numeric, not `node`: a uid means the same thing on the host (whose passwd the
+# docs' chown and an orchestrator's runAsNonRoot check go by), where a name
+# needn't resolve. The `test` pins that the base image's `node` IS 1000:1000,
+# so a base-image change can't quietly leave the files owned by someone else.
+RUN test "$(id -u node):$(id -g node)" = 1000:1000 \
+    && mkdir -p /app/data \
+    && chown 1000:1000 /app/data \
+    && chown -R 1000:1000 "$(readlink -f /app/node_modules/pyodide)"
+USER 1000:1000
 
 EXPOSE 3000
 
