@@ -1036,6 +1036,29 @@ describe('MediaLightbox — swipe resolves at the midpoint', () => {
 		expect(onNavigate).toHaveBeenCalledWith('m-3');
 	});
 
+	it("drops an earlier press's target when a later press cancels its scroll", async () => {
+		const user = userEvent.setup();
+		const onNavigate = vi.fn();
+		const { container } = render(MediaLightbox, {
+			props: { media: makeImage({ id: 'm-1' }), onClose: vi.fn(), siblings, onNavigate },
+		});
+		const t = track(container);
+		// Right then Left before the first animation frame: the track never left
+		// slide 0, and the second scrollTo (to where it already is) cancels the
+		// first's smooth scroll toward slide 1.
+		await user.keyboard('{ArrowRight}');
+		await user.keyboard('{ArrowLeft}');
+		// Twice: the burst's trailing resolve reopens the coalescing window, and a
+		// swipe inside it would be deferred to the settle whatever the target.
+		await settleNavResolve();
+		await settleNavResolve();
+		onNavigate.mockClear();
+		t.at(0.6);
+		// Synchronously, i.e. at the midpoint rather than at the settle — which
+		// would resolve m-2 anyway and hide the stale target.
+		expect(onNavigate).toHaveBeenCalledWith('m-2');
+	});
+
 	it('asks the caller to prefetch the slides either side', () => {
 		const onPrefetch = vi.fn();
 		render(MediaLightbox, {

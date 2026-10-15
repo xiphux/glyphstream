@@ -339,8 +339,11 @@
 			const left = next * el.clientWidth;
 			// Only when the track will actually move. A scroll to where it already
 			// is emits no scroll event, so nothing would ever clear the target, and
-			// the next swipe would skip its midpoint resolve.
-			if (el.scrollLeft !== left) scrollTarget = next;
+			// the next swipe would skip its midpoint resolve. Cleared rather than
+			// left alone in that case: an earlier press's target may still be armed
+			// (Right then Left inside one frame), and this scrollTo cancels the
+			// smooth scroll that would have reached it.
+			scrollTarget = el.scrollLeft !== left ? next : null;
 			el.scrollTo({ left, behavior: 'smooth' });
 		}
 		resolveSlide(siblings[next].id);
