@@ -26,7 +26,7 @@ import { OAuth2RequestError } from './oauth2';
 import { SETUP_OAUTH_CARRY_COOKIE } from '../setup';
 import { JOIN_OAUTH_CARRY_COOKIE, InviteConsumedError, finalizeOAuthJoin } from '../join';
 import { clearAuthCookie, verify } from '../signed-cookies';
-import { createSession, setSessionCookie } from '../session';
+import { startSession } from '../session';
 import { getAppLockTimeout, initialUnlockedUntil } from '../app-lock';
 import {
 	addOAuthAccount,
@@ -63,7 +63,7 @@ interface CallbackContext {
 	url: URL;
 	cookies: Cookies;
 	locals: App.Locals;
-	/** Threaded through to createSession so the device list in
+	/** Threaded through to startSession so the device list in
 	 *  /settings/security can label the session this flow mints. */
 	userAgent?: string | null;
 }
@@ -215,8 +215,7 @@ async function handleSetup(args: {
 		externalEmail: profile.email,
 	});
 
-	const { token, expiresAt } = createSession(userId, userAgent);
-	setSessionCookie(cookies, token, expiresAt);
+	startSession(cookies, userId, userAgent);
 
 	redirect(302, '/');
 }
@@ -297,8 +296,7 @@ async function handleJoin(args: {
 		joinError('signup_failed');
 	}
 
-	const { token, expiresAt } = createSession(userId, userAgent);
-	setSessionCookie(cookies, token, expiresAt);
+	startSession(cookies, userId, userAgent);
 
 	redirect(302, '/');
 }
@@ -402,12 +400,12 @@ async function handleLogin(args: {
 	// Born locked when the user has app lock on: an OAuth sign-in can complete
 	// with no prompt at all against a provider session that's still live in
 	// the browser, so it must not be a way around the passkey. See app-lock.ts.
-	const { token, expiresAt } = createSession(
+	startSession(
+		cookies,
 		binding.userId,
 		userAgent,
 		initialUnlockedUntil(getAppLockTimeout(binding.userId), 'oauth'),
 	);
-	setSessionCookie(cookies, token, expiresAt);
 
 	redirect(302, '/');
 }

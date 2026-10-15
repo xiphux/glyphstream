@@ -11,7 +11,7 @@ import {
 	readLoginChallengeCookie,
 	verifyStoredCredentialAssertion,
 } from '#lib/server/auth/passkey.js';
-import { createSession, setSessionCookie } from '#lib/server/auth/session.js';
+import { startSession } from '#lib/server/auth/session.js';
 import { getAppLockTimeout, initialUnlockedUntil } from '#lib/server/auth/app-lock.js';
 import { bumpUserLastLogin } from '#lib/server/db/queries/users.js';
 import { findCredentialById, findUserForCredential } from '#lib/server/db/queries/passkey.js';
@@ -58,12 +58,12 @@ export const POST: RequestHandler = async ({ cookies, request }) => {
 	await verifyStoredCredentialAssertion(response, challenge, credential, 'passkey/login');
 	bumpUserLastLogin(owner.userId);
 
-	const { token, expiresAt } = createSession(
+	startSession(
+		cookies,
 		owner.userId,
 		request.headers.get('user-agent'),
 		initialUnlockedUntil(getAppLockTimeout(owner.userId), 'passkey'),
 	);
-	setSessionCookie(cookies, token, expiresAt);
 
 	return Response.json({ ok: true });
 };

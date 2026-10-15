@@ -10,7 +10,7 @@ import { error } from '@sveltejs/kit';
 import { verifyRegistrationCeremony } from '#lib/server/auth/passkey.js';
 import { SETUP_PASSKEY_CARRY_COOKIE, setupGate } from '#lib/server/auth/setup.js';
 import { clearAuthCookie, verify } from '#lib/server/auth/signed-cookies.js';
-import { createSession, setSessionCookie } from '#lib/server/auth/session.js';
+import { startSession } from '#lib/server/auth/session.js';
 import { insertCredential } from '#lib/server/db/queries/passkey.js';
 import { createInitialUser, SetupClosedError } from '#lib/server/db/queries/users.js';
 import { passkeyLoginEnabled } from '#lib/server/env.js';
@@ -67,8 +67,7 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 		name: null,
 	});
 
-	const { token, expiresAt } = createSession(userId, request.headers.get('user-agent'));
-	setSessionCookie(cookies, token, expiresAt);
+	startSession(cookies, userId, request.headers.get('user-agent'));
 
 	return Response.json({ ok: true });
 };

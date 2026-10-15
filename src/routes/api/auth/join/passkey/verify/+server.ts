@@ -14,7 +14,7 @@ import {
 	finalizePasskeyJoin,
 } from '#lib/server/auth/join.js';
 import { clearAuthCookie, verify } from '#lib/server/auth/signed-cookies.js';
-import { createSession, setSessionCookie } from '#lib/server/auth/session.js';
+import { startSession } from '#lib/server/auth/session.js';
 import { findValidInvite } from '#lib/server/db/queries/invites.js';
 import { passkeyLoginEnabled } from '#lib/server/env.js';
 import type { RequestHandler } from './$types';
@@ -73,8 +73,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		throw e;
 	}
 
-	const { token, expiresAt } = createSession(userId, request.headers.get('user-agent'));
-	setSessionCookie(cookies, token, expiresAt);
+	startSession(cookies, userId, request.headers.get('user-agent'));
 
 	return Response.json({ ok: true });
 };

@@ -285,6 +285,21 @@ export function setSessionCookie(cookies: Cookies, token: string, expiresAt: num
 	});
 }
 
+/**
+ * Sign a user in on this request: create the session row and set its cookie.
+ * Every successful ceremony (passkey login, setup, join, OAuth) ends here.
+ */
+export function startSession(
+	cookies: Cookies,
+	userId: string,
+	userAgent: string | null | undefined,
+	/** Initial app-lock state; see `initialUnlockedUntil` in app-lock.ts. */
+	unlockedUntil: number | null = null,
+): void {
+	const { token, expiresAt } = createSession(userId, userAgent, unlockedUntil);
+	setSessionCookie(cookies, token, expiresAt);
+}
+
 export function clearSessionCookie(cookies: Cookies): void {
 	clearAuthCookie(cookies, SESSION_COOKIE);
 }
