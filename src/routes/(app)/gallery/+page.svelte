@@ -16,6 +16,8 @@
 	import MediaLightbox from '#lib/components/MediaLightbox.svelte';
 	import { confirmDialog } from '#lib/confirm.svelte.js';
 	import GalleryTimelineRail from '#lib/components/GalleryTimelineRail.svelte';
+	import GalleryTile from '#lib/components/GalleryTile.svelte';
+	import GalleryCornerBadges from '#lib/components/GalleryCornerBadges.svelte';
 	import { type Granularity } from '#lib/gallery-date-buckets.js';
 	import { buildLayoutSections, monthTicksFromLayout } from '#lib/gallery-layout.js';
 	import { promptRunKey } from '#lib/gallery-stacks.js';
@@ -1236,107 +1238,41 @@
 				     disk-cached), not the full-resolution /content the lightbox pulls. -->
 				{#snippet mediaTile(m: MediaListItem)}
 					{@const isSelected = selectMode && selected.has(m.id)}
-					<li
-						data-tile
-						class="group relative overflow-hidden rounded-lg border bg-surface-raised transition {isSelected
-							? 'border-surface-inverse ring-2 ring-surface-inverse'
-							: 'border-border hover:border-border-focus'}"
+					<GalleryTile
+						thumbnailSrc="/api/media/{m.id}/thumbnail"
+						kind={m.kind === 'video' ? 'video' : 'image'}
+						alt={m.promptExcerpt ?? (m.kind === 'video' ? 'Generated video' : 'Generated image')}
+						caption={m.promptExcerpt}
+						favorite={m.favorite}
+						showCheck={selectMode}
+						selected={isSelected}
+						ariaLabel={selectMode
+							? isSelected
+								? `Deselect ${m.kind}`
+								: `Select ${m.kind}`
+							: `Open ${m.kind}${m.favorite ? ', favorite' : ''} ${m.promptExcerpt ?? ''}`}
+						ariaPressed={selectMode ? isSelected : undefined}
+						onActivate={() => (selectMode ? toggleSelected(m.id) : showLightbox(m))}
 					>
-						<button
-							type="button"
-							onclick={() => (selectMode ? toggleSelected(m.id) : showLightbox(m))}
-							class="block w-full"
-							aria-label={selectMode
-								? isSelected
-									? `Deselect ${m.kind}`
-									: `Select ${m.kind}`
-								: `Open ${m.kind}${m.favorite ? ', favorite' : ''} ${m.promptExcerpt ?? ''}`}
-							aria-pressed={selectMode ? isSelected : undefined}
-						>
-							<div class="relative aspect-square w-full overflow-hidden">
-								{#if m.kind === 'image'}
-									<img
-										src="/api/media/{m.id}/thumbnail"
-										alt={m.promptExcerpt ?? 'Generated image'}
-										loading="lazy"
-										class="h-full w-full object-cover"
-									/>
-								{:else}
-									<!-- A tile never plays, so its poster is all it needs: an <img> skips
-									     the media element and its decoder. The badge marks it a video. -->
-									<img
-										src="/api/media/{m.id}/thumbnail"
-										alt={m.promptExcerpt ?? 'Generated video'}
-										loading="lazy"
-										class="h-full w-full object-cover"
-									/>
-								{/if}
-								{@render cornerBadges(m.favorite, m.kind === 'video')}
-								{#if m.promptExcerpt}
-									<div
-										class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-2 pb-1.5 pt-8 text-left text-xs text-white line-clamp-2"
-									>
-										{m.promptExcerpt}
-									</div>
-								{/if}
-							</div>
-						</button>
-						{#if selectMode}
-							<span
-								aria-hidden="true"
-								class="pointer-events-none absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 text-[12px] font-bold transition {isSelected
-									? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
-									: 'border-white/80 bg-black/40 text-transparent'}"
-							>
-								✓
-							</span>
-						{:else}
-							<button
-								type="button"
-								onclick={() => deleteOne(m.id)}
-								disabled={deletingId === m.id}
-								class="absolute left-1.5 top-1.5 rounded bg-danger-emphasis/90 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-danger-fg transition can-hover:opacity-0 group-hover:opacity-100 hover:bg-danger-emphasis focus-visible:opacity-100 disabled:opacity-50"
-								aria-label="Delete this media"
-								title="Delete"
-							>
-								{deletingId === m.id ? '…' : '×'}
-							</button>
-						{/if}
-					</li>
+						{#snippet action()}
+							{#if !selectMode}{@render deleteAction(m.id)}{/if}
+						{/snippet}
+					</GalleryTile>
 				{/snippet}
 
-				<!-- Top-right corner badges, in one flex row so a starred video shows both
-				     without the two overlapping. Display-only: starring happens in the
-				     lightbox, so a tile never has to compete with the select/delete hit
-				     areas in its other corner. -->
-				<!-- Purely decorative, hence aria-hidden: a screen reader would otherwise
-				     read "Favorite" and "video" as separate stray labels next to each
-				     tile. The state they convey is spoken as part of each tile's own
-				     aria-label instead (", favorite" / ", N favorites"), so it is not
-				     visual-only. -->
-				{#snippet cornerBadges(starred: boolean, isVideo: boolean)}
-					{#if starred || isVideo}
-						<div
-							class="pointer-events-none absolute right-1.5 top-1.5 flex items-center gap-1"
-							aria-hidden="true"
-						>
-							{#if starred}
-								<span
-									class="flex h-[18px] w-[18px] items-center justify-center rounded bg-black/60 text-favorite"
-									title="Favorite"
-								>
-									<Star size={11} strokeWidth={2.5} fill="currentColor" />
-								</span>
-							{/if}
-							{#if isVideo}
-								<span
-									class="rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white"
-								>
-									video
-								</span>
-							{/if}
-						</div>
-					{/if}
+				<!-- The hover-revealed delete in a tile's top-left corner (select mode shows
+				     the check mark there instead). -->
+				{#snippet deleteAction(id: string)}
+					<button
+						type="button"
+						onclick={() => deleteOne(id)}
+						disabled={deletingId === id}
+						class="absolute left-1.5 top-1.5 rounded bg-danger-emphasis/90 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-danger-fg transition can-hover:opacity-0 group-hover:opacity-100 hover:bg-danger-emphasis focus-visible:opacity-100 disabled:opacity-50"
+						aria-label="Delete this media"
+						title="Delete"
+					>
+						{deletingId === id ? '…' : '×'}
+					</button>
 				{/snippet}
 
 				<!-- A solo grid tile from a thin unit (top-level browse). Same visual as
@@ -1344,76 +1280,27 @@
 				     lazily when opened. -->
 				{#snippet unitTile(u: GalleryUnit)}
 					{@const isSelected = selectMode && selected.has(u.leaderId)}
-					<li
-						data-tile
-						class="group relative overflow-hidden rounded-lg border bg-surface-raised transition {isSelected
-							? 'border-surface-inverse ring-2 ring-surface-inverse'
-							: 'border-border hover:border-border-focus'}"
+					<GalleryTile
+						thumbnailSrc="/api/media/{u.leaderId}/thumbnail"
+						kind={u.leaderKind === 'video' ? 'video' : 'image'}
+						alt={u.excerpt ?? (u.leaderKind === 'video' ? 'Generated video' : 'Generated image')}
+						caption={u.excerpt}
+						favorite={u.favoriteCount > 0}
+						showCheck={selectMode}
+						selected={isSelected}
+						ariaLabel={selectMode
+							? isSelected
+								? `Deselect ${u.leaderKind}`
+								: `Select ${u.leaderKind}`
+							: `Open ${u.leaderKind}${u.favoriteCount > 0 ? ', favorite' : ''} ${u.excerpt ?? ''}`}
+						ariaPressed={selectMode ? isSelected : undefined}
+						onActivate={() =>
+							selectMode ? toggleSelected(u.leaderId) : openLightboxById(u.leaderId)}
 					>
-						<button
-							type="button"
-							onclick={() =>
-								selectMode ? toggleSelected(u.leaderId) : openLightboxById(u.leaderId)}
-							class="block w-full"
-							aria-label={selectMode
-								? isSelected
-									? `Deselect ${u.leaderKind}`
-									: `Select ${u.leaderKind}`
-								: `Open ${u.leaderKind}${u.favoriteCount > 0 ? ', favorite' : ''} ${
-										u.excerpt ?? ''
-									}`}
-							aria-pressed={selectMode ? isSelected : undefined}
-						>
-							<div class="relative aspect-square w-full overflow-hidden">
-								{#if u.leaderKind === 'image'}
-									<img
-										src="/api/media/{u.leaderId}/thumbnail"
-										alt={u.excerpt ?? 'Generated image'}
-										loading="lazy"
-										class="h-full w-full object-cover"
-									/>
-								{:else}
-									<!-- A tile never plays, so its poster is all it needs: an <img> skips
-									     the media element and its decoder. The badge marks it a video. -->
-									<img
-										src="/api/media/{u.leaderId}/thumbnail"
-										alt={u.excerpt ?? 'Generated video'}
-										loading="lazy"
-										class="h-full w-full object-cover"
-									/>
-								{/if}
-								{@render cornerBadges(u.favoriteCount > 0, u.leaderKind === 'video')}
-								{#if u.excerpt}
-									<div
-										class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-2 pb-1.5 pt-8 text-left text-xs text-white line-clamp-2"
-									>
-										{u.excerpt}
-									</div>
-								{/if}
-							</div>
-						</button>
-						{#if selectMode}
-							<span
-								aria-hidden="true"
-								class="pointer-events-none absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 text-[12px] font-bold transition {isSelected
-									? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
-									: 'border-white/80 bg-black/40 text-transparent'}"
-							>
-								✓
-							</span>
-						{:else}
-							<button
-								type="button"
-								onclick={() => deleteOne(u.leaderId)}
-								disabled={deletingId === u.leaderId}
-								class="absolute left-1.5 top-1.5 rounded bg-danger-emphasis/90 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-danger-fg transition can-hover:opacity-0 group-hover:opacity-100 hover:bg-danger-emphasis focus-visible:opacity-100 disabled:opacity-50"
-								aria-label="Delete this media"
-								title="Delete"
-							>
-								{deletingId === u.leaderId ? '…' : '×'}
-							</button>
-						{/if}
-					</li>
+						{#snippet action()}
+							{#if !selectMode}{@render deleteAction(u.leaderId)}{/if}
+						{/snippet}
+					</GalleryTile>
 				{/snippet}
 
 				<!-- A stack card: a 2×2 collage of the newest members + a "+N" cell.
@@ -1466,7 +1353,7 @@
 										</div>
 									{/if}
 								</div>
-								{@render cornerBadges(u.favoriteCount > 0, false)}
+								<GalleryCornerBadges starred={u.favoriteCount > 0} isVideo={false} />
 								<div
 									class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-2 pb-1.5 pt-8 text-white"
 								>

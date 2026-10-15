@@ -1,4 +1,5 @@
 <script lang="ts">
+	import GalleryTile from '#lib/components/GalleryTile.svelte';
 	import { errorMessageFromResponse } from '#lib/fetch-error.js';
 	import { invalidate } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -205,67 +206,37 @@
 			>
 				{#each data.items.slice(0, shown) as m (m.id)}
 					{@const isSelected = selected.has(m.id)}
-					<li
-						class="relative overflow-hidden rounded-lg border bg-surface-raised transition {isSelected
-							? 'border-surface-inverse ring-2 ring-surface-inverse'
-							: 'border-border hover:border-border-focus'}"
+					<!-- A tap on the tile selects (this page's whole job is choosing what to
+					     restore), so the full-size view gets its own corner target, the
+					     way Google Photos does it in select mode. -->
+					<GalleryTile
+						thumbnailSrc="/api/media/{m.id}/thumbnail?trash=1"
+						kind={m.kind === 'video' ? 'video' : 'image'}
+						alt={m.promptExcerpt ?? `Deleted ${m.kind}`}
+						caption="{timeLeft(m.expiresAt)} left"
+						captionBesideAction
+						showCheck
+						selected={isSelected}
+						dimUnselected
+						ariaLabel="{isSelected ? 'Deselect' : 'Select'} {m.kind} {m.promptExcerpt ?? ''}"
+						ariaPressed={isSelected}
+						title={[m.promptExcerpt, m.sourceModel && friendlyModelName(m.sourceModel)]
+							.filter(Boolean)
+							.join(' — ')}
+						onActivate={() => toggle(m.id)}
 					>
-						<button
-							type="button"
-							onclick={() => toggle(m.id)}
-							aria-pressed={isSelected}
-							aria-label="{isSelected ? 'Deselect' : 'Select'} {m.kind} {m.promptExcerpt ?? ''}"
-							title={[m.promptExcerpt, m.sourceModel && friendlyModelName(m.sourceModel)]
-								.filter(Boolean)
-								.join(' — ')}
-							class="block w-full"
-						>
-							<div class="relative aspect-square w-full overflow-hidden">
-								<!-- The thumbnail endpoint serves a video's poster frame, so one
-								     <img> covers both kinds; a trash tile never plays. -->
-								<img
-									src="/api/media/{m.id}/thumbnail?trash=1"
-									alt={m.promptExcerpt ?? `Deleted ${m.kind}`}
-									loading="lazy"
-									class="h-full w-full object-cover {isSelected ? '' : 'opacity-80'}"
-								/>
-								<span
-									aria-hidden="true"
-									class="pointer-events-none absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 text-[12px] font-bold transition {isSelected
-										? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
-										: 'border-white/80 bg-black/40 text-transparent'}"
-								>
-									✓
-								</span>
-								{#if m.kind === 'video'}
-									<span
-										aria-hidden="true"
-										class="pointer-events-none absolute top-1.5 right-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white uppercase"
-									>
-										Video
-									</span>
-								{/if}
-								<div
-									class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-8 pr-11 pb-1.5 pl-2 text-left text-xs text-white"
-								>
-									{timeLeft(m.expiresAt)} left
-								</div>
-							</div>
-						</button>
-						<!-- A tap on the tile selects (this page's whole job is choosing what to
-						     restore), so the full-size view gets its own corner target, the
-						     way Google Photos does it in select mode. A sibling of the tile
-						     button, not a child: buttons don't nest. -->
-						<button
-							type="button"
-							onclick={() => (viewingId = m.id)}
-							aria-label="View {m.kind} full size"
-							title="View full size"
-							class="absolute right-1 bottom-1 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white transition hover:bg-black/70"
-						>
-							<ZoomIn size={16} />
-						</button>
-					</li>
+						{#snippet action()}
+							<button
+								type="button"
+								onclick={() => (viewingId = m.id)}
+								aria-label="View {m.kind} full size"
+								title="View full size"
+								class="absolute right-1 bottom-1 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white transition hover:bg-black/70"
+							>
+								<ZoomIn size={16} />
+							</button>
+						{/snippet}
+					</GalleryTile>
 				{/each}
 			</ul>
 			{#if shown < data.items.length}
