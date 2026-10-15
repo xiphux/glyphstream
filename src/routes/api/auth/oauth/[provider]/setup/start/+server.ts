@@ -14,7 +14,7 @@
 import { error } from '@sveltejs/kit';
 import { getEnabledProvider } from '#lib/server/auth/oauth/registry.js';
 import {
-	CODE_VERIFIER_COOKIE,
+	beginAuthorization,
 	STATE_COOKIE,
 	STATE_TTL_SECONDS,
 } from '#lib/server/auth/oauth/cookies.js';
@@ -36,10 +36,7 @@ export const POST: RequestHandler = async ({ request, cookies, url, params }) =>
 		await parseJsonBody<{ displayName?: unknown; email?: unknown }>(request),
 	);
 
-	const { url: oauthUrl, state, codeVerifier } = await provider.createAuthorizationURL();
-
-	setCarryCookie(cookies, STATE_COOKIE, state, STATE_TTL_SECONDS);
-	if (codeVerifier) setCarryCookie(cookies, CODE_VERIFIER_COOKIE, codeVerifier, STATE_TTL_SECONDS);
+	const oauthUrl = await beginAuthorization(provider, cookies, STATE_COOKIE);
 
 	// Carry the operator's typed display name / email through the provider's
 	// round-trip. Signed so the callback can trust the values without a

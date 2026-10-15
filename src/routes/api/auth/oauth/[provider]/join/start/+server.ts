@@ -13,7 +13,7 @@
 import { error } from '@sveltejs/kit';
 import { getEnabledProvider } from '#lib/server/auth/oauth/registry.js';
 import {
-	CODE_VERIFIER_COOKIE,
+	beginAuthorization,
 	STATE_COOKIE,
 	STATE_TTL_SECONDS,
 } from '#lib/server/auth/oauth/cookies.js';
@@ -42,10 +42,7 @@ export const POST: RequestHandler = async ({ request, cookies, params }) => {
 
 	const { displayName, email } = parseIdentityInput(body);
 
-	const { url: oauthUrl, state, codeVerifier } = await provider.createAuthorizationURL();
-
-	setCarryCookie(cookies, STATE_COOKIE, state, STATE_TTL_SECONDS);
-	if (codeVerifier) setCarryCookie(cookies, CODE_VERIFIER_COOKIE, codeVerifier, STATE_TTL_SECONDS);
+	const oauthUrl = await beginAuthorization(provider, cookies, STATE_COOKIE);
 
 	// Carry the invite token + typed identity through the provider's round-
 	// trip. Signed (HMAC, AUTH_SECRET) + TTL'd so the callback can trust it

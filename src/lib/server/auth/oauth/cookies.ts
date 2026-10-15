@@ -12,6 +12,9 @@
  * shared constants — SvelteKit validates their exports against a fixed
  * list — which is why these live in a plain lib module.)
  */
+import type { Cookies } from '@sveltejs/kit';
+import { setCarryCookie } from '../signed-cookies';
+import type { OAuthProvider } from './types';
 
 /**
  * Carries the OAuth `state` value between the login/setup/join redirect
@@ -43,3 +46,20 @@ export const CODE_VERIFIER_COOKIE = 'glyphstream_oauth_code_verifier';
 /** How long the user has to complete the provider round-trip before the
  *  OAuth state / verifier cookies expire. */
 export const STATE_TTL_SECONDS = 600;
+
+/**
+ * Start an OAuth round-trip: ask the provider for its authorization URL, and
+ * set the state cookie the callback will check (`stateCookie`: the login/setup/
+ * join one, or the link one) plus the PKCE verifier for providers that use it.
+ * Both expire with the round-trip. Returns the URL to send the browser to.
+ */
+export async function beginAuthorization(
+	provider: OAuthProvider,
+	cookies: Cookies,
+	stateCookie: typeof STATE_COOKIE | typeof LINK_STATE_COOKIE,
+): Promise<URL> {
+	const { url, state, codeVerifier } = await provider.createAuthorizationURL();
+	setCarryCookie(cookies, stateCookie, state, STATE_TTL_SECONDS);
+	if (codeVerifier) setCarryCookie(cookies, CODE_VERIFIER_COOKIE, codeVerifier, STATE_TTL_SECONDS);
+	return url;
+}

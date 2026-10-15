@@ -14,12 +14,7 @@
 import { error, redirect } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { getEnabledProvider } from '#lib/server/auth/oauth/registry.js';
-import {
-	CODE_VERIFIER_COOKIE,
-	LINK_STATE_COOKIE,
-	STATE_TTL_SECONDS,
-} from '#lib/server/auth/oauth/cookies.js';
-import { setCarryCookie } from '#lib/server/auth/signed-cookies.js';
+import { beginAuthorization, LINK_STATE_COOKIE } from '#lib/server/auth/oauth/cookies.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ locals, cookies, params }) => {
@@ -27,9 +22,7 @@ export const GET: RequestHandler = async ({ locals, cookies, params }) => {
 	const provider = getEnabledProvider(params.provider);
 	if (!provider) error(404, 'Unknown or disabled provider');
 
-	const { url, state, codeVerifier } = await provider.createAuthorizationURL();
-	setCarryCookie(cookies, LINK_STATE_COOKIE, state, STATE_TTL_SECONDS);
-	if (codeVerifier) setCarryCookie(cookies, CODE_VERIFIER_COOKIE, codeVerifier, STATE_TTL_SECONDS);
+	const url = await beginAuthorization(provider, cookies, LINK_STATE_COOKIE);
 
 	// SvelteKit 3 refuses a cross-origin redirect unless it's opted in, and
 	// refuses by throwing — a 500. Allow exactly the provider's own origin.
