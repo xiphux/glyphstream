@@ -322,10 +322,10 @@ export class AvatarDrawWorkflow {
 
 			// The stream ran to completion, so the server is done and there is nothing
 			// left for a later probe to discover. Discharging here matters because
-			// the `hidden` handler arms the debt for ANY draw that was running when
-			// the page went away, without knowing whether the connection actually
-			// died — and on desktop it usually didn't (a tab switch doesn't kill an
-			// SSE; the fan-out branch below leans on the same fact). Left set, the
+			// the chat page's `hidden` handler arms the debt for ANY draw that was
+			// running when the page went away, without knowing whether the
+			// connection actually died — and on desktop it usually didn't (a tab
+			// switch doesn't kill an SSE). Left set, the
 			// next return to the foreground probes, learns nothing, and pays a full
 			// branch reload for it.
 			//
@@ -369,7 +369,7 @@ export class AvatarDrawWorkflow {
 			//
 			// But `serverReported` OVERRIDES it, because the latch is far coarser than
 			// it looks: nothing clears it on the way back to the foreground (see the
-			// visibility handler for why that would be worse), so one tab switch at
+			// chat page's visibility handler for why that would be worse), so one tab switch at
 			// minute one of a five-minute draw leaves it set for the remaining four.
 			// Without this override, a genuine upstream failure — ComfyUI running out
 			// of memory, say — arriving any time in that window would be classified as

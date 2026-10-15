@@ -232,7 +232,7 @@ describe('POST /avatar/prepare — what the grid starts from', () => {
 	it('rejects a user message as the anchor', async () => {
 		// The recovery state derives its `avatar` flag from this role, and documents
 		// the two fan-out routes as disjoint "by construction". This is the
-		// construction. Not reachable from the UI — avatarSourceMessage is always an
+		// construction. Not reachable from the UI — AvatarDrawWorkflow.sourceMessage is always an
 		// assistant message — so this keeps a claim honest rather than closing a
 		// live path.
 		await expect(call('u1')).rejects.toMatchObject({ status: 400 });

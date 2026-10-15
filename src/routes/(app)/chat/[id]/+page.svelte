@@ -873,7 +873,7 @@
 
 	// One place for what happens when the reused /chat/[id] component enters a
 	// different conversation (and, for most steps, on first entry). Each step is
-	// documented at its function. Collapsed from four effects with four sentinel
+	// documented at its function. Collapsed from three effects with three sentinel
 	// ids, because a step that missed its reset is how two bugs shipped.
 	//
 	// Placed HERE, early, on purpose: effects run in declaration order within a

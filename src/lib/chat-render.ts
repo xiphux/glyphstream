@@ -812,7 +812,7 @@ function graphemes(): Intl.Segmenter {
  * `role:'tool'` rows that answer nothing but reactions.
  *
  * Client-side mirror of `resolveReplyLeaf` in `db/queries/messages.ts`, and it
- * has to agree with it: `canCompareAvatar` and the server's parkable rule answer
+ * has to agree with it: `AvatarDrawWorkflow.canCompare` and the server's parkable rule answer
  * the same question on either side of one call, and a client that offers the
  * comparison against a server that then refuses it surfaces as a page-level
  * error only after the user has picked their models.

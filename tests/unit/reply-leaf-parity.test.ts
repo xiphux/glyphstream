@@ -4,7 +4,7 @@
  * same question — "has the branch moved on past this reply, or is that just a
  * reaction's bookkeeping?" — by different mechanisms.
  *
- * They HAVE to agree. `canCompareAvatar` uses one and avatar `/prepare`'s
+ * They HAVE to agree. `AvatarDrawWorkflow.canCompare` uses one and avatar `/prepare`'s
  * parkable rule uses the other, on either side of a single call: if the client
  * offers a comparison the server then refuses, the user finds out only after
  * picking their models, as a page-level error.

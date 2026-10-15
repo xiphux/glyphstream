@@ -3,7 +3,8 @@
  *
  * Runs the real runes (the sveltekit() vitest plugin compiles the .svelte.ts
  * module) against a stubbed fan-out controller and `fetch`. The fan-out stub
- * holds only what the lightbox reads: the grid's columns and its discard.
+ * holds only what the lightbox reads: whether a media grid is open, its
+ * columns, whether it is mid-pick, and its discard.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 

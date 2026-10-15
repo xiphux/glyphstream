@@ -175,12 +175,12 @@
 		),
 	);
 
-	// Placeholder tracks the active model's INPUT need, not just its kind — an
-	// image-required model (I2I upscaler, image-to-video) can't act on a text
-	// prompt, so "Describe an image to generate…" would be misleading. Once an
-	// image is attached the ask flips to describing the edit.
 	const findModel = (id: string) => models.find((x) => x.id === id);
-	// The send's target models, shared with the new-chat page (composer-selection).
+	// The models this send will actually dispatch to — the compare cart when one
+	// is active, else the single picked model — shared with the new-chat page
+	// (composer-selection). Mirrors how `activeKind` resolves, so the ratio menu
+	// can't disagree with the kind the rest of the UI shows.
+	//
 	// Built from the RESOLVED cart (fanoutModels), not the raw selections: a cart
 	// of only-unresolvable ids expands to [] and the send path falls back to
 	// [{ modelId }], so mirroring the resolver here keeps the composer, the send
@@ -199,6 +199,10 @@
 		const m = findModel(modelId);
 		return m ? imageAttachment(m) : 'unknown';
 	});
+	// Placeholder tracks the active model's INPUT need, not just its kind — an
+	// image-required model (I2I upscaler, image-to-video) can't act on a text
+	// prompt, so "Describe an image to generate…" would be misleading. Once an
+	// image is attached the ask flips to describing the edit.
 	const placeholder = $derived(
 		composerPlaceholder(
 			activeKind,
@@ -261,10 +265,7 @@
 		if (!canSplit && splitAttachments) splitAttachments = false;
 	});
 
-	// The models this send will actually dispatch to — the compare cart when one
-	// is active, else the single picked model. Mirrors how `activeKind` resolves,
-	// so the ratio menu can't disagree with the kind the rest of the UI shows.
-	// The union across them: a model advertising nothing constrains nothing (it
+	// The aspect ratios offered: the union across `selectedModels`: a model advertising nothing constrains nothing (it
 	// ignores whatever is sent), so intersecting would make partial support more
 	// restrictive than no support. See offeredRatios.
 	const ratioOptions = $derived(offeredRatios(selectedModels));
