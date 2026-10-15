@@ -25,7 +25,6 @@ import {
 	listDistinctSourceModelsForUser,
 	listMediaMonthPeriodsForUser,
 	listMediaNeedingEmbedding,
-	searchMediaForUser,
 	setMediaFavorite,
 	listConversationsForMedia,
 	listMediaForConversation,
@@ -33,6 +32,7 @@ import {
 	listMessageIdsForConversation,
 	stampOrphanedZeroRefRows,
 } from '#lib/server/db/queries/media.js';
+import { searchMediaForUser } from '#lib/server/media/gallery-search.js';
 import {
 	archiveConversation,
 	createConversation,

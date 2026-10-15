@@ -1,4 +1,4 @@
-import { searchMediaForUser } from '#lib/server/db/queries/media.js';
+import { searchMediaForUser } from '#lib/server/media/gallery-search.js';
 import { cachedModelFacets } from '#lib/server/gallery/layout.js';
 import { friendlyModelName } from '#lib/model-ids.js';
 import type { PageServerLoad } from './$types';

@@ -17,12 +17,8 @@ vi.mock('#lib/server/retrieval/embeddings-config.js', () => ({
 const embedQueryMock = vi.hoisted(() => vi.fn());
 vi.mock('#lib/server/retrieval/embed-rank.js', () => ({ embedQuery: embedQueryMock }));
 
-import {
-	insertMedia,
-	searchMediaForUser,
-	setMediaEmbedding,
-	trashMediaForUser,
-} from '#lib/server/db/queries/media.js';
+import { insertMedia, setMediaEmbedding, trashMediaForUser } from '#lib/server/db/queries/media.js';
+import { searchMediaForUser } from '#lib/server/media/gallery-search.js';
 import { encodeVector } from '#lib/server/retrieval/vector.js';
 
 const MODEL = 'embed-v1';
