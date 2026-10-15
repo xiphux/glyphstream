@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.45.1
+
 ### Changed
 
 - `LOG_LEVEL` now applies to every server log line, so `warn` or `error`
