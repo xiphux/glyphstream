@@ -20,6 +20,11 @@ arrived.
   transparency. Existing thumbnails convert as they're viewed; nothing needs
   doing on upgrade.
 
+### Fixed
+
+- An avatar draw accepted after you'd switched chats no longer closes the
+  avatar dialog you had opened in the new one.
+
 ## v0.45.0
 
 ### Breaking

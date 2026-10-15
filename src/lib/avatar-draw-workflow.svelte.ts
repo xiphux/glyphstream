@@ -290,8 +290,10 @@ export class AvatarDrawWorkflow {
 			// and let the drawing finish in the background, reported on the header
 			// avatar, so a minute of ComfyUI doesn't hold the UI hostage. Nothing
 			// below this point is load-bearing: losing the connection costs the ring
-			// and the toast, not the portrait or the avatar.
-			this.open = false;
+			// and the toast, not the portrait or the avatar. Only if the user is still
+			// in this chat: after a switch the dialog up now is one they opened for
+			// another conversation.
+			if (this.#deps.convId() === cid) this.open = false;
 
 			// `drew` rather than a bare "the stream ended": a generation that
 			// produced no image part applied no avatar either, so it must not be

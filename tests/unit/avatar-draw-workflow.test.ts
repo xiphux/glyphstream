@@ -201,3 +201,19 @@ describe('drawing', () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 });
+
+describe('drawing across a conversation switch', () => {
+	it('leaves a dialog opened in another chat open when the draw is accepted', async () => {
+		const { w, page } = setup();
+		w.openDialog();
+		fetchMock.mockImplementationOnce(async () => {
+			// The user moved to B and opened B's dialog while A's POST was in flight.
+			page.convId = 'B';
+			w.reset();
+			w.openDialog();
+			return new Response(new ReadableStream({ start: (c) => c.close() }));
+		});
+		await w.generate();
+		expect(w.open).toBe(true);
+	});
+});
