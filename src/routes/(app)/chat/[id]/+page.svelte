@@ -71,16 +71,11 @@
 	import { hasCopyableText, partsToText } from '#lib/message-parts.js';
 	import { AvatarDrawController } from '#lib/avatar-draw-controller.svelte.js';
 	import { AvatarDrawWorkflow } from '#lib/avatar-draw-workflow.svelte.js';
+	import { ChatLightbox } from '#lib/chat-lightbox.svelte.js';
 	import FanoutColumns from '#lib/components/chat/FanoutColumns.svelte';
 	import {
-		applyDisplayOrder,
-		canDiscardColumn,
-		columnMediaIds,
-		columnShowingMedia,
 		expandCompareSelections,
 		expandFanoutBranches,
-		gridMediaIds,
-		survivorInSlot,
 		type CompareSelection,
 		type FanoutColumn,
 		type FanoutModel,
@@ -89,10 +84,8 @@
 	import { isSnippetKind } from '#lib/types/api.js';
 	import type {
 		ChatMessage,
-		ConversationMediaRef,
 		EarlierMessagesResponse,
 		FeatureCategory,
-		MediaListItem,
 		ModelKind,
 	} from '#lib/types/api.js';
 
@@ -875,13 +868,7 @@
 	function resetComposerMediaOnSwitch() {
 		attachments.clear();
 		autoAttached = null;
-		// Stale set from the previous conversation — cleared so it can't
-		// briefly leak into a lightbox opened before the refetch lands.
-		conversationMedia = [];
-		// A preview left open (search, a toast's "Open" or a notification can
-		// navigate with it up) belongs to the previous conversation.
-		lightbox = null;
-		openingLightboxFor = null;
+		lightbox.reset();
 	}
 
 	// One place for what happens when the reused /chat/[id] component enters a
@@ -954,77 +941,6 @@
 			autoAttached = { assistantId: lastAssistant.id, mediaId: candidateMediaId };
 		});
 	});
-
-	// --- inline image lightbox --------------------------------------------
-	//
-	// Tapping a generated image used to open it in a new tab (target=_blank
-	// on the wrapping anchor). That works on desktop but breaks in PWA
-	// standalone mode where there's no tab strip to return through — users
-	// got stranded on a bare image page with only a back-swipe gesture
-	// home. Reusing the gallery's MediaLightbox keeps the tap inside the
-	// app and brings model/prompt/download affordances along for free.
-	//
-	// MessagePart only carries `mediaId`; model + prompt + size live on
-	// the media row. One fetch per tap (~100-200ms) populates the metadata.
-	// The fetch races are guarded by the id-comparison pattern: a stale
-	// response from a previous tap can't clobber the current state.
-	let lightbox = $state<MediaListItem | null>(null);
-	let openingLightboxFor = $state<string | null>(null);
-
-	// Ordered set the lightbox swipes/arrows between: every image/video in
-	// the conversation, across ALL branches, oldest first — except the images
-	// of a fan-out grid that's open, which are re-seated into that grid's
-	// dispatch order (see loadConversationMedia). Fetched (not
-	// derived from `visibleMessages`) because multi-image batches,
-	// multi-model grids, and regenerate revisions are sibling branches —
-	// only one sits on the active leaf path, so the message list would
-	// surface just one image per generation point. `openImageInLightbox`
-	// doubles as the resolver, fetching each swiped-to row's metadata.
-	// `.raw` — replaced wholesale by the fetch below, never mutated in place.
-	let conversationMedia = $state.raw<ConversationMediaRef[]>([]);
-	async function loadConversationMedia() {
-		const forConversation = data.conversation.id;
-		try {
-			const res = await fetch(`/api/conversations/${forConversation}/media`);
-			if (!res.ok) return; // carousel just stays single-item; non-fatal
-			const body = (await res.json()) as { items: ConversationMediaRef[] };
-			// The user switched conversations while this was in flight.
-			if (data.conversation.id !== forConversation) return;
-			// The set arrives oldest-first, i.e. in COMPLETION order — which is not
-			// the order a live fan-out grid is drawn in (that's the order the models
-			// were enqueued in). Parallel branches finish out of order, so without
-			// this the carousel walked the same images in a different sequence than
-			// the grid the tap came from. Re-seated once, here, rather than derived:
-			// the set is only fetched on the initial open, so the carousel's order
-			// stays put for the life of that open session.
-			conversationMedia = applyDisplayOrder(body.items, gridMediaIds(fanout.columns));
-		} catch {
-			// Network blip — leave the set as-is; the lightbox still opens
-			// on the tapped image, just without sibling navigation.
-		}
-	}
-
-	async function openImageInLightbox(mediaId: string) {
-		if (openingLightboxFor === mediaId) return;
-		// Initial open (lightbox was closed) — also (re)load the carousel
-		// set so swipe/arrows have somewhere to go, and so just-generated
-		// images are included. A swipe-driven navigate calls this with the
-		// lightbox already open, so it skips the refetch.
-		if (!lightbox) void loadConversationMedia();
-		openingLightboxFor = mediaId;
-		try {
-			const res = await fetch(`/api/media/${mediaId}`);
-			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
-			const m = (await res.json()) as MediaListItem;
-			if (openingLightboxFor === mediaId) lightbox = m;
-		} catch (e) {
-			if (openingLightboxFor === mediaId) {
-				toast.error(`Couldn't load image details: ${e instanceof Error ? e.message : String(e)}`);
-			}
-		} finally {
-			if (openingLightboxFor === mediaId) openingLightboxFor = null;
-		}
-	}
 
 	// --- viewport, focus + message-arrival state ---------------------------
 	//
@@ -1444,100 +1360,13 @@
 		fanout,
 	});
 
-	// The lightbox's Delete, offered only for an image the open media fan-out
-	// grid is showing, and only where that grid's own trash button would allow
-	// the discard. It IS that discard: the whole branch goes, the same as
-	// tapping the trash icon on the cell. Any other media in the carousel (older
-	// turns, other branches) still gets no Delete here. Destructive media
-	// deletion outside a fan-out belongs to the gallery.
-	const lightboxColumn = $derived(
-		lightbox && fanout.isMedia ? columnShowingMedia(fanout.columns, lightbox.id) : undefined,
-	);
-	const lightboxDiscardable = $derived(
-		!!lightboxColumn && canDiscardColumn(fanout.columns, lightboxColumn),
-	);
-	let lightboxDeletingId = $state<string | null>(null);
-	let lightboxFavoritingId = $state<string | null>(null);
-
-	/**
-	 * Star / unstar the open image, so the "that one came out well" reaction can
-	 * happen where it actually occurs — right after generating — instead of
-	 * requiring a later trip to the gallery.
-	 *
-	 * Purely local: nothing on this page reads the flag except the open lightbox,
-	 * so there's no `invalidate` to run — and this route deliberately avoids one
-	 * (it ships a window of the active branch with `content_html`, so re-running its
-	 * load to move a star would re-serialize all of it). The gallery re-reads the
-	 * truth from the server on its own next load.
-	 */
-	async function toggleLightboxFavorite(mediaId: string, next: boolean) {
-		if (lightboxFavoritingId) return;
-		lightboxFavoritingId = mediaId;
-		if (lightbox?.id === mediaId) lightbox = { ...lightbox, favorite: next };
-		try {
-			const res = await fetch(`/api/media/${mediaId}`, {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ favorite: next }),
-			});
-			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
-		} catch (e) {
-			if (lightbox?.id === mediaId) lightbox = { ...lightbox, favorite: !next };
-			toast.error(`Couldn't update favorite: ${e instanceof Error ? e.message : String(e)}`);
-		} finally {
-			lightboxFavoritingId = null;
-		}
-	}
-
-	/**
-	 * Discard the branch behind the lightbox's current image, then move to the
-	 * next image. The gallery closes on delete; here the point is to prune a
-	 * grid by swiping through it, so closing would send the user back to the
-	 * grid after every dud.
-	 *
-	 * The new image's metadata is fetched BEFORE the carousel set shrinks, and
-	 * both are swapped in together. The lightbox treats a `media` missing from
-	 * `siblings` as a single item, so shrinking first would drop the carousel for
-	 * the length of that fetch and bring it back unpositioned. The track's scroll
-	 * offset doesn't move when slides leave, so the image to show is whichever
-	 * survivor now fills the current slot (see survivorInSlot). For a single-image
-	 * branch that's the next image.
-	 */
-	async function discardFromLightbox(mediaId: string) {
-		const col = columnShowingMedia(fanout.columns, mediaId);
-		// A refused discard (grid busy) must not reach the toast below, which
-		// would repeat whatever stale error the banner last held.
-		if (!col || lightboxDeletingId || fanout.picking) return;
-		// Everything the branch showed leaves the carousel with it (a batch
-		// branch has several images).
-		const removed = new Set(columnMediaIds(col));
-		lightboxDeletingId = mediaId;
-		try {
-			if (!(await fanout.discard(col))) {
-				// The banner the controller set sits under the lightbox.
-				if (errorMsg) toast.error(`Couldn't delete: ${errorMsg}`);
-				return;
-			}
-			const next = survivorInSlot(conversationMedia, mediaId, removed);
-			const survivors = conversationMedia.filter((m) => !removed.has(m.id));
-			let nextItem: MediaListItem | null = null;
-			if (next) {
-				try {
-					const res = await fetch(`/api/media/${next.id}`);
-					if (res.ok) nextItem = (await res.json()) as MediaListItem;
-				} catch {
-					// Close instead. The discard itself went through.
-				}
-			}
-			// The user may have closed the lightbox or swiped elsewhere during the
-			// round trips. Update the set either way, but only move `media` if it
-			// still shows what was deleted.
-			conversationMedia = survivors;
-			if (lightbox?.id === mediaId) lightbox = nextItem;
-		} finally {
-			lightboxDeletingId = null;
-		}
-	}
+	// The inline media lightbox: tap a generated image to open it, swipe through
+	// the conversation's media, star it, or discard its fan-out branch.
+	const lightbox = new ChatLightbox({
+		conversationId: () => data.conversation.id,
+		fanout,
+		error: () => errorMsg,
+	});
 
 	// Looking at a thread is the acknowledgment its notification was asking
 	// for: retract the tray entry and re-derive the app-icon badge. The rules
@@ -2568,8 +2397,7 @@
 						// avatar is inspectable from the one place it always is rather
 						// than by scrolling back to the bubble that produced it.
 						onViewFullSize: () => {
-							if (data.assistantAvatarMediaId)
-								void openImageInLightbox(data.assistantAvatarMediaId);
+							if (data.assistantAvatarMediaId) void lightbox.open(data.assistantAvatarMediaId);
 						},
 					}
 				: undefined}
@@ -2715,8 +2543,8 @@
 									assistantAvatarMediaId={identity.avatarMediaId}
 									{mergeWithPrev}
 									{mergeWithNext}
-									onImageClick={openImageInLightbox}
-									{openingLightboxFor}
+									onImageClick={(id: string) => void lightbox.open(id)}
+									openingLightboxFor={lightbox.openingFor}
 									{approvalDecisions}
 									approvalBusy={turn.approvalSubmitting}
 									{onApprovalSelect}
@@ -2765,8 +2593,8 @@
 							progress={turn.inFlightProgress}
 							queued={turn.inFlightQueued ?? (turn.recoveredQueued ? recoveredQueueNotice : null)}
 							{elapsedSeconds}
-							onImageClick={openImageInLightbox}
-							{openingLightboxFor}
+							onImageClick={(id: string) => void lightbox.open(id)}
+							openingLightboxFor={lightbox.openingFor}
 							{approvalDecisions}
 							approvalBusy={turn.approvalSubmitting}
 							{onApprovalSelect}
@@ -2798,7 +2626,7 @@
 								? (c: FanoutColumn) => void fanout.regenerate(c)
 								: undefined}
 							canRegenerate={(c: FanoutColumn) => fanout.canRegenerate(c)}
-							onImageClick={openImageInLightbox}
+							onImageClick={(id: string) => void lightbox.open(id)}
 							busy={fanout.picking}
 						/>
 						{#if fanout.columnsSettled}
@@ -2943,11 +2771,11 @@
 </div>
 
 <!--
-	In-conversation media lightbox. State + fetch live in this page so
-	the chat owns the open/close lifecycle; the component is purely
-	presentational. `onDelete` is passed only for an image in an open media
+	In-conversation media lightbox. State + fetch live in `ChatLightbox`
+	(owned by this page) so the chat owns the open/close lifecycle; the
+	component is purely presentational. `onDelete` is passed only for an image in an open media
 	fan-out grid, where it discards that branch exactly as the grid's trash
-	button does (see discardFromLightbox). Otherwise destructive media
+	button does (see ChatLightbox.discard). Otherwise destructive media
 	deletion belongs in the gallery surface. `conversationsUsingThis` is
 	never passed: listing "conversations referencing this" would just be a
 	circular link back to where the user already is.
@@ -2960,7 +2788,7 @@
 	of the chat-route critical path — most chat sessions never tap an
 	image. Vite caches the resolved module, so subsequent opens reuse
 	it without a network fetch. The `{#await}` only mounts under the
-	`{#if lightbox}` guard, which the fetch in openImageInLightbox sets
+	`{#if lightbox.media}` guard, which the fetch in ChatLightbox.open sets
 	~100-200 ms after the tap — easily long enough for the import chunk
 	to land in parallel on the first open.
 -->
@@ -2994,21 +2822,23 @@
 	{/await}
 {/if}
 
-{#if lightbox}
+{#if lightbox.media}
 	{#await import('#lib/components/MediaLightbox.svelte') then { default: MediaLightbox }}
 		<MediaLightbox
-			media={lightbox}
-			onClose={() => (lightbox = null)}
+			media={lightbox.media}
+			onClose={() => lightbox.close()}
 			inConversation
-			siblings={conversationMedia}
-			onNavigate={openImageInLightbox}
-			onDelete={lightboxDiscardable ? discardFromLightbox : undefined}
-			deletingId={lightboxDeletingId}
+			siblings={lightbox.siblings}
+			onNavigate={(id: string) => void lightbox.open(id)}
+			onDelete={lightbox.discardable ? (id: string) => void lightbox.discard(id) : undefined}
+			deletingId={lightbox.deletingId}
 			{avatarTargets}
 			onSetAvatar={setAvatar}
 			{settingAvatar}
-			onToggleFavorite={lightbox.origin === 'generated' ? toggleLightboxFavorite : undefined}
-			favoritingId={lightboxFavoritingId}
+			onToggleFavorite={lightbox.media.origin === 'generated'
+				? (id: string, next: boolean) => void lightbox.toggleFavorite(id, next)
+				: undefined}
+			favoritingId={lightbox.favoritingId}
 		/>
 	{/await}
 {/if}
