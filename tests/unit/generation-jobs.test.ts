@@ -523,7 +523,7 @@ describe('after a restart', () => {
 		} as unknown as TestDB);
 		const err = vi.spyOn(console, 'error').mockImplementation(() => {});
 		resumeGenerationJobs();
-		mocks.testDb = real;
+		setDbForTests(real);
 		err.mockRestore();
 		expect(setTimeoutSpy).not.toHaveBeenCalled();
 		setTimeoutSpy.mockRestore();
@@ -551,8 +551,13 @@ describe('after a restart', () => {
 		setResourceGroupPaused(endpoint(), true);
 
 		resumeGenerationJobs();
+		const [first] = getInFlightEntries(s.conv.id);
 		resumeGenerationJobs();
+		// The same entry, still live. A second resume registers the job again under
+		// the same key, so a count alone stays at 1 whether or not the guard held.
 		expect(getInFlightEntries(s.conv.id)).toHaveLength(1);
+		expect(getInFlightEntries(s.conv.id)[0]).toBe(first);
+		expect(first.controller.signal.aborted).toBe(false);
 	});
 
 	it('does not resume again when the module is re-evaluated (a dev hot reload)', async () => {
@@ -562,6 +567,10 @@ describe('after a restart', () => {
 		resumeGenerationJobs();
 
 		vi.resetModules();
+		// The fresh modules bring a fresh db/client with no test DB installed;
+		// without this the second resume would fail to read the queue and register
+		// nothing, passing whether or not the guard held.
+		(await import('#lib/server/db/client.js')).setDbForTests(mocks.testDb);
 		const fresh = await import('#lib/server/generation/jobs.js');
 		const freshInFlight = await import('#lib/server/streaming/in-flight.js');
 		fresh.resumeGenerationJobs();
