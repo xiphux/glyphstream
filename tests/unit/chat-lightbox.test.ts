@@ -177,3 +177,20 @@ describe('discarding from a fan-out grid', () => {
 		expect(lb.media?.id).toBe('g1');
 	});
 });
+
+describe('discarding across a conversation switch', () => {
+	it('leaves the reset lightbox alone when the discard lands after a switch', async () => {
+		stubFetch(['g1', 'g2']);
+		const { lb, fanout, page } = setup([column('b1', ['g1']), column('b2', ['g2'])]);
+		await lb.open('g1');
+		await settle();
+		fanout.discard.mockImplementationOnce(async () => {
+			page.conversationId = 'B';
+			lb.reset();
+			return true;
+		});
+		await lb.discard('g1');
+		expect(lb.siblings).toEqual([]);
+		expect(lb.media).toBeNull();
+	});
+});

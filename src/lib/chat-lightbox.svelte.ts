@@ -198,6 +198,7 @@ export class ChatLightbox {
 		// Everything the branch showed leaves the carousel with it (a batch
 		// branch has several images).
 		const removed = new Set(columnMediaIds(col));
+		const forConversation = this.#deps.conversationId();
 		this.deletingId = mediaId;
 		try {
 			if (!(await fanout.discard(col))) {
@@ -217,6 +218,9 @@ export class ChatLightbox {
 					// Close instead. The discard itself went through.
 				}
 			}
+			// The user switched conversations during the round trips: the lightbox
+			// was reset, and this set belongs to the chat they left.
+			if (this.#deps.conversationId() !== forConversation) return;
 			// The user may have closed the lightbox or swiped elsewhere during the
 			// round trips. Update the set either way, but only move `media` if it
 			// still shows what was deleted.
