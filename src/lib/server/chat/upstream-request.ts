@@ -12,8 +12,9 @@
  * - `messages`: the system prompt, then the serialized branch, then (when a
  *   canvas is open) its current content as a tail system block. The tail is
  *   always last so an edit never disturbs the cached prefix.
- * - `tools`: the turn's base set plus any tool the model searched up this
- *   turn, deduplicated, plus `update_canvas` when a canvas is open.
+ * - `tools`: the turn's base set, deduplicated, then `update_canvas` when a
+ *   canvas is open, then any tool the model searched up this turn — in that
+ *   order, so tools[] only grows at the end within a turn.
  * - The conversation's sampling parameters, when it has them.
  * - `stream_options.include_usage`, because streaming omits `usage` otherwise
  *   and the UI reports conversation size from it. (`stream: true` itself is
@@ -57,19 +58,9 @@ export async function buildUpstreamRequest(
 		),
 	};
 
-	const activated = input.activatedToolNames ?? [];
-	const tools = dedupeToolDefs(
-		activated.length > 0
-			? [
-					...input.baseToolDefs,
-					...resolveActivatedToolDefs([...activated], {
-						excludeCategories: [...input.disabledFeatures],
-					}),
-				]
-			: input.baseToolDefs,
-	);
-	if (tools.length > 0) {
-		request.tools = tools;
+	const baseTools = dedupeToolDefs(input.baseToolDefs);
+	if (baseTools.length > 0) {
+		request.tools = baseTools;
 		request.tool_choice = 'auto';
 	}
 
@@ -85,6 +76,21 @@ export async function buildUpstreamRequest(
 		disabledFeatures: input.disabledFeatures,
 		supportsTools: input.supportsTools,
 	});
+
+	// Tools searched up this turn go AFTER update_canvas, so a turn's tools[] only
+	// ever grows at the end between iterations: [base, update_canvas] becomes
+	// [base, update_canvas, searched]. Inserting them before update_canvas would
+	// move it mid-turn and re-prefill the whole conversation on the next call.
+	const activated = input.activatedToolNames ?? [];
+	if (activated.length > 0) {
+		const additions = resolveActivatedToolDefs([...activated], {
+			excludeCategories: [...input.disabledFeatures],
+		});
+		if (additions.length > 0) {
+			withCanvas.tools = dedupeToolDefs([...(withCanvas.tools ?? []), ...additions]);
+			withCanvas.tool_choice = 'auto';
+		}
+	}
 	return { ...withCanvas, stream_options: { include_usage: true } };
 }
 

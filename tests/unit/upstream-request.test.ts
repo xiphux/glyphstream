@@ -9,6 +9,7 @@ import { seedUser } from './_helpers/seed';
 import { list, type OpenAIToolDefinition } from '#lib/server/tools/index.js';
 import { createConversation } from '#lib/server/db/queries/conversations.js';
 import { appendMessage, walkActiveBranch } from '#lib/server/db/queries/messages.js';
+import { createCanvas } from '#lib/server/db/queries/artifacts.js';
 import { buildUpstreamRequest, cachedMediaResolver } from '#lib/server/chat/upstream-request.js';
 
 let userId: string;
@@ -73,6 +74,29 @@ describe('buildUpstreamRequest', () => {
 		});
 		expect(req.tools!.map((t) => t.function.name)).toEqual(['a', 'b', searchable!.function.name]);
 		expect(req.tool_choice).toBe('auto');
+	});
+
+	it('with a canvas open, appends searched-up tools after update_canvas, never before', async () => {
+		// Within a turn tools[] may only grow at the end: moving update_canvas
+		// between iterations would re-prefill the whole conversation.
+		createCanvas({
+			userId,
+			conversationId,
+			title: 'Doc',
+			content: 'hello',
+			contentHtml: null,
+			createdByMessageId: null,
+		});
+		const searched = list()
+			.map((t) => t.definition.function.name)
+			.find((n) => n !== 'update_canvas')!;
+		const first = await build({ baseToolDefs: [def('a')] });
+		const next = await build({ baseToolDefs: [def('a')], activatedToolNames: [searched] });
+		const names = (r: typeof first) => r.tools!.map((t) => t.function.name);
+		expect(names(first)).toEqual(['a', 'update_canvas']);
+		expect(names(next)).toEqual(['a', 'update_canvas', searched]);
+		// The canvas block stays the last message either way.
+		expect(next.messages.at(-1)!.content).toContain('hello');
 	});
 
 	it('forwards only the sampling parameters that are set', async () => {
