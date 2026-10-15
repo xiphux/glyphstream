@@ -29,12 +29,6 @@ export const JOIN_OAUTH_CARRY_COOKIE = 'glyphstream_join_oauth_carry';
 export const JOIN_PASSKEY_CARRY_COOKIE = 'glyphstream_join_passkey_carry';
 
 /**
- * Thrown when the invite was redeemed by a racing request between the
- * gate check and the final consume. The enclosing transaction rolls back,
- * so no half-created user/credential is left behind. Routes map this to a
- * "this invite was already used" error.
- */
-/**
  * The invite a join request presents, if it is still valid; otherwise a 403.
  * Checked when a join starts and again when it completes, since an invite can
  * expire or be redeemed by someone else mid-ceremony. `token` is whatever the
@@ -47,6 +41,12 @@ export function requireValidInvite(token: unknown): { inviteToken: string; invit
 	return { inviteToken, invite };
 }
 
+/**
+ * Thrown when the invite was redeemed by a racing request between the
+ * gate check and the final consume. The enclosing transaction rolls back,
+ * so no half-created user/credential is left behind. Routes map this to a
+ * "this invite was already used" error.
+ */
 export class InviteConsumedError extends Error {}
 
 /**

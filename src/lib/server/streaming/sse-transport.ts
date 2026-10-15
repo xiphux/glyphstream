@@ -35,6 +35,14 @@ export function errorMessage(e: unknown): string {
 }
 
 /**
+ * The `error` frame's message when a media generation was stopped rather than
+ * failed: a user's Stop, or a result discarded because its conversation went
+ * away. Shown as-is in the column. A chat turn reports a stop differently, as
+ * `done` with `finishReason: 'cancelled'`, because it keeps the partial reply.
+ */
+export const CANCELLED_MESSAGE = 'Cancelled';
+
+/**
  * True when `e` is an abort — the shape thrown when the user clicks Stop
  * and the upstream fetch's AbortSignal fires. Relays treat this as "end
  * here", not as an error to surface to the user.
@@ -47,14 +55,6 @@ export function errorMessage(e: unknown): string {
  * relays also check their own abort signal, which covers a Stop that
  * surfaces in any other shape.
  */
-/**
- * The `error` frame's message when a media generation was stopped rather than
- * failed: a user's Stop, or a result discarded because its conversation went
- * away. Shown as-is in the column. A chat turn reports a stop differently, as
- * `done` with `finishReason: 'cancelled'`, because it keeps the partial reply.
- */
-export const CANCELLED_MESSAGE = 'Cancelled';
-
 export { isAbortError } from '../../abort';
 
 /**

@@ -5,7 +5,7 @@
  *
  * Split out of `db/queries/media.ts`, which had grown to 1800 lines by absorbing
  * this alongside plain row access. The two are different things: everything in
- * `queries/media.ts` is a statement against the media table, while this is a
+ * the `queries/media/*` modules is a statement against the media table, while this is a
  * computation over the result — stacking, day bucketing, and the two caches that
  * make it affordable. A file named "queries" was not where anyone would look for
  * a memoized layout engine.

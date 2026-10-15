@@ -134,7 +134,7 @@ export function countOrphanMediaInConversation(
 
 /**
  * Identify generated media that would orphan as a result of deleting the given
- * set of messages, and move them to the trash (see the trash section above).
+ * set of messages, and move them to the trash (see `./trash`).
  * Returns the ids trashed.
  *
  * Callers:
