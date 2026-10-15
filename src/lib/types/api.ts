@@ -720,7 +720,7 @@ export interface SavedModelSet {
 export interface UserPreferences {
 	/**
 	 * The three personalization fields below are combined server-side
-	 * (via composePersonaSystemPrompt in user-preferences.ts) into a
+	 * (via composePersonaSystemPrompt in chat/persona-prompt.ts) into a
 	 * single system prompt and injected as the conversation's system
 	 * message at request time — so edits here propagate to existing
 	 * chats that don't have a custom-model preset or an explicit

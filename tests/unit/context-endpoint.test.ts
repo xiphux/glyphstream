@@ -36,7 +36,6 @@ vi.mock('#lib/server/db/queries/conversations.js', () => ({
 vi.mock('#lib/server/db/queries/media.js', () => ({ getMediaForUser: () => null }));
 vi.mock('#lib/server/db/queries/user-preferences.js', () => ({
 	getUserPreferences: () => null,
-	PERSONA_PART_SEPARATOR: '\n\n',
 }));
 vi.mock('#lib/server/endpoints/registry.js', () => ({
 	getEndpoint: () => ({ supportsTools: false }),

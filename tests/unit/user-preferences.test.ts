@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
+import { composePersonaSystemPrompt } from '#lib/server/chat/persona-prompt.js';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 vi.mock('#lib/server/db/client.js', () => ({
@@ -10,7 +11,6 @@ vi.mock('#lib/server/db/client.js', () => ({
 }));
 
 import {
-	composePersonaSystemPrompt,
 	getUserPreferences,
 	parseUserPreferences,
 	setUserPreferences,

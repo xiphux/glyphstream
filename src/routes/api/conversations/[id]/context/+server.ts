@@ -18,10 +18,8 @@ import { requireFound, requireUser } from '#lib/server/auth/guard.js';
 import { getConversationMeta } from '#lib/server/db/queries/conversations.js';
 import { walkActiveBranch } from '#lib/server/db/queries/messages.js';
 import { getMediaForUser } from '#lib/server/db/queries/media.js';
-import {
-	getUserPreferences,
-	PERSONA_PART_SEPARATOR,
-} from '#lib/server/db/queries/user-preferences.js';
+import { getUserPreferences } from '#lib/server/db/queries/user-preferences.js';
+import { PERSONA_PART_SEPARATOR } from '#lib/server/chat/persona-prompt.js';
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
 import { listAllModels } from '#lib/server/endpoints/list-models.js';
 import { parseModelId } from '#lib/server/endpoints/model-id.js';

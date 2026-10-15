@@ -11,10 +11,9 @@
 
 import { eq } from 'drizzle-orm';
 import type { CompareSelection } from '#lib/fanout.js';
-import type { ContextSegmentKey, SavedModelSet, UserPreferences } from '#lib/types/api.js';
+import type { SavedModelSet, UserPreferences } from '#lib/types/api.js';
 import { getDb } from '../client';
 import { users } from '../schema';
-import { composeMemorySection, type Memory, type MemoryIndexRow } from './memories';
 
 const DEFAULTS: UserPreferences = {
 	name: '',
@@ -281,108 +280,4 @@ export function setUserPreferences(
 			.run();
 		return next;
 	});
-}
-
-/**
- * Compose the three personalization fields plus the saved-memory index
- * into a single system prompt for the model. Each non-empty field
- * becomes its own labeled section; empty fields are omitted (no "Name:
- * (blank)" leaks). Returns null when all four (name, about, custom,
- * memories) are empty — the caller (conversation-create handler)
- * treats null as "no system prompt for this conversation."
- *
- * Memories ride in the same prompt because they ride the same gate:
- * the conversation's `personalization` category toggle seals every
- * avenue that ships personal context to the model. A user with no
- * prefs but saved memories still gets a prompt; flipping the toggle
- * off drops the whole thing.
- *
- * Returned as labeled parts rather than one pre-joined string so the context
- * breakdown can price each section separately (the memory index and the topic
- * overview are the two that grow without bound). `composePersonaSystemPrompt`
- * joins them for the wire; nothing else should depend on the split.
- *
- * The labels are intentionally plain English rather than YAML/JSON
- * keys: we're authoring instructions for the model to read, and
- * natural-language section headers prime it better than a structured
- * envelope that the model has to parse.
- *
- * When `recallMode` is set (the store is over budget), the memory section is
- * tiered: `memories` carries the hot rows inlined in full and `index` the cold
- * tail rendered as the compact `[id] topic` list (composeMemorySection handles
- * the rendering). The caller decides the mode and does the split —
- * `composePersonaPrompt` sets it when the store exceeds
- * `MEMORY_INLINE_BUDGET_CHARS` — because that check needs a size probe that lives
- * request-side.
- */
-/** Separator between persona sections on the wire. The breakdown prices each
- *  section's own text and ignores this, so a segment's `chars` is a hair under
- *  its true wire cost — immaterial at 2 chars a join. */
-export const PERSONA_PART_SEPARATOR = '\n\n';
-
-export interface PersonaPart {
-	key: Extract<ContextSegmentKey, `persona:${string}`>;
-	text: string;
-}
-
-export function composePersonaParts(
-	prefs: UserPreferences,
-	memories: Memory[] = [],
-	opts: {
-		recallMode?: boolean;
-		index?: MemoryIndexRow[];
-		conversationOverview?: string | null;
-	} = {},
-): PersonaPart[] {
-	const parts: PersonaPart[] = [];
-	const name = prefs.name.trim();
-	const about = prefs.aboutYou.trim();
-	const custom = prefs.customInstructions.trim();
-	if (name) {
-		parts.push({
-			key: 'persona:name',
-			text: `The user's name is ${name}. Refer to them by this name when natural.`,
-		});
-	}
-	if (about) {
-		parts.push({ key: 'persona:about', text: `About the user:\n${about}` });
-	}
-	if (custom) {
-		parts.push({ key: 'persona:instructions', text: `Additional instructions:\n${custom}` });
-	}
-	const memorySection = composeMemorySection(memories, {
-		recallMode: opts.recallMode,
-		index: opts.index,
-	});
-	if (memorySection) {
-		parts.push({ key: 'persona:memories', text: memorySection });
-	}
-	const overview = opts.conversationOverview?.trim();
-	if (overview) {
-		parts.push({
-			key: 'persona:overview',
-			text:
-				'Topics from earlier conversations with this user — a rough map of what has been ' +
-				'discussed, so you know what past threads exist. Call search_conversations to pull the ' +
-				'actual details of any of these; treat it as an index of what you could search, not as ' +
-				'facts you were told, and separate from the saved memories above.\n\n' +
-				overview,
-		});
-	}
-	return parts;
-}
-
-/** Joined rendering of `composePersonaParts` — the string that actually ships
- *  as the system prompt. Null when every section is empty. */
-export function composePersonaSystemPrompt(
-	prefs: UserPreferences,
-	memories: Memory[] = [],
-	opts: {
-		recallMode?: boolean;
-		index?: MemoryIndexRow[];
-		conversationOverview?: string | null;
-	} = {},
-): string | null {
-	const parts = composePersonaParts(prefs, memories, opts);
-	return parts.length === 0 ? null : parts.map((p) => p.text).join(PERSONA_PART_SEPARATOR);
 }

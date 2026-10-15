@@ -26,7 +26,7 @@ import type {
 import { upstreamBranch, isCompactionSummary } from '#lib/chat-compaction.js';
 import { REACTION_TOOL_NAME } from '#lib/chat-render.js';
 import type { OpenAIToolDefinition } from '../tools/types';
-import type { PersonaPart } from '../db/queries/user-preferences';
+import type { PersonaPart } from './persona-prompt';
 import type { ChatCompletionRequest } from '../endpoints/client';
 import {
 	applyWireTransforms,
