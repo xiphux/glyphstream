@@ -122,6 +122,47 @@ describe('opening', () => {
 	});
 });
 
+describe('swiping onto a prefetched slide', () => {
+	it('swaps it in synchronously, without fetching it again', async () => {
+		const fetchMock = stubFetch(['m1', 'm2']);
+		const { lb } = setup();
+		await lb.open('m1');
+		lb.prefetch('m2');
+		await settle();
+		const fetchesBefore = fetchMock.mock.calls.length;
+		void lb.open('m2');
+		// No await: the header has to change in the same frame as the swipe.
+		expect(lb.media?.id).toBe('m2');
+		expect(fetchMock.mock.calls.length).toBe(fetchesBefore);
+	});
+
+	it('drops a slower open still in flight when a cached slide wins', async () => {
+		let release!: (r: Response) => void;
+		stubFetch(['m1', 'm2', 'm3'], {
+			'GET /api/media/m3': () => new Promise((r) => (release = r)),
+		});
+		const { lb } = setup();
+		await lb.open('m1');
+		lb.prefetch('m2');
+		await settle();
+		const slow = lb.open('m3');
+		void lb.open('m2');
+		release(Response.json(item('m3')));
+		await slow;
+		expect(lb.media?.id).toBe('m2');
+	});
+
+	it('keeps a star toggled on a slide after swiping away and back', async () => {
+		stubFetch(['m1', 'm2']);
+		const { lb } = setup();
+		await lb.open('m1');
+		await lb.toggleFavorite('m1', true);
+		await lb.open('m2');
+		await lb.open('m1');
+		expect(lb.media?.favorite).toBe(true);
+	});
+});
+
 describe('favoriting', () => {
 	it('reverts the optimistic star when the server refuses', async () => {
 		stubFetch([], {

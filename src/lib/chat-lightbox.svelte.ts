@@ -12,7 +12,9 @@
  * MessagePart only carries `mediaId`; model + prompt + size live on the media
  * row. One fetch per tap (~100-200ms) populates the metadata. The fetch races
  * are guarded by the id-comparison pattern: a stale response from a previous
- * tap can't clobber the current state.
+ * tap can't clobber the current state. Rows fetched while the lightbox is open
+ * are kept (see MediaItemCache), and the lightbox prefetches the neighbours of
+ * the slide on screen, so a swipe usually swaps its details in without waiting.
  *
  * Lifted out of the chat page, which hosts it; the MediaLightbox component
  * stays purely presentational.
@@ -26,6 +28,7 @@ import {
 	gridMediaIds,
 	survivorInSlot,
 } from './fanout.js';
+import { MediaItemCache } from './media-item-cache.js';
 import { toast } from './toast.svelte.js';
 import type { FanoutController } from './fanout-controller.svelte.js';
 import type { ConversationMediaRef, MediaListItem } from './types/api.js';
@@ -65,6 +68,13 @@ export class ChatLightbox {
 	deletingId = $state<string | null>(null);
 	favoritingId = $state<string | null>(null);
 
+	/** Rows fetched this open session. Cleared on close and on reset. */
+	readonly #items = new MediaItemCache(async (id) => {
+		const res = await fetch(`/api/media/${id}`);
+		if (!res.ok) throw new Error(await errorMessageFromResponse(res));
+		return (await res.json()) as MediaListItem;
+	});
+
 	/**
 	 * The lightbox's Delete, offered only for an image the open media fan-out
 	 * grid is showing, and only where that grid's own trash button would allow
@@ -95,10 +105,17 @@ export class ChatLightbox {
 		this.siblings = [];
 		this.media = null;
 		this.openingFor = null;
+		this.#items.clear();
 	}
 
 	close(): void {
 		this.media = null;
+		this.#items.clear();
+	}
+
+	/** Warm a slide the user may swipe to; MediaLightbox's `onPrefetch`. */
+	prefetch(mediaId: string): void {
+		this.#items.prefetch(mediaId);
 	}
 
 	async #loadSiblings(): Promise<void> {
@@ -130,11 +147,18 @@ export class ChatLightbox {
 		// images are included. A swipe-driven navigate calls this with the
 		// lightbox already open, so it skips the refetch.
 		if (!this.media) void this.#loadSiblings();
+		// Already fetched (usually by a prefetch): swap it in synchronously, so the
+		// header changes in the same frame as the swipe that asked for it. Clearing
+		// `openingFor` also drops whatever slower open is still in flight.
+		const cached = this.#items.peek(mediaId);
+		if (cached) {
+			this.openingFor = null;
+			this.media = cached;
+			return;
+		}
 		this.openingFor = mediaId;
 		try {
-			const res = await fetch(`/api/media/${mediaId}`);
-			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
-			const m = (await res.json()) as MediaListItem;
+			const m = await this.#items.load(mediaId);
 			if (this.openingFor === mediaId) this.media = m;
 		} catch (e) {
 			if (this.openingFor === mediaId) {
@@ -160,6 +184,8 @@ export class ChatLightbox {
 		if (this.favoritingId) return;
 		this.favoritingId = mediaId;
 		if (this.media?.id === mediaId) this.media = { ...this.media, favorite: next };
+		// Or swiping away and back would bring the old star with it.
+		this.#items.patch(mediaId, { favorite: next });
 		try {
 			const res = await fetch(`/api/media/${mediaId}`, {
 				method: 'PATCH',
@@ -169,6 +195,7 @@ export class ChatLightbox {
 			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 		} catch (e) {
 			if (this.media?.id === mediaId) this.media = { ...this.media, favorite: !next };
+			this.#items.patch(mediaId, { favorite: !next });
 			toast.error(`Couldn't update favorite: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
 			this.favoritingId = null;
@@ -210,10 +237,10 @@ export class ChatLightbox {
 			const next = survivorInSlot(this.siblings, mediaId, removed);
 			const survivors = this.siblings.filter((m) => !removed.has(m.id));
 			let nextItem: MediaListItem | null = null;
+			for (const id of removed) this.#items.delete(id);
 			if (next) {
 				try {
-					const res = await fetch(`/api/media/${next.id}`);
-					if (res.ok) nextItem = (await res.json()) as MediaListItem;
+					nextItem = await this.#items.load(next.id);
 				} catch {
 					// Close instead. The discard itself went through.
 				}
@@ -225,7 +252,10 @@ export class ChatLightbox {
 			// round trips. Update the set either way, but only move `media` if it
 			// still shows what was deleted.
 			this.siblings = survivors;
-			if (this.media?.id === mediaId) this.media = nextItem;
+			if (this.media?.id === mediaId) {
+				this.media = nextItem;
+				if (!nextItem) this.#items.clear();
+			}
 		} finally {
 			this.deletingId = null;
 		}

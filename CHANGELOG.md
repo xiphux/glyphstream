@@ -9,6 +9,13 @@ arrived.
 
 ## Unreleased
 
+### Fixed
+
+- Swiping through the lightbox now switches the model, prompt and favorite star
+  partway through the swipe instead of after it lands, and the image no longer
+  resizes as prompts of different lengths come and go. Tapping the star or
+  delete just after a swipe could act on the image you'd swiped away from.
+
 ## v0.45.1
 
 ### Changed

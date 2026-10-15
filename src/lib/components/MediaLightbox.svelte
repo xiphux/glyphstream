@@ -87,6 +87,14 @@
 		 */
 		onNavigate?: (id: string) => void;
 		/**
+		 * Called with the neighbours of the slide on screen, so the caller can
+		 * fetch their rows before the user swipes to one. A swipe resolves at its
+		 * midpoint, and if the row is already in hand the header (model, star,
+		 * delete) changes along with the image instead of a round trip later.
+		 * Optional: without it a swipe still resolves, just not instantly.
+		 */
+		onPrefetch?: (id: string) => void;
+		/**
 		 * Things this image can be made the avatar of — custom-model presets, and
 		 * (from a conversation) that conversation itself. Empty / omitted hides
 		 * the action entirely.
@@ -154,6 +162,7 @@
 		inConversation = false,
 		siblings = undefined,
 		onNavigate = undefined,
+		onPrefetch = undefined,
 		avatarTargets = [],
 		onSetAvatar = undefined,
 		settingAvatar = false,
@@ -213,27 +222,59 @@
 		hasPositioned = true;
 	});
 
-	// Swipe handler: after the scroll settles, snap the open item to
-	// whichever slide the user landed on. Debounced because `scroll` fires
-	// continuously during an inertial swipe — we only want the resting
-	// slide, and (for the chat caller) one resolve fetch, not one per slide
-	// flown past.
+	// Swipe handler. A swipe resolves the slide it's heading for as soon as it
+	// crosses the midpoint, not once the scroll settles: until `media` moves, the
+	// header describes the slide the user is swiping away from — a lit star over
+	// an unstarred image, and a star or trash button that acts on the previous
+	// image if tapped. Settling took the snap animation, the debounce below and
+	// then (chat) a fetch; with the caller prefetching neighbours (`onPrefetch`)
+	// the midpoint swap is usually synchronous.
+	//
+	// It used to wait for the settle for two reasons that no longer hold. One
+	// resolve per landing rather than per slide crossed: `snap-always` stops a
+	// flick at the adjacent slide, so there is one crossing per swipe, and the
+	// crossings go through the same coalescer as arrow presses. And the swap
+	// reflowed the image mid-slide, because the prompt strip below the track
+	// changes height with the prompt; in carousel mode that strip now reserves
+	// its full height (see the prompt markup).
+	//
+	// The settle stays as the backstop and the final word on where the user
+	// landed — the midpoint is a guess the finger can still take back.
 	let scrollSettleTimer: ReturnType<typeof setTimeout> | undefined;
+	/**
+	 * The slide a smooth `scrollTo` from `navigate()` is heading for. The track
+	 * passes through every slide between, and resolving those would drag a key
+	 * burst's `pendingIndex` back toward where the animation currently is.
+	 * Cleared when the track arrives, and by the settle in case it never does.
+	 */
+	let scrollTarget: number | null = null;
+	/** The id most recently handed to `onNavigate`, so the settle can tell when a
+	 *  resolve it didn't end up wanting may still be in flight. */
+	let lastResolvedId: string | null = null;
 	function onTrackScroll() {
 		const el = trackEl;
 		if (!el || !siblings) return;
-		// Track the live position while scrolling, not just on settle — that's what
-		// keeps the slides being scrolled through mounted.
-		//
-		// Quantized to SLIDE_WINDOW steps rather than written per crossed slide.
-		// `slideMounted` is called inside the per-item `{#if}` of an each-block
-		// over every unit loaded this gallery session (thousands after a deep
-		// scroll), so in Svelte 5 every sibling's block effect subscribes to this
-		// one `$state`. Writing it per slide re-runs all of them per slide; at this
-		// granularity the mounted set only shifts when the position has moved far
-		// enough to actually change it.
 		if (el.clientWidth > 0) {
+			// Rounding flips at the halfway point between two slides. Writing
+			// `pendingIndex` re-runs every slide's `slideMounted` (see below), but
+			// once per swipe, like an arrow press, not once per scroll event.
 			const idx = Math.round(el.scrollLeft / el.clientWidth);
+			if (scrollTarget !== null) {
+				if (idx === scrollTarget) scrollTarget = null;
+			} else if (idx !== displayIndex && siblings[idx]) {
+				pendingIndex = idx;
+				resolveSlide(siblings[idx].id);
+			}
+			// Track the live position while scrolling, not just on settle — that's
+			// what keeps the slides being scrolled through mounted.
+			//
+			// Quantized to SLIDE_WINDOW steps rather than written per crossed slide.
+			// `slideMounted` is called inside the per-item `{#if}` of an each-block
+			// over every unit loaded this gallery session (thousands after a deep
+			// scroll), so in Svelte 5 every sibling's block effect subscribes to this
+			// one `$state`. Writing it per slide re-runs all of them per slide; at
+			// this granularity the mounted set only shifts when the position has
+			// moved far enough to actually change it.
 			const snapped = Math.min(
 				siblings.length - 1,
 				Math.max(0, Math.round(idx / SLIDE_WINDOW) * SLIDE_WINDOW),
@@ -247,13 +288,23 @@
 			// Couldn't read a position (a zero-width track makes `idx` NaN) — say
 			// nothing rather than cancelling work that may still be wanted.
 			if (!landed) return;
+			scrollTarget = null;
 			if (landed.id === media?.id) {
 				// Settled back on what's already shown — so anything still queued is
 				// stale, and letting it fire would drag `media` away from the slide the
 				// user is looking at. Reachable by arrowing forward (leaving a trailing
-				// resolve armed) and swiping back inside the same window.
+				// resolve armed) and swiping back inside the same window, and by
+				// dragging past a midpoint and back without letting go.
 				clearTimeout(navResolveTimer);
 				pendingIndex = null;
+				// A resolve that already went out may still be in flight: the midpoint
+				// asked for the next slide, the caller started fetching it, and the
+				// finger came back. Re-asking for this slide supersedes it — both
+				// callers drop a response for anything but their latest request.
+				if (lastResolvedId !== null && lastResolvedId !== landed.id) {
+					lastResolvedId = landed.id;
+					onNavigate?.(landed.id);
+				}
 				return;
 			}
 			// Through the coalescer, not straight to `onNavigate`. Calling directly
@@ -284,7 +335,10 @@
 		// metadata fetch (chat) to round-trip through `media` → currentIndex →
 		// the positioning effect. The effect then no-ops (already centered).
 		const el = trackEl;
-		if (el) el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' });
+		if (el) {
+			scrollTarget = next;
+			el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' });
+		}
 		resolveSlide(siblings[next].id);
 	}
 
@@ -317,6 +371,27 @@
 	 *  falling back to where `media` actually is. Keeps the counter and the arrow
 	 *  disabled-states from lagging a key burst by up to NAV_RESOLVE_WINDOW_MS. */
 	const displayIndex = $derived(pendingIndex ?? currentIndex);
+
+	/**
+	 * The slide on screen isn't the one `media` describes yet — the user has
+	 * swiped or arrowed on and the caller hasn't resolved it. Everything in the
+	 * header and below is still about the previous image, and every action there
+	 * acts on `media.id`, so they're disabled (and the star shows neither state)
+	 * rather than offering to favorite or delete an image the user has left.
+	 * Usually never rendered: with the row prefetched, `media` moves in the same
+	 * tick as `pendingIndex`.
+	 */
+	const stale = $derived(showCarousel && displayIndex !== currentIndex);
+
+	// Warm the rows either side of the slide on screen, so the next swipe either
+	// way resolves without a round trip.
+	$effect(() => {
+		if (!showCarousel || !onPrefetch || !siblings) return;
+		for (const i of [displayIndex - 1, displayIndex + 1]) {
+			const s = siblings[i];
+			if (s) onPrefetch(s.id);
+		}
+	});
 
 	/**
 	 * Which slide the track is actually showing, when that's ahead of
@@ -381,13 +456,15 @@
 		const now = Date.now();
 		if (now >= navResolveBlockedUntil) {
 			navResolveBlockedUntil = now + NAV_RESOLVE_WINDOW_MS;
+			lastResolvedId = id;
 			onNavigate?.(id);
 			return;
 		}
 		navResolveTimer = setTimeout(() => {
 			navResolveBlockedUntil = Date.now() + NAV_RESOLVE_WINDOW_MS;
 			const target = pendingIndex !== null ? siblings?.[pendingIndex]?.id : undefined;
-			onNavigate?.(target ?? id);
+			lastResolvedId = target ?? id;
+			onNavigate?.(lastResolvedId);
 		}, navResolveBlockedUntil - now);
 	}
 
@@ -403,6 +480,8 @@
 		navResolveBlockedUntil = 0;
 		scrolledIndex = null;
 		pendingIndex = null;
+		scrollTarget = null;
+		lastResolvedId = null;
 	});
 	// And on teardown, for callers that do unmount it.
 	$effect(() => () => {
@@ -668,6 +747,9 @@
 	<!-- Images only: a video has no still to stand in for a preset, and the
 	     avatar surfaces render an <img>. -->
 	{@const canSetAvatar = m.kind === 'image' && !!onSetAvatar && avatarTargets.length > 0}
+	<!-- Mid-swipe the star shows neither state: the old one would be a claim
+	     about an image the user has left. -->
+	{@const starred = m.favorite && !stale}
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
 	<div
 		role="dialog"
@@ -719,22 +801,22 @@
 					<button
 						type="button"
 						onclick={() => onToggleFavorite?.(m.id, !m.favorite)}
-						disabled={favoritingId !== null}
-						title={m.favorite ? 'Remove from favorites' : 'Add to favorites'}
-						aria-label={m.favorite ? 'Remove from favorites' : 'Add to favorites'}
-						aria-pressed={m.favorite}
-						class="flex h-8 w-8 items-center justify-center rounded-md border border-media-border bg-media-surface transition hover:bg-media-surface-hover disabled:opacity-50 {m.favorite
+						disabled={stale || favoritingId !== null}
+						title={starred ? 'Remove from favorites' : 'Add to favorites'}
+						aria-label={starred ? 'Remove from favorites' : 'Add to favorites'}
+						aria-pressed={starred}
+						class="flex h-8 w-8 items-center justify-center rounded-md border border-media-border bg-media-surface transition hover:bg-media-surface-hover disabled:opacity-50 {starred
 							? 'text-favorite'
 							: 'text-media-fg-secondary'}"
 					>
-						<Star size={14} strokeWidth={2.25} fill={m.favorite ? 'currentColor' : 'none'} />
+						<Star size={14} strokeWidth={2.25} fill={starred ? 'currentColor' : 'none'} />
 					</button>
 				{/if}
 				{#if !trashed}
 					<button
 						type="button"
 						onclick={() => shareOrDownload(m)}
-						disabled={savingId === m.id}
+						disabled={stale || savingId === m.id}
 						title={useShareSheet ? 'Share / Save' : 'Download'}
 						aria-label={useShareSheet ? 'Share or save' : 'Download'}
 						class="flex h-8 w-8 items-center justify-center rounded-md border border-media-border bg-media-surface text-media-fg-secondary transition hover:bg-media-surface-hover disabled:opacity-50"
@@ -750,7 +832,7 @@
 					<button
 						type="button"
 						onclick={() => onRestore?.(m.id)}
-						disabled={restoringId === m.id}
+						disabled={stale || restoringId === m.id}
 						title={restoringId === m.id ? 'Restoring…' : 'Restore'}
 						aria-label="Restore"
 						class="flex h-8 w-8 items-center justify-center rounded-md border border-media-border bg-media-surface text-media-fg-secondary transition hover:bg-media-surface-hover disabled:opacity-50"
@@ -762,7 +844,7 @@
 					<button
 						type="button"
 						onclick={() => onDelete?.(m.id)}
-						disabled={deletingId === m.id}
+						disabled={stale || deletingId === m.id}
 						title={deletingId === m.id ? 'Deleting…' : 'Delete'}
 						aria-label="Delete"
 						class="flex h-8 w-8 items-center justify-center rounded-md btn-danger transition disabled:opacity-50"
@@ -788,8 +870,8 @@
 				swipe on a trackpad, zero drag-tracking JS. Each slide is
 				full-width and snap-centered; off-screen slides keep their
 				<img loading="lazy"> so a long set doesn't fetch every
-				original up front. `onTrackScroll` (debounced) reports the
-				rested slide back to the caller, which swaps `media`. Videos
+				original up front. `onTrackScroll` reports the slide a swipe
+				is heading for back to the caller, which swaps `media`. Videos
 				render with controls but NOT autoplay here (unlike the
 				single-item view) — autoplaying the centered one as you swipe
 				past others is more jarring than useful.
@@ -917,22 +999,35 @@
 				{/if}
 			</div>
 		{/if}
-		{#if m.promptExcerpt}
-			<div class="mx-auto mt-3 max-w-3xl shrink-0 text-center">
-				<p class="text-xs text-media-fg-muted line-clamp-3">
-					{m.promptExcerpt}
+		{#if m.promptExcerpt || showCarousel}
+			<!--
+				In carousel mode the strip keeps the same height whatever the prompt:
+				three lines (the clamp, so never more) plus the toggle's line, even for
+				a short prompt or none. The track above is flex-1, so a strip that grew
+				and shrank with each prompt resized the image — and a swipe swaps this
+				at its midpoint, while the slide is still moving. The width is capped,
+				so a long prompt wraps to the same three lines at every screen size.
+				Only the user-opened original prompt still adds height.
+			-->
+			<div data-testid="lightbox-prompt" class="mx-auto mt-3 w-full max-w-3xl shrink-0 text-center">
+				<p class="text-xs text-media-fg-muted line-clamp-3 {showCarousel ? 'min-h-[3lh]' : ''}">
+					{m.promptExcerpt ?? ''}
 				</p>
-				{#if m.originalPrompt}
+				{#if m.originalPrompt || showCarousel}
 					<!-- The shown prompt is the enhanced one (what generated the image).
-					     Offer the user's original behind a toggle. -->
+					     Offer the user's original behind a toggle. Held in place, hidden,
+					     for a carousel slide without one. -->
 					<button
 						type="button"
-						class="mt-1 text-[11px] text-media-fg-subtle underline decoration-dotted underline-offset-2 hover:text-media-fg-secondary"
+						class="mt-1 text-[11px] text-media-fg-subtle underline decoration-dotted underline-offset-2 hover:text-media-fg-secondary {m.originalPrompt
+							? ''
+							: 'invisible'}"
+						disabled={stale || !m.originalPrompt}
 						onclick={() => (showOriginal = !showOriginal)}
 						>{showOriginal ? 'Hide original' : 'Enhanced — show original'}</button
 					>
 
-					{#if showOriginal}
+					{#if showOriginal && m.originalPrompt}
 						<p class="mt-1 text-xs text-media-fg-subtle italic line-clamp-4">
 							{m.originalPrompt}
 						</p>
@@ -940,7 +1035,7 @@
 				{/if}
 			</div>
 		{/if}
-		{#if canSetAvatar}
+		{#if canSetAvatar || (showCarousel && !!onSetAvatar && avatarTargets.length > 0)}
 			<!--
 				"Set as avatar" — the cheapest path to a preset portrait: generate
 				one however you like (including a fan-out of variants), then keep
@@ -948,14 +1043,22 @@
 				rather than in the top toolbar, which is reserved for
 				share/delete/close.
 			-->
-			<div class="mx-auto mt-3 flex shrink-0 flex-wrap justify-center gap-2">
+			<!-- A video can't be an avatar, but in a carousel its slide keeps the
+			     row's space (hidden and inert) so swiping between an image and a
+			     video doesn't resize the image. Same reason as the prompt strip. -->
+			<div
+				class="mx-auto mt-3 flex shrink-0 flex-wrap justify-center gap-2 {canSetAvatar
+					? ''
+					: 'invisible'}"
+				inert={!canSetAvatar}
+			>
 				{#if avatarTargets.length === 1}
 					<!-- One preset: a menu to choose between one option is a wasted
 					     click, so name it in the button instead. -->
 					{@const only = avatarTargets[0]}
 					<button
 						type="button"
-						disabled={settingAvatar || only.avatarMediaId === m.id}
+						disabled={stale || settingAvatar || only.avatarMediaId === m.id}
 						onclick={() => onSetAvatar?.({ kind: only.kind, id: only.id }, m.id)}
 						title={only.avatarMediaId === m.id
 							? `Already ${only.name}'s avatar`
@@ -970,7 +1073,7 @@
 				{:else}
 					<Popover.Root>
 						<Popover.Trigger
-							disabled={settingAvatar}
+							disabled={stale || settingAvatar}
 							title="Show this image beside a preset's replies"
 							class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover disabled:opacity-50"
 						>
@@ -1039,8 +1142,9 @@
 						<button
 							type="button"
 							onclick={() => regenerateWith(m, m.originalPrompt)}
+							disabled={stale}
 							title="Start a new conversation from your original prompt (it will be enhanced again)"
-							class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover"
+							class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover disabled:opacity-50"
 						>
 							<RotateCcw size={13} strokeWidth={2.25} />
 							Regenerate (original)
@@ -1048,8 +1152,9 @@
 						<button
 							type="button"
 							onclick={() => regenerateWith(m, enhancedPromptOf(m))}
+							disabled={stale}
 							title="Start a new conversation from the exact enhanced prompt that made this image"
-							class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover"
+							class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover disabled:opacity-50"
 						>
 							<RotateCcw size={13} strokeWidth={2.25} />
 							Regenerate (enhanced)
@@ -1058,8 +1163,9 @@
 						<button
 							type="button"
 							onclick={() => regenerateWith(m, enhancedPromptOf(m))}
+							disabled={stale}
 							title="Start a new conversation pre-filled with this prompt"
-							class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover"
+							class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover disabled:opacity-50"
 						>
 							<RotateCcw size={13} strokeWidth={2.25} />
 							{inConversation ? 'Regenerate in a new chat' : 'Regenerate with this prompt'}
@@ -1070,8 +1176,9 @@
 					<button
 						type="button"
 						onclick={() => useAsStartingImage(m)}
+						disabled={stale}
 						title="Start a new conversation with this image attached"
-						class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover"
+						class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover disabled:opacity-50"
 					>
 						<ImagePlus size={13} strokeWidth={2.25} />
 						{inConversation ? 'Edit in a new chat' : 'Use as starting image'}

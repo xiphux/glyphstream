@@ -903,6 +903,150 @@ describe('MediaLightbox — carousel navigation', () => {
 	});
 });
 
+/**
+ * A swipe resolves the slide it's heading for at the midpoint, not once the
+ * scroll settles. Waiting for the settle left the header describing the slide
+ * the user had swiped away from for the whole snap animation plus a fetch: a lit
+ * star over an unstarred image, and a star or trash button that acted on the
+ * previous image if tapped in that gap.
+ *
+ * happy-dom does no layout, so the track's width and scroll offset are pinned
+ * by hand and the scroll event fired directly.
+ */
+describe('MediaLightbox — swipe resolves at the midpoint', () => {
+	const siblings = [
+		{ id: 'm-1', kind: 'image' as const },
+		{ id: 'm-2', kind: 'image' as const },
+		{ id: 'm-3', kind: 'image' as const },
+	];
+	const WIDTH = 400;
+
+	function track(container: HTMLElement) {
+		const el = container.querySelector<HTMLDivElement>('.snap-x')!;
+		let left = 0;
+		Object.defineProperty(el, 'clientWidth', { configurable: true, get: () => WIDTH });
+		Object.defineProperty(el, 'scrollLeft', {
+			configurable: true,
+			get: () => left,
+			set: (v: number) => (left = v),
+		});
+		// Arrow navigation smooth-scrolls; the tests drive the scroll events.
+		el.scrollTo = vi.fn();
+		return {
+			el,
+			/** Scroll to `slides` slide-widths from the start and report it. */
+			at(slides: number) {
+				left = slides * WIDTH;
+				void fireEvent.scroll(el);
+			},
+		};
+	}
+
+	it('resolves the next slide as soon as the swipe passes halfway', () => {
+		const onNavigate = vi.fn();
+		const { container } = render(MediaLightbox, {
+			props: { media: makeImage({ id: 'm-1' }), onClose: vi.fn(), siblings, onNavigate },
+		});
+		const t = track(container);
+		t.at(0.4);
+		expect(onNavigate).not.toHaveBeenCalled();
+		t.at(0.6);
+		// No timers advanced: this is the midpoint, not the settle.
+		expect(onNavigate).toHaveBeenCalledWith('m-2');
+		expect(screen.getByText('2 / 3')).toBeInTheDocument();
+	});
+
+	it("disables the previous slide's actions until the new one resolves", () => {
+		const props = {
+			media: makeImage({ id: 'm-1', favorite: true }),
+			onClose: vi.fn(),
+			siblings,
+			onNavigate: vi.fn(),
+			onToggleFavorite: vi.fn(),
+			onDelete: vi.fn(),
+		};
+		const { container, rerender } = render(MediaLightbox, { props });
+		track(container).at(0.6);
+
+		// Still holding m-1's row: its lit star would be a claim about an image the
+		// user has left, and tapping it would star m-1.
+		const star = screen.getByRole('button', { name: 'Add to favorites' });
+		expect(star).toBeDisabled();
+		expect(star).toHaveAttribute('aria-pressed', 'false');
+		expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+
+		void rerender({ ...props, media: makeImage({ id: 'm-2', favorite: false }) });
+		expect(screen.getByRole('button', { name: 'Add to favorites' })).not.toBeDisabled();
+		expect(screen.getByRole('button', { name: 'Delete' })).not.toBeDisabled();
+	});
+
+	it('re-asks for the shown slide when a drag past halfway comes back', async () => {
+		const onNavigate = vi.fn();
+		const { container } = render(MediaLightbox, {
+			props: { media: makeImage({ id: 'm-1' }), onClose: vi.fn(), siblings, onNavigate },
+		});
+		const t = track(container);
+		t.at(0.6);
+		expect(onNavigate).toHaveBeenLastCalledWith('m-2');
+		t.at(0.2);
+		await settleNavResolve();
+		// The m-2 resolve already went out, and a caller may still be fetching it.
+		// Settling back on m-1 has to supersede it, or its response would move
+		// `media` to m-2 under a track resting on m-1.
+		expect(onNavigate).toHaveBeenLastCalledWith('m-1');
+	});
+
+	it("doesn't let an arrow burst's smooth scroll pull it back slide by slide", async () => {
+		const user = userEvent.setup();
+		const onNavigate = vi.fn();
+		const many = Array.from({ length: 6 }, (_, i) => ({ id: `w-${i}`, kind: 'image' as const }));
+		const { container } = render(MediaLightbox, {
+			props: { media: makeImage({ id: 'w-0' }), onClose: vi.fn(), siblings: many, onNavigate },
+		});
+		const t = track(container);
+		for (let i = 0; i < 3; i++) await user.keyboard('{ArrowRight}');
+		// The animation toward w-3 passes w-1 and w-2 on the way, emitting scroll
+		// events throughout (so the settle doesn't fire) and spending longer than
+		// the coalescing window there. Treated as a swipe, that would pull the
+		// burst's target back and resolve w-2 on the trailing edge.
+		for (const pos of [1, 1.5, 2, 2, 2, 2, 2, 2.3, 2.7, 3]) {
+			t.at(pos);
+			await new Promise((r) => setTimeout(r, 30));
+		}
+		await settleNavResolve();
+		expect(onNavigate).toHaveBeenLastCalledWith('w-3');
+		expect(onNavigate).not.toHaveBeenCalledWith('w-2');
+	});
+
+	it('asks the caller to prefetch the slides either side', () => {
+		const onPrefetch = vi.fn();
+		render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'm-2' }),
+				onClose: vi.fn(),
+				siblings,
+				onNavigate: vi.fn(),
+				onPrefetch,
+			},
+		});
+		expect(onPrefetch.mock.calls.map(([id]) => id as string).sort()).toEqual(['m-1', 'm-3']);
+	});
+
+	it('keeps the prompt strip in place for a slide with no prompt', () => {
+		render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'm-1', promptExcerpt: null, promptFull: null }),
+				onClose: vi.fn(),
+				siblings,
+				onNavigate: vi.fn(),
+			},
+		});
+		// Swapping at the midpoint means the slide is still moving when the strip
+		// changes; a strip that came and went would resize the image under it.
+		expect(screen.getByTestId('lightbox-prompt')).toBeInTheDocument();
+	});
+});
+
 describe('MediaLightbox — slide windowing', () => {
 	/**
 	 * `siblings` is every unit demand-loaded this gallery session, so after a deep

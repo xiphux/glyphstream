@@ -22,6 +22,7 @@
 	import { buildLayoutSections, monthTicksFromLayout } from '#lib/gallery-layout.js';
 	import { promptRunKey } from '#lib/gallery-stacks.js';
 	import { GalleryFeed } from '#lib/gallery-feed.svelte.js';
+	import { MediaItemCache } from '#lib/media-item-cache.js';
 	import { computeSectionWindows, type WindowConstants } from '#lib/gallery-window.js';
 	import type {
 		CustomModel,
@@ -378,7 +379,8 @@
 
 	// Open the lightbox for a media id. Drill/search rows are already full
 	// MediaListItems (instant); a top-level grid tile carries only a thin unit,
-	// so its leader is fetched.
+	// so its leader is fetched — through a cache the lightbox prefetches the
+	// neighbours into, so a swipe usually finds the row already here.
 	// Bumped by every open and close. A top-level tile (or a carousel swipe to
 	// one) fetches its row; if the user has since opened another item, swiped
 	// on, or closed the preview, that late response must not replace — or
@@ -387,21 +389,36 @@
 	function showLightbox(m: MediaListItem | null) {
 		lightboxRequest++;
 		lightbox = m;
+		if (!m) lightboxItems.clear();
+	}
+
+	/** Top-level rows fetched while the lightbox is open. Cleared on close. */
+	const lightboxItems = new MediaItemCache(async (id) => {
+		const res = await fetchWithTimeout(`/api/media/${id}`);
+		if (!res.ok) throw new Error(await errorMessageFromResponse(res));
+		return (await res.json()) as MediaListItem;
+	});
+
+	function localLightboxItem(id: string): MediaListItem | undefined {
+		return (
+			drillItems?.find((m) => m.id === id) ??
+			(searching ? searchItems.find((m) => m.id === id) : undefined)
+		);
+	}
+
+	function prefetchLightboxItem(id: string) {
+		if (!localLightboxItem(id)) lightboxItems.prefetch(id);
 	}
 
 	async function openLightboxById(id: string) {
-		const local =
-			drillItems?.find((m) => m.id === id) ??
-			(searching ? searchItems.find((m) => m.id === id) : undefined);
+		const local = localLightboxItem(id) ?? lightboxItems.peek(id);
 		if (local) {
 			showLightbox(local);
 			return;
 		}
 		const request = ++lightboxRequest;
 		try {
-			const res = await fetchWithTimeout(`/api/media/${id}`);
-			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
-			const item = (await res.json()) as MediaListItem;
+			const item = await lightboxItems.load(id);
 			if (request === lightboxRequest) lightbox = item;
 		} catch (e) {
 			if (request === lightboxRequest) {
@@ -519,7 +536,8 @@
 		try {
 			const res = await fetch(`/api/media/${id}`, { method: 'DELETE' });
 			if (!res.ok && res.status !== 404) throw new Error(await errorMessageFromResponse(res));
-			if (lightbox?.id === id) lightbox = null;
+			lightboxItems.delete(id);
+			if (lightbox?.id === id) showLightbox(null);
 			await refreshAfterMutation(new Set([id]));
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to delete';
@@ -559,6 +577,7 @@
 				drillItems = drillItems.map((m) => (m.id === id ? { ...m, favorite: value } : m));
 
 			searchItems = searchItems.map((m) => (m.id === id ? { ...m, favorite: value } : m));
+			lightboxItems.patch(id, { favorite: value });
 		};
 		favoritingId = id;
 		error = null;
@@ -1496,6 +1515,7 @@
 	{conversationsError}
 	siblings={lightboxSiblings}
 	onNavigate={openLightboxById}
+	onPrefetch={prefetchLightboxItem}
 	avatarTargets={data.customModels.map((c: CustomModel) => ({
 		kind: 'preset' as const,
 		id: c.id,
