@@ -26,7 +26,7 @@ import {
 	type MediaRelayScaffoldParams,
 	type MediaRelaySink,
 } from './media-relay';
-import { errorMessage, isAbortError } from './sse-transport';
+import { errorMessage, isAbortError, CANCELLED_MESSAGE } from './sse-transport';
 import type { StreamErrorEvent, StreamProgressEvent } from '#lib/types/api.js';
 import { createLogger } from '../log';
 
@@ -199,7 +199,7 @@ function buildImageRelay(params: ImageRelayParams): [MediaRelayScaffoldParams, M
 			// scaffold, which persists a durable error sibling first and emits the
 			// frame with that row's id (same as the video path).
 			if (isAbortError(e) || abortSignal?.aborted) {
-				write({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
+				write({ type: 'error', message: CANCELLED_MESSAGE } satisfies StreamErrorEvent);
 				return null;
 			}
 			const msg = errorMessage(e);

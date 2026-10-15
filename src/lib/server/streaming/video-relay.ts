@@ -25,7 +25,7 @@ import {
 	type VideoJob,
 	type VideoStatus,
 } from '../endpoints/client';
-import { errorMessage, isAbortError, type SseWriter } from './sse-transport';
+import { errorMessage, isAbortError, type SseWriter, CANCELLED_MESSAGE } from './sse-transport';
 import { parseModelId } from '../endpoints/model-id';
 import { persistGeneratedVideo } from '../media/persister';
 import { runPromptEnhancement } from './media-enhance';
@@ -196,7 +196,7 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 			// A Stop click mid-create aborts the upstream fetch — treat it as a
 			// cancellation (matching the in-loop abort path below), not an error.
 			if (isAbortError(e) || abortSignal?.aborted) {
-				write({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
+				write({ type: 'error', message: CANCELLED_MESSAGE } satisfies StreamErrorEvent);
 				return null;
 			}
 			const msg = errorMessage(e);
@@ -245,7 +245,7 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 				// not a Stop: cancelling here would DELETE a render that may be fine.
 				if (abortSignal?.aborted) {
 					await videoCancel(params.endpoint, upstreamJobId);
-					write({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
+					write({ type: 'error', message: CANCELLED_MESSAGE } satisfies StreamErrorEvent);
 					return null;
 				}
 				if (!isPermanentRequestError(e)) {
@@ -290,7 +290,7 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 			if (abortSignal?.aborted) {
 				log.debug(`cancellation observed for job ${job.id}`);
 				await videoCancel(params.endpoint, job.id);
-				write({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
+				write({ type: 'error', message: CANCELLED_MESSAGE } satisfies StreamErrorEvent);
 				return null;
 			}
 			if (Date.now() - startedAt > MAX_WAIT_MS) {
@@ -350,7 +350,7 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 			// A Stop click mid-fetch is a cancellation, not a failure — bail quietly
 			// (null) so it leaves no durable error sibling, matching videoCreate.
 			if (isAbortError(e) || abortSignal?.aborted) {
-				write({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
+				write({ type: 'error', message: CANCELLED_MESSAGE } satisfies StreamErrorEvent);
 				return null;
 			}
 			const message = `Could not fetch video content: ${errorMessage(e)}`;
@@ -377,7 +377,7 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 			// Same cancellation guard as the fetch step above — a Stop shouldn't
 			// leave a spurious "could not persist" error sibling behind.
 			if (isAbortError(e) || abortSignal?.aborted) {
-				write({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
+				write({ type: 'error', message: CANCELLED_MESSAGE } satisfies StreamErrorEvent);
 				return null;
 			}
 			const message = `Could not persist video: ${errorMessage(e)}`;

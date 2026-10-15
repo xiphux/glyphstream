@@ -38,7 +38,13 @@ import type { InFlightEntry } from './in-flight';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { notifyConversationComplete, type NotifyModality } from '../push/notify';
 import { raceTitle, startTitleTaskIfFirstExchange } from '../tasks/title-task-runner';
-import { errorMessage, isAbortError, sseWriter, type SseWriter } from './sse-transport';
+import {
+	errorMessage,
+	isAbortError,
+	sseWriter,
+	type SseWriter,
+	CANCELLED_MESSAGE,
+} from './sse-transport';
 import type {
 	ChatMessage,
 	MessagePart,
@@ -316,7 +322,7 @@ export async function runMediaRelay(
 				await params.prepare.run({ write: safeWrite, abortSignal: params.abortSignal });
 			} catch (e) {
 				if (isAbortError(e) || params.abortSignal?.aborted) {
-					safeWrite({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
+					safeWrite({ type: 'error', message: CANCELLED_MESSAGE } satisfies StreamErrorEvent);
 					safeClose();
 					return;
 				}
@@ -344,7 +350,8 @@ export async function runMediaRelay(
 			// cancellation. No slot held, so the finally's release no-ops.
 			safeWrite({
 				type: 'error',
-				message: isAbortError(e) || params.abortSignal?.aborted ? 'Cancelled' : errorMessage(e),
+				message:
+					isAbortError(e) || params.abortSignal?.aborted ? CANCELLED_MESSAGE : errorMessage(e),
 			} satisfies StreamErrorEvent);
 			safeClose();
 			return;
@@ -480,7 +487,7 @@ export async function runMediaRelay(
 			}
 			safeWrite({
 				type: 'error',
-				message: e instanceof GenerationDiscardedError ? 'Cancelled' : errorMessage(e),
+				message: e instanceof GenerationDiscardedError ? CANCELLED_MESSAGE : errorMessage(e),
 			} satisfies StreamErrorEvent);
 			safeClose();
 			return;

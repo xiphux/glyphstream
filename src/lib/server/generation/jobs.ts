@@ -78,7 +78,7 @@ import {
 	type MediaRelaySink,
 	type PreparedPrompt,
 } from '../streaming/media-relay';
-import { errorMessage, sseWriter } from '../streaming/sse-transport';
+import { errorMessage, sseWriter, CANCELLED_MESSAGE } from '../streaming/sse-transport';
 import type { StreamErrorEvent } from '#lib/types/api.js';
 import { createLogger } from '../log';
 
@@ -417,7 +417,7 @@ async function runJob(
 		if (!meta || !anchor) {
 			// Nothing will collect a bridge job this row was still rendering.
 			releaseUpstreamJob(row);
-			sink.write({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
+			sink.write({ type: 'error', message: CANCELLED_MESSAGE } satisfies StreamErrorEvent);
 			sink.close();
 			return;
 		}
