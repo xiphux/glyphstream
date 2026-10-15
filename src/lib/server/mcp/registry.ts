@@ -660,9 +660,7 @@ function scheduleIdleReap(key: string): void {
 	if (entry.idleTimerId) clearTimeout(entry.idleTimerId);
 	const ms = entry.cfg.idleTimeoutSeconds * 1000;
 	entry.idleTimerId = setTimeout(() => reapIfIdle(key), ms);
-	if (typeof entry.idleTimerId === 'object' && entry.idleTimerId && 'unref' in entry.idleTimerId) {
-		(entry.idleTimerId as { unref: () => void }).unref();
-	}
+	entry.idleTimerId.unref();
 }
 
 function reapIfIdle(key: string): void {

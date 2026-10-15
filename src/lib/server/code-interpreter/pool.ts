@@ -303,9 +303,7 @@ export async function runPython(params: RunPythonParams): Promise<WorkerRunResul
 						);
 					}, timeoutMs);
 					// Don't keep the event loop alive purely for an in-flight timeout.
-					if (typeof timeoutHandle === 'object' && timeoutHandle && 'unref' in timeoutHandle) {
-						(timeoutHandle as { unref: () => void }).unref();
-					}
+					timeoutHandle.unref();
 
 					entry.activeCall = {
 						callId,
@@ -724,9 +722,7 @@ function scheduleIdleReap(conversationId: string): void {
 	if (entry.idleTimerId) clearTimeout(entry.idleTimerId);
 	const ms = cfg.idleTimeoutSeconds * 1000;
 	entry.idleTimerId = setTimeout(() => reapIfIdle(conversationId), ms);
-	if (typeof entry.idleTimerId === 'object' && entry.idleTimerId && 'unref' in entry.idleTimerId) {
-		(entry.idleTimerId as { unref: () => void }).unref();
-	}
+	entry.idleTimerId.unref();
 }
 
 function reapIfIdle(conversationId: string): void {
