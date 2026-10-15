@@ -383,11 +383,18 @@
 	 */
 	const stale = $derived(showCarousel && displayIndex !== currentIndex);
 
-	// Warm the rows either side of the slide on screen, so the next swipe either
+	// Warm the rows either side of the resolved slide, so the next swipe either
 	// way resolves without a round trip.
+	//
+	// Keyed on `currentIndex`, not `displayIndex`. The latter moves on every arrow
+	// press, auto-repeat included, so holding a key prefetched one uncancelled
+	// `/api/media/:id` per slide flown past — the load `resolveSlide`'s coalescer
+	// exists to stop. `currentIndex` only moves when a resolve lands, so it shares
+	// that rate limit. A swipe loses nothing: on a cache hit the caller swaps
+	// `media` synchronously, so `currentIndex` moves in the same tick.
 	$effect(() => {
 		if (!showCarousel || !onPrefetch || !siblings) return;
-		for (const i of [displayIndex - 1, displayIndex + 1]) {
+		for (const i of [currentIndex - 1, currentIndex + 1]) {
 			const s = siblings[i];
 			if (s) onPrefetch(s.id);
 		}

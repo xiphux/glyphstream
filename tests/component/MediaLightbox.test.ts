@@ -1032,6 +1032,26 @@ describe('MediaLightbox — swipe resolves at the midpoint', () => {
 		expect(onPrefetch.mock.calls.map(([id]) => id as string).sort()).toEqual(['m-1', 'm-3']);
 	});
 
+	it("doesn't prefetch every slide a held arrow key flies past", async () => {
+		const user = userEvent.setup();
+		const onPrefetch = vi.fn();
+		const many = Array.from({ length: 10 }, (_, i) => ({ id: `w-${i}`, kind: 'image' as const }));
+		render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'w-0' }),
+				onClose: vi.fn(),
+				siblings: many,
+				onNavigate: vi.fn(),
+				onPrefetch,
+			},
+		});
+		// `media` is static, as if no resolve has landed yet: the presses move only
+		// where the user has navigated to. Prefetching follows resolves, which the
+		// coalescer rate-limits, not keypresses.
+		for (let i = 0; i < 6; i++) await user.keyboard('{ArrowRight}');
+		expect(onPrefetch.mock.calls.map(([id]) => id as string)).toEqual(['w-1']);
+	});
+
 	it('keeps the prompt strip in place for a slide with no prompt', () => {
 		render(MediaLightbox, {
 			props: {
