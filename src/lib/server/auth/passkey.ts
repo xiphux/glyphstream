@@ -39,6 +39,7 @@ import {
 } from '../db/queries/passkey';
 import { createLogger } from '../log';
 import { memoizeConfig } from '../util/config-cache';
+import { generateId } from '../util/id';
 
 /** Short-lived httpOnly cookies that carry the challenge between the
  *  "options" and "verify" halves of each ceremony. Mirrors the shape of
@@ -78,23 +79,59 @@ export async function generateRegistrationOptionsForUser(
 	// `userDisplayName` is the friendly label. Email is the closest
 	// thing the operator typed in; fall back to display name then id
 	// so the password manager always has *something* recognizable.
-	const userName = user.email ?? user.displayName ?? user.id;
-	const userDisplayName = user.displayName ?? user.email ?? 'Operator';
+	return await registrationOptions({
+		userId: user.id,
+		userName: user.email ?? user.displayName ?? user.id,
+		userDisplayName: user.displayName ?? user.email ?? 'Operator',
+		exclude: existing.map((c) => ({ id: c.id, transports: c.transports ?? undefined })),
+	});
+}
+
+/**
+ * Build registration options for someone who has no account yet: the first-run
+ * operator, or an invited user. Mints the user id the account will be created
+ * with, which the authenticator stores as the userHandle; nothing is written
+ * until the verify step sees a valid response, so an abandoned ceremony leaves
+ * no rows. The caller carries `userId` to that step in a signed cookie.
+ */
+export async function generateRegistrationOptionsForProspectiveUser(identity: {
+	displayName: string;
+	email: string | null;
+}): Promise<{ userId: string; options: PublicKeyCredentialCreationOptionsJSON }> {
+	const userId = generateId();
+	const options = await registrationOptions({
+		userId,
+		userName: identity.email || identity.displayName,
+		userDisplayName: identity.displayName,
+		exclude: [],
+	});
+	return { userId, options };
+}
+
+/**
+ * The registration policy every ceremony shares: no attestation, a
+ * discoverable credential where the authenticator can make one, and user
+ * verification required. `userID` is the UTF-8 bytes of the account id so the
+ * authenticator returns it verbatim as `userHandle` on every login.
+ */
+async function registrationOptions(args: {
+	userId: string;
+	userName: string;
+	userDisplayName: string;
+	exclude: Array<{ id: string; transports?: AuthenticatorTransport[] }>;
+}): Promise<PublicKeyCredentialCreationOptionsJSON> {
 	return await generateRegistrationOptions({
 		rpName: RP_NAME,
 		rpID: getRpId(),
-		userName,
-		userDisplayName,
-		userID: new TextEncoder().encode(user.id),
+		userName: args.userName,
+		userDisplayName: args.userDisplayName,
+		userID: new TextEncoder().encode(args.userId),
 		attestationType: 'none',
 		authenticatorSelection: {
 			residentKey: 'preferred',
 			userVerification: 'required',
 		},
-		excludeCredentials: existing.map((c) => ({
-			id: c.id,
-			transports: c.transports ?? undefined,
-		})),
+		excludeCredentials: args.exclude,
 		timeout: 60_000,
 	});
 }

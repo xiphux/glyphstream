@@ -36,6 +36,7 @@ import {
 	decodeUserHandle,
 	generateAuthenticationOptionsAny,
 	generateRegistrationOptionsForUser,
+	generateRegistrationOptionsForProspectiveUser,
 	getExpectedOrigin,
 	getRpId,
 	setRegistrationChallengeCookie,
@@ -84,6 +85,38 @@ describe('getRpId / getExpectedOrigin', () => {
 		expect(getRpId()).toBe(a);
 		resetConfigCachesForTests();
 		expect(getRpId()).toBe('something-else.example.com');
+	});
+});
+
+describe('generateRegistrationOptionsForProspectiveUser', () => {
+	it('mints the account id the authenticator will store, under the shared policy', async () => {
+		const { userId, options } = await generateRegistrationOptionsForProspectiveUser({
+			displayName: 'New Person',
+			email: null,
+		});
+		expect(options).toEqual({ challenge: 'reg-challenge' });
+		const opts = generateRegistrationOptionsMock.mock.calls[0][0];
+		expect(Buffer.from(opts.userID as Uint8Array).toString('utf8')).toBe(userId);
+		// No email typed: the display name stands in as the handle.
+		expect(opts.userName).toBe('New Person');
+		expect(opts.excludeCredentials).toEqual([]);
+		expect(opts.authenticatorSelection).toEqual({
+			residentKey: 'preferred',
+			userVerification: 'required',
+		});
+	});
+
+	it('uses the email as the handle when there is one, and a fresh id each time', async () => {
+		const a = await generateRegistrationOptionsForProspectiveUser({
+			displayName: 'New Person',
+			email: 'new@example.test',
+		});
+		const b = await generateRegistrationOptionsForProspectiveUser({
+			displayName: 'New Person',
+			email: 'new@example.test',
+		});
+		expect(generateRegistrationOptionsMock.mock.calls[0][0].userName).toBe('new@example.test');
+		expect(a.userId).not.toBe(b.userId);
 	});
 });
 

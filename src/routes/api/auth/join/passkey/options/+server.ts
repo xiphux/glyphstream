@@ -10,14 +10,15 @@
  * consumed) atomically only after the verify endpoint sees a valid response.
  */
 import { error } from '@sveltejs/kit';
-import { RP_NAME, getRpId, setRegistrationChallengeCookie } from '#lib/server/auth/passkey.js';
-import { generateRegistrationOptions } from '@simplewebauthn/server';
+import {
+	generateRegistrationOptionsForProspectiveUser,
+	setRegistrationChallengeCookie,
+} from '#lib/server/auth/passkey.js';
 import { JOIN_PASSKEY_CARRY_COOKIE } from '#lib/server/auth/join.js';
 import { sign, setCarryCookie } from '#lib/server/auth/signed-cookies.js';
 import { parseIdentityInput } from '#lib/server/auth/identity-input.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import { findValidInvite } from '#lib/server/db/queries/invites.js';
-import { generateId } from '#lib/server/util/id.js';
 import { passkeyLoginEnabled } from '#lib/server/env.js';
 import type { RequestHandler } from './$types';
 
@@ -38,21 +39,9 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 
 	const { displayName, email } = parseIdentityInput(body);
 
-	const userId = generateId();
-	const userName = email || displayName;
-	const options = await generateRegistrationOptions({
-		rpName: RP_NAME,
-		rpID: getRpId(),
-		userName,
-		userDisplayName: displayName,
-		userID: new TextEncoder().encode(userId),
-		attestationType: 'none',
-		authenticatorSelection: {
-			residentKey: 'preferred',
-			userVerification: 'required',
-		},
-		excludeCredentials: [],
-		timeout: 60_000,
+	const { userId, options } = await generateRegistrationOptionsForProspectiveUser({
+		displayName,
+		email,
 	});
 
 	setRegistrationChallengeCookie(cookies, options.challenge);

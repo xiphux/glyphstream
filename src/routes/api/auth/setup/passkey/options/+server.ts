@@ -11,13 +11,14 @@
  * response — abandoning the ceremony leaves no orphans.
  */
 import { error } from '@sveltejs/kit';
-import { RP_NAME, getRpId, setRegistrationChallengeCookie } from '#lib/server/auth/passkey.js';
-import { generateRegistrationOptions } from '@simplewebauthn/server';
+import {
+	generateRegistrationOptionsForProspectiveUser,
+	setRegistrationChallengeCookie,
+} from '#lib/server/auth/passkey.js';
 import { SETUP_PASSKEY_CARRY_COOKIE, setupGate } from '#lib/server/auth/setup.js';
 import { sign, setCarryCookie } from '#lib/server/auth/signed-cookies.js';
 import { parseIdentityInput } from '#lib/server/auth/identity-input.js';
 import { parseJsonBody } from '#lib/server/http.js';
-import { generateId } from '#lib/server/util/id.js';
 import { passkeyLoginEnabled } from '#lib/server/env.js';
 import type { RequestHandler } from './$types';
 
@@ -32,21 +33,9 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 		await parseJsonBody<{ displayName?: unknown; email?: unknown }>(request),
 	);
 
-	const userId = generateId();
-	const userName = email || displayName;
-	const options = await generateRegistrationOptions({
-		rpName: RP_NAME,
-		rpID: getRpId(),
-		userName,
-		userDisplayName: displayName,
-		userID: new TextEncoder().encode(userId),
-		attestationType: 'none',
-		authenticatorSelection: {
-			residentKey: 'preferred',
-			userVerification: 'required',
-		},
-		excludeCredentials: [],
-		timeout: 60_000,
+	const { userId, options } = await generateRegistrationOptionsForProspectiveUser({
+		displayName,
+		email,
 	});
 
 	setRegistrationChallengeCookie(cookies, options.challenge);
