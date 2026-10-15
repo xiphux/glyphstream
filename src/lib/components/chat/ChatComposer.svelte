@@ -21,6 +21,14 @@
 	import { isSnippetKind } from '#lib/types/api.js';
 	import { imageAttachment } from '#lib/model-capabilities.js';
 	import { composerSendBlocker, sendBlockerTitle } from '#lib/composer.js';
+	import {
+		canSplitAttachments,
+		composerPlaceholder,
+		resolveModels,
+		selectedModelIds,
+		selectionNeedsImage,
+		skillCommandsFor,
+	} from '#lib/composer-selection.js';
 	import type { ImageAttachment } from '#lib/model-capabilities.js';
 	import type { AttachmentStore } from '#lib/attachments.svelte.js';
 	import {
@@ -171,31 +179,39 @@
 	// image-required model (I2I upscaler, image-to-video) can't act on a text
 	// prompt, so "Describe an image to generate…" would be misleading. Once an
 	// image is attached the ask flips to describing the edit.
+	const findModel = (id: string) => models.find((x) => x.id === id);
+	// The send's target models, shared with the new-chat page (composer-selection).
+	// Built from the RESOLVED cart (fanoutModels), not the raw selections: a cart
+	// of only-unresolvable ids expands to [] and the send path falls back to
+	// [{ modelId }], so mirroring the resolver here keeps the composer, the send
+	// path, and resolveActiveModelKind provably identical on that edge.
+	const selectedModels = $derived(
+		resolveModels(
+			selectedModelIds(
+				compareMode,
+				fanoutModels.map((m) => m.modelId),
+				modelId,
+			),
+			findModel,
+		),
+	);
 	const activeAttachment = $derived.by<ImageAttachment>(() => {
-		const m = models.find((x) => x.id === modelId);
+		const m = findModel(modelId);
 		return m ? imageAttachment(m) : 'unknown';
 	});
-	const placeholder = $derived.by(() => {
-		const hasImage = attachments.readyImageCount > 0;
-		if (activeKind === 'image') {
-			if (activeAttachment === 'required')
-				return hasImage ? 'Describe the edit…' : 'Attach an image to edit…';
-			return 'Describe an image to generate…';
-		}
-		if (activeKind === 'video') {
-			if (activeAttachment === 'required')
-				return hasImage ? 'Describe the video…' : 'Attach an image to animate…';
-			return 'Describe a video to generate…';
-		}
-		return 'Write a message…';
-	});
+	const placeholder = $derived(
+		composerPlaceholder(
+			activeKind,
+			activeAttachment,
+			attachments.readyImageCount > 0,
+			'Write a message…',
+		),
+	);
 
 	// `/skill-name` autocomplete is offered only on chat models with the `skills`
 	// category enabled for this conversation. Undefined → ComposerCore shows no
 	// menu. The server re-validates regardless (model tool support, enabled set).
-	const skillCommands = $derived(
-		activeKind === 'chat' && !disabledFeatures.includes('skills') ? enabledSkills : undefined,
-	);
+	const skillCommands = $derived(skillCommandsFor(activeKind, disabledFeatures, enabledSkills));
 
 	// Snippet filtering keys off the same resolved kind, narrowed to the kinds a
 	// snippet can be tagged with — `embedding` isn't one, and reads as "don't
@@ -215,19 +231,7 @@
 	// committing a prompt rather than after an upstream failure. Absent
 	// capabilities data reads as "unknown" (never `required`), so passthrough
 	// models are unaffected. Compare mode gates on any required model in the cart.
-	const needsImage = $derived.by(() => {
-		if (attachments.readyImageCount > 0) return false;
-		// Gate on the RESOLVED cart (fanoutModels), not the raw selections — a cart
-		// of only-unresolvable ids expands to [] and the send path falls back to
-		// [{ modelId }], so mirroring the resolver here keeps the composer, the send
-		// path, and resolveActiveModelKind provably identical on that edge.
-		const ids =
-			compareMode && fanoutModels.length > 0 ? fanoutModels.map((m) => m.modelId) : [modelId];
-		return ids.some((id) => {
-			const m = models.find((x) => x.id === id);
-			return m ? imageAttachment(m) === 'required' : false;
-		});
-	});
+	const needsImage = $derived(selectionNeedsImage(selectedModels, attachments.readyImageCount));
 	const sendBlocker = $derived(
 		composerSendBlocker({
 			hasModel: hasValidModel,
@@ -249,9 +253,7 @@
 	// Split-attachments is offered only for image/video models (which consume an
 	// input image) with 2+ image attachments to fan across. Effective model
 	// count feeds the cross-product total shown on the toggle.
-	const canSplit = $derived(
-		(activeKind === 'image' || activeKind === 'video') && attachments.readyImageCount >= 2,
-	);
+	const canSplit = $derived(canSplitAttachments(activeKind, attachments.readyImageCount));
 	const splitModelCount = $derived(fanoutActive ? compareTotal : 1);
 	// Drop the flag the moment splitting stops being applicable, so a stale
 	// toggle can't fan out a send it no longer fits.
@@ -262,15 +264,6 @@
 	// The models this send will actually dispatch to — the compare cart when one
 	// is active, else the single picked model. Mirrors how `activeKind` resolves,
 	// so the ratio menu can't disagree with the kind the rest of the UI shows.
-	const selectedModels = $derived.by(() => {
-		const ids =
-			compareMode && fanoutModels.length > 0
-				? [...new Set(fanoutModels.map((m) => m.modelId))]
-				: [modelId];
-		return ids
-			.map((id) => models.find((m) => m.id === id))
-			.filter((m): m is ModelEntry => m !== undefined);
-	});
 	// The union across them: a model advertising nothing constrains nothing (it
 	// ignores whatever is sent), so intersecting would make partial support more
 	// restrictive than no support. See offeredRatios.

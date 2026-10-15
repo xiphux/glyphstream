@@ -16,6 +16,14 @@
 	import { baseIdOf } from '#lib/model-default.js';
 	import { imageAttachment } from '#lib/model-capabilities.js';
 	import { composerSendBlocker, sendBlockerTitle } from '#lib/composer.js';
+	import {
+		canSplitAttachments,
+		composerPlaceholder as composerPlaceholderFor,
+		resolveModels,
+		selectedModelIds,
+		selectionNeedsImage,
+		skillCommandsFor,
+	} from '#lib/composer-selection.js';
 	import type { ImageAttachment } from '#lib/model-capabilities.js';
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '#lib/gallery-launch.js';
 	import {
@@ -29,7 +37,7 @@
 		type CompareSelection,
 	} from '#lib/fanout.js';
 	import { isSnippetKind } from '#lib/types/api.js';
-	import type { CreateConversationRequest, FeatureCategory, ModelEntry } from '#lib/types/api.js';
+	import type { CreateConversationRequest, FeatureCategory } from '#lib/types/api.js';
 	import {
 		composeGreeting,
 		greetingContextKey,
@@ -297,7 +305,7 @@
 	// `skills` category enabled; the chat page's first send forwards the
 	// activation. Undefined → ComposerCore shows no menu.
 	const skillCommands = $derived(
-		activeKind === 'chat' && !disabledFeatures.includes('skills') ? data.enabledSkills : undefined,
+		skillCommandsFor(activeKind, disabledFeatures, data.enabledSkills),
 	);
 	// Snippet filtering reads the same resolved kind, narrowed to the kinds a
 	// snippet can carry — `embedding` isn't one, and reads as "don't filter".
@@ -309,34 +317,20 @@
 	const activeAttachment = $derived<ImageAttachment>(
 		resolvedBase ? imageAttachment(resolvedBase) : 'unknown',
 	);
-	const composerPlaceholder = $derived.by(() => {
-		const hasImage = attachments.readyImageCount > 0;
-		if (activeKind === 'image') {
-			if (activeAttachment === 'required')
-				return hasImage ? 'Describe the edit…' : 'Attach an image to edit…';
-			return 'Describe an image to generate…';
-		}
-		if (activeKind === 'video') {
-			if (activeAttachment === 'required')
-				return hasImage ? 'Describe the video…' : 'Attach an image to animate…';
-			return 'Describe a video to generate…';
-		}
-		return 'How can I help you today?';
-	});
+	const composerPlaceholder = $derived.by(() =>
+		composerPlaceholderFor(
+			activeKind,
+			activeAttachment,
+			attachments.readyImageCount > 0,
+			'How can I help you today?',
+		),
+	);
 	// Block starting a chat on an image-required model with no image attached.
-	// Compare mode gates on any required model in the cart. Mirrors the chat
-	// page's ChatComposer.
-	const needsImage = $derived.by(() => {
-		if (attachments.readyImageCount > 0) return false;
-		const ids =
-			compareMode && fanoutFirstModels.length >= 1
-				? fanoutFirstModels.map((m) => m.modelId)
-				: [modelId];
-		return ids.some((id) => {
-			const m = id.startsWith('custom::') ? resolvedBase : catalogue.entry(id);
-			return m ? imageAttachment(m) === 'required' : false;
-		});
-	});
+	// Compare mode gates on any required model in the cart. The same rule as the
+	// chat page's ChatComposer (composer-selection.ts).
+	const needsImage = $derived.by(() =>
+		selectionNeedsImage(selectedModels, attachments.readyImageCount),
+	);
 
 	// Restore a half-typed prompt left over from a previous visit (e.g. an iOS
 	// PWA that was frozen in the background and reloaded). The new-chat box uses
@@ -364,17 +358,17 @@
 
 	// The models this send will dispatch to — the compare cart when one is
 	// active, else the single picked model (resolving a custom preset to its
-	// base, which is what carries the upstream metadata). Mirrors `needsImage`.
-	const selectedModels = $derived.by(() => {
-		const ids =
-			compareMode && fanoutFirstModels.length >= 1
-				? [...new Set(fanoutFirstModels.map((m) => m.modelId))]
-				: [modelId];
-
-		return ids
-			.map((id) => (id.startsWith('custom::') ? resolvedBase : catalogue.entry(id)))
-			.filter((m): m is ModelEntry => m !== undefined);
-	});
+	// base, which is what carries the upstream metadata). `needsImage` reads it.
+	const selectedModels = $derived(
+		resolveModels(
+			selectedModelIds(
+				compareMode,
+				fanoutFirstModels.map((m) => m.modelId),
+				modelId,
+			),
+			(id) => (id.startsWith('custom::') ? resolvedBase : catalogue.entry(id)),
+		),
+	);
 	// Union, not intersection — see offeredRatios.
 	const ratioOptions = $derived(offeredRatios(selectedModels));
 	// Labels the picker's "Default" entry, so only report one when the selection
@@ -409,10 +403,9 @@
 		ratioRef?.flushDetection();
 		void startChat();
 	}
-	// Split-attachments availability + cross-product count (mirrors ChatComposer).
-	const canSplit = $derived(
-		(activeKind === 'image' || activeKind === 'video') && attachments.readyImageCount >= 2,
-	);
+	// Split-attachments availability + cross-product count (shared rule, see
+	// composer-selection.ts).
+	const canSplit = $derived(canSplitAttachments(activeKind, attachments.readyImageCount));
 	const splitModelCount = $derived(
 		compareMode && fanoutFirstModels.length >= 2 ? fanoutFirstModels.length : 1,
 	);
