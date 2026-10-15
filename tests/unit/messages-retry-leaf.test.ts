@@ -54,7 +54,7 @@ vi.mock('#lib/server/chat/tool-context.js', () => ({
 		needsApproval: () => false,
 		unavailableMcpServers: [],
 	}),
-	augmentRequestForCanvas: async (body: unknown) => body,
+	augmentRequestForCanvas: (body: unknown) => body,
 }));
 vi.mock('#lib/server/chat/persona-context.js', () => ({ composePersonaPrompt: () => null }));
 vi.mock('#lib/server/streaming/relay.js', () => ({

@@ -23,13 +23,11 @@ import { walkActiveBranch, updateMessageParts } from '#lib/server/db/queries/mes
 import { linkMessageMedia } from '#lib/server/db/queries/media.js';
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
 import { listAllModels } from '#lib/server/endpoints/list-models.js';
-import { serializeBranchForUpstream } from '#lib/server/endpoints/serialize-upstream.js';
 import { parseModelId } from '#lib/server/endpoints/model-id.js';
-import { resolveActivatedToolDefs } from '#lib/server/tools/index.js';
 import { getMaxToolLoopIterations } from '#lib/server/endpoints/config.js';
 import { awaitMcpReady } from '#lib/server/mcp/bootstrap.js';
-import { dedupeToolDefs } from '#lib/server/chat/tool-search-context.js';
-import { augmentRequestForCanvas, buildChatToolContext } from '#lib/server/chat/tool-context.js';
+import { buildChatToolContext } from '#lib/server/chat/tool-context.js';
+import { buildUpstreamRequest, cachedMediaResolver } from '#lib/server/chat/upstream-request.js';
 import { resolveDisabledFeatures } from '#lib/server/chat/private-seal.js';
 import { getUserPreferences, setUserPreferences } from '#lib/server/db/queries/user-preferences.js';
 import { composePersonaPrompt } from '#lib/server/chat/persona-context.js';
@@ -206,62 +204,29 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		trustedMcpTools: prefs?.trustedMcpTools ?? [],
 		timeZone: prefs?.timezone ?? null,
 	});
-	const effectiveSystemPrompt = toolCtx.systemPrompt;
-	const toolDefs = toolCtx.toolDefs;
 	const needsApproval = toolCtx.needsApproval;
 
-	const buildRequestBody = async ({
+	// The same request builder as the send path (chat/upstream-request.ts), so a
+	// resumed turn sends what the send path would have: same system prompt, same
+	// tools[] (with this turn's searched-up tools promoted), same parameters and
+	// canvas tail. Re-walks the branch each call to pick up new tool results.
+	const resolveMediaDataUrl = cachedMediaResolver((mediaId) => mediaIdToDataUrl(mediaId, userId));
+	const buildRequestBody = ({
 		activatedToolNames = [],
-	}: { activatedToolNames?: string[] } = {}): Promise<ChatCompletionRequest> => {
-		const nextBranch = walkActiveBranch(params.id, { columns: 'serialization' });
-		const nextMessages = await serializeBranchForUpstream(
-			nextBranch,
-			(mediaId) => mediaIdToDataUrl(mediaId, userId),
-			effectiveSystemPrompt,
-		);
-		const requestBody: ChatCompletionRequest = {
-			model: parsed.upstreamId,
-			messages: nextMessages,
-			stream: true,
-			stream_options: { include_usage: true },
-		};
-		// Within-turn: promote tools searched up during this resumed turn. Dedupe
-		// unconditionally, like the send route does at assignment: the base list
-		// itself can repeat a name (the activation seed colliding with a tool
-		// that is no longer deferred), and the resumed request must carry the
-		// same tools[] the send path would.
-		const effectiveDefs = dedupeToolDefs(
-			activatedToolNames.length > 0
-				? [
-						...toolDefs,
-						...resolveActivatedToolDefs(activatedToolNames, {
-							excludeCategories: disabledFeatures,
-						}),
-					]
-				: toolDefs,
-		);
-		if (effectiveDefs.length > 0) {
-			requestBody.tools = effectiveDefs;
-			requestBody.tool_choice = 'auto';
-		}
-		if (meta.parameters?.temperature !== undefined) {
-			requestBody.temperature = meta.parameters.temperature;
-		}
-		if (meta.parameters?.top_p !== undefined) {
-			requestBody.top_p = meta.parameters.top_p;
-		}
-		if (meta.parameters?.max_tokens !== undefined) {
-			requestBody.max_tokens = meta.parameters.max_tokens;
-		}
-		// Same canvas fold as the send path: arm update_canvas + append the
-		// current document as a tail block, re-read each iteration.
-		return augmentRequestForCanvas(requestBody, {
+	}: { activatedToolNames?: string[] } = {}): Promise<ChatCompletionRequest> =>
+		buildUpstreamRequest({
 			conversationId: params.id,
 			userId,
+			upstreamModelId: parsed.upstreamId,
+			branch: walkActiveBranch(params.id, { columns: 'serialization' }),
+			systemPrompt: toolCtx.systemPrompt,
+			baseToolDefs: toolCtx.toolDefs,
+			activatedToolNames,
+			parameters: meta.parameters,
 			disabledFeatures,
 			supportsTools,
+			resolveMediaDataUrl,
 		});
-	};
 
 	const initialRequestBody = await buildRequestBody();
 

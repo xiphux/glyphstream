@@ -20,18 +20,14 @@ import type { ChatCompletionRequest } from '#lib/server/endpoints/client.js';
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
 import { generateId } from '#lib/server/util/id.js';
 import { listAllModels } from '#lib/server/endpoints/list-models.js';
-import {
-	isModelVisiblePart,
-	serializeBranchForUpstream,
-} from '#lib/server/endpoints/serialize-upstream.js';
+import { isModelVisiblePart } from '#lib/server/endpoints/serialize-upstream.js';
 import { upstreamBranch } from '#lib/chat-compaction.js';
 import { parseModelId } from '#lib/server/endpoints/model-id.js';
 import { resolveBranchIndex, resolveModelOverride } from '#lib/server/messages/fanout-dispatch.js';
 import { notifyFanoutCompleteIfLast } from '#lib/server/messages/fanout-notify.js';
-import { resolveActivatedToolDefs } from '#lib/server/tools/index.js';
 import { getMaxToolLoopIterations } from '#lib/server/endpoints/config.js';
-import { dedupeToolDefs } from '#lib/server/chat/tool-search-context.js';
-import { augmentRequestForCanvas, buildChatToolContext } from '#lib/server/chat/tool-context.js';
+import { buildChatToolContext } from '#lib/server/chat/tool-context.js';
+import { buildUpstreamRequest, cachedMediaResolver } from '#lib/server/chat/upstream-request.js';
 import { resolveDisabledFeatures } from '#lib/server/chat/private-seal.js';
 import { getUserPreferences } from '#lib/server/db/queries/user-preferences.js';
 import { composePersonaPrompt } from '#lib/server/chat/persona-context.js';
@@ -531,22 +527,15 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			trustedMcpTools: prefs?.trustedMcpTools ?? [],
 			timeZone: prefs?.timezone ?? null,
 		});
-		const effectiveSystemPrompt = toolCtx.systemPrompt;
 
 		// Per-turn data-URL cache. Image bytes are immutable for the life of the
 		// conversation, so resolve each media id at most once per turn — instead of
 		// re-reading the file off disk and re-base64-encoding it on every tool-loop
 		// iteration (up to maxToolLoopIterations rebuilds). Shared across the initial
 		// serialize and every rebuildRequestBody call below.
-		const dataUrlCache = new Map<string, Promise<string>>();
-		const resolveMediaDataUrl = (mediaId: string): Promise<string> => {
-			let p = dataUrlCache.get(mediaId);
-			if (!p) {
-				p = mediaIdToDataUrl(mediaId, locals.user.id);
-				dataUrlCache.set(mediaId, p);
-			}
-			return p;
-		};
+		const resolveMediaDataUrl = cachedMediaResolver((mediaId) =>
+			mediaIdToDataUrl(mediaId, locals.user.id),
+		);
 
 		// Warm the cache concurrently: kick off every image read up front so the
 		// (order-preserving, sequential) serialize below awaits reads already in
@@ -569,99 +558,36 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			}
 		}
 
-		const upstreamMessages = await serializeBranchForUpstream(
-			branch,
-			resolveMediaDataUrl,
-			effectiveSystemPrompt,
-		);
-
-		let requestBody: ChatCompletionRequest = {
-			model: parsed.upstreamId,
-			messages: upstreamMessages,
-		};
-
-		// The base tool list (built-ins ∪ skills ∪ per-user MCP ∪ search_tools ∪ the
-		// cross-turn activation seed) comes from the shared assembly above. Dedupe at
-		// assignment guards the rare activation-seed/base collision; within-turn
-		// activations are appended per-iteration by the rebuildRequestBody closure.
-		const toolDefs = toolCtx.toolDefs;
-		if (toolDefs.length > 0) {
-			requestBody.tools = dedupeToolDefs(toolDefs);
-			requestBody.tool_choice = 'auto';
-		}
-		// Materialized custom-model params, if any. Forward only the fields the
-		// chat-completions API understands; image/video paths ignore these.
-		if (meta.parameters) {
-			if (meta.parameters.temperature !== undefined) {
-				requestBody.temperature = meta.parameters.temperature;
-			}
-			if (meta.parameters.top_p !== undefined) {
-				requestBody.top_p = meta.parameters.top_p;
-			}
-			if (meta.parameters.max_tokens !== undefined) {
-				requestBody.max_tokens = meta.parameters.max_tokens;
-			}
-		}
-
-		// Fold the open canvas (if any) into the request: arm update_canvas and
-		// append the document's current content as a single tail block. Shared
-		// with the tool-approval handler + reapplied per iteration below so the
-		// model always sees the latest doc without it ever entering the cached
-		// prefix.
-		requestBody = augmentRequestForCanvas(requestBody, {
-			conversationId: params.id,
-			userId: locals.user.id,
-			disabledFeatures,
-			supportsTools,
-		});
-
-		// Chat always streams, like the image and video branches above. A JSON
-		// path for callers that left off `?stream=1` used to follow: ~90 lines,
-		// its own slot handling, no normalizer (so `provider_quirk` never
-		// applied), no test, and no caller, since the client always streams.
-		// Streaming responses omit `usage` unless the caller asks for it.
-		// We always want it — it's how the UI surfaces conversation size.
-		requestBody.stream_options = { include_usage: true };
-
-		// Closure the relay uses between tool-loop iterations to derive
-		// the next upstream body. The conversation's active leaf has
-		// advanced to the latest tool result, so re-walking the branch
-		// picks up the assistant's tool_calls + the tool messages
-		// without us having to track that state in the relay.
-		const rebuildRequestBody = async ({
+		// The request itself, built by the same function the approval resume uses,
+		// so the two can't drift (see chat/upstream-request.ts). The closure below
+		// rebuilds it between tool-loop iterations: the conversation's active leaf
+		// has advanced to the latest tool result, so re-walking the branch picks up
+		// the assistant's tool_calls and the tool messages, and tools the model
+		// searched up this turn are promoted into tools[] for the next call.
+		const requestFor = (
+			branchNow: typeof branch,
+			activatedToolNames: string[] = [],
+		): Promise<ChatCompletionRequest> =>
+			buildUpstreamRequest({
+				conversationId: params.id,
+				userId: locals.user.id,
+				upstreamModelId: parsed.upstreamId,
+				branch: branchNow,
+				systemPrompt: toolCtx.systemPrompt,
+				baseToolDefs: toolCtx.toolDefs,
+				activatedToolNames,
+				parameters: meta.parameters,
+				disabledFeatures,
+				supportsTools,
+				resolveMediaDataUrl,
+			});
+		const requestBody = await requestFor(branch);
+		const rebuildRequestBody = ({
 			activatedToolNames,
 		}: {
 			activatedToolNames: string[];
-		}): Promise<ChatCompletionRequest> => {
-			const nextBranch = walkActiveBranch(params.id, { columns: 'serialization' });
-			const nextMessages = await serializeBranchForUpstream(
-				nextBranch,
-				resolveMediaDataUrl,
-				effectiveSystemPrompt,
-			);
-			const next: ChatCompletionRequest = { ...requestBody, messages: nextMessages };
-			// Promote tools the model searched up this turn into tools[] so it can
-			// call them on the next iteration (within-turn activation). requestBody
-			// already carries the base set + the cross-turn seed, so we just append.
-			if (activatedToolNames.length > 0) {
-				const additions = resolveActivatedToolDefs(activatedToolNames, {
-					excludeCategories: disabledFeatures,
-				});
-				if (additions.length > 0) {
-					next.tools = dedupeToolDefs([...(next.tools ?? []), ...additions]);
-					next.tool_choice = 'auto';
-				}
-			}
-			// Re-fold the canvas each iteration: a create_canvas earlier this
-			// turn arms update_canvas now, and every edit is reflected in a
-			// freshly-read tail block (always last, never in the prefix).
-			return augmentRequestForCanvas(next, {
-				conversationId: params.id,
-				userId: locals.user.id,
-				disabledFeatures,
-				supportsTools,
-			});
-		};
+		}): Promise<ChatCompletionRequest> =>
+			requestFor(walkActiveBranch(params.id, { columns: 'serialization' }), activatedToolNames);
 
 		// MCP approval gate from the shared assembly: built-in tools and
 		// user-trusted MCP tools execute inline; untrusted MCP tools halt the
@@ -716,7 +642,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// models actually support tools. Endpoints without tools
 			// won't emit tool_calls anyway, but skipping the closure
 			// makes the single-iteration path explicit.
-			...(toolDefs.length > 0 ? { rebuildRequestBody } : {}),
+			...(toolCtx.toolDefs.length > 0 ? { rebuildRequestBody } : {}),
 		});
 		return sseResponse(stream);
 	} catch (e) {
