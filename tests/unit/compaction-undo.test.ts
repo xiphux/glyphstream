@@ -1,6 +1,6 @@
 /**
  * Unit tests for undoCompaction — reverting the most recent compaction by
- * moving the active leaf back off the summary. Real test DB (mocked getDb) so
+ * moving the active leaf back off the summary. Real test DB (createTestDb) so
  * the leaf move + the active-leaf gate are exercised end to end.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';

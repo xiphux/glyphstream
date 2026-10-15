@@ -11,6 +11,11 @@
  * like `createModelResolver` that is itself called at module scope). Each call
  * registers a cache for the life of the process, so one per request would leak.
  *
+ * The registry is per module instance. After `vi.resetModules()` a test's
+ * freshly imported modules register in a fresh registry, which a
+ * `resetConfigCachesForTests` imported before the reset can't reach. Re-import
+ * it, as with `setDbForTests`.
+ *
  * Configuration only. Runtime state — endpoint gates, worker pools, in-flight
  * registries — keeps its own reset, because clearing it mid-test means
  * something different. One config cache stays outside: `push/web-push.ts`,
