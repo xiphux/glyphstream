@@ -15,6 +15,8 @@ arrived.
   partway through the swipe instead of after it lands, and the image no longer
   resizes as prompts of different lengths come and go. Tapping the star or
   delete just after a swipe could act on the image you'd swiped away from.
+- Closing a chat's image preview while it was still loading the next image no
+  longer reopens it a moment later.
 
 ## v0.45.1
 

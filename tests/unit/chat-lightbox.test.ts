@@ -163,6 +163,22 @@ describe('swiping onto a prefetched slide', () => {
 	});
 });
 
+describe('closing', () => {
+	it('drops an open still in flight, rather than reopening when it lands', async () => {
+		let release!: (r: Response) => void;
+		stubFetch(['m1', 'm2'], {
+			'GET /api/media/m2': () => new Promise((r) => (release = r)),
+		});
+		const { lb } = setup();
+		await lb.open('m1');
+		const swipe = lb.open('m2');
+		lb.close();
+		release(Response.json(item('m2')));
+		await swipe;
+		expect(lb.media).toBeNull();
+	});
+});
+
 describe('favoriting', () => {
 	it('reverts the optimistic star when the server refuses', async () => {
 		stubFetch([], {

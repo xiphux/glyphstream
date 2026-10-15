@@ -110,6 +110,9 @@ export class ChatLightbox {
 
 	close(): void {
 		this.media = null;
+		// Or an open still in flight (a swipe resolves mid-gesture, so "swipe, then
+		// Escape" leaves one) lands after this and reopens the dismissed preview.
+		this.openingFor = null;
 		this.#items.clear();
 	}
 
