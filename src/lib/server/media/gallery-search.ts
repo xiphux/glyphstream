@@ -4,7 +4,7 @@
  * is configured.
  *
  * A service rather than a query: it calls the embedding endpoint and keeps
- * decoded vectors in memory. The SQL it runs lives in `db/queries/media.ts`.
+ * decoded vectors in memory. The SQL it runs lives in `db/queries/media/search.ts`.
  */
 import type { MediaListItem } from '#lib/types/api.js';
 import {
