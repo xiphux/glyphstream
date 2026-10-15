@@ -1,4 +1,17 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, lte, ne, sql } from 'drizzle-orm';
+import {
+	and,
+	asc,
+	desc,
+	eq,
+	inArray,
+	isNotNull,
+	isNull,
+	lt,
+	lte,
+	ne,
+	sql,
+	type SQL,
+} from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import { getDb, type Tx } from '../client';
 import { conversations, media, messageMedia, messages } from '../schema';
@@ -206,22 +219,7 @@ export function getMediaForUser(
 export function getMediaListItemForUser(mediaId: string, userId: string): MediaListItem | null {
 	const db = getDb();
 	const row = db
-		.select({
-			id: media.id,
-			kind: media.kind,
-			contentType: media.contentType,
-			byteSize: media.byteSize,
-			sourceEndpointId: media.sourceEndpointId,
-			sourceModel: media.sourceModel,
-			promptExcerpt: media.promptExcerpt,
-			promptFull: media.promptFull,
-			originalPrompt: media.originalPrompt,
-			aspectRatio: media.aspectRatio,
-			createdAt: media.createdAt,
-			origin: media.origin,
-			favoritedAt: media.favoritedAt,
-			conversationId: assignedConversationId,
-		})
+		.select(GALLERY_ITEM_SELECT)
 		.from(media)
 		.where(and(eq(media.id, mediaId), eq(media.userId, userId), isNull(media.deletedAt)))
 		.get();
@@ -299,6 +297,42 @@ export function listConversationMediaRefs(
 export const assignedConversationId = sql<
 	string | null
 >`(SELECT m2.conversation_id FROM message_media mm JOIN messages m2 ON m2.id = mm.message_id JOIN conversations c2 ON c2.id = m2.conversation_id AND c2.user_id = media.user_id WHERE mm.media_id = media.id ORDER BY m2.created_at ASC, m2.id ASC LIMIT 1)`;
+
+/**
+ * The columns a gallery item is built from (`MediaListItem`, before the favorite
+ * flag and conversation title are attached). Shared by every query that
+ * returns gallery items, so they can't disagree on what an item carries.
+ */
+const GALLERY_ITEM_SELECT = {
+	id: media.id,
+	kind: media.kind,
+	contentType: media.contentType,
+	byteSize: media.byteSize,
+	sourceEndpointId: media.sourceEndpointId,
+	sourceModel: media.sourceModel,
+	promptExcerpt: media.promptExcerpt,
+	promptFull: media.promptFull,
+	originalPrompt: media.originalPrompt,
+	aspectRatio: media.aspectRatio,
+	createdAt: media.createdAt,
+	origin: media.origin,
+	favoritedAt: media.favoritedAt,
+	conversationId: assignedConversationId,
+};
+
+/**
+ * What the gallery shows of a user's media: their own, not in the trash, and
+ * generated. User-supplied attachments live in the same table for ref-counting
+ * but are not the gallery's ("what the AI made"). Callers add a kind filter.
+ */
+function galleryVisibility(userId: string): SQL[] {
+	return [eq(media.userId, userId), isNull(media.deletedAt), eq(media.origin, 'generated')];
+}
+
+/** One kind, or the gallery's default of image and video — never `file`. */
+function galleryKind(kind: 'image' | 'video' | undefined): SQL {
+	return kind ? eq(media.kind, kind) : inArray(media.kind, ['image', 'video']);
+}
 
 /**
  * `favorited_at` is a nullable timestamp in the DB and a plain `favorite`
@@ -418,11 +452,7 @@ export function listMediaForUser(
 		: (opts.kinds ?? ['image', 'video']);
 
 	const conditions = [
-		eq(media.userId, userId),
-		isNull(media.deletedAt),
-		// Gallery is "what the AI made" — exclude user-supplied attachments
-		// even though they live in the same table for ref-counting reasons.
-		eq(media.origin, 'generated'),
+		...galleryVisibility(userId),
 		allowedKinds.length === 1
 			? eq(media.kind, allowedKinds[0])
 			: inArray(media.kind, allowedKinds as MediaKind[]),
@@ -434,22 +464,7 @@ export function listMediaForUser(
 
 	// Fetch limit+1 to detect whether there's another page.
 	const rows = db
-		.select({
-			id: media.id,
-			kind: media.kind,
-			contentType: media.contentType,
-			byteSize: media.byteSize,
-			sourceEndpointId: media.sourceEndpointId,
-			sourceModel: media.sourceModel,
-			promptExcerpt: media.promptExcerpt,
-			promptFull: media.promptFull,
-			originalPrompt: media.originalPrompt,
-			aspectRatio: media.aspectRatio,
-			createdAt: media.createdAt,
-			origin: media.origin,
-			favoritedAt: media.favoritedAt,
-			conversationId: assignedConversationId,
-		})
+		.select(GALLERY_ITEM_SELECT)
 		.from(media)
 		.where(and(...conditions))
 		.orderBy(desc(media.createdAt), desc(media.id))
@@ -571,31 +586,9 @@ export function ftsRankMedia(
 export function getMediaListItemsByIds(userId: string, ids: string[]): MediaListItem[] {
 	if (ids.length === 0) return [];
 	const rows = getDb()
-		.select({
-			id: media.id,
-			kind: media.kind,
-			contentType: media.contentType,
-			byteSize: media.byteSize,
-			sourceEndpointId: media.sourceEndpointId,
-			sourceModel: media.sourceModel,
-			promptExcerpt: media.promptExcerpt,
-			promptFull: media.promptFull,
-			originalPrompt: media.originalPrompt,
-			aspectRatio: media.aspectRatio,
-			createdAt: media.createdAt,
-			origin: media.origin,
-			favoritedAt: media.favoritedAt,
-			conversationId: assignedConversationId,
-		})
+		.select(GALLERY_ITEM_SELECT)
 		.from(media)
-		.where(
-			and(
-				eq(media.userId, userId),
-				isNull(media.deletedAt),
-				eq(media.origin, 'generated'),
-				inArray(media.id, ids),
-			),
-		)
+		.where(and(...galleryVisibility(userId), inArray(media.id, ids)))
 		.all();
 	return attachConversationTitles(
 		userId,
@@ -694,12 +687,10 @@ function mediaEmbeddingConditions(
 	opts: DenseCorpusOpts,
 ): Array<Parameters<typeof and>[number]> {
 	return [
-		eq(media.userId, userId),
-		isNull(media.deletedAt),
-		eq(media.origin, 'generated'),
+		...galleryVisibility(userId),
 		isNotNull(media.embedding),
 		eq(media.embeddingModel, opts.embeddingModel),
-		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
+		galleryKind(opts.kind),
 		opts.model ? eq(media.sourceModel, opts.model) : undefined,
 		opts.favorite ? isNotNull(media.favoritedAt) : undefined,
 	].filter(Boolean);
@@ -755,11 +746,9 @@ export function listDistinctSourceModelsForUser(
 ): ModelFacet[] {
 	const db = getDb();
 	const conditions = [
-		eq(media.userId, userId),
-		isNull(media.deletedAt),
-		eq(media.origin, 'generated'),
+		...galleryVisibility(userId),
 		isNotNull(media.sourceModel),
-		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
+		galleryKind(opts.kind),
 		opts.favorite ? isNotNull(media.favoritedAt) : undefined,
 	].filter(Boolean) as Array<Parameters<typeof and>[number]>;
 
@@ -804,10 +793,8 @@ export function listMediaMonthPeriodsForUser(
 	const monthExpr = sql<string>`strftime('%Y-%m', ${media.createdAt} / 1000, 'unixepoch', ${offsetModifier})`;
 
 	const conditions = [
-		eq(media.userId, userId),
-		isNull(media.deletedAt),
-		eq(media.origin, 'generated'),
-		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
+		...galleryVisibility(userId),
+		galleryKind(opts.kind),
 		opts.model ? eq(media.sourceModel, opts.model) : undefined,
 		opts.favorite ? isNotNull(media.favoritedAt) : undefined,
 	].filter(Boolean) as Array<Parameters<typeof and>[number]>;
@@ -864,28 +851,11 @@ export function listMediaForConversation(
 		.where(eq(messages.conversationId, conversationId));
 
 	const rows = db
-		.select({
-			id: media.id,
-			kind: media.kind,
-			contentType: media.contentType,
-			byteSize: media.byteSize,
-			sourceEndpointId: media.sourceEndpointId,
-			sourceModel: media.sourceModel,
-			promptExcerpt: media.promptExcerpt,
-			promptFull: media.promptFull,
-			originalPrompt: media.originalPrompt,
-			aspectRatio: media.aspectRatio,
-			createdAt: media.createdAt,
-			origin: media.origin,
-			favoritedAt: media.favoritedAt,
-			conversationId: assignedConversationId,
-		})
+		.select(GALLERY_ITEM_SELECT)
 		.from(media)
 		.where(
 			and(
-				eq(media.userId, userId),
-				isNull(media.deletedAt),
-				eq(media.origin, 'generated'),
+				...galleryVisibility(userId),
 				allowedKinds.length === 1
 					? eq(media.kind, allowedKinds[0])
 					: inArray(media.kind, allowedKinds as MediaKind[]),
