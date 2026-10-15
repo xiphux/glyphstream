@@ -15,6 +15,7 @@
 	import { getModelCatalogue } from '#lib/model-catalogue.svelte.js';
 	import { baseIdOf } from '#lib/model-default.js';
 	import { imageAttachment } from '#lib/model-capabilities.js';
+	import { composerSendBlocker, sendBlockerTitle } from '#lib/composer.js';
 	import type { ImageAttachment } from '#lib/model-capabilities.js';
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '#lib/gallery-launch.js';
 	import {
@@ -686,6 +687,19 @@
 		coreRef?.focus();
 	});
 
+	// The same send rule as the chat page's composer (composerSendBlocker).
+	const sendBlocker = $derived(
+		composerSendBlocker({
+			hasModel: compareMode && fanoutFirstModels.length > 0 ? true : !!modelId,
+			hasContent: !!text.trim() || attachments.items.length > 0,
+			busy,
+			offline: isOffline,
+			needsImage,
+			attachmentErrors: attachments.hasErrors,
+			attachmentsBlock: attachments.blocksSend,
+		}),
+	);
+
 	async function startChat() {
 		// A multi-model first message uses the comparison cart (needs 2+);
 		// otherwise the single picker selection. One compare model collapses to
@@ -702,16 +716,12 @@
 		const { text: cleanText, activatedSkillNames } = skillsActive
 			? stripSkillCommand(text.trim(), data.enabledSkills)
 			: { text: text.trim(), activatedSkillNames: [] as string[] };
-		if ((!fanout && !effectiveModelId) || busy) return;
+		// The button is disabled for these, but Enter still reaches here: bail
+		// before creating a chat so the prompt (and its draft) stays in the box.
+		// Offline re-enables the moment connectivity returns (ononline).
+		if (sendBlocker || (!fanout && !effectiveModelId)) return;
+		// A bare `/skill-name` strips to nothing: no text to start a chat with.
 		if (!cleanText && attachments.items.length === 0) return;
-		if (attachments.blocksSend) return;
-		// Image-required model with no image: bail before creating a doomed chat.
-		// Button is disabled, but Enter reaches here — keep the prompt in the box.
-		if (needsImage) return;
-		// Offline: block before the create fetch. The button is disabled, but
-		// Enter can still reach here — bail so the prompt stays in the box (and
-		// its draft). onOnline re-enables Send the moment connectivity returns.
-		if (isOffline) return;
 		busy = true;
 		errorMsg = null;
 		try {
@@ -1026,24 +1036,14 @@
 				/>
 				<button
 					type="submit"
-					disabled={(compareMode && fanoutFirstModels.length > 0 ? false : !modelId) ||
-						(!text.trim() && attachments.items.length === 0) ||
-						busy ||
-						attachments.blocksSend ||
-						isOffline ||
-						needsImage}
+					disabled={sendBlocker !== null}
 					aria-label={compareMode && fanoutFirstModels.length > 0
 						? `Send to ${fanoutFirstModels.length} models`
 						: 'Send message'}
-					title={isOffline
-						? "You're offline — reconnect to send"
-						: needsImage
-							? 'This model needs an image — attach one to continue'
-							: attachments.hasErrors
-								? 'An attachment failed to upload — remove it to send'
-								: compareMode && fanoutFirstModels.length > 0
-									? `Send to ${fanoutFirstModels.length} models`
-									: 'Send'}
+					title={sendBlockerTitle(sendBlocker) ??
+						(compareMode && fanoutFirstModels.length > 0
+							? `Send to ${fanoutFirstModels.length} models`
+							: 'Send')}
 					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-inverse text-fg-inverse transition hover:opacity-90 disabled:opacity-30"
 				>
 					<ArrowUp size={16} strokeWidth={2.5} />

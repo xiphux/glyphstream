@@ -20,6 +20,7 @@
 	import { stripSkillCommand } from '#lib/skill-command.js';
 	import { isSnippetKind } from '#lib/types/api.js';
 	import { imageAttachment } from '#lib/model-capabilities.js';
+	import { composerSendBlocker, sendBlockerTitle } from '#lib/composer.js';
 	import type { ImageAttachment } from '#lib/model-capabilities.js';
 	import type { AttachmentStore } from '#lib/attachments.svelte.js';
 	import {
@@ -227,16 +228,18 @@
 			return m ? imageAttachment(m) === 'required' : false;
 		});
 	});
-	const canSend = $derived(
-		!(
-			(!effectiveText && attachments.items.length === 0) ||
-			generating ||
-			attachments.blocksSend ||
-			!hasValidModel ||
-			offline ||
-			needsImage
-		),
+	const sendBlocker = $derived(
+		composerSendBlocker({
+			hasModel: hasValidModel,
+			hasContent: !!effectiveText || attachments.items.length > 0,
+			busy: generating,
+			offline,
+			needsImage,
+			attachmentErrors: attachments.hasErrors,
+			attachmentsBlock: attachments.blocksSend,
+		}),
 	);
+	const canSend = $derived(sendBlocker === null);
 
 	// Total models in the comparison cart (sum of per-model counts). A real
 	// comparison needs 2+; one model collapses to a normal single send.
@@ -425,17 +428,8 @@
 					type="submit"
 					disabled={!canSend}
 					aria-label={fanoutActive ? `Send to ${compareTotal} models` : 'Send message'}
-					title={!hasValidModel
-						? 'Pick a model to send'
-						: offline
-							? "You're offline — reconnect to send"
-							: needsImage
-								? 'This model needs an image — attach one to continue'
-								: attachments.hasErrors
-									? 'An attachment failed to upload — remove it to send'
-									: fanoutActive
-										? `Send to ${compareTotal} models`
-										: 'Send'}
+					title={sendBlockerTitle(sendBlocker) ??
+						(fanoutActive ? `Send to ${compareTotal} models` : 'Send')}
 					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-inverse text-fg-inverse transition hover:opacity-90 disabled:opacity-30"
 				>
 					<ArrowUp size={16} strokeWidth={2.5} />

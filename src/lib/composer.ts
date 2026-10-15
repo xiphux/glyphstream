@@ -100,3 +100,56 @@ export function extractFiles(source: DataTransfer | null | undefined): File[] {
 	}
 	return out;
 }
+
+/** Why Send is unavailable, most important first; null when it isn't. */
+export type SendBlocker =
+	'no-model' | 'offline' | 'needs-image' | 'attachment-error' | 'uploading' | 'empty' | 'busy';
+
+export interface ComposerSendState {
+	/** A model (or a comparison cart) is selected. */
+	hasModel: boolean;
+	/** Text or at least one attachment. */
+	hasContent: boolean;
+	/** A send or generation is already under way. */
+	busy: boolean;
+	offline: boolean;
+	/** The selected model requires an image and none is attached. */
+	needsImage: boolean;
+	/** An attachment failed to upload. */
+	attachmentErrors: boolean;
+	/** Attachments block the send: one is still uploading, or has failed. */
+	attachmentsBlock: boolean;
+}
+
+/**
+ * The one rule for whether a composer may send. The chat page's composer and
+ * the new-chat page's both use it, so they can't drift apart on when Send is
+ * enabled. Ordered so the first reason is the one worth telling the user.
+ */
+export function composerSendBlocker(s: ComposerSendState): SendBlocker | null {
+	if (!s.hasModel) return 'no-model';
+	if (s.offline) return 'offline';
+	if (s.needsImage) return 'needs-image';
+	if (s.attachmentErrors) return 'attachment-error';
+	if (s.attachmentsBlock) return 'uploading';
+	if (!s.hasContent) return 'empty';
+	if (s.busy) return 'busy';
+	return null;
+}
+
+/** The Send button's tooltip for a blocker the user can act on; null for the
+ *  ones that need no explaining (still typing, still uploading, busy). */
+export function sendBlockerTitle(blocker: SendBlocker | null): string | null {
+	switch (blocker) {
+		case 'no-model':
+			return 'Pick a model to send';
+		case 'offline':
+			return "You're offline — reconnect to send";
+		case 'needs-image':
+			return 'This model needs an image — attach one to continue';
+		case 'attachment-error':
+			return 'An attachment failed to upload — remove it to send';
+		default:
+			return null;
+	}
+}
