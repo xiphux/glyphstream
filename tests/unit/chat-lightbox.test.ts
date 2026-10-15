@@ -76,6 +76,16 @@ describe('opening', () => {
 		expect(lb.openingFor).toBeNull();
 	});
 
+	it('time-boxes the item fetch, which a later swipe may share with a prefetch', async () => {
+		const fetchMock = stubFetch(['m1']);
+		const { lb } = setup();
+		await lb.open('m1');
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/api/media/m1',
+			expect.objectContaining({ signal: expect.any(AbortSignal) as unknown }),
+		);
+	});
+
 	it('orders an open grid’s images by the grid, not by completion', async () => {
 		stubFetch(['old', 'g2', 'g1']);
 		const { lb } = setup([column('b1', ['g1']), column('b2', ['g2'])]);

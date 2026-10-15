@@ -33,6 +33,9 @@ import { toast } from './toast.svelte.js';
 import type { FanoutController } from './fanout-controller.svelte.js';
 import type { ConversationMediaRef, MediaListItem } from './types/api.js';
 
+/** Same limit as the gallery's `fetchWithTimeout`. */
+const ITEM_FETCH_TIMEOUT_MS = 15_000;
+
 /** What the lightbox reads from the host page. Getters, so each read is fresh:
  *  the page is reused across conversations. */
 export interface ChatLightboxDeps {
@@ -68,9 +71,15 @@ export class ChatLightbox {
 	deletingId = $state<string | null>(null);
 	favoritingId = $state<string | null>(null);
 
-	/** Rows fetched this open session. Cleared on close and on reset. */
+	/** Rows fetched this open session. Cleared on close and on reset.
+	 *
+	 *  Time-boxed because a fetch here is shared: a prefetch still hanging when
+	 *  the user swipes onto its slide is the very promise that swipe waits on, so
+	 *  without a limit the slide would never resolve and never get a retry. */
 	readonly #items = new MediaItemCache(async (id) => {
-		const res = await fetch(`/api/media/${id}`);
+		const res = await fetch(`/api/media/${id}`, {
+			signal: AbortSignal.timeout(ITEM_FETCH_TIMEOUT_MS),
+		});
 		if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 		return (await res.json()) as MediaListItem;
 	});
