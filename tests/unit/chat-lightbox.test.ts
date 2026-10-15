@@ -179,18 +179,25 @@ describe('discarding from a fan-out grid', () => {
 });
 
 describe('discarding across a conversation switch', () => {
-	it('leaves the reset lightbox alone when the discard lands after a switch', async () => {
-		stubFetch(['g1', 'g2']);
-		const { lb, fanout, page } = setup([column('b1', ['g1']), column('b2', ['g2'])]);
+	it('leaves the next chat’s lightbox alone when the discard lands after a switch', async () => {
+		const { lb, page } = setup([column('b1', ['g1']), column('b2', ['g2'])]);
+		stubFetch(['g1', 'g2'], {
+			'GET /api/conversations/B/media': () =>
+				Promise.resolve(Response.json({ items: [{ id: 'x1' }] })),
+			// The switch lands while the discard fetches the image to move to — after
+			// it has already worked out the old chat's surviving set.
+			'GET /api/media/g2': async () => {
+				page.conversationId = 'B';
+				lb.reset();
+				await lb.open('x1');
+				await settle();
+				return Response.json(item('g2'));
+			},
+		});
 		await lb.open('g1');
 		await settle();
-		fanout.discard.mockImplementationOnce(async () => {
-			page.conversationId = 'B';
-			lb.reset();
-			return true;
-		});
 		await lb.discard('g1');
-		expect(lb.siblings).toEqual([]);
-		expect(lb.media).toBeNull();
+		expect(lb.media?.id).toBe('x1');
+		expect(lb.siblings.map((m) => m.id)).toEqual(['x1']);
 	});
 });
