@@ -660,9 +660,10 @@ const session: Handle = async ({ event, resolve }) => {
  */
 const rateLimit: Handle = async ({ event, resolve }) => {
 	const path = routedPathname(event.url.pathname);
-	// `sessionId` is set exactly when a session resolved, locked or not — the
-	// session the comment above is about, as `session` published it.
-	if (event.locals.sessionId === null && path.startsWith(AUTH_RATE_LIMIT_PATH_PREFIX)) {
+	// `session` sets `sessionId` exactly when a session resolved, locked or not.
+	// Falsy rather than `=== null` so the limiter stays ON if `session` ever
+	// stops running first and the field is never written.
+	if (!event.locals.sessionId && path.startsWith(AUTH_RATE_LIMIT_PATH_PREFIX)) {
 		const decision = consumeRateLimitToken(clientKey(event));
 		if (!decision.allowed) {
 			return new Response('Too many requests', {
