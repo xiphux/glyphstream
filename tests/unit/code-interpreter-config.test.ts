@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
-	CodeInterpreterConfigError,
 	loadCodeInterpreterConfig,
 	resetCodeInterpreterConfigForTests,
 } from '#lib/server/code-interpreter/config.js';
+import { ConfigError } from '#lib/server/config/toml.js';
 
 let tmpDir: string;
 let configPath: string;
@@ -78,7 +78,7 @@ call_timeout_seconds = 90
 [[code_interpreter]]
 enabled = true
 `);
-		expect(() => loadCodeInterpreterConfig(configPath)).toThrow(CodeInterpreterConfigError);
+		expect(() => loadCodeInterpreterConfig(configPath)).toThrow(ConfigError);
 	});
 
 	it('rejects non-boolean enabled', () => {

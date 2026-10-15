@@ -1,7 +1,12 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import process from 'node:process';
-import { parse as parseToml } from 'smol-toml';
+import {
+	ConfigError,
+	optionalString,
+	readConfigToml,
+	requireBoolean,
+	requireNumber,
+	requireString,
+} from '../config/toml';
 import { configPath } from '../env';
 import { parseModelId } from './model-id';
 import { isReleaseStrategy, RELEASE_STRATEGIES, type ReleaseStrategy } from './release';
@@ -201,56 +206,11 @@ export interface LoadedEndpoint {
  */
 export const DEFAULT_MAX_CONCURRENT = 4;
 
-export class ConfigError extends Error {}
-
-/**
- * A MISSING config file is not an error — it means "nothing is configured", and
- * every loader here already has a documented default for that. `loadEndpoints`
- * has always said so out loud ("Empty config is allowed — no endpoints yet"), and
- * a file that merely omits a block is indistinguishable from one that doesn't
- * exist. This makes the two behave the same.
- *
- * It matters because the optional loaders are now read from hot, widely-imported
- * modules — `getMaxToolResultChars` from serialize-upstream, `getVisionConfig`
- * from the media path — so a hard throw here turns "no config.toml" into a crash
- * far away from anything the operator would connect to config. config.toml is
- * gitignored, so CI has none: the whole unit suite went red on it.
- *
- * Only ENOENT is forgiven. A permissions error, an I/O error, or malformed TOML
- * still throws loudly — those mean a config exists and is broken, which is a real
- * problem an operator needs told about.
- */
-function readAndParse(path: string): { parsed: Record<string, unknown>; absolutePath: string } {
-	const absolutePath = resolve(path);
-	let raw: string;
-	try {
-		raw = readFileSync(absolutePath, 'utf8');
-	} catch (e) {
-		if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
-			return { parsed: {}, absolutePath };
-		}
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new ConfigError(`Could not read config file at ${absolutePath}: ${cause}`);
-	}
-
-	let parsed: unknown;
-	try {
-		parsed = parseToml(raw);
-	} catch (e) {
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new ConfigError(`Failed to parse TOML at ${absolutePath}: ${cause}`);
-	}
-
-	if (typeof parsed !== 'object' || parsed === null) {
-		throw new ConfigError(`Top-level of ${absolutePath} must be a TOML table`);
-	}
-
-	return { parsed: parsed as Record<string, unknown>, absolutePath };
-}
+export { ConfigError };
 
 /** Read + parse + validate config.toml. Throws ConfigError on any problem. */
 export function loadEndpoints(path = configPath()): LoadedEndpoint[] {
-	const { parsed, absolutePath } = readAndParse(path);
+	const { parsed, absolutePath } = readConfigToml(path);
 
 	const endpointsRaw = parsed.endpoints;
 	if (endpointsRaw === undefined) {
@@ -324,7 +284,7 @@ export interface LoadedNotificationsConfig {
 }
 
 export function loadNotificationsConfig(path = configPath()): LoadedNotificationsConfig | null {
-	const { parsed, absolutePath } = readAndParse(path);
+	const { parsed, absolutePath } = readConfigToml(path);
 	const raw = parsed.notifications;
 	if (raw === undefined || raw === null) return null;
 	if (typeof raw !== 'object' || Array.isArray(raw)) {
@@ -379,7 +339,7 @@ export interface LoadedTaskModelConfig {
  * that resolution happens at use-time so a typo doesn't crash app boot.
  */
 export function loadTaskModelConfig(path = configPath()): LoadedTaskModelConfig | null {
-	const { parsed, absolutePath } = readAndParse(path);
+	const { parsed, absolutePath } = readConfigToml(path);
 	const raw = parsed.task_model;
 	if (raw === undefined || raw === null) return null;
 
@@ -452,7 +412,7 @@ export interface LoadedImageEnhancementConfig {
 export function loadImageEnhancementConfig(
 	path = configPath(),
 ): LoadedImageEnhancementConfig | null {
-	const { parsed, absolutePath } = readAndParse(path);
+	const { parsed, absolutePath } = readConfigToml(path);
 	const raw = parsed.image_enhancement;
 	if (raw === undefined || raw === null) return null;
 	if (typeof raw !== 'object' || Array.isArray(raw)) {
@@ -554,7 +514,7 @@ export interface LoadedMemoryModelConfig {
 }
 
 export function loadMemoryModelConfig(path = configPath()): LoadedMemoryModelConfig | null {
-	const { parsed, absolutePath } = readAndParse(path);
+	const { parsed, absolutePath } = readConfigToml(path);
 	const raw = parsed.memory_model;
 	if (raw === undefined || raw === null) return null;
 	if (typeof raw !== 'object' || Array.isArray(raw)) {
@@ -643,7 +603,7 @@ function readTableScalar<T>(
 	fallback: T,
 	validate: (raw: unknown, at: string) => T,
 ): T {
-	const { parsed, absolutePath } = readAndParse(path);
+	const { parsed, absolutePath } = readConfigToml(path);
 	const block = parsed[table];
 	if (block === undefined || block === null) return fallback;
 	if (typeof block !== 'object' || Array.isArray(block)) {
@@ -816,7 +776,7 @@ export interface VisionConfig {
  * re-sending those bytes on every turn.
  */
 export function loadVisionConfig(path = configPath()): VisionConfig {
-	const { parsed, absolutePath } = readAndParse(path);
+	const { parsed, absolutePath } = readConfigToml(path);
 	const vision = parsed.vision;
 	const defaults: VisionConfig = {
 		maxImageDim: DEFAULT_VISION_MAX_IMAGE_DIM,
@@ -892,7 +852,7 @@ export interface LoadedSearchConfig {
 }
 
 export function loadSearchConfig(path = configPath()): LoadedSearchConfig | null {
-	const { parsed, absolutePath } = readAndParse(path);
+	const { parsed, absolutePath } = readConfigToml(path);
 	const raw = parsed.search;
 	if (raw === undefined || raw === null) return null;
 	if (typeof raw !== 'object' || Array.isArray(raw)) {
@@ -976,7 +936,7 @@ export interface LoadedEmbeddingsConfig {
  * rather than erroring.
  */
 export function loadEmbeddingsConfig(path = configPath()): LoadedEmbeddingsConfig | null {
-	const { parsed, absolutePath } = readAndParse(path);
+	const { parsed, absolutePath } = readConfigToml(path);
 	const raw = parsed.embeddings;
 	if (raw === undefined || raw === null) return null;
 	if (typeof raw !== 'object' || Array.isArray(raw)) {
@@ -1038,7 +998,7 @@ export interface LoadedRerankConfig {
  * BM25/embedding order) rather than crashing boot.
  */
 export function loadRerankConfig(path = configPath()): LoadedRerankConfig | null {
-	const { parsed, absolutePath } = readAndParse(path);
+	const { parsed, absolutePath } = readConfigToml(path);
 	const raw = parsed.rerank;
 	if (raw === undefined || raw === null) return null;
 	if (typeof raw !== 'object' || Array.isArray(raw)) {
@@ -1240,45 +1200,4 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 		modelPromptStyles,
 		modelPromptHints,
 	};
-}
-
-function requireString(v: unknown, field: string, at: string): string {
-	if (typeof v !== 'string' || v.length === 0) {
-		throw new ConfigError(`${at}: required field '${field}' must be a non-empty string`);
-	}
-	return v;
-}
-
-/** A string field that may be omitted (→ '') but, if present, must be a string. */
-function optionalString(v: unknown, field: string, at: string): string {
-	if (v === undefined) return '';
-	if (typeof v !== 'string') {
-		throw new ConfigError(`${at}: '${field}' must be a string`);
-	}
-	return v;
-}
-
-function requireBoolean(v: unknown, field: string, at: string): boolean {
-	if (typeof v !== 'boolean') {
-		throw new ConfigError(`${at}: '${field}' must be a boolean (true/false)`);
-	}
-	return v;
-}
-
-function requireNumber(
-	v: unknown,
-	field: string,
-	at: string,
-	opts: { min?: number; max?: number } = {},
-): number {
-	if (typeof v !== 'number' || !Number.isFinite(v)) {
-		throw new ConfigError(`${at}: '${field}' must be a number`);
-	}
-	if (opts.min !== undefined && v < opts.min) {
-		throw new ConfigError(`${at}: '${field}' must be >= ${opts.min}`);
-	}
-	if (opts.max !== undefined && v > opts.max) {
-		throw new ConfigError(`${at}: '${field}' must be <= ${opts.max}`);
-	}
-	return v;
 }

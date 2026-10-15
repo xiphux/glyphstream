@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { McpConfigError, loadMcpServers } from '#lib/server/mcp/config.js';
+import { loadMcpServers } from '#lib/server/mcp/config.js';
+import { ConfigError } from '#lib/server/config/toml.js';
 
 // Referenced env vars are resolved from process.env; tests set them with
 // vi.stubEnv, and afterEach restores the real environment.
@@ -96,7 +97,7 @@ transport = "http"
 url = "https://api.fastmail.com/mcp"
 post_only = "yes"
 		`);
-		expect(() => loadMcpServers(path)).toThrow(McpConfigError);
+		expect(() => loadMcpServers(path)).toThrow(ConfigError);
 	});
 
 	it('defaults defer_tools to false', () => {
@@ -128,7 +129,7 @@ transport = "http"
 url = "https://x/mcp"
 defer_tools = "yes"
 		`);
-		expect(() => loadMcpServers(path)).toThrow(McpConfigError);
+		expect(() => loadMcpServers(path)).toThrow(ConfigError);
 	});
 
 	it('allows defer_tools alongside auth = "per_user"', () => {
@@ -236,7 +237,7 @@ id = "Bad Id!"
 transport = "stdio"
 command = "x"
 		`);
-		expect(() => loadMcpServers(path)).toThrow(McpConfigError);
+		expect(() => loadMcpServers(path)).toThrow(ConfigError);
 	});
 
 	it('rejects duplicate ids', () => {
@@ -347,7 +348,7 @@ describe('loadMcpServers — a missing config file', () => {
 		chmodSync(path, 0o000);
 		try {
 			if (process.getuid?.() !== 0) {
-				expect(() => loadMcpServers(path)).toThrow(McpConfigError);
+				expect(() => loadMcpServers(path)).toThrow(ConfigError);
 			}
 		} finally {
 			chmodSync(path, 0o600);

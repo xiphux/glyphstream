@@ -2,8 +2,8 @@
  * Config loader for the server-side Pyodide code interpreter.
  *
  * `[code_interpreter]` is a single optional table in `config.toml`; absent
- * → defaults; malformed → CodeInterpreterConfigError (extends ConfigError
- * so boot fails loudly the same way endpoint / MCP misconfig does). Once
+ * → defaults; malformed → ConfigError, the same error the endpoint and MCP
+ * loaders throw, so boot fails loudly the same way their misconfig does. Once
  * loaded, the config is memoized — like every other config in this
  * codebase, it's read once per process and stable for the lifetime.
  *
@@ -17,9 +17,13 @@
  * Stage 3 ships the config; stage 4 wires `run_python` to consume it.
  */
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { parse as parseToml } from 'smol-toml';
+import {
+	ConfigError,
+	readConfigToml,
+	requireBoolean,
+	requireNumber,
+	requireString,
+} from '../config/toml';
 import { configPath } from '../env';
 
 export interface LoadedCodeInterpreterConfig {
@@ -60,65 +64,24 @@ const DEFAULTS: LoadedCodeInterpreterConfig = {
 	pyodideIndexUrl: '',
 };
 
-export class CodeInterpreterConfigError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = 'CodeInterpreterConfigError';
-	}
-}
-
-/** A missing config file means "nothing configured" → defaults, same as an absent
- *  `[code_interpreter]` block (which this module's own header already promises).
- *  Mirrors `endpoints/config.ts`; see the rationale there. Only ENOENT is
- *  forgiven — a broken-but-present config still throws. */
-function readAndParse(path: string): { parsed: Record<string, unknown>; absolutePath: string } {
-	const absolutePath = resolve(path);
-	let raw: string;
-	try {
-		raw = readFileSync(absolutePath, 'utf8');
-	} catch (e) {
-		if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
-			return { parsed: {}, absolutePath };
-		}
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new CodeInterpreterConfigError(`Could not read config file at ${absolutePath}: ${cause}`);
-	}
-
-	let parsed: unknown;
-	try {
-		parsed = parseToml(raw);
-	} catch (e) {
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new CodeInterpreterConfigError(`Failed to parse TOML at ${absolutePath}: ${cause}`);
-	}
-
-	if (typeof parsed !== 'object' || parsed === null) {
-		throw new CodeInterpreterConfigError(`Top-level of ${absolutePath} must be a TOML table`);
-	}
-
-	return { parsed: parsed as Record<string, unknown>, absolutePath };
-}
-
 /**
  * Read + parse + validate `[code_interpreter]` from `config.toml`. Throws
- * `CodeInterpreterConfigError` on any structural problem; absence of the
+ * `ConfigError` on any structural problem; absence of the
  * table is fine (returns defaults). The path argument exists for tests.
  */
 export function loadCodeInterpreterConfig(path = configPath()): LoadedCodeInterpreterConfig {
-	const { parsed, absolutePath } = readAndParse(path);
+	const { parsed, absolutePath } = readConfigToml(path);
 	const raw = parsed.code_interpreter;
 	if (raw === undefined) return { ...DEFAULTS };
 
 	if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-		throw new CodeInterpreterConfigError(
-			`'[code_interpreter]' in ${absolutePath} must be a TOML table`,
-		);
+		throw new ConfigError(`'[code_interpreter]' in ${absolutePath} must be a TOML table`);
 	}
 	const block = raw as Record<string, unknown>;
 	const at = `[code_interpreter] in ${absolutePath}`;
 
 	const enabled =
-		block.enabled === undefined ? DEFAULTS.enabled : requireBool(block.enabled, 'enabled', at);
+		block.enabled === undefined ? DEFAULTS.enabled : requireBoolean(block.enabled, 'enabled', at);
 
 	const poolMax =
 		block.pool_max === undefined
@@ -191,49 +154,4 @@ export function isCodeInterpreterEnabled(): boolean {
  *  test-supplied path). */
 export function resetCodeInterpreterConfigForTests(): void {
 	cached = null;
-}
-
-// --- validators -----------------------------------------------------------
-
-function requireBool(v: unknown, field: string, at: string): boolean {
-	if (typeof v !== 'boolean') {
-		throw new CodeInterpreterConfigError(`${at}: '${field}' must be a boolean`);
-	}
-	return v;
-}
-
-function requireString(
-	v: unknown,
-	field: string,
-	at: string,
-	opts: { allowEmpty?: boolean } = {},
-): string {
-	if (typeof v !== 'string') {
-		throw new CodeInterpreterConfigError(`${at}: '${field}' must be a string`);
-	}
-	if (!opts.allowEmpty && v.length === 0) {
-		throw new CodeInterpreterConfigError(`${at}: '${field}' must be a non-empty string`);
-	}
-	return v;
-}
-
-function requireNumber(
-	v: unknown,
-	field: string,
-	at: string,
-	opts: { min?: number; max?: number; integer?: boolean } = {},
-): number {
-	if (typeof v !== 'number' || !Number.isFinite(v)) {
-		throw new CodeInterpreterConfigError(`${at}: '${field}' must be a number`);
-	}
-	if (opts.integer && !Number.isInteger(v)) {
-		throw new CodeInterpreterConfigError(`${at}: '${field}' must be an integer`);
-	}
-	if (opts.min !== undefined && v < opts.min) {
-		throw new CodeInterpreterConfigError(`${at}: '${field}' must be >= ${opts.min}`);
-	}
-	if (opts.max !== undefined && v > opts.max) {
-		throw new CodeInterpreterConfigError(`${at}: '${field}' must be <= ${opts.max}`);
-	}
-	return v;
 }

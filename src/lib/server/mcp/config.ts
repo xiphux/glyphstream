@@ -1,7 +1,12 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import process from 'node:process';
-import { parse as parseToml } from 'smol-toml';
+import {
+	ConfigError,
+	readConfigToml,
+	requireBoolean,
+	requireNumber,
+	requireString,
+	requireStringArray,
+} from '../config/toml';
 import { configPath } from '../env';
 
 export type McpTransport = 'stdio' | 'http';
@@ -90,48 +95,14 @@ export interface LoadedHttpMcpServer extends LoadedMcpServerCommon {
 
 export type LoadedMcpServer = LoadedStdioMcpServer | LoadedHttpMcpServer;
 
-export class McpConfigError extends Error {}
-
-/** A missing config file means "no MCP servers configured" — which is the norm,
- *  not an error. Mirrors `endpoints/config.ts`; without this a config-less
- *  deployment boots fine but logs an MCP bootstrap failure on every start. Only
- *  ENOENT is forgiven; a broken-but-present config still throws. */
-function readAndParse(path: string): { parsed: Record<string, unknown>; absolutePath: string } {
-	const absolutePath = resolve(path);
-	let raw: string;
-	try {
-		raw = readFileSync(absolutePath, 'utf8');
-	} catch (e) {
-		if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
-			return { parsed: {}, absolutePath };
-		}
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new McpConfigError(`Could not read config file at ${absolutePath}: ${cause}`);
-	}
-
-	let parsed: unknown;
-	try {
-		parsed = parseToml(raw);
-	} catch (e) {
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new McpConfigError(`Failed to parse TOML at ${absolutePath}: ${cause}`);
-	}
-
-	if (typeof parsed !== 'object' || parsed === null) {
-		throw new McpConfigError(`Top-level of ${absolutePath} must be a TOML table`);
-	}
-
-	return { parsed: parsed as Record<string, unknown>, absolutePath };
-}
-
 /** Read + parse + validate the `[[mcp_servers]]` array. Throws on any problem. */
 export function loadMcpServers(path = configPath()): LoadedMcpServer[] {
-	const { parsed, absolutePath } = readAndParse(path);
+	const { parsed, absolutePath } = readConfigToml(path);
 
 	const raw = parsed.mcp_servers;
 	if (raw === undefined) return [];
 	if (!Array.isArray(raw)) {
-		throw new McpConfigError(
+		throw new ConfigError(
 			`'mcp_servers' in ${absolutePath} must be an array of [[mcp_servers]] tables`,
 		);
 	}
@@ -141,7 +112,7 @@ export function loadMcpServers(path = configPath()): LoadedMcpServer[] {
 	for (let i = 0; i < raw.length; i++) {
 		const server = validateMcpServer(raw[i] as RawMcpServer, i, absolutePath);
 		if (seenIds.has(server.id)) {
-			throw new McpConfigError(
+			throw new ConfigError(
 				`Duplicate mcp_servers id "${server.id}" in ${absolutePath} — every MCP server must be unique`,
 			);
 		}
@@ -157,7 +128,7 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 	const id = requireString(raw.id, 'id', at);
 
 	if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(id)) {
-		throw new McpConfigError(
+		throw new ConfigError(
 			`${at}: id "${id}" must be 1-64 chars, lowercase alphanumeric or dash, starting with alphanumeric`,
 		);
 	}
@@ -167,7 +138,7 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 
 	const transportStr = requireString(raw.transport, 'transport', at);
 	if (!(VALID_TRANSPORTS as readonly string[]).includes(transportStr)) {
-		throw new McpConfigError(
+		throw new ConfigError(
 			`${at}: transport "${transportStr}" must be one of ${VALID_TRANSPORTS.join(', ')}`,
 		);
 	}
@@ -185,9 +156,7 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 
 	const authStr = raw.auth === undefined ? 'global' : requireString(raw.auth, 'auth', at);
 	if (!(VALID_AUTH_MODES as readonly string[]).includes(authStr)) {
-		throw new McpConfigError(
-			`${at}: auth "${authStr}" must be one of ${VALID_AUTH_MODES.join(', ')}`,
-		);
+		throw new ConfigError(`${at}: auth "${authStr}" must be one of ${VALID_AUTH_MODES.join(', ')}`);
 	}
 	const auth = authStr as McpAuthMode;
 
@@ -208,10 +177,10 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 		// an HTTP bearer header, but a stdio subprocess would need per-user env
 		// wiring we don't model yet. Fail loudly rather than silently sharing.
 		if (auth === 'per_user') {
-			throw new McpConfigError(`${at}: auth="per_user" is only supported for transport="http"`);
+			throw new ConfigError(`${at}: auth="per_user" is only supported for transport="http"`);
 		}
 		if (raw.post_only !== undefined) {
-			throw new McpConfigError(`${at}: 'post_only' is only valid for transport="http"`);
+			throw new ConfigError(`${at}: 'post_only' is only valid for transport="http"`);
 		}
 		const command = requireString(raw.command, 'command', at);
 		const args = raw.args === undefined ? [] : requireStringArray(raw.args, 'args', at);
@@ -221,20 +190,20 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 
 	// transport === 'http'
 	if (raw.command !== undefined || raw.args !== undefined || raw.env_from !== undefined) {
-		throw new McpConfigError(
+		throw new ConfigError(
 			`${at}: 'command'/'args'/'env_from' are only valid for transport="stdio"`,
 		);
 	}
 	const url = requireString(raw.url, 'url', at);
 	if (!/^https?:\/\//.test(url)) {
-		throw new McpConfigError(`${at}: url must start with http:// or https://`);
+		throw new ConfigError(`${at}: url must start with http:// or https://`);
 	}
 
 	// Per-user servers carry no boot-time key — the token comes from each
 	// user's encrypted credential at connect time, so a global api_key_env is
 	// contradictory and rejected.
 	if (auth === 'per_user' && raw.api_key_env !== undefined) {
-		throw new McpConfigError(
+		throw new ConfigError(
 			`${at}: 'api_key_env' is not valid with auth="per_user" (the token is supplied per user)`,
 		);
 	}
@@ -245,7 +214,7 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 
 		const envValue = process.env[envName];
 		if (!envValue) {
-			throw new McpConfigError(
+			throw new ConfigError(
 				`${at}: api_key_env="${envName}" but env var ${envName} is unset or empty`,
 			);
 		}
@@ -260,7 +229,7 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 
 function resolveEnvFrom(raw: unknown, at: string): Record<string, string> {
 	if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-		throw new McpConfigError(
+		throw new ConfigError(
 			`${at}: 'env_from' must be a table of { SUBPROCESS_VAR = "GLYPHSTREAM_ENV_VAR" } entries`,
 		);
 	}
@@ -270,55 +239,11 @@ function resolveEnvFrom(raw: unknown, at: string): Record<string, string> {
 
 		const envValue = process.env[envName];
 		if (!envValue) {
-			throw new McpConfigError(
+			throw new ConfigError(
 				`${at}: env_from.${key}="${envName}" but env var ${envName} is unset or empty`,
 			);
 		}
 		result[key] = envValue;
 	}
 	return result;
-}
-
-function requireString(v: unknown, field: string, at: string): string {
-	if (typeof v !== 'string' || v.length === 0) {
-		throw new McpConfigError(`${at}: required field '${field}' must be a non-empty string`);
-	}
-	return v;
-}
-
-function requireBoolean(v: unknown, field: string, at: string): boolean {
-	if (typeof v !== 'boolean') {
-		throw new McpConfigError(`${at}: '${field}' must be a boolean (true or false)`);
-	}
-	return v;
-}
-
-function requireStringArray(v: unknown, field: string, at: string): string[] {
-	if (!Array.isArray(v)) {
-		throw new McpConfigError(`${at}: '${field}' must be an array of strings`);
-	}
-	for (let i = 0; i < v.length; i++) {
-		if (typeof v[i] !== 'string') {
-			throw new McpConfigError(`${at}: '${field}[${i}]' must be a string`);
-		}
-	}
-	return v as string[];
-}
-
-function requireNumber(
-	v: unknown,
-	field: string,
-	at: string,
-	opts: { min?: number; max?: number } = {},
-): number {
-	if (typeof v !== 'number' || !Number.isFinite(v)) {
-		throw new McpConfigError(`${at}: '${field}' must be a number`);
-	}
-	if (opts.min !== undefined && v < opts.min) {
-		throw new McpConfigError(`${at}: '${field}' must be >= ${opts.min}`);
-	}
-	if (opts.max !== undefined && v > opts.max) {
-		throw new McpConfigError(`${at}: '${field}' must be <= ${opts.max}`);
-	}
-	return v;
 }
