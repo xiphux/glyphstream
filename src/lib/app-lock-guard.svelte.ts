@@ -29,14 +29,18 @@ const CHECK_TIMEOUT_MS = 8_000;
  * state, and module state is shared by every request on the server.
  */
 export class AppLockGuard {
-	/** The privacy cover is up. */
-	covered = $state(false);
+	#covered = $state(false);
 	#check: AbortController | null = null;
 	readonly #sliding: () => boolean;
 
 	/** `sliding`: whether this session's app lock runs its idle clock here. */
 	constructor(sliding: () => boolean) {
 		this.#sliding = sliding;
+	}
+
+	/** The privacy cover is up. Only `check`, `cover` and `uncover` move it. */
+	get covered(): boolean {
+		return this.#covered;
 	}
 
 	/** Ask the server whether the lock still holds; uncover, or go to /unlock. */
@@ -68,7 +72,7 @@ export class AppLockGuard {
 				const from = encodeURIComponent(target.pathname + target.search);
 				await goto(`${resolve('unlock')}?from=${from}`, { replace: true });
 			} else if (res.ok) {
-				this.covered = false;
+				this.#covered = false;
 			} else if (res.status === 401) {
 				// Session gone entirely — let the layout load send us to /login.
 				await refreshAll();
@@ -84,8 +88,16 @@ export class AppLockGuard {
 	/** Cover the page: it is going hidden, or coming back unchecked. */
 	cover(): void {
 		if (!this.#sliding()) return;
-		this.covered = true;
+		this.#covered = true;
 		// A check started before the hide must not uncover the page after it.
+		this.#check?.abort();
+		this.#check = null;
+	}
+
+	/** The lock stopped sliding (turned off, or now enforced server-side only):
+	 *  nothing here guards the page any more, so drop the cover and any check. */
+	uncover(): void {
+		this.#covered = false;
 		this.#check?.abort();
 		this.#check = null;
 	}

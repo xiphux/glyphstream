@@ -191,7 +191,7 @@
 	const appLock = new AppLockGuard(() => !!data.appLock?.sliding);
 	$effect(() => {
 		if (!data.appLock?.sliding) {
-			appLock.covered = false;
+			appLock.uncover();
 			return;
 		}
 		// One now, not just one per interval: the keep-alive is the only request
