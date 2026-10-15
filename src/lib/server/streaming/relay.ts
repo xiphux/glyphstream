@@ -31,7 +31,6 @@ import type {
 	StreamReasoningEvent,
 	StreamStartEvent,
 	StreamTextEvent,
-	StreamTitleEvent,
 	StreamToolCallArgsDeltaEvent,
 	StreamToolCallStartEvent,
 } from '#lib/types/api.js';
@@ -44,7 +43,7 @@ import { getConversationMeta } from '../db/queries/conversations';
 import { fenceCode, renderMarkdown } from '../markdown/render';
 import { notifyConversationComplete } from '../push/notify';
 import type { NotifyModality } from '#lib/types/push.js';
-import { raceTitle, startTitleTaskIfFirstExchange } from '../tasks/title-task-runner';
+import { startTitleTaskIfFirstExchange } from '../tasks/title-task-runner';
 import { parseSSEStream } from './sse-parser';
 import { createNormalizer, type NormalizedDelta } from './normalizers';
 import { errorMessage, isAbortError, sseWriter, type SseWriter } from './sse-transport';
@@ -53,6 +52,7 @@ import type { Tool } from '../tools/types';
 import { CODE_ARG_TOOLS, isReactionTool } from '#lib/chat-render.js';
 import { createLogger } from '../log';
 import { appendErrorSibling } from './error-sibling';
+import { settleGeneration } from './settle-generation';
 
 const log = createLogger('stream/relay');
 const upstreamLog = createLogger('stream/upstream');
@@ -543,31 +543,17 @@ async function runChatTurn(
 			}
 		}
 
-		// Generation + tools + persistence are done — free the endpoint slot NOW,
-		// before we sit on the title race. This release is REQUIRED, not an
-		// optimization: the title task acquires the SAME endpoint gate (see
-		// callTaskModel), so on a single-GPU (max_concurrent=1) endpoint where the
-		// task model shares this endpoint, holding the slot across the race would
-		// deadlock the title task out entirely — it could never be granted, and
-		// raceTitle would burn its whole budget while the next queued generation
-		// waits it out. Do NOT move this back below the race.
-		releaseSlot?.();
-
-		// Same boundary, same reason, for the in-flight registry: the generation
-		// is over, so stop reporting it as running. Without this the entry lives
-		// until the finally below, i.e. until the title race ends, and anything
-		// asking "is this conversation generating?" gets a stale yes for up to
-		// TITLE_DELIVERY_BUDGET_MS. `clearInFlight` is identity-guarded, so the
-		// finally's `onComplete` remains a harmless no-op — and a re-registration
-		// by a fast follow-up turn is not clobbered.
-		params.onGenerationSettled?.();
-
-		// Race the title task in the background. The SSE stream stays
-		// open until either the title arrives or the budget expires.
-		if (titlePromise) {
-			const title = await raceTitle(titlePromise, TITLE_DELIVERY_BUDGET_MS);
-			if (title) write({ type: 'title', title } satisfies StreamTitleEvent);
-		}
+		// Generation + tools + persistence are done: free the slot, settle, then
+		// race the title in the background. The order matters; see
+		// settleGeneration. The SSE stream stays open until the title arrives or
+		// the budget expires.
+		await settleGeneration({
+			releaseSlot: () => releaseSlot?.(),
+			onSettled: params.onGenerationSettled,
+			titlePromise,
+			titleBudgetMs: TITLE_DELIVERY_BUDGET_MS,
+			writeTitle: write,
+		});
 	} catch (e) {
 		const ev: StreamErrorEvent = { type: 'error', message: errorMessage(e) };
 		write(ev);

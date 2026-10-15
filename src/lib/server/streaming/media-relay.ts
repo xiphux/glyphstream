@@ -37,7 +37,7 @@ import type { Tx } from '../db/client';
 import type { InFlightEntry } from './in-flight';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { notifyConversationComplete, type NotifyModality } from '../push/notify';
-import { raceTitle, startTitleTaskIfFirstExchange } from '../tasks/title-task-runner';
+import { startTitleTaskIfFirstExchange } from '../tasks/title-task-runner';
 import {
 	errorMessage,
 	isAbortError,
@@ -51,10 +51,10 @@ import type {
 	StreamDoneEvent,
 	StreamErrorEvent,
 	StreamStartEvent,
-	StreamTitleEvent,
 } from '#lib/types/api.js';
 import { createLogger } from '../log';
 import { appendErrorSibling } from './error-sibling';
+import { settleGeneration } from './settle-generation';
 
 const log = createLogger('media-relay');
 
@@ -511,21 +511,16 @@ export async function runMediaRelay(
 		}
 
 		safeWrite({ type: 'done', assistantMessage } satisfies StreamDoneEvent);
-		// Generation + persistence are done — free the endpoint slot BEFORE the
-		// title race, not after. The title task is gated on the same endpoint
-		// slot now (see callTaskModel), so on a single-GPU (max_concurrent=1)
-		// endpoint holding the slot here would block the title task from ever
-		// being granted → raceTitle would burn its whole budget and the next
-		// queued generation would wait it out. The finally is the idempotent
-		// backstop for the early-return / error paths.
-		slot?.release();
-		// Same boundary for the in-flight registry: generation is over, so
-		// stop reporting it as running rather than holding the entry through
-		// the title race. Identity-guarded, so the finally's onComplete stays
-		// a harmless no-op (and can't clobber a fast follow-up's entry).
-		params.onGenerationSettled?.();
-		const title = await raceTitle(titlePromise, TITLE_DELIVERY_BUDGET_MS);
-		if (title) safeWrite({ type: 'title', title } satisfies StreamTitleEvent);
+		// Free the slot, settle, then race the title; the order matters (see
+		// settleGeneration). The finally's release is the idempotent backstop for
+		// the early-return and error paths.
+		await settleGeneration({
+			releaseSlot: () => slot?.release(),
+			onSettled: params.onGenerationSettled,
+			titlePromise,
+			titleBudgetMs: TITLE_DELIVERY_BUDGET_MS,
+			writeTitle: safeWrite,
+		});
 		safeClose();
 	} finally {
 		slot?.release();
