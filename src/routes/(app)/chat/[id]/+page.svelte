@@ -1179,19 +1179,16 @@
 	// this the previous chat's attachments (and its auto-attach memory)
 	// would carry into the new one.
 	//
-	// Compared against the last id rather than just read: touching
-	// `data.conversation` makes the whole `data` prop a dependency, so this fired
-	// on *any* invalidation, not just a conversation change. It was invisible
+	// Called only on a real id change (the conversation-entry effect below), not
+	// on every read of `data.conversation`: that makes the whole `data` prop a
+	// dependency, so a reset tied to it fired on *any* invalidation, not just a
+	// conversation change. It was invisible
 	// while every turn ended in `refreshAll()` — the clear was immediately
 	// followed by a re-seeded `messages`, which re-ran the auto-attach effect and
 	// put the image back — but it meant each turn needlessly tore down and
 	// rebuilt the composer's attachments, and a layout-only invalidation would
 	// clear them with nothing to restore them.
-	// svelte-ignore state_referenced_locally
-	let attachmentsResetConvId = data.conversation.id;
-	$effect(() => {
-		if (data.conversation.id === attachmentsResetConvId) return;
-		attachmentsResetConvId = data.conversation.id;
+	function resetComposerMediaOnSwitch() {
 		attachments.clear();
 		autoAttached = null;
 		// Stale set from the previous conversation — cleared so it can't
@@ -1201,6 +1198,35 @@
 		// navigate with it up) belongs to the previous conversation.
 		lightbox = null;
 		openingLightboxFor = null;
+	}
+
+	// One place for what happens when the reused /chat/[id] component enters a
+	// different conversation (and, for most steps, on first entry). Each step is
+	// documented at its function. Collapsed from four effects with four sentinel
+	// ids, because a step that missed its reset is how two bugs shipped.
+	//
+	// Placed HERE, early, on purpose: effects run in declaration order within a
+	// flush, and the media reset must land before the image auto-attach effect
+	// just below re-evaluates the new conversation's messages — after it, the
+	// reset would clear the image it had just attached. The presence-publish
+	// effect further down likewise needs the abandoned turn already torn down.
+	//
+	// Two things are deliberately NOT here:
+	// - the message re-seed, which keys on `data.conversation` identity rather
+	//   than id (a same-id page reload must re-seed; a layout-only invalidation
+	//   must not), and so do its canvas and feature-toggle gates;
+	// - the scroll position on entry, which must be declared AFTER the
+	//   auto-scroll effect so its tick lands second (see its effect below).
+	let enteredConversationId: string | undefined;
+	$effect(() => {
+		const id = data.conversation.id;
+		if (id === enteredConversationId) return;
+		const switched = enteredConversationId !== undefined;
+		enteredConversationId = id;
+		// The first entry starts with an empty composer: nothing to clear.
+		if (switched) resetComposerMediaOnSwitch();
+		abandonTurnOnSwitch();
+		restoreComposerOnSwitch(id);
 	});
 
 	$effect(() => {
@@ -2139,11 +2165,7 @@
 	// connection (see streaming/relay.ts) and fires its push
 	// notification when done, so the work isn't lost — the user just
 	// gets notified instead of watching it.
-	let previousConvId: string | undefined;
-	$effect(() => {
-		const id = data.conversation.id;
-		if (id === previousConvId) return;
-		previousConvId = id;
+	function abandonTurnOnSwitch() {
 		// Abandon the in-flight turn we're leaving: abort its fetch, clear busy +
 		// the in-flight bubble, and drop the approval-resume latch (a resume streams
 		// under `approvalSubmitting`, not `busy`, and registers its abort in
@@ -2165,7 +2187,7 @@
 		// navigates back.
 		avatarDrawOpen = false;
 		avatarPrompt = '';
-	});
+	}
 
 	// Publish "this tab is rendering a generation for convId" so the root
 	// layout's presence heartbeat can suppress a cross-device push only while a
@@ -2444,12 +2466,12 @@
 		'ArrowDown',
 		' ',
 	]);
-	let enteredConvId: string | null = null;
+	let enteredScrollConvId: string | null = null;
 	let releaseEntryHold: (() => void) | null = null;
 	$effect(() => {
 		const id = data.conversation.id;
-		if (id === enteredConvId) return;
-		enteredConvId = id;
+		if (id === enteredScrollConvId) return;
+		enteredScrollConvId = id;
 		releaseEntryHold?.();
 		releaseAnchorHold?.();
 		// Disarm "load earlier" until the conversation is positioned (see
@@ -2630,17 +2652,13 @@
 	// an open edit session (whose target message doesn't exist in the new
 	// conversation) would hide the composer with no inline editor to replace
 	// it, leaving no way to type. Drafts are per-conversation, so each switch
-	// loads its own (usually empty); see #lib/composer-draft. Guarded on a real
-	// id change so a same-conversation refreshAll() can't wipe a draft
-	// mid-compose.
-	let composerResetConvId: string | undefined;
-	$effect(() => {
-		const id = data.conversation.id;
-		if (id === composerResetConvId) return;
-		composerResetConvId = id;
+	// loads its own (usually empty); see #lib/composer-draft. Called only on a
+	// real id change (the conversation-entry effect), so a same-conversation
+	// refreshAll() can't wipe a draft mid-compose.
+	function restoreComposerOnSwitch(id: string) {
 		composerText = loadDraft(id);
 		edit.closeForConversationSwitch();
-	});
+	}
 
 	// Autosave the in-progress follow-up so it survives a reload (e.g. an iOS
 	// PWA frozen in the background). Per-conversation key; debounced with a
