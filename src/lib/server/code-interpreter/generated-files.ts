@@ -1,6 +1,3 @@
-import { createLogger } from '../log';
-
-const log = createLogger('code-interpreter');
 /**
  * The rules for files a Python run hands back out of /workspace/, shared by
  * the interpreter process (which applies them while diffing the workspace)
@@ -8,6 +5,9 @@ const log = createLogger('code-interpreter');
  * model-written code that can post its own `result` message, so its word on
  * names and sizes is not the boundary; the host's re-check is.
  */
+import { createLogger } from '../log';
+
+const log = createLogger('code-interpreter');
 
 /**
  * Per-file and aggregate caps on what comes back out of /workspace/.

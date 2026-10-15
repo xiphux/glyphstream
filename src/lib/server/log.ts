@@ -4,13 +4,14 @@
  * Output is exactly what the hand-written `console.warn('[scope] …')` calls it
  * replaced produced: one string with the prefix, then any further arguments
  * passed through untouched (an Error still prints with its stack). Each level
- * goes to the `console` method of the same name, so stdout/stderr routing is
- * unchanged and a test can still spy on `console.warn`.
+ * goes to the `console` method of the same name — info and debug to stdout,
+ * warn and error to stderr — and a test can still spy on `console.warn`.
  *
- * LOG_LEVEL is `debug`, `info` (the default), `warn` or `error`; anything else
- * reads as `info`. It is read on every call rather than once, so a test or an
- * operator's change takes effect without a module reload. That costs one
- * `process.env` lookup per line actually logged, which is nothing.
+ * LOG_LEVEL is `debug`, `info` (the default), `warn` or `error`, in any case;
+ * anything else reads as `info`. It is read on every call, logged or not, so a
+ * test's change takes effect without a module reload. That is one
+ * `process.env` lookup per call: nothing, except in a per-token loop, where the
+ * caller should check `enabled('debug')` first.
  *
  * Read from `process.env` here rather than through `env.ts`: thirty-odd unit
  * tests mock `#lib/server/env.js` with only the getters they need, and every

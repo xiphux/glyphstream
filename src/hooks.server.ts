@@ -74,7 +74,7 @@ validateAuthMethodsEnabled();
 // Upgrade recovery (single-user → multi-user): a pre-multi-user DB gets the
 // new `role` column defaulted to 'user' and therefore zero admins, with
 // /setup already closed — so we promote the original operator. Run ONCE,
-// lazily, on the first authenticated request (see `handle`) rather than at
+// lazily, on the first authenticated request (see `session`) rather than at
 // module load: it must not open the DB at boot, both to avoid doing DB work
 // before the connection is needed and so the e2e harness (which wipes +
 // recreates the DB in global-setup) can't race a boot-time connection.
@@ -92,7 +92,7 @@ installPersistedPauses();
 
 // Image / video generations are durable jobs; whatever was queued or running
 // when the last process stopped goes back in line. Resumed by the first
-// signed-in request (see `handle`), or by this timer for a server nobody is
+// signed-in request (see `session`), or by this timer for a server nobody is
 // visiting — never at module load, for the same reason the admin bootstrap
 // isn't (below).
 scheduleGenerationJobResume();
@@ -205,15 +205,15 @@ const ALWAYS_REVALIDATE_PATHS = new Set(['/service-worker.js', '/manifest.webman
 
 /**
  * State-mutating methods that need a same-origin Origin header on
- * /api/* — see the check inside `handle`.
+ * /api/* — see the `csrf` hook.
  */
 const STATE_MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-/** Subtree the auth rate limiter covers — see the check inside `handle`. */
+/** Subtree the auth rate limiter covers — see the `rateLimit` hook. */
 const AUTH_RATE_LIMIT_PATH_PREFIX = '/api/auth/';
 
 /**
- * When `handle` last ran, for the `idle` Server-Timing field.
+ * When `serverTiming` last ran, for the `idle` Server-Timing field.
  *
  * The slow cold launches this instrumentation chases are intermittent, and the
  * variable that best predicts them is not anything the panel could see: how long
@@ -287,7 +287,7 @@ const headerBudget: Handle = async ({ event, resolve }) => {
 	// Kept as the guard for that option: a Link header restates every client
 	// chunk and once pushed the block past a proxy's 4 KB buffer (a 502). Last,
 	// because it prices the block only once every other header is on it —
-	// including the Server-Timing just set above, and any Set-Cookie from a
+	// including the Server-Timing that `serverTiming` set, and any Set-Cookie from a
 	// session renewal. See header-budget.ts for why it trims rather than drops.
 	const link = response.headers.get('link');
 	if (link) {
@@ -357,7 +357,7 @@ const serverTiming: Handle = async ({ event, resolve }) => {
 	const response = await resolve(event);
 
 	// Server-Timing on documents only, stamped LAST so the span covers
-	// everything the server did — from request entry (see requestStart) through
+	// everything the server did — from request entry (see `start`) through
 	// compression, which buffers the whole body and costs tens of milliseconds
 	// on a long chat. Any time left outside this span does not vanish: the debug
 	// panel derives network as TTFB minus this number, so it gets billed to the
@@ -500,8 +500,8 @@ const compression: Handle = async ({ event, resolve }) => {
 /** Security headers and the revalidate override, on every response — including
  *  the gates' own 403 and 429 below. */
 const securityHeaders: Handle = async ({ event, resolve }) => {
-	const response = await resolve(event);
 	const path = routedPathname(event.url.pathname);
+	const response = await resolve(event);
 	applySecurityHeaders(response, path);
 	if (ALWAYS_REVALIDATE_PATHS.has(event.url.pathname)) {
 		response.headers.set('cache-control', 'no-cache');
@@ -520,14 +520,14 @@ const securityHeaders: Handle = async ({ event, resolve }) => {
  * origin POSTs already, but that's a property of the cookie, not
  * the route — a single explicit check here makes the same guarantee
  * at the route layer regardless of cookie-config drift.
-	//
+ *
  * Preferred signal is `Sec-Fetch-Site`: it's browser-set, not
  * spoofable by attacker JS, and unaffected by reverse-proxy header
  * rewriting (where a missing X-Forwarded-Proto could otherwise make
  * Origin and event.url.origin disagree on scheme). Falls back to a
  * straight Origin compare for the handful of browsers too old to
  * emit Fetch-Metadata headers (pre-2020 Chromium / pre-16.4 Safari).
-	//
+ *
  * GET / HEAD are unaffected — no state change, and Origin isn't
  * consistently sent on them. The OAuth callback flows
  * (/api/auth/github/callback and /api/auth/oauth/<provider>/callback)
@@ -637,11 +637,11 @@ const session: Handle = async ({ event, resolve }) => {
  * sign-ins still blunts a flood.
  *
  * Deliberately AFTER session resolution, and skipped for a request whose
- * session resolved — keyed on `ctx`, NOT `locals.user`: an app-locked
+ * session resolved — keyed on `locals.sessionId`, NOT `locals.user`: an app-locked
  * session has no `locals.user` by design, but it is still a real account's
  * session, and its unlock ceremony must not queue behind an anonymous flood.
- * The bucket key is the client address, which behind a reverse proxy with no `ADDRESS_HEADER` is the proxy for everyone — one
- * shared bucket for the whole instance. Limiting signed-in requests too
+ * The bucket key is the client address, which behind a reverse proxy with no
+ * `ADDRESS_HEADER` is the proxy for everyone — one shared bucket for the whole instance. Limiting signed-in requests too
  * would hand any unauthenticated client an instance-wide auth kill switch:
  * hold the shared bucket empty and every real user gets 429 on login, the
  * OAuth callbacks, logout, and — worst — the session-revocation endpoints,
@@ -661,7 +661,7 @@ const session: Handle = async ({ event, resolve }) => {
 const rateLimit: Handle = async ({ event, resolve }) => {
 	const path = routedPathname(event.url.pathname);
 	// `sessionId` is set exactly when a session resolved, locked or not — the
-	// `ctx` this comment is about, as `session` (above) published it.
+	// session the comment above is about, as `session` published it.
 	if (event.locals.sessionId === null && path.startsWith(AUTH_RATE_LIMIT_PATH_PREFIX)) {
 		const decision = consumeRateLimitToken(clientKey(event));
 		if (!decision.allowed) {

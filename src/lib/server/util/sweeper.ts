@@ -1,4 +1,3 @@
-import { createLogger } from '../log';
 /**
  * Shared lifecycle for the periodic background workers (media purger, embedding
  * backfiller, topic backfiller, dreaming, conversation summaries, expired
@@ -33,6 +32,7 @@ import { createLogger } from '../log';
  * guard is part of *their* contract ("safe to call directly even with the timer
  * running"). Hoisting it here would leave direct calls unguarded.
  */
+import { createLogger } from '../log';
 
 export interface SweeperOptions<T> {
 	/** Log prefix, without brackets — e.g. `purger` logs as `[purger]`. */
