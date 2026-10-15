@@ -773,7 +773,11 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 
 	try {
 		for await (const record of parseSSEStream(upstream)) {
-			upstreamLog.debug(`${params.endpoint.id}:`, record.data);
+			// Once per streamed record: check first so the default level pays no
+			// string build or env read per token.
+			if (upstreamLog.enabled('debug')) {
+				upstreamLog.debug(`${params.endpoint.id}:`, record.data);
+			}
 			const result = norm.process(record);
 			applyDeltas(result.deltas);
 			if (result.finishReason) finishReason = result.finishReason;

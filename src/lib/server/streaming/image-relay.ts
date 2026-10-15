@@ -203,7 +203,7 @@ function buildImageRelay(params: ImageRelayParams): [MediaRelayScaffoldParams, M
 				return null;
 			}
 			const msg = errorMessage(e);
-			log.debug('generation failed:', msg);
+			if (log.enabled('debug')) log.error('generation failed:', msg);
 			return { error: msg };
 		}
 	};
