@@ -4,12 +4,19 @@
  *
  * Every cache made here registers itself, so a test that changes the config or
  * the environment resets all of them with one `resetConfigCachesForTests()`
- * instead of knowing which modules memoise what. That used to be seven
+ * instead of knowing which modules memoise what. That used to be eight
  * differently named reset hooks, and several getters had none.
+ *
+ * Call `memoizeConfig` at module scope only (directly, or through a factory
+ * like `createModelResolver` that is itself called at module scope). Each call
+ * registers a cache for the life of the process, so one per request would leak.
  *
  * Configuration only. Runtime state — endpoint gates, worker pools, in-flight
  * registries — keeps its own reset, because clearing it mid-test means
- * something different.
+ * something different. One config cache stays outside: `push/web-push.ts`,
+ * whose setup also configures the web-push library (`setVapidDetails`), a side
+ * effect that forgetting the value wouldn't undo. It keeps
+ * `_resetWebPushForTest`.
  */
 
 export interface ConfigCache<T> {
