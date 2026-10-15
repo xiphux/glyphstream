@@ -406,8 +406,13 @@
 		);
 	}
 
+	// Runs inside MediaLightbox's prefetch effect. Untracked, or reading the
+	// local lists would subscribe that effect to them, and every star toggle
+	// (which rebuilds `searchItems`) would re-run it.
 	function prefetchLightboxItem(id: string) {
-		if (!localLightboxItem(id)) lightboxItems.prefetch(id);
+		untrack(() => {
+			if (!localLightboxItem(id)) lightboxItems.prefetch(id);
+		});
 	}
 
 	async function openLightboxById(id: string) {
