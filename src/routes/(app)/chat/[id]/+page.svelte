@@ -2830,6 +2830,7 @@
 			inConversation
 			siblings={lightbox.siblings}
 			onNavigate={(id: string) => void lightbox.open(id)}
+			onPrefetch={(id: string) => lightbox.prefetch(id)}
 			onDelete={lightbox.discardable ? (id: string) => void lightbox.discard(id) : undefined}
 			deletingId={lightbox.deletingId}
 			{avatarTargets}
