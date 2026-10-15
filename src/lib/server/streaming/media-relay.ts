@@ -54,6 +54,7 @@ import type {
 	StreamTitleEvent,
 } from '#lib/types/api.js';
 import { createLogger } from '../log';
+import { appendErrorSibling } from './error-sibling';
 
 const log = createLogger('media-relay');
 
@@ -399,24 +400,18 @@ export async function runMediaRelay(
 			// part can carry — the success path reads it off the output media row.
 			let persistedId: string | undefined;
 			try {
-				persistedId = appendMessage({
+				persistedId = appendErrorSibling({
 					conversationId: params.conversationId,
 					parentMessageId: params.userMessage.id,
-					role: 'assistant',
-					parts: [
-						{
-							type: 'error',
-							message: produced.error,
-							sourceMediaId: params.sourceMediaId ?? null,
-						},
-					],
+					message: produced.error,
+					sourceMediaId: params.sourceMediaId ?? null,
 					modelUsed: params.storedModelId,
 					genMs: Date.now() - genStartedAt,
 					advanceActiveLeaf: params.advanceActiveLeaf ?? true,
 					advanceActiveLeafIfCurrent: params.advanceActiveLeafIfCurrent,
 					fanoutIndex: params.fanoutIndex,
 					inTransaction: params.persistWith,
-				}).id;
+				});
 			} catch (e) {
 				// Best-effort durability — the client still gets the error frame
 				// below, just without a handle to the (absent) row. A discarded

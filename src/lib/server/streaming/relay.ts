@@ -52,6 +52,7 @@ import { executeToolCalls } from './tool-execution';
 import type { Tool } from '../tools/types';
 import { CODE_ARG_TOOLS, isReactionTool } from '#lib/chat-render.js';
 import { createLogger } from '../log';
+import { appendErrorSibling } from './error-sibling';
 
 const log = createLogger('stream/relay');
 const upstreamLog = createLogger('stream/upstream');
@@ -616,11 +617,10 @@ function persistTurnErrorSibling(
 ): void {
 	if (isAbortError(err) || params.abortSignal?.aborted) return;
 	try {
-		appendMessage({
+		appendErrorSibling({
 			conversationId: params.conversationId,
 			parentMessageId,
-			role: 'assistant',
-			parts: [{ type: 'error', message }],
+			message,
 			modelUsed: params.storedModelId,
 			advanceActiveLeaf: params.advanceActiveLeaf ?? true,
 			fanoutIndex: params.fanoutIndex,

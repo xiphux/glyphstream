@@ -47,7 +47,7 @@ import { parseModelId } from '../endpoints/model-id';
 import { videoCancel } from '../endpoints/client';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { getConversationMeta, setConversationAvatar } from '../db/queries/conversations';
-import { appendMessage, getMessage } from '../db/queries/messages';
+import { getMessage } from '../db/queries/messages';
 import {
 	consumeGenerationJob,
 	deleteGenerationJob,
@@ -81,6 +81,7 @@ import {
 import { errorMessage, sseWriter, CANCELLED_MESSAGE } from '../streaming/sse-transport';
 import type { StreamErrorEvent } from '#lib/types/api.js';
 import { createLogger } from '../log';
+import { appendErrorSibling } from '../streaming/error-sibling';
 
 const log = createLogger('generation-jobs');
 const avatarLog = createLogger('avatar');
@@ -637,11 +638,11 @@ function persistFailure(
 	message: string,
 ): string | undefined {
 	try {
-		return appendMessage({
+		return appendErrorSibling({
 			conversationId: row.conversationId,
 			parentMessageId: row.anchorMessageId,
-			role: 'assistant',
-			parts: [{ type: 'error', message, sourceMediaId: params.sourceMediaId }],
+			message,
+			sourceMediaId: params.sourceMediaId,
 			modelUsed: row.modelId,
 			advanceActiveLeaf: !isFanoutOrigin(row.origin),
 			advanceActiveLeafIfCurrent: row.origin === 'avatar' ? row.anchorMessageId : undefined,
@@ -649,7 +650,7 @@ function persistFailure(
 			inTransaction: (tx) => {
 				if (!consumeGenerationJob(tx, row.id)) throw new GenerationDiscardedError();
 			},
-		}).id;
+		});
 	} catch (e) {
 		if (!(e instanceof GenerationDiscardedError)) {
 			log.warn(`could not persist failure for ${row.id}:`, errorMessage(e));
