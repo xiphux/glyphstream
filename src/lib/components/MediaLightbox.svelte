@@ -336,8 +336,12 @@
 		// the positioning effect. The effect then no-ops (already centered).
 		const el = trackEl;
 		if (el) {
-			scrollTarget = next;
-			el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' });
+			const left = next * el.clientWidth;
+			// Only when the track will actually move. A scroll to where it already
+			// is emits no scroll event, so nothing would ever clear the target, and
+			// the next swipe would skip its midpoint resolve.
+			if (el.scrollLeft !== left) scrollTarget = next;
+			el.scrollTo({ left, behavior: 'smooth' });
 		}
 		resolveSlide(siblings[next].id);
 	}

@@ -1018,6 +1018,24 @@ describe('MediaLightbox — swipe resolves at the midpoint', () => {
 		expect(onNavigate).not.toHaveBeenCalledWith('w-2');
 	});
 
+	it("doesn't wait on an arrow scroll that won't move the track", async () => {
+		const user = userEvent.setup();
+		const onNavigate = vi.fn();
+		const { container } = render(MediaLightbox, {
+			props: { media: makeImage({ id: 'm-1' }), onClose: vi.fn(), siblings, onNavigate },
+		});
+		const t = track(container);
+		// The track already rests where the press will send it, so its scrollTo is
+		// a no-op that emits no scroll event to say it arrived.
+		t.el.scrollLeft = WIDTH;
+		await user.keyboard('{ArrowRight}');
+		onNavigate.mockClear();
+		await settleNavResolve();
+		// The next swipe still resolves at its midpoint.
+		t.at(1.6);
+		expect(onNavigate).toHaveBeenCalledWith('m-3');
+	});
+
 	it('asks the caller to prefetch the slides either side', () => {
 		const onPrefetch = vi.fn();
 		render(MediaLightbox, {
