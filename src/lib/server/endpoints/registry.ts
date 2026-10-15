@@ -1,26 +1,22 @@
 import { loadEndpoints, type LoadedEndpoint } from './config';
-
-let cached: Map<string, LoadedEndpoint> | null = null;
+import { memoizeConfig } from '../util/config-cache';
 
 /**
  * Build (and memoize) the endpoint registry on first access.
  *
- * Construct the new map locally first and only assign to `cached` after
- * loadEndpoints() returns successfully. Otherwise a throw mid-build
- * would leave `cached` set to an empty Map (truthy), and subsequent
- * callers would see an empty registry without retrying — silent bug
- * masquerading as "endpoints aren't configured" once the actual cause
- * was a transient file-read or env-resolution failure.
+ * Only a map built in full is remembered: a throw from loadEndpoints()
+ * mid-build is not cached (see memoizeConfig), so the next caller retries.
+ * Caching a half-built (empty) map instead would make a transient
+ * file-read or env-resolution failure look like "endpoints aren't
+ * configured" for the life of the process.
  */
-export function getRegistry(): Map<string, LoadedEndpoint> {
-	if (cached) return cached;
+export const getRegistry = memoizeConfig((): Map<string, LoadedEndpoint> => {
 	const next = new Map<string, LoadedEndpoint>();
 	for (const ep of loadEndpoints()) {
 		next.set(ep.id, ep);
 	}
-	cached = next;
-	return cached;
-}
+	return next;
+});
 
 export function getEndpoint(id: string): LoadedEndpoint | undefined {
 	return getRegistry().get(id);

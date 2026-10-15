@@ -20,6 +20,7 @@
  */
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
 import { mcpSecretKey } from '../env';
+import { memoizeConfig } from '../util/config-cache';
 
 const IV_LEN = 12;
 const TAG_LEN = 16;
@@ -28,10 +29,7 @@ const KEY_LEN = 32;
 // of MCP_SECRET_KEY from any future key derived from the same secret.
 const HKDF_INFO = 'glyphstream-mcp-credential-v1';
 
-let cachedKey: Buffer | null = null;
-
-function key(): Buffer {
-	if (cachedKey) return cachedKey;
+const key = memoizeConfig((): Buffer => {
 	// mcpSecretKey() returns MCP_SECRET_KEY or falls back to AUTH_SECRET (always
 	// set), so this never throws in a booted app.
 	const secret = mcpSecretKey();
@@ -42,9 +40,8 @@ function key(): Buffer {
 		HKDF_INFO,
 		KEY_LEN,
 	);
-	cachedKey = Buffer.from(derived);
-	return cachedKey;
-}
+	return Buffer.from(derived);
+});
 
 /** Encrypt a UTF-8 secret. Returns `iv ‖ tag ‖ ciphertext` for blob storage. */
 export function encryptSecret(plaintext: string): Buffer {
@@ -70,9 +67,4 @@ export function decryptSecret(blob: Uint8Array): string {
 	const decipher = createDecipheriv('aes-256-gcm', key(), iv);
 	decipher.setAuthTag(tag);
 	return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');
-}
-
-/** Test seam: drop the cached derived key (after changing the env in a test). */
-export function _resetSecretKeyCacheForTests(): void {
-	cachedKey = null;
 }

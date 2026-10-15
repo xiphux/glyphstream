@@ -38,6 +38,7 @@ import {
 	type PasskeyDeviceType,
 } from '../db/queries/passkey';
 import { createLogger } from '../log';
+import { memoizeConfig } from '../util/config-cache';
 
 /** Short-lived httpOnly cookies that carry the challenge between the
  *  "options" and "verify" halves of each ceremony. Mirrors the shape of
@@ -49,36 +50,17 @@ const CHALLENGE_TTL_SECONDS = 300;
 
 export const RP_NAME = 'GlyphStream';
 
-let cachedRpId: string | null = null;
-let cachedExpectedOrigin: string | null = null;
-
 /**
  * WebAuthn `rp.id` is the bare registrable domain (no scheme, no port).
  * Derived from EXTERNAL_BASE_URL — see file header.
  */
-export function getRpId(): string {
-	if (!cachedRpId) {
-		cachedRpId = new URL(publicBaseUrl()).hostname;
-	}
-	return cachedRpId;
-}
+export const getRpId = memoizeConfig((): string => new URL(publicBaseUrl()).hostname);
 
 /**
  * `expectedOrigin` is the full scheme + host + port, exactly as the
  * browser will report it in `clientDataJSON.origin`.
  */
-export function getExpectedOrigin(): string {
-	if (!cachedExpectedOrigin) {
-		cachedExpectedOrigin = publicBaseUrl();
-	}
-	return cachedExpectedOrigin;
-}
-
-/** Test-only: drop cached RP ID + origin so a test can swap publicBaseUrl(). */
-export function resetRpCache(): void {
-	cachedRpId = null;
-	cachedExpectedOrigin = null;
-}
+export const getExpectedOrigin = memoizeConfig((): string => publicBaseUrl());
 
 /**
  * Build registration options for an authenticated user. The user's

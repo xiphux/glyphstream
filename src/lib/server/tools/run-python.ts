@@ -28,6 +28,7 @@ import { runPython } from '../code-interpreter/pool';
 import { collectConversationFiles, persistGeneratedFiles } from '../code-interpreter/files';
 import type { RunPythonPreFile } from '../code-interpreter/pool';
 import { createLogger } from '../log';
+import { memoizeConfig } from '../util/config-cache';
 
 const log = createLogger('run_python');
 
@@ -40,12 +41,7 @@ const log = createLogger('run_python');
 // build clean and shifts validation to first request (which is fine —
 // every other config validator in this codebase is similarly lazy, and
 // production deployments always have config.toml present by then).
-let cachedDescription: string | null = null;
-function getRunPythonDescription(): string {
-	if (cachedDescription !== null) return cachedDescription;
-	cachedDescription = buildToolDescription();
-	return cachedDescription;
-}
+const getRunPythonDescription = memoizeConfig(() => buildToolDescription());
 
 /**
  * The registry's largest description by some margin, and it ships on every single

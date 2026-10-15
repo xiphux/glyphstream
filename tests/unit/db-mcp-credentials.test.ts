@@ -22,13 +22,13 @@ import {
 	hasMcpCredential,
 	listConfiguredServerIds,
 } from '#lib/server/db/queries/mcp-credentials.js';
-import { _resetSecretKeyCacheForTests } from '#lib/server/crypto/secret-box.js';
 import { mcpCredentials } from '../../src/lib/server/db/schema';
+import { resetConfigCachesForTests } from '#lib/server/util/config-cache.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();
 	mocks.secretKey = 'mcp-master-key-one';
-	_resetSecretKeyCacheForTests();
+	resetConfigCachesForTests();
 });
 afterEach(() => closeTestDb());
 
@@ -82,7 +82,7 @@ describe('mcp-credentials', () => {
 		const u = seedUser();
 		setMcpCredential(u.id, 'fastmail', 'token');
 		mocks.secretKey = 'rotated-master-key';
-		_resetSecretKeyCacheForTests();
+		resetConfigCachesForTests();
 		// Row still exists, but it can't be decrypted — surfaces as "no credential".
 		expect(getMcpCredential(u.id, 'fastmail')).toBeNull();
 		expect(hasMcpCredential(u.id, 'fastmail')).toBe(true);

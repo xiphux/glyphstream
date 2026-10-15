@@ -42,6 +42,7 @@
 
 import { loadEndpoints, loadSearchConfig } from '../endpoints/config';
 import { normalizeHostname, UrlPolicyError } from './url-policy-base';
+import { memoizeConfig } from '../util/config-cache';
 
 export {
 	UrlPolicyError,
@@ -69,8 +70,8 @@ export {
  * The forbidden host set is built lazily on first call from
  * `loadEndpoints()` + `loadSearchConfig()`. Config is loaded once at boot
  * and doesn't reload at runtime in v1, so the cached set is stable for
- * the process lifetime. Tests can call `resetUrlPolicyCacheForTests()`
- * to drop the cache between scenarios.
+ * the process lifetime. Tests drop it between scenarios with
+ * `resetConfigCachesForTests()`.
  */
 export function assertNotConfiguredBackend(url: URL): void {
 	const forbidden = getForbiddenHosts();
@@ -82,10 +83,7 @@ export function assertNotConfiguredBackend(url: URL): void {
 	}
 }
 
-let cachedForbiddenHosts: Set<string> | null = null;
-
-function getForbiddenHosts(): Set<string> {
-	if (cachedForbiddenHosts) return cachedForbiddenHosts;
+const getForbiddenHosts = memoizeConfig((): Set<string> => {
 	const set = new Set<string>();
 	try {
 		for (const ep of loadEndpoints()) {
@@ -115,9 +113,8 @@ function getForbiddenHosts(): Set<string> {
 	} catch {
 		// Same as above.
 	}
-	cachedForbiddenHosts = set;
 	return set;
-}
+});
 
 /**
  * Snapshot of the forbidden-host set, for the code-interpreter pool to hand
@@ -127,10 +124,4 @@ function getForbiddenHosts(): Set<string> {
  */
 export function listForbiddenHosts(): string[] {
 	return Array.from(getForbiddenHosts());
-}
-
-/** Test-only: drop the cached forbidden-hosts set so the next call
- *  re-reads from a freshly-mocked `loadEndpoints` / `loadSearchConfig`. */
-export function resetUrlPolicyCacheForTests(): void {
-	cachedForbiddenHosts = null;
 }

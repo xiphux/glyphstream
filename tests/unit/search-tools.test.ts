@@ -36,7 +36,6 @@ import {
 	toolSearchEmbeddingConfig,
 	TOOL_SEARCH_EMBED_TIMEOUT_SECONDS,
 } from '#lib/server/tools/search-tools.js';
-import { _resetEmbeddingsConfigCacheForTests } from '#lib/server/retrieval/embeddings-config.js';
 import {
 	appendToolSearchHint,
 	buildToolSearchRequestContext,
@@ -45,6 +44,7 @@ import {
 import { _resetForTests, register } from '#lib/server/tools/registry.js';
 import type { ToolContext } from '#lib/server/tools/types.js';
 import type { ChatMessage } from '#lib/types/api.js';
+import { resetConfigCachesForTests } from '#lib/server/util/config-cache.js';
 
 function registerDeferred(
 	name: string,
@@ -77,7 +77,7 @@ function ctx(disabledFeatures: string[] = []): ToolContext {
 
 beforeEach(() => {
 	_resetForTests();
-	_resetEmbeddingsConfigCacheForTests();
+	resetConfigCachesForTests();
 	loadEmbeddingsConfigMock.mockReturnValue(null);
 	getEndpointMock.mockReturnValue(undefined);
 	embeddingsMock.mockReset();

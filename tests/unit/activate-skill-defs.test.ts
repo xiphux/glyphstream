@@ -5,7 +5,6 @@ const mocks = vi.hoisted(() => ({ ci: true }));
 vi.mock('#lib/server/code-interpreter/config.js', () => ({
 	isCodeInterpreterEnabled: () => mocks.ci,
 	getCodeInterpreterConfig: () => ({}),
-	resetCodeInterpreterConfigForTests: () => {},
 }));
 
 import {

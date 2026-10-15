@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB, ci: true })
 vi.mock('#lib/server/code-interpreter/config.js', () => ({
 	isCodeInterpreterEnabled: () => mocks.ci,
 	getCodeInterpreterConfig: () => ({}),
-	resetCodeInterpreterConfigForTests: () => {},
 }));
 
 import { createSkill, setSkillEnabled, skillStoragePath } from '#lib/server/db/queries/skills.js';

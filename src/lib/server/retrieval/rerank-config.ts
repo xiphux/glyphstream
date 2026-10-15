@@ -37,8 +37,3 @@ const rerankConfig = createOptionalEndpointConfig({
 export function resolveRerankConfig(): RerankConfig | undefined {
 	return rerankConfig.resolve();
 }
-
-/** Test hook: clear the memoized rerank config so the next call re-reads. */
-export function _resetRerankConfigCacheForTests(): void {
-	rerankConfig.reset();
-}

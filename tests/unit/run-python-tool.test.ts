@@ -33,7 +33,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock('#lib/server/code-interpreter/config.js', () => ({
 	getCodeInterpreterConfig: () => mocks.config,
 	isCodeInterpreterEnabled: () => mocks.enabled,
-	resetCodeInterpreterConfigForTests: () => {},
 }));
 
 vi.mock('#lib/server/code-interpreter/pool.js', () => ({

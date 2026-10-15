@@ -6,7 +6,8 @@ const getEndpointMock = vi.hoisted(() => vi.fn());
 vi.mock('#lib/server/endpoints/config.js', () => ({ loadMemoryModelConfig: loadMock }));
 vi.mock('#lib/server/endpoints/registry.js', () => ({ getEndpoint: getEndpointMock }));
 
-import { getMemoryModel, resetMemoryModel } from '#lib/server/tasks/memory-model.js';
+import { getMemoryModel } from '#lib/server/tasks/memory-model.js';
+import { resetConfigCachesForTests } from '#lib/server/util/config-cache.js';
 
 const loaded = {
 	model: 'gpu::qwen-32b',
@@ -17,7 +18,7 @@ const loaded = {
 };
 
 afterEach(() => {
-	resetMemoryModel();
+	resetConfigCachesForTests();
 	loadMock.mockReset();
 	getEndpointMock.mockReset();
 });

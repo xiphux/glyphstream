@@ -6,7 +6,7 @@
  * hand back a `RelevanceConfig` — or `undefined` when embeddings aren't
  * configured / the endpoint no longer resolves, so the caller degrades to
  * BM25-only (never an error). One memoized read backs both, so there's a single
- * cache with a single test reset rather than a per-tool clone.
+ * cache rather than a per-tool clone.
  *
  * Failure handling is the shared `createOptionalEndpointConfig` contract — see
  * that module for why a malformed block disables the leg instead of throwing.
@@ -40,9 +40,4 @@ const embeddingsConfig = createOptionalEndpointConfig({
  */
 export function resolveRelevanceConfig(): RelevanceConfig | undefined {
 	return embeddingsConfig.resolve();
-}
-
-/** Test hook: clear the memoized embeddings config so the next call re-reads. */
-export function _resetEmbeddingsConfigCacheForTests(): void {
-	embeddingsConfig.reset();
 }

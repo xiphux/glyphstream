@@ -51,8 +51,3 @@ const resolver = createModelResolver({
 export function getMemoryModel(): ResolvedMemoryModel | null {
 	return resolver.get();
 }
-
-/** Test/dev only: discard the cached resolution so the next access reloads. */
-export function resetMemoryModel(): void {
-	resolver.reset();
-}

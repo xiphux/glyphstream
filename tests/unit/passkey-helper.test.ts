@@ -38,7 +38,6 @@ import {
 	generateRegistrationOptionsForUser,
 	getExpectedOrigin,
 	getRpId,
-	resetRpCache,
 	setRegistrationChallengeCookie,
 	verifyAuthentication,
 	verifyRegistration,
@@ -47,9 +46,10 @@ import {
 import type { PasskeyCredentialRow } from '#lib/server/db/queries/passkey.js';
 import type { SessionUser } from '#lib/server/auth/session.js';
 import type { Cookies } from '@sveltejs/kit';
+import { resetConfigCachesForTests } from '#lib/server/util/config-cache.js';
 
 beforeEach(() => {
-	resetRpCache();
+	resetConfigCachesForTests();
 	mocks.baseUrl = 'https://chat.example.com';
 	generateRegistrationOptionsMock.mockReset().mockResolvedValue({ challenge: 'reg-challenge' });
 	verifyRegistrationResponseMock.mockReset().mockResolvedValue({ verified: true });
@@ -58,7 +58,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	resetRpCache();
+	resetConfigCachesForTests();
 });
 
 describe('getRpId / getExpectedOrigin', () => {
@@ -82,7 +82,7 @@ describe('getRpId / getExpectedOrigin', () => {
 		mocks.baseUrl = 'https://something-else.example.com';
 		// Cache should still serve the old value until reset.
 		expect(getRpId()).toBe(a);
-		resetRpCache();
+		resetConfigCachesForTests();
 		expect(getRpId()).toBe('something-else.example.com');
 	});
 });

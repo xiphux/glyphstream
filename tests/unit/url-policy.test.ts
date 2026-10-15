@@ -21,9 +21,9 @@ import {
 	assertHostnameRoutable,
 	assertHttpScheme,
 	assertNotConfiguredBackend,
-	resetUrlPolicyCacheForTests,
 	UrlPolicyError,
 } from '#lib/server/tools/url-policy.js';
+import { resetConfigCachesForTests } from '#lib/server/util/config-cache.js';
 
 beforeEach(() => {
 	dnsLookupMock.mockReset();
@@ -31,11 +31,11 @@ beforeEach(() => {
 	loadSearchConfigMock.mockReset();
 	loadEndpointsMock.mockReturnValue([]);
 	loadSearchConfigMock.mockReturnValue(null);
-	resetUrlPolicyCacheForTests();
+	resetConfigCachesForTests();
 });
 
 afterEach(() => {
-	resetUrlPolicyCacheForTests();
+	resetConfigCachesForTests();
 });
 
 describe('assertHttpScheme', () => {

@@ -32,6 +32,7 @@ import { getEndpoint } from './registry';
 import { parseModelId } from './model-id';
 import type { LoadedEndpoint } from './config';
 import { createLogger } from '../log';
+import { memoizeConfig } from '../util/config-cache';
 
 /** The part every resolved model has; `build` decorates it with block-specific knobs. */
 export interface ResolvedModelBase {
@@ -65,45 +66,30 @@ export function createModelResolver<Cfg, Resolved extends ResolvedModelBase>(
 ): ModelResolver<Resolved> {
 	const { name, load, modelIdOf, build } = opts;
 
-	// The extra object wrapper distinguishes "not yet resolved" from "resolved to
-	// null" — without it an unset model would re-run the whole load on every call.
-	let cached: { resolved: Resolved | null } | null = null;
+	// Remembers "resolved to null" too, so an unset model doesn't re-run the
+	// whole load on every call.
+	const resolve = memoizeConfig((): Resolved | null => {
+		const cfg = load();
+		if (!cfg) return null;
 
-	return {
-		get(): Resolved | null {
-			if (cached) return cached.resolved;
+		const rawId = modelIdOf(cfg);
+		const parsed = parseModelId(rawId);
+		if (!parsed) {
+			// The loader already validated the shape, so this is belt-and-suspenders.
+			createLogger(name).warn(`model "${rawId}" failed to parse; ignoring`);
+			return null;
+		}
 
-			const cfg = load();
-			if (!cfg) {
-				cached = { resolved: null };
-				return null;
-			}
+		const endpoint = getEndpoint(parsed.endpointId);
+		if (!endpoint) {
+			createLogger(name).warn(
+				`model "${rawId}" references endpoint "${parsed.endpointId}" which is not configured; ignoring`,
+			);
+			return null;
+		}
 
-			const rawId = modelIdOf(cfg);
-			const parsed = parseModelId(rawId);
-			if (!parsed) {
-				// The loader already validated the shape, so this is belt-and-suspenders.
-				createLogger(name).warn(`model "${rawId}" failed to parse; ignoring`);
-				cached = { resolved: null };
-				return null;
-			}
+		return build({ endpoint, upstreamId: parsed.upstreamId }, cfg);
+	});
 
-			const endpoint = getEndpoint(parsed.endpointId);
-			if (!endpoint) {
-				createLogger(name).warn(
-					`model "${rawId}" references endpoint "${parsed.endpointId}" which is not configured; ignoring`,
-				);
-				cached = { resolved: null };
-				return null;
-			}
-
-			const resolved = build({ endpoint, upstreamId: parsed.upstreamId }, cfg);
-			cached = { resolved };
-			return resolved;
-		},
-
-		reset(): void {
-			cached = null;
-		},
-	};
+	return { get: resolve, reset: resolve.reset };
 }

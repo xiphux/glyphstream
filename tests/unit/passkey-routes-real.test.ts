@@ -31,10 +31,10 @@ import { POST as loginOptions } from '../../src/routes/api/auth/passkey/login/op
 import { POST as loginVerify } from '../../src/routes/api/auth/passkey/login/verify/+server';
 import { POST as registerOptions } from '../../src/routes/api/auth/passkey/register/options/+server';
 import { POST as registerVerify } from '../../src/routes/api/auth/passkey/register/verify/+server';
-import { resetRpCache } from '#lib/server/auth/passkey.js';
 import { createSession, validateSessionToken } from '#lib/server/auth/session.js';
 import { findCredentialById, insertCredential } from '#lib/server/db/queries/passkey.js';
 import { passkeyCredentials, sessions, users } from '#lib/server/db/schema.js';
+import { resetConfigCachesForTests } from '#lib/server/util/config-cache.js';
 
 /** A browser's cookie jar, shared across the options → verify round trip. */
 function browserJar() {
@@ -113,7 +113,7 @@ const sessionCount = () => mocks.testDb.select().from(sessions).all().length;
 beforeEach(() => {
 	mocks.testDb = createTestDb();
 	mocks.passkeysOn = true;
-	resetRpCache();
+	resetConfigCachesForTests();
 	vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 

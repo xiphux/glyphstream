@@ -24,6 +24,7 @@
 
 import { getEndpoint } from '../endpoints/registry';
 import { createLogger } from '../log';
+import { memoizeConfig } from '../util/config-cache';
 
 export interface OptionalEndpointConfigOptions<Cfg, Resolved> {
 	/** Log prefix, without brackets — both legs log under `retrieval`. */
@@ -55,20 +56,14 @@ export function createOptionalEndpointConfig<Cfg, Resolved>(
 ): OptionalEndpointConfig<Resolved> {
 	const { name, block, disabledNote, load, endpointIdOf, build } = opts;
 
-	let cache: { value: Cfg | null } | undefined;
-
-	function loadOnce(): Cfg | null {
-		if (!cache) {
-			let value: Cfg | null = null;
-			try {
-				value = load();
-			} catch (e) {
-				createLogger(name).warn(`could not load ${block} config; ${disabledNote}:`, e);
-			}
-			cache = { value };
+	const loadOnce = memoizeConfig((): Cfg | null => {
+		try {
+			return load();
+		} catch (e) {
+			createLogger(name).warn(`could not load ${block} config; ${disabledNote}:`, e);
+			return null;
 		}
-		return cache.value;
-	}
+	});
 
 	return {
 		resolve(): Resolved | undefined {
@@ -78,8 +73,6 @@ export function createOptionalEndpointConfig<Cfg, Resolved>(
 			if (!endpoint) return undefined;
 			return build(cfg, endpoint);
 		},
-		reset(): void {
-			cache = undefined;
-		},
+		reset: loadOnce.reset,
 	};
 }

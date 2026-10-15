@@ -6,13 +6,11 @@ const getEndpointMock = vi.hoisted(() => vi.fn());
 vi.mock('#lib/server/endpoints/config.js', () => ({ loadRerankConfig: loadMock }));
 vi.mock('#lib/server/endpoints/registry.js', () => ({ getEndpoint: getEndpointMock }));
 
-import {
-	resolveRerankConfig,
-	_resetRerankConfigCacheForTests,
-} from '#lib/server/retrieval/rerank-config.js';
+import { resolveRerankConfig } from '#lib/server/retrieval/rerank-config.js';
+import { resetConfigCachesForTests } from '#lib/server/util/config-cache.js';
 
 afterEach(() => {
-	_resetRerankConfigCacheForTests();
+	resetConfigCachesForTests();
 	loadMock.mockReset();
 	getEndpointMock.mockReset();
 });

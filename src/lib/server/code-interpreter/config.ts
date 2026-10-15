@@ -25,6 +25,7 @@ import {
 	requireString,
 } from '../config/toml';
 import { configPath } from '../env';
+import { memoizeConfig } from '../util/config-cache';
 
 export interface LoadedCodeInterpreterConfig {
 	/** Master switch. When false, `run_python` advertises as unavailable. */
@@ -135,23 +136,12 @@ export function loadCodeInterpreterConfig(path = configPath()): LoadedCodeInterp
 	};
 }
 
-let cached: LoadedCodeInterpreterConfig | null = null;
-
 /** Process-wide accessor. Lazily parses + memoizes on first call. */
-export function getCodeInterpreterConfig(): LoadedCodeInterpreterConfig {
-	if (!cached) cached = loadCodeInterpreterConfig();
-	return cached;
-}
+export const getCodeInterpreterConfig = memoizeConfig(() => loadCodeInterpreterConfig());
 
 /** Master toggle — surfaced as the `run_python` tool's `isAvailable`
  *  predicate in stage 4. Operators can disable the feature without
  *  removing the registration. */
 export function isCodeInterpreterEnabled(): boolean {
 	return getCodeInterpreterConfig().enabled;
-}
-
-/** Test-only: drop the memo so the next call re-parses (or picks up a
- *  test-supplied path). */
-export function resetCodeInterpreterConfigForTests(): void {
-	cached = null;
 }

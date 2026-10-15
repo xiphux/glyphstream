@@ -12,6 +12,7 @@ import { parseModelId } from './model-id';
 import { isReleaseStrategy, RELEASE_STRATEGIES, type ReleaseStrategy } from './release';
 import { normalizeStyle, PROMPT_STYLES } from '../streaming/prompt-styles';
 import { normalizeVideoStyle, VIDEO_PROMPT_STYLES } from '../streaming/prompt-styles-video';
+import { memoizeConfig } from '../util/config-cache';
 
 /**
  * Canonicalize a prompt-style string against BOTH the image and video style
@@ -661,24 +662,14 @@ export function loadMaxQueuedGenerationsPerUser(path = configPath()): number | n
 	);
 }
 
-let maxQueuedGenerationsCache: { value: number | null } | undefined;
-
 /** Memoized {@link loadMaxQueuedGenerationsPerUser}. */
-export function getMaxQueuedGenerationsPerUser(): number | null {
-	maxQueuedGenerationsCache ??= { value: loadMaxQueuedGenerationsPerUser() };
-	return maxQueuedGenerationsCache.value;
-}
-
-let maxToolLoopIterationsCache: number | undefined;
+export const getMaxQueuedGenerationsPerUser = memoizeConfig(() =>
+	loadMaxQueuedGenerationsPerUser(),
+);
 
 /** Memoized {@link loadMaxToolLoopIterations} for the per-request hot path
  *  (config.toml doesn't change at runtime). */
-export function getMaxToolLoopIterations(): number {
-	if (maxToolLoopIterationsCache === undefined) {
-		maxToolLoopIterationsCache = loadMaxToolLoopIterations();
-	}
-	return maxToolLoopIterationsCache;
-}
+export const getMaxToolLoopIterations = memoizeConfig(() => loadMaxToolLoopIterations());
 
 /**
  * Default ceiling on the characters of a single tool result sent upstream
@@ -727,15 +718,8 @@ export function loadMaxToolResultChars(path = configPath()): number {
 	);
 }
 
-let maxToolResultCharsCache: number | undefined;
-
 /** Memoized {@link loadMaxToolResultChars} for the per-request hot path. */
-export function getMaxToolResultChars(): number {
-	if (maxToolResultCharsCache === undefined) {
-		maxToolResultCharsCache = loadMaxToolResultChars();
-	}
-	return maxToolResultCharsCache;
-}
+export const getMaxToolResultChars = memoizeConfig(() => loadMaxToolResultChars());
 
 /**
  * Longest edge, in pixels, an image is downscaled to before being inlined into a
@@ -821,13 +805,8 @@ export function loadVisionConfig(path = configPath()): VisionConfig {
 	return defaults;
 }
 
-let visionConfigCache: VisionConfig | undefined;
-
 /** Memoized {@link loadVisionConfig} for the per-request hot path. */
-export function getVisionConfig(): VisionConfig {
-	if (visionConfigCache === undefined) visionConfigCache = loadVisionConfig();
-	return visionConfigCache;
-}
+export const getVisionConfig = memoizeConfig(() => loadVisionConfig());
 
 /**
  * Read the top-level `[search]` block from config.toml, if present.

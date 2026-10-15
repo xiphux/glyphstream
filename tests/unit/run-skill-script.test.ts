@@ -18,7 +18,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock('#lib/server/code-interpreter/config.js', () => ({
 	getCodeInterpreterConfig: () => ({}),
 	isCodeInterpreterEnabled: () => mocks.enabled,
-	resetCodeInterpreterConfigForTests: () => {},
 }));
 vi.mock('#lib/server/code-interpreter/pool.js', () => ({
 	runPython: (...a: unknown[]) => mocks.runPython(...a),

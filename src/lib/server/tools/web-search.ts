@@ -24,6 +24,7 @@ import { loadSearchConfig, type LoadedSearchConfig } from '../endpoints/config';
 import { register } from './registry';
 import type { Tool, ToolExecution } from './types';
 import { composeSignals } from '../util/abort';
+import { memoizeConfig } from '../util/config-cache';
 
 const DEFAULT_MAX_RESULTS = 5;
 const MAX_MAX_RESULTS = 10;
@@ -32,17 +33,7 @@ const MAX_MAX_RESULTS = 10;
 const TIME_RANGES = ['day', 'week', 'month', 'year'] as const;
 type TimeRange = (typeof TIME_RANGES)[number];
 
-let configCache: { value: LoadedSearchConfig | null } | undefined;
-
-function getConfig(): LoadedSearchConfig | null {
-	if (!configCache) configCache = { value: loadSearchConfig() };
-	return configCache.value;
-}
-
-/** Test hook: clear the memoized config so the next call re-reads. */
-export function _resetConfigCacheForTests(): void {
-	configCache = undefined;
-}
+const getConfig = memoizeConfig((): LoadedSearchConfig | null => loadSearchConfig());
 
 export const webSearchTool: Tool = {
 	definition: {

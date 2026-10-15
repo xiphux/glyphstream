@@ -4,13 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const loadMock = vi.hoisted(() => vi.fn());
 vi.mock('#lib/server/endpoints/config.js', () => ({ loadEmbeddingsConfig: loadMock }));
 
-import {
-	resolveRelevanceConfig,
-	_resetEmbeddingsConfigCacheForTests,
-} from '#lib/server/retrieval/embeddings-config.js';
+import { resolveRelevanceConfig } from '#lib/server/retrieval/embeddings-config.js';
+import { resetConfigCachesForTests } from '#lib/server/util/config-cache.js';
 
 afterEach(() => {
-	_resetEmbeddingsConfigCacheForTests();
+	resetConfigCachesForTests();
 	loadMock.mockReset();
 });
 

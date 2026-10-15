@@ -6,8 +6,9 @@ vi.mock('#lib/server/endpoints/config.js', () => ({
 	loadSearchConfig: loadSearchConfigMock,
 }));
 
-import { webSearchTool, _resetConfigCacheForTests } from '#lib/server/tools/web-search.js';
+import { webSearchTool } from '#lib/server/tools/web-search.js';
 import type { ToolContext } from '#lib/server/tools/types.js';
+import { resetConfigCachesForTests } from '#lib/server/util/config-cache.js';
 
 function ctx(): ToolContext {
 	return {
@@ -22,7 +23,7 @@ const realFetch = globalThis.fetch;
 
 beforeEach(() => {
 	loadSearchConfigMock.mockReset();
-	_resetConfigCacheForTests();
+	resetConfigCachesForTests();
 });
 
 afterEach(() => {
@@ -121,7 +122,7 @@ describe('web_search args validation', () => {
 
 	it('returns the error when config is missing', async () => {
 		loadSearchConfigMock.mockReturnValue(null);
-		_resetConfigCacheForTests();
+		resetConfigCachesForTests();
 		const r = await webSearchTool.execute({ query: 'x' }, ctx());
 		expect(r.isError).toBe(true);
 		expect(payload(r.content).error).toMatch(/not configured/i);

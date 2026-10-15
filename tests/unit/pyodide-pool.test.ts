@@ -40,7 +40,6 @@ vi.mock('../../src/lib/server/code-interpreter/net-proxy', async (orig) => {
 vi.mock('#lib/server/code-interpreter/config.js', () => ({
 	getCodeInterpreterConfig: () => mocks.testConfig,
 	isCodeInterpreterEnabled: () => mocks.testConfig.enabled,
-	resetCodeInterpreterConfigForTests: () => {},
 }));
 
 import {

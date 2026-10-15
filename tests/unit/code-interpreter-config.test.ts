@@ -3,11 +3,9 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import {
-	loadCodeInterpreterConfig,
-	resetCodeInterpreterConfigForTests,
-} from '#lib/server/code-interpreter/config.js';
+import { loadCodeInterpreterConfig } from '#lib/server/code-interpreter/config.js';
 import { ConfigError } from '#lib/server/config/toml.js';
+import { resetConfigCachesForTests } from '#lib/server/util/config-cache.js';
 
 let tmpDir: string;
 let configPath: string;
@@ -19,11 +17,11 @@ function writeConfig(toml: string): void {
 beforeEach(() => {
 	tmpDir = mkdtempSync(join(tmpdir(), 'code-interp-config-'));
 	configPath = join(tmpDir, 'config.toml');
-	resetCodeInterpreterConfigForTests();
+	resetConfigCachesForTests();
 });
 
 afterEach(() => {
-	resetCodeInterpreterConfigForTests();
+	resetConfigCachesForTests();
 	rmSync(tmpDir, { recursive: true, force: true });
 });
 

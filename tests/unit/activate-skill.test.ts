@@ -22,7 +22,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock('#lib/server/code-interpreter/config.js', () => ({
 	getCodeInterpreterConfig: () => ({}),
 	isCodeInterpreterEnabled: () => true,
-	resetCodeInterpreterConfigForTests: () => {},
 }));
 vi.mock('#lib/server/db/queries/skills.js', () => ({
 	getEnabledSkillByName: (...a: unknown[]) => mocks.getEnabledSkillByName(...a),

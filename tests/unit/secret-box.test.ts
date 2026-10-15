@@ -11,15 +11,12 @@ vi.mock('#lib/server/env.js', () => ({
 	mcpSecretKey: () => mocks.secretKey,
 }));
 
-import {
-	encryptSecret,
-	decryptSecret,
-	_resetSecretKeyCacheForTests,
-} from '#lib/server/crypto/secret-box.js';
+import { encryptSecret, decryptSecret } from '#lib/server/crypto/secret-box.js';
+import { resetConfigCachesForTests } from '#lib/server/util/config-cache.js';
 
 beforeEach(() => {
 	mocks.secretKey = 'master-key-one';
-	_resetSecretKeyCacheForTests();
+	resetConfigCachesForTests();
 });
 
 describe('secret-box', () => {
@@ -42,7 +39,7 @@ describe('secret-box', () => {
 	it('fails to decrypt under a rotated key', () => {
 		const ct = encryptSecret('tok');
 		mocks.secretKey = 'a-different-master-key';
-		_resetSecretKeyCacheForTests();
+		resetConfigCachesForTests();
 		expect(() => decryptSecret(ct)).toThrow();
 	});
 

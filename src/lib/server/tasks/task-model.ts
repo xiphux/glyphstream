@@ -10,6 +10,7 @@
 
 import { loadTaskModel, loadTaskModelConfig, type LoadedEndpoint } from '../endpoints/config';
 import { createModelResolver } from '../endpoints/resolve-model';
+import { memoizeConfig } from '../util/config-cache';
 
 export interface ResolvedTaskModel {
 	endpoint: LoadedEndpoint;
@@ -43,10 +44,6 @@ export function getTaskModel(): ResolvedTaskModel | null {
  * operator has vouched for the task model. Memoized; false when task_model is
  * unset or configured in the bare-string form.
  */
-export function isTaskModelPrivate(): boolean {
-	if (privateCache) return privateCache.value;
-	const value = loadTaskModelConfig()?.private ?? false;
-	privateCache = { value };
-	return value;
-}
-let privateCache: { value: boolean } | null = null;
+export const isTaskModelPrivate = memoizeConfig(
+	(): boolean => loadTaskModelConfig()?.private ?? false,
+);
