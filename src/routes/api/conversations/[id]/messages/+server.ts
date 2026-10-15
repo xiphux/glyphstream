@@ -567,6 +567,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		const requestFor = (
 			branchNow: typeof branch,
 			activatedToolNames: string[] = [],
+			turnStartTools?: ChatCompletionRequest['tools'],
 		): Promise<ChatCompletionRequest> =>
 			buildUpstreamRequest({
 				conversationId: params.id,
@@ -576,6 +577,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				systemPrompt: toolCtx.systemPrompt,
 				baseToolDefs: toolCtx.toolDefs,
 				activatedToolNames,
+				turnStartTools,
 				parameters: meta.parameters,
 				disabledFeatures,
 				supportsTools,
@@ -587,7 +589,11 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		}: {
 			activatedToolNames: string[];
 		}): Promise<ChatCompletionRequest> =>
-			requestFor(walkActiveBranch(params.id, { columns: 'serialization' }), activatedToolNames);
+			requestFor(
+				walkActiveBranch(params.id, { columns: 'serialization' }),
+				activatedToolNames,
+				requestBody.tools ?? [],
+			);
 
 		// MCP approval gate from the shared assembly: built-in tools and
 		// user-trusted MCP tools execute inline; untrusted MCP tools halt the

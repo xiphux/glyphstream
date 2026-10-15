@@ -211,9 +211,10 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	// tools[] (with this turn's searched-up tools promoted), same parameters and
 	// canvas tail. Re-walks the branch each call to pick up new tool results.
 	const resolveMediaDataUrl = cachedMediaResolver((mediaId) => mediaIdToDataUrl(mediaId, userId));
-	const buildRequestBody = ({
-		activatedToolNames = [],
-	}: { activatedToolNames?: string[] } = {}): Promise<ChatCompletionRequest> =>
+	const requestFor = (
+		activatedToolNames: string[],
+		turnStartTools?: ChatCompletionRequest['tools'],
+	): Promise<ChatCompletionRequest> =>
 		buildUpstreamRequest({
 			conversationId: params.id,
 			userId,
@@ -222,13 +223,19 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			systemPrompt: toolCtx.systemPrompt,
 			baseToolDefs: toolCtx.toolDefs,
 			activatedToolNames,
+			turnStartTools,
 			parameters: meta.parameters,
 			disabledFeatures,
 			supportsTools,
 			resolveMediaDataUrl,
 		});
 
-	const initialRequestBody = await buildRequestBody();
+	const initialRequestBody = await requestFor([]);
+	// Later iterations append to the first request's tools[] (see turnStartTools).
+	const buildRequestBody = ({
+		activatedToolNames = [],
+	}: { activatedToolNames?: string[] } = {}): Promise<ChatCompletionRequest> =>
+		requestFor(activatedToolNames, initialRequestBody.tools ?? []);
 
 	// The relay's StreamStartEvent carries a user-message snapshot. The
 	// resume isn't producing a new user message — the chat page already

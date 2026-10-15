@@ -76,9 +76,9 @@ describe('buildUpstreamRequest', () => {
 		expect(req.tool_choice).toBe('auto');
 	});
 
-	it('with a canvas open, appends searched-up tools after update_canvas, never before', async () => {
-		// Within a turn tools[] may only grow at the end: moving update_canvas
-		// between iterations would re-prefill the whole conversation.
+	// Within a turn tools[] may only grow at the end: moving a tool between
+	// iterations re-prefills the whole conversation on the next call.
+	const openCanvas = () =>
 		createCanvas({
 			userId,
 			conversationId,
@@ -87,16 +87,44 @@ describe('buildUpstreamRequest', () => {
 			contentHtml: null,
 			createdByMessageId: null,
 		});
-		const searched = list()
+	const searchable = () =>
+		list()
 			.map((t) => t.definition.function.name)
 			.find((n) => n !== 'update_canvas')!;
+	const names = (r: { tools?: Array<{ function: { name: string } }> }) =>
+		r.tools!.map((t) => t.function.name);
+
+	it('appends searched-up tools after update_canvas when the canvas was open from the start', async () => {
+		openCanvas();
+		const searched = searchable();
 		const first = await build({ baseToolDefs: [def('a')] });
-		const next = await build({ baseToolDefs: [def('a')], activatedToolNames: [searched] });
-		const names = (r: typeof first) => r.tools!.map((t) => t.function.name);
+		const next = await build({
+			baseToolDefs: [def('a')],
+			activatedToolNames: [searched],
+			turnStartTools: first.tools,
+		});
 		expect(names(first)).toEqual(['a', 'update_canvas']);
 		expect(names(next)).toEqual(['a', 'update_canvas', searched]);
-		// The canvas block stays the last message either way.
 		expect(next.messages.at(-1)!.content).toContain('hello');
+	});
+
+	it('appends update_canvas after searched-up tools when the canvas opens partway through', async () => {
+		const searched = searchable();
+		const first = await build({ baseToolDefs: [def('a')] });
+		const second = await build({
+			baseToolDefs: [def('a')],
+			activatedToolNames: [searched],
+			turnStartTools: first.tools,
+		});
+		openCanvas(); // create_canvas ran in the second iteration
+		const third = await build({
+			baseToolDefs: [def('a')],
+			activatedToolNames: [searched],
+			turnStartTools: first.tools,
+		});
+		expect(names(first)).toEqual(['a']);
+		expect(names(second)).toEqual(['a', searched]);
+		expect(names(third)).toEqual(['a', searched, 'update_canvas']);
 	});
 
 	it('forwards only the sampling parameters that are set', async () => {

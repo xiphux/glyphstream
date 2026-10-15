@@ -12,9 +12,10 @@
  * - `messages`: the system prompt, then the serialized branch, then (when a
  *   canvas is open) its current content as a tail system block. The tail is
  *   always last so an edit never disturbs the cached prefix.
- * - `tools`: the turn's base set, deduplicated, then `update_canvas` when a
- *   canvas is open, then any tool the model searched up this turn — in that
- *   order, so tools[] only grows at the end within a turn.
+ * - `tools`: the turn's base set, deduplicated, plus `update_canvas` when a
+ *   canvas is open and any tool the model searched up this turn. Within a turn
+ *   it only grows at the end: later iterations pass `turnStartTools` and
+ *   append to it.
  * - The conversation's sampling parameters, when it has them.
  * - `stream_options.include_usage`, because streaming omits `usage` otherwise
  *   and the UI reports conversation size from it. (`stream: true` itself is
@@ -40,6 +41,13 @@ export interface UpstreamRequestInput {
 	baseToolDefs: OpenAIToolDefinition[];
 	/** Tools the model searched up earlier in this turn, promoted into tools[]. */
 	activatedToolNames?: readonly string[];
+	/**
+	 * For a later tool-loop iteration: the tools[] this turn's first request
+	 * sent. The iteration starts from it and appends, so tools[] keeps its order
+	 * whether a canvas was open from the start or opened partway through the
+	 * turn. Omit for the first request.
+	 */
+	turnStartTools?: readonly OpenAIToolDefinition[];
 	parameters: CustomModelParameters | null | undefined;
 	disabledFeatures: readonly FeatureCategory[];
 	supportsTools: boolean;
@@ -58,9 +66,22 @@ export async function buildUpstreamRequest(
 		),
 	};
 
-	const baseTools = dedupeToolDefs(input.baseToolDefs);
-	if (baseTools.length > 0) {
-		request.tools = baseTools;
+	// tools[] only grows at the end within a turn. A later iteration starts from
+	// the first request's list, then appends what the model searched up, then
+	// (if a canvas was opened since) update_canvas. Rebuilding it from scratch
+	// would put update_canvas wherever the current canvas state says, moving it
+	// or a searched-up tool between iterations and re-prefilling the whole
+	// conversation on the next call.
+	let tools = input.turnStartTools ? [...input.turnStartTools] : dedupeToolDefs(input.baseToolDefs);
+	const activated = input.activatedToolNames ?? [];
+	if (activated.length > 0) {
+		const additions = resolveActivatedToolDefs([...activated], {
+			excludeCategories: [...input.disabledFeatures],
+		});
+		tools = dedupeToolDefs([...tools, ...additions]);
+	}
+	if (tools.length > 0) {
+		request.tools = tools;
 		request.tool_choice = 'auto';
 	}
 
@@ -70,27 +91,13 @@ export async function buildUpstreamRequest(
 	if (p?.top_p !== undefined) request.top_p = p.top_p;
 	if (p?.max_tokens !== undefined) request.max_tokens = p.max_tokens;
 
+	// Appends update_canvas only when tools[] doesn't already carry it.
 	const withCanvas = augmentRequestForCanvas(request, {
 		conversationId: input.conversationId,
 		userId: input.userId,
 		disabledFeatures: input.disabledFeatures,
 		supportsTools: input.supportsTools,
 	});
-
-	// Tools searched up this turn go AFTER update_canvas, so a turn's tools[] only
-	// ever grows at the end between iterations: [base, update_canvas] becomes
-	// [base, update_canvas, searched]. Inserting them before update_canvas would
-	// move it mid-turn and re-prefill the whole conversation on the next call.
-	const activated = input.activatedToolNames ?? [];
-	if (activated.length > 0) {
-		const additions = resolveActivatedToolDefs([...activated], {
-			excludeCategories: [...input.disabledFeatures],
-		});
-		if (additions.length > 0) {
-			withCanvas.tools = dedupeToolDefs([...(withCanvas.tools ?? []), ...additions]);
-			withCanvas.tool_choice = 'auto';
-		}
-	}
 	return { ...withCanvas, stream_options: { include_usage: true } };
 }
 
