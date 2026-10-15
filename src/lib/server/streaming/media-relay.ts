@@ -59,8 +59,9 @@ import { settleGeneration } from './settle-generation';
 const log = createLogger('media-relay');
 
 // Title gen has been running since generation started (the prompt is the
-// topic), so it's almost always ready by the time the asset lands — a short
-// budget keeps a slow task model from delaying `done`.
+// topic), so it's almost always ready by the time the asset lands. `done` goes
+// out before the race; a short budget keeps a slow task model from holding the
+// stream open long after it.
 const TITLE_DELIVERY_BUDGET_MS = 5_000;
 
 /** The lifecycle params shared by every media relay. The modality-specific
