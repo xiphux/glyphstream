@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
 	import { formatBytes } from '#lib/format.js';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -623,7 +624,7 @@
 		savingId = m.id;
 		try {
 			const res = await fetch(`/api/media/${m.id}/content`);
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			const blob = await res.blob();
 			const filename = filenameFor(m);
 			const file = new File([blob], filename, { type: m.contentType });

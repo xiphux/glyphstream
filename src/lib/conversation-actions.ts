@@ -17,7 +17,7 @@ export async function setArchived(id: string, archived: boolean): Promise<void> 
 		body: JSON.stringify({ archived }),
 	});
 	if (!res.ok && res.status !== 404) {
-		throw new Error(`Server returned ${res.status}`);
+		throw new Error(await errorMessageFromResponse(res));
 	}
 }
 
@@ -35,7 +35,7 @@ export async function deleteConversation(id: string, deleteMedia: boolean): Prom
 		: `/api/conversations/${id}`;
 	const res = await fetch(url, { method: 'DELETE' });
 	if (!res.ok && res.status !== 404) {
-		throw new Error(`Server returned ${res.status}`);
+		throw new Error(await errorMessageFromResponse(res));
 	}
 	await dismissConversationNotifications(id);
 }

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
 	import { formatShortDate } from '#lib/format.js';
 	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
 	import { invalidate } from '$app/navigation';
@@ -47,7 +48,7 @@
 				method: 'DELETE',
 			});
 			if (!res.ok && res.status !== 404) {
-				throw new Error(`HTTP ${res.status}`);
+				throw new Error(await errorMessageFromResponse(res));
 			}
 			await invalidate('settings:memories');
 		} catch (e) {
@@ -67,7 +68,7 @@
 				method: 'POST',
 			});
 			if (!res.ok && res.status !== 404) {
-				throw new Error(`HTTP ${res.status}`);
+				throw new Error(await errorMessageFromResponse(res));
 			}
 			await invalidate('settings:memories');
 		} catch (e) {

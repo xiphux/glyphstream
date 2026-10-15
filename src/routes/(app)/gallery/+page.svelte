@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
 	import { tick, untrack } from 'svelte';
 	import { afterNavigate, goto, invalidate } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -120,7 +121,7 @@
 		p.set('offset', String(offset));
 		p.set('limit', String(limit));
 		const res = await fetchWithTimeout(`/api/media/units?${p}`);
-		if (!res.ok) throw new Error(`Server returned ${res.status}`);
+		if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 		return (await res.json()) as GalleryUnitsPage;
 	}
 
@@ -332,7 +333,7 @@
 		p.set('key', u.key);
 		try {
 			const res = await fetchWithTimeout(`/api/media/unit-members?${p}`);
-			if (!res.ok) throw new Error(`Server returned ${res.status}`);
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			const body = (await res.json()) as { items: MediaListItem[] };
 			if (drillUnit?.key === u.key) drillItems = body.items;
 		} catch (e) {
@@ -397,7 +398,7 @@
 		const request = ++lightboxRequest;
 		try {
 			const res = await fetchWithTimeout(`/api/media/${id}`);
-			if (!res.ok) throw new Error(`Server returned ${res.status}`);
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			const item = (await res.json()) as MediaListItem;
 			if (request === lightboxRequest) lightbox = item;
 		} catch (e) {
@@ -429,8 +430,8 @@
 		conversationsError = null;
 		const requested = id;
 		fetch(`/api/media/${id}/conversations`)
-			.then((r) => {
-				if (!r.ok) throw new Error(`Server returned ${r.status}`);
+			.then(async (r) => {
+				if (!r.ok) throw new Error(await errorMessageFromResponse(r));
 				return r.json() as Promise<{ conversations: MediaConversationRef[] }>;
 			})
 			.then((body) => {
@@ -515,7 +516,7 @@
 		error = null;
 		try {
 			const res = await fetch(`/api/media/${id}`, { method: 'DELETE' });
-			if (!res.ok && res.status !== 404) throw new Error(`Server returned ${res.status}`);
+			if (!res.ok && res.status !== 404) throw new Error(await errorMessageFromResponse(res));
 			if (lightbox?.id === id) lightbox = null;
 			await refreshAfterMutation(new Set([id]));
 		} catch (e) {
@@ -567,7 +568,7 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ favorite: next }),
 			});
-			if (!res.ok) throw new Error(`Server returned ${res.status}`);
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			// With the filter on, the item's membership in the *filtered* library just
 			// changed — in whichever direction — so the view showing it has to be
 			// rebuilt. Browse and search render different things and rebuild differently.
@@ -643,7 +644,7 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ mediaId }),
 			});
-			if (!res.ok) throw new Error(`Server returned ${res.status}`);
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			const name = data.customModels.find((c: CustomModel) => c.id === target.id)?.name;
 			await invalidate('app:conversations');
 			toast.success(name ? `Avatar set for ${name}` : 'Avatar set');
@@ -671,7 +672,7 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ ids }),
 			});
-			if (!res.ok) throw new Error(`Server returned ${res.status}`);
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			exitSelectMode();
 			await refreshAfterMutation(new Set(ids));
 		} catch (e) {

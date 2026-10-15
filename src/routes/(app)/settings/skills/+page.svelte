@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
 	import { formatShortDate } from '#lib/format.js';
 	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
 	import { invalidate } from '$app/navigation';
@@ -15,20 +16,9 @@
 	let filesInput = $state<HTMLInputElement | null>(null);
 	let folderInput = $state<HTMLInputElement | null>(null);
 
-	/** Pull SvelteKit's `{ message }` error body, falling back to the status. */
-	async function errorMessage(res: Response): Promise<string> {
-		try {
-			const body = (await res.json()) as { message?: unknown };
-			if (typeof body.message === 'string') return body.message;
-		} catch {
-			/* non-JSON body */
-		}
-		return `HTTP ${res.status}`;
-	}
-
 	async function afterImport(res: Response): Promise<void> {
 		if (!res.ok) {
-			toast.error(`Import failed: ${await errorMessage(res)}`);
+			toast.error(`Import failed: ${await errorMessageFromResponse(res)}`);
 			return;
 		}
 		const body = (await res.json()) as { skill?: { name?: string } };
@@ -86,7 +76,7 @@
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ enabled: !s.enabled }),
 			});
-			if (!res.ok) throw new Error(await errorMessage(res));
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			await invalidate('app:skills');
 		} catch (e) {
 			toast.error(`Couldn't update: ${e instanceof Error ? e.message : String(e)}`);
@@ -106,7 +96,7 @@
 		busyId = s.id;
 		try {
 			const res = await fetch(`/api/user/skills/${encodeURIComponent(s.id)}`, { method: 'DELETE' });
-			if (!res.ok && res.status !== 404) throw new Error(await errorMessage(res));
+			if (!res.ok && res.status !== 404) throw new Error(await errorMessageFromResponse(res));
 			await invalidate('app:skills');
 		} catch (e) {
 			toast.error(`Couldn't delete: ${e instanceof Error ? e.message : String(e)}`);

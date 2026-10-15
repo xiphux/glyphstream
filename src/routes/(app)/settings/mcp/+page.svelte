@@ -93,7 +93,7 @@
 			const res = await fetch(`/api/mcp/servers/${encodeURIComponent(server.id)}/reconnect`, {
 				method: 'POST',
 			});
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			const body = (await res.json()) as { state: 'connected' | 'failed'; error: string | null };
 			if (body.state === 'connected') {
 				toast.success(`Reconnected to ${server.displayName}`);
@@ -117,7 +117,7 @@
 				`/api/user/trusted-tools/${encodeURIComponent(tool.registeredName)}`,
 				{ method },
 			);
-			if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
+			if (!res.ok && res.status !== 404) throw new Error(await errorMessageFromResponse(res));
 			await invalidate('settings:mcp');
 		} catch (e) {
 			toast.error(

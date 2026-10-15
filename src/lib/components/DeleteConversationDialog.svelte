@@ -21,6 +21,7 @@
 	on cancel / confirm / dismiss.
 -->
 <script lang="ts">
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
 	import { toast } from '#lib/toast.svelte.js';
 	import BaseDialog from './BaseDialog.svelte';
 
@@ -63,7 +64,7 @@
 		counts = null;
 		fetch(`/api/conversations/${id}/orphan-media`)
 			.then(async (res) => {
-				if (!res.ok) throw new Error(`Server returned ${res.status}`);
+				if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 				return (await res.json()) as MediaCounts;
 			})
 			.then((c) => {

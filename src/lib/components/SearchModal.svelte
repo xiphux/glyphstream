@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { Search as SearchIcon } from '@lucide/svelte';
@@ -78,7 +79,7 @@
 		error = null;
 		try {
 			const res = await fetch(`/api/conversations/search?q=${encodeURIComponent(q)}`);
-			if (!res.ok) throw new Error(`Server returned ${res.status}`);
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			const body = (await res.json()) as { results: SearchResult[] };
 			// Drop a stale response if the user has typed further since we
 			// fired (race: keystroke A starts, keystroke B starts, B

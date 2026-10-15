@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
 	import { invalidate } from '$app/navigation';
 	import { Undo2 } from '@lucide/svelte';
 	import { toast } from '#lib/toast.svelte.js';
@@ -36,7 +37,7 @@
 			const res = await fetch(`/api/user/trusted-tools/${encodeURIComponent(tool)}`, {
 				method: 'DELETE',
 			});
-			if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
+			if (!res.ok && res.status !== 404) throw new Error(await errorMessageFromResponse(res));
 			await invalidate('settings:permissions');
 		} catch (e) {
 			toast.error(`Couldn't revoke: ${e instanceof Error ? e.message : String(e)}`);

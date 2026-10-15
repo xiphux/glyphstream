@@ -184,7 +184,7 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ mediaId }),
 			});
-			if (!res.ok) throw new Error(`Server returned ${res.status}`);
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			const name =
 				target.kind === 'conversation'
 					? 'this conversation'
@@ -1304,7 +1304,7 @@
 		openingLightboxFor = mediaId;
 		try {
 			const res = await fetch(`/api/media/${mediaId}`);
-			if (!res.ok) throw new Error(`Server returned ${res.status}`);
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			const m = (await res.json()) as MediaListItem;
 			if (openingLightboxFor === mediaId) lightbox = m;
 		} catch (e) {
@@ -1408,7 +1408,7 @@
 				if (!through) await refreshAll();
 				return 'gone';
 			}
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			const body = (await res.json()) as EarlierMessagesResponse;
 			if (stale()) return 'none';
 			const anchor = document.getElementById(`msg-${first}`);
@@ -1753,7 +1753,7 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ favorite: next }),
 			});
-			if (!res.ok) throw new Error(`Server returned ${res.status}`);
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 		} catch (e) {
 			if (lightbox?.id === mediaId) lightbox = { ...lightbox, favorite: !next };
 			toast.error(`Couldn't update favorite: ${e instanceof Error ? e.message : String(e)}`);

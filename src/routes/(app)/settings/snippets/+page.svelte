@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
 	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
 	import { refreshAll } from '$app/navigation';
 	import { Trash2, Upload, Download, Pencil, Plus, X } from '@lucide/svelte';
@@ -60,17 +61,6 @@
 		return counts;
 	});
 
-	/** Pull SvelteKit's `{ message }` error body, falling back to the status. */
-	async function errorMessage(res: Response): Promise<string> {
-		try {
-			const body = (await res.json()) as { message?: unknown };
-			if (typeof body.message === 'string') return body.message;
-		} catch {
-			/* non-JSON body */
-		}
-		return `HTTP ${res.status}`;
-	}
-
 	/** Reload the page data AND drop the composer's client-side cache, so an
 	 *  edit here is reflected in the autocomplete without a full reload. */
 	async function refresh() {
@@ -122,7 +112,7 @@
 						headers: { 'content-type': 'application/json' },
 						body: JSON.stringify(payload),
 					});
-			if (!res.ok) throw new Error(await errorMessage(res));
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			editing = null;
 			await refresh();
 		} catch (e) {
@@ -145,7 +135,7 @@
 			const res = await fetch(`/api/user/prompt-snippets/${encodeURIComponent(s.id)}`, {
 				method: 'DELETE',
 			});
-			if (!res.ok && res.status !== 404) throw new Error(await errorMessage(res));
+			if (!res.ok && res.status !== 404) throw new Error(await errorMessageFromResponse(res));
 			await refresh();
 		} catch (e) {
 			toast.error(`Couldn't delete: ${e instanceof Error ? e.message : String(e)}`);
@@ -164,7 +154,7 @@
 	 *  would delete the very text the user needs to correct and retry. */
 	async function afterImport(res: Response): Promise<boolean> {
 		if (!res.ok) {
-			toast.error(`Import failed: ${await errorMessage(res)}`);
+			toast.error(`Import failed: ${await errorMessageFromResponse(res)}`);
 			return false;
 		}
 		const body = (await res.json()) as {

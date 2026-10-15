@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { errorMessageFromResponse } from '#lib/fetch-error.js';
 	import { invalidate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { ChevronLeft, ZoomIn } from '@lucide/svelte';
@@ -74,7 +75,7 @@
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(body),
 		});
-		if (!res.ok) throw new Error(`Server returned ${res.status}`);
+		if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 		return (await res.json()) as Record<string, number>;
 	}
 
