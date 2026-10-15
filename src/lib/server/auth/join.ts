@@ -13,7 +13,8 @@
  */
 import { getDb } from '../db/client';
 import { createUser, type UserRole } from '../db/queries/users';
-import { consumeInvite } from '../db/queries/invites';
+import { consumeInvite, findValidInvite, type ValidInvite } from '../db/queries/invites';
+import { error } from '@sveltejs/kit';
 import { addOAuthAccount } from '../db/queries/oauth-accounts';
 import { insertCredential, type InsertPasskeyInput } from '../db/queries/passkey';
 
@@ -33,6 +34,19 @@ export const JOIN_PASSKEY_CARRY_COOKIE = 'glyphstream_join_passkey_carry';
  * so no half-created user/credential is left behind. Routes map this to a
  * "this invite was already used" error.
  */
+/**
+ * The invite a join request presents, if it is still valid; otherwise a 403.
+ * Checked when a join starts and again when it completes, since an invite can
+ * expire or be redeemed by someone else mid-ceremony. `token` is whatever the
+ * client sent, so anything but a string is treated as no invite.
+ */
+export function requireValidInvite(token: unknown): { inviteToken: string; invite: ValidInvite } {
+	const inviteToken = typeof token === 'string' ? token : '';
+	const invite = findValidInvite(inviteToken);
+	if (!invite) error(403, 'This invite link is invalid or has expired');
+	return { inviteToken, invite };
+}
+
 export class InviteConsumedError extends Error {}
 
 /**

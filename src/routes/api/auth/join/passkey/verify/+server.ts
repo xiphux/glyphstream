@@ -12,10 +12,10 @@ import {
 	JOIN_PASSKEY_CARRY_COOKIE,
 	InviteConsumedError,
 	finalizePasskeyJoin,
+	requireValidInvite,
 } from '#lib/server/auth/join.js';
 import { clearAuthCookie, verify } from '#lib/server/auth/signed-cookies.js';
 import { startSession } from '#lib/server/auth/session.js';
-import { findValidInvite } from '#lib/server/db/queries/invites.js';
 import { passkeyLoginEnabled } from '#lib/server/env.js';
 import type { RequestHandler } from './$types';
 
@@ -38,8 +38,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 
 	// Re-validate the invite at consume time — it may have expired or been
 	// redeemed during the registration ceremony.
-	const invite = findValidInvite(carry.inviteToken);
-	if (!invite) error(403, 'This invite link is invalid or has expired');
+	const { invite } = requireValidInvite(carry.inviteToken);
 
 	const { credential, backedUp, deviceType, transports } = await verifyRegistrationCeremony(
 		cookies,

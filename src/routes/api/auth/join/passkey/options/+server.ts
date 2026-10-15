@@ -14,11 +14,10 @@ import {
 	generateRegistrationOptionsForProspectiveUser,
 	setRegistrationChallengeCookie,
 } from '#lib/server/auth/passkey.js';
-import { JOIN_PASSKEY_CARRY_COOKIE } from '#lib/server/auth/join.js';
+import { JOIN_PASSKEY_CARRY_COOKIE, requireValidInvite } from '#lib/server/auth/join.js';
 import { sign, setCarryCookie } from '#lib/server/auth/signed-cookies.js';
 import { parseIdentityInput } from '#lib/server/auth/identity-input.js';
 import { parseJsonBody } from '#lib/server/http.js';
-import { findValidInvite } from '#lib/server/db/queries/invites.js';
 import { passkeyLoginEnabled } from '#lib/server/env.js';
 import type { RequestHandler } from './$types';
 
@@ -32,10 +31,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		email?: unknown;
 		inviteToken?: unknown;
 	}>(request);
-	const inviteToken = typeof body.inviteToken === 'string' ? body.inviteToken : '';
-	if (!findValidInvite(inviteToken)) {
-		error(403, 'This invite link is invalid or has expired');
-	}
+	const { inviteToken } = requireValidInvite(body.inviteToken);
 
 	const { displayName, email } = parseIdentityInput(body);
 
