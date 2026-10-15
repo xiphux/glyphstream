@@ -5,8 +5,11 @@
  * Deliberately mirrors the send handler's resolution (feature seal → persona vs.
  * snapshotted prompt → tool context → active branch) rather than reading a
  * cached figure, because the whole value of the number is that it's the same
- * assembly the model actually gets. It does NOT persist anything or advance the
- * conversation — this is a read-only probe.
+ * assembly the model actually gets. The send path builds the request in
+ * `chat/upstream-request.ts`; `request-pricing-parity.test.ts` sends a real turn
+ * and fails if what this prices (tools, canvas tail, system prompt) differs
+ * from what was sent. It does NOT persist anything or advance the conversation —
+ * this is a read-only probe.
  *
  * The one deviation from the send path is media: images are priced from the
  * `byte_size` column instead of being read off disk and base64-encoded, so
@@ -97,10 +100,10 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 		supportsTools,
 	});
 
-	// Dedupe exactly as the send path does at assignment, or a tool that appears
-	// in both the base list and the cross-turn activation seed gets double-billed.
-	// update_canvas is folded in alongside the base defs (the send path adds it via
-	// augmentRequestForCanvas), so it prices under tools:defs like any tool.
+	// The tools[] the request builder sends: the base list deduplicated, so a tool
+	// in both the base list and the cross-turn activation seed isn't
+	// double-billed, then update_canvas (augmentRequestForCanvas). It prices under
+	// tools:defs like any tool. The parity test holds the two together.
 	const toolDefs = dedupeToolDefs([...toolCtx.toolDefs, ...canvas.toolDefs]);
 
 	// Mirrors `requireInlineable`'s validity rules: a row that's missing,
