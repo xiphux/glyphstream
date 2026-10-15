@@ -32,11 +32,8 @@ vi.mock('#lib/server/env.js', () => ({
 	configPath: () => './config.toml',
 }));
 
-import {
-	loadMediaBytes,
-	mediaIdToDataUrl,
-	MediaNotAvailableError,
-} from '#lib/server/media/data-url.js';
+import { loadMediaBytes, mediaIdToDataUrl } from '#lib/server/media/data-url.js';
+import { MediaNotAvailableError } from '#lib/server/media/errors.js';
 import { insertMedia } from '#lib/server/db/queries/media.js';
 import { media } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';

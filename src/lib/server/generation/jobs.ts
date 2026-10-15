@@ -60,7 +60,8 @@ import {
 	setGenerationJobUpstreamId,
 	type GenerationJobRow,
 } from '../db/queries/generation-jobs';
-import { loadMediaBytes, MediaNotAvailableError } from '../media/data-url';
+import { loadMediaBytes } from '../media/data-url';
+import { MediaNotAvailableError } from '../media/errors';
 import { notifyFanoutCompleteIfLast } from '../messages/fanout-notify';
 import {
 	AVATAR_BRANCH,

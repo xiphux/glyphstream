@@ -11,7 +11,7 @@
 import type { ChatMessage, MessagePart } from '#lib/types/api.js';
 import { upstreamBranch } from '#lib/chat-compaction.js';
 import { partsToText } from '#lib/message-parts.js';
-import { MediaNotAvailableError } from '#lib/server/media/data-url.js';
+import { MediaNotAvailableError } from '#lib/server/media/errors.js';
 import { getMaxToolResultChars } from './config';
 import type {
 	ChatCompletionContentPart,

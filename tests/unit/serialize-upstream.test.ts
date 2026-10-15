@@ -7,7 +7,7 @@ import {
 	serializeMessageForUpstream,
 	truncateToolResult,
 } from '#lib/server/endpoints/serialize-upstream.js';
-import { MediaNotAvailableError } from '#lib/server/media/data-url.js';
+import { MediaNotAvailableError } from '#lib/server/media/errors.js';
 import type { ChatMessage, MessagePart } from '#lib/types/api.js';
 
 /** A full `activate_skill` tool result as `wrapSkillContent` persists it — the
