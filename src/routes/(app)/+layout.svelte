@@ -57,7 +57,8 @@
 	} from '@lucide/svelte';
 	import type { GeneratingConversationsResponse, ModelKind } from '#lib/types/api.js';
 	import { privateView } from '#lib/private-chat.svelte.js';
-	import { APP_LOCK_KEEPALIVE_PATH, APP_LOCKED_STATUS, appLockKeepAliveMs } from '#lib/app-lock.js';
+	import { appLockKeepAliveMs } from '#lib/app-lock.js';
+	import { AppLockGuard } from '#lib/app-lock-guard.svelte.js';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
@@ -167,10 +168,10 @@
 	// puts the app-lock cover up.
 	function onVisibilityChange() {
 		if (document.visibilityState === 'visible') {
-			void checkAppLock({ supersede: true });
+			void appLock.check({ supersede: true });
 			refreshConversations();
 		} else {
-			coverForAppLock();
+			appLock.cover();
 		}
 	}
 	// Only bfcache restores — a fresh load's pageshow already has current data.
@@ -179,95 +180,30 @@
 		// A bfcache restore arrives with no `visibilitychange`, so it may not
 		// have been covered on the way out — cover now, before anything paints
 		// that the check hasn't cleared.
-		coverForAppLock();
-		void checkAppLock({ supersede: true });
+		appLock.cover();
+		void appLock.check({ supersede: true });
 		refreshConversations();
 	}
 	function onOnline() {
-		void checkAppLock({ supersede: true });
+		void appLock.check({ supersede: true });
 		refreshConversations();
 	}
 
-	// App lock (see server/auth/app-lock.ts). The server enforces it; this is
-	// the installed app's half. `sliding` means the idle clock runs here, so:
-	//  - a visible-only keep-alive feeds it, or reading a long thread without
-	//    touching anything would lock mid-read. iOS suspends timers in the
-	//    background, which is exactly what lets the clock run out there;
-	//  - the page is covered the moment it's hidden, so neither the app
-	//    switcher's snapshot nor the first frame of a resume shows the thread;
-	//  - a resume (BOTH events — see CLAUDE.md) asks the server before
-	//    uncovering, and goes to /unlock if the window has lapsed.
-	// Fails closed: a check that can't reach the server leaves the cover up
-	// and retries on the next keep-alive tick or when connectivity returns.
-	//
-	// One check at a time, and only the CURRENT one may act on its answer. A
-	// keep-alive can be in flight when the app is suspended, and it may settle
-	// long after the resume — rejected ("network connection was lost"), or with
-	// a 200 that predates the lapse. So a resume aborts it and asks afresh, as
-	// does going hidden, and a stalled request is cut off by a timeout rather
-	// than holding the slot (and silently stopping every later check) forever.
-	let appLockCovered = $state(false);
-	let appLockCheck: AbortController | null = null;
-	const APP_LOCK_CHECK_TIMEOUT_MS = 8_000;
-	async function checkAppLock({ supersede = false } = {}) {
-		if (!data.appLock?.sliding || document.visibilityState !== 'visible') return;
-		if (appLockCheck) {
-			if (!supersede) return;
-			appLockCheck.abort();
-		}
-		const check = new AbortController();
-		appLockCheck = check;
-		const timeout = setTimeout(() => check.abort(), APP_LOCK_CHECK_TIMEOUT_MS);
-		try {
-			const res = await fetch(APP_LOCK_KEEPALIVE_PATH, { signal: check.signal });
-			if (appLockCheck !== check) return;
-			if (res.status === APP_LOCKED_STATUS) {
-				// Carry where the user is HEADED, not where they are. A resume is
-				// often the start of a navigation — a tapped notification posts
-				// `navigate_to_conversation` into this window as it comes forward —
-				// and this goto supersedes it. Reading `location` here sent the
-				// user to whatever was on screen before the tap (usually the home
-				// page), and after unlocking they landed there, not on the thread.
-				const target = navigating.to?.url ?? location;
-				// Already on its way to /unlock, or already there (the tap's load hit
-				// the server's lock redirect first, which carries the right `from`
-				// and unmounts this layout — but not this check, still in flight):
-				// leave it alone. Another hop would only nest `from` inside itself.
-				if (target.pathname === resolve('unlock')) return;
-				const from = encodeURIComponent(target.pathname + target.search);
-				await goto(`${resolve('unlock')}?from=${from}`, { replace: true });
-			} else if (res.ok) {
-				appLockCovered = false;
-			} else if (res.status === 401) {
-				// Session gone entirely — let the layout load send us to /login.
-				await refreshAll();
-			}
-		} catch {
-			// Offline, unreachable, timed out or superseded: stay covered.
-		} finally {
-			clearTimeout(timeout);
-			if (appLockCheck === check) appLockCheck = null;
-		}
-	}
-	function coverForAppLock() {
-		if (!data.appLock?.sliding) return;
-		appLockCovered = true;
-		// A check started before the hide must not uncover the page after it.
-		appLockCheck?.abort();
-		appLockCheck = null;
-	}
+	// App lock: the installed app's half (cover, keep-alive, resume check). See
+	// AppLockGuard for the rules.
+	const appLock = new AppLockGuard(() => !!data.appLock?.sliding);
 	$effect(() => {
 		if (!data.appLock?.sliding) {
-			appLockCovered = false;
+			appLock.covered = false;
 			return;
 		}
 		// One now, not just one per interval: the keep-alive is the only request
 		// that slides the window, so a cold launch or reload — which the resume
 		// events never see — would otherwise leave whatever was left of it
 		// unextended for a whole interval, and lock the app while it's on screen.
-		void checkAppLock();
+		void appLock.check();
 		const keepAlive = setInterval(
-			() => void checkAppLock(),
+			() => void appLock.check(),
 			appLockKeepAliveMs(data.appLock.timeoutMs),
 		);
 		return () => clearInterval(keepAlive);
@@ -1328,9 +1264,9 @@
 	</main>
 </div>
 
-<!-- App-lock privacy cover — see checkAppLock(). Opaque on purpose: a blur
+<!-- App-lock privacy cover — see AppLockGuard. Opaque on purpose: a blur
 	 over a thread still leaks its shape and, at a glance, its headings. -->
-{#if appLockCovered}
+{#if appLock.covered}
 	<div
 		class="fixed inset-0 z-app-lock flex items-center justify-center bg-surface"
 		aria-hidden="true"
@@ -1404,6 +1340,6 @@
 	onfocus={refreshConversations}
 	ononline={onOnline}
 	onpageshow={onPageShow}
-	onpagehide={coverForAppLock}
+	onpagehide={() => appLock.cover()}
 />
 <svelte:document onvisibilitychange={onVisibilityChange}></svelte:document>
