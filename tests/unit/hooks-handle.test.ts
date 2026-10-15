@@ -357,6 +357,15 @@ describe('response decoration', () => {
 		expect(response.headers.get('x-content-type-options')).toBe('nosniff');
 	});
 
+	it("applies them to the gates' own refusals too", async () => {
+		const { response } = await call('/api/conversations', {
+			method: 'POST',
+			headers: { 'sec-fetch-site': 'cross-site' },
+		});
+		expect(response.status).toBe(403);
+		expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+	});
+
 	it('stamps Server-Timing on documents, with process metrics only when signed in', async () => {
 		const anon = await call('/login', { contentType: 'text/html' });
 		const anonTiming = anon.response.headers.get('server-timing') ?? '';

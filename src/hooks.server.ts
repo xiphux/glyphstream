@@ -17,6 +17,7 @@ import { maybeCompressResponse } from '#lib/server/compression.js';
 import { applySecurityHeaders } from '#lib/server/security-headers.js';
 import { consumeRateLimitToken } from '#lib/server/rate-limit.js';
 import { routedPathname } from '#lib/server/util/request-path.js';
+import { chainHandles } from '#lib/server/util/handle-chain.js';
 import {
 	compressDynamicResponses,
 	passkeyLoginEnabled,
@@ -260,13 +261,55 @@ function clientKey(event: Parameters<Handle>[0]['event']): string {
 }
 
 /**
- * Populate event.locals.user on every request from the session cookie.
- * Routes/layouts decide whether to require it; this hook just *reads*.
- *
- * The bare /api/* surface (other than /api/auth/* and /api/health) checks
- * locals.user itself — done in each +server.ts to keep the hook simple.
+ * Per-request timings shared between the hooks below: `serverTiming` opens the
+ * record and stamps it, and the hooks it wraps fill in their spans. Keyed on
+ * `locals`, which is one object for the life of a request.
  */
-export const handle: Handle = async ({ event, resolve }) => {
+interface RequestTimings {
+	start: number;
+	usageStart: NodeJS.ResourceUsage;
+	idleMs: number;
+	authMs: number;
+	renderMs: number;
+	zipMs: number;
+}
+const timings = new WeakMap<App.Locals, RequestTimings>();
+
+/**
+ * Trims a `Link` header to the proxy's header budget. Outermost, so it runs
+ * last and prices the finished header block.
+ */
+const headerBudget: Handle = async ({ event, resolve }) => {
+	const response = await resolve(event);
+	// Dormant since SvelteKit 3, which puts the modulepreload hints in the
+	// document's <head> unless `output.linkHeaderPreload` is on (it isn't — see
+	// tests/e2e/proxy-header-budget.spec.ts), so no Link header reaches here.
+	// Kept as the guard for that option: a Link header restates every client
+	// chunk and once pushed the block past a proxy's 4 KB buffer (a 502). Last,
+	// because it prices the block only once every other header is on it —
+	// including the Server-Timing just set above, and any Set-Cookie from a
+	// session renewal. See header-budget.ts for why it trims rather than drops.
+	const link = response.headers.get('link');
+	if (link) {
+		const others = [...response.headers].filter(([name]) => name.toLowerCase() !== 'link');
+		const budget =
+			PROXY_HEADER_BUFFER_BYTES -
+			HEADER_BUDGET_RESERVE_BYTES -
+			TRANSPORT_OVERHEAD_BYTES -
+			headerBlockBytes(others) -
+			'link: \r\n'.length;
+		const trimmed = trimToBudget(link, budget);
+		if (trimmed === null) response.headers.delete('link');
+		else if (trimmed !== link) response.headers.set('link', trimmed);
+	}
+	return response;
+};
+
+/**
+ * Opens the request's timing record and, on the way out, stamps Server-Timing.
+ * Wraps everything but the header budget, so the span covers compression.
+ */
+const serverTiming: Handle = async ({ event, resolve }) => {
 	// Request entry, for the Server-Timing header set at the bottom. Taken HERE
 	// and not just before resolve(): session validation below is what first
 	// calls getDb(), which opens SQLite and runs migrate() lazily (see the
@@ -274,7 +317,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// restart — the case the debug panel's server/network split exists to
 	// diagnose — that work is substantial, and anything outside this span gets
 	// subtracted into "Network" and read as a slow wire.
-	const requestStart = performance.now();
+	const start = performance.now();
 	// Alongside the wall clock, the process's own resource counters, so the stamp
 	// at the bottom can say whether a slow request was WORKING or WAITING. One
 	// getrusage(2), taken unconditionally because nothing here knows yet whether
@@ -288,8 +331,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// an upstream" and "compressing a large document" indistinguishable from a
 	// reading taken hours after the fact — the only kind this panel can get.
 
-	// Every path-prefix gate below compares against THIS, never against
-	// `event.url.pathname`. The raw pathname is still percent-encoded here while
+	// Every path-prefix gate in these hooks compares against `routedPathname`,
+	// never `event.url.pathname`. The raw pathname is still percent-encoded here while
 	// SvelteKit routes on a decoded copy, so matching the raw form lets
 	// `/api/%61uth/…` (or `/%61pi/…`) reach the real handler while sliding past
 	// the gate. See routedPathname's docstring.
@@ -309,28 +352,189 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// reports `idleMs` in the first place.
 	if (path !== HEALTH_PROBE_PATH) lastRequestAt = Date.now();
 
-	// CSRF gate for /api/* state-mutating requests — the ONLY CSRF check:
-	// SvelteKit's own origin check is off (`csrf.trustedOrigins: ['*']` in
-	// sveltekit.config.ts, which says why), and it never looked at the JSON
-	// POST/PATCH/DELETE traffic our API actually uses anyway. It reaches /api/*
-	// only, so tests/unit/csrf-gate-coverage.test.ts fails if a mutating route
-	// or form action appears anywhere else. SameSite=Lax
-	// on the session cookie blocks the cookie from being sent on cross-
-	// origin POSTs already, but that's a property of the cookie, not
-	// the route — a single explicit check here makes the same guarantee
-	// at the route layer regardless of cookie-config drift.
+	const timing: RequestTimings = { start, usageStart, idleMs, authMs: 0, renderMs: 0, zipMs: 0 };
+	timings.set(event.locals, timing);
+	const response = await resolve(event);
+
+	// Server-Timing on documents only, stamped LAST so the span covers
+	// everything the server did — from request entry (see requestStart) through
+	// compression, which buffers the whole body and costs tens of milliseconds
+	// on a long chat. Any time left outside this span does not vanish: the debug
+	// panel derives network as TTFB minus this number, so it gets billed to the
+	// wire and sends the reader hunting for a network problem that is actually
+	// brotli, or a cold DB open. Documents only because that's the entry the
+	// browser files it on; an API response's timing shows up nowhere the
+	// client can correlate it. Same-origin, so no Timing-Allow-Origin needed.
 	//
-	// Preferred signal is `Sec-Fetch-Site`: it's browser-set, not
-	// spoofable by attacker JS, and unaffected by reverse-proxy header
-	// rewriting (where a missing X-Forwarded-Proto could otherwise make
-	// Origin and event.url.origin disagree on scheme). Falls back to a
-	// straight Origin compare for the handful of browsers too old to
-	// emit Fetch-Metadata headers (pre-2020 Chromium / pre-16.4 Safari).
+	// `ssr` is the total and the other three are its parts, so the panel can
+	// keep showing one headline number and break it down underneath. `proc` is
+	// process uptime, not a duration of this request — it rides along here
+	// because Server-Timing is already plumbed through to the client and the
+	// question it answers is the first one to ask of a slow SSR: was this the
+	// first request a freshly-started container ever served? A 2.3s render on a
+	// process that booted four seconds ago is a cold start; the same number on
+	// one that's been up nine hours is a different bug entirely, and nothing in
+	// the reading distinguished them.
+	if (response.headers.get('content-type')?.startsWith('text/html')) {
+		const dur = (v: number) => v.toFixed(1);
+		const metrics = [
+			`ssr;dur=${dur(performance.now() - timing.start)}`,
+			`auth;dur=${dur(timing.authMs)}`,
+			`render;dur=${dur(timing.renderMs)}`,
+			`zip;dur=${dur(timing.zipMs)}`,
+			// A slice OF `render`, not a fourth part of `ssr` — time inside
+			// synchronous SQLite, summed over the call sites that opted in via
+			// `timeDb`. Read it as a FLOOR: zero means no wrapped query ran, which
+			// is not the same as none did. See db-timing.ts for the helper's
+			// semantics and how to find what's currently covered.
+			`db;dur=${dur(event.locals.dbMs ?? 0)}`,
+		];
+		// Signed-in only. Uptime is weak but real recon on an internet-facing
+		// box — it dates the last restart, and so the last patch — and the
+		// unauthenticated document surface (/login, /join/<token>) has no debug
+		// panel to read it anyway. `cpu` and `fault` are gated for the same reason
+		// without being the same kind of number: both are deltas across this one
+		// request's span — which is why the panel files them under "This load"
+		// rather than beside the uptime in Environment — but both are read off
+		// process-wide counters, so they still describe the box, and the surface
+		// that would read them doesn't exist unauthenticated either.
+		if (event.locals.user) {
+			const usage = process.resourceUsage();
+			// CPU actually burned during the span above. When it lands far under
+			// `ssr`, the server spent the difference NOT RUNNING — a wholly
+			// different problem from the same wall time spent on honest work, and
+			// one that `ssr` alone cannot distinguish. The case this exists for is
+			// a container idle for hours on a NAS, whose next request pays to fault
+			// back in whatever the host evicted while nothing was asking.
+			//
+			// `fault` (major page faults) counts exactly that, and the database is
+			// squarely in scope: `db/client.ts` sets `PRAGMA mmap_size` to 256MB, so
+			// the main DB file is mapped read-only and file-backed, and a query
+			// touching a page the host reclaimed faults it in as a MAJOR fault.
+			// That's the point rather than a caveat — clean file-backed pages need
+			// no swap to be evicted, so they're the first thing an idle container
+			// loses and the likeliest source of a nonzero reading here.
+			//
+			// Read it in one direction only. Nonzero means memory that was no
+			// longer resident had to be fetched back; zero does NOT clear the box,
+			// because plenty of waiting never reaches this counter — WAL frames,
+			// writes and any main-DB read past the 30MB cap go through read(2),
+			// which bills to blocked wall time alone, and the JS heap is anonymous
+			// memory that only faults back where the host has swap.
+			//
+			// Both counters are process-wide, so concurrent work inflates them and
+			// `cpu` can even exceed `ssr` — libuv's threadpool and the GC burn CPU
+			// on other threads. Acceptable here because the reading this is built
+			// for is a cold launch's first document, which is essentially alone;
+			// anywhere else, read it as an upper bound.
+			const cpuUs =
+				usage.userCPUTime -
+				timing.usageStart.userCPUTime +
+				(usage.systemCPUTime - timing.usageStart.systemCPUTime);
+			metrics.push(`cpu;dur=${dur(cpuUs / 1000)}`);
+			// A count, not a duration — the same `dur=` abuse as `proc`, for the
+			// same reason: Server-Timing is already plumbed through to the client
+			// and PerformanceServerTiming exposes exactly one numeric field.
+			metrics.push(`fault;dur=${usage.majorPageFault - timing.usageStart.majorPageFault}`);
+			// Longest stretch the loop was unavailable while this request was open.
+			// Only meaningful against `cpu`: stalled with cpu to match is synchronous
+			// JavaScript, stalled with almost no cpu is a blocking syscall — which is
+			// what a synchronous SQLite read off a cold page cache looks like, and
+			// what `cpu` alone reports as an idle server.
+			metrics.push(`lag;dur=${dur(maxLoopLagSince(timing.start))}`);
+			// Current resident set, in bytes. The fault counter says memory was
+			// reclaimed; it cannot say whether the process's own footprint is growing
+			// over days or whether a steady footprint is simply being squeezed harder
+			// by the host. Those have opposite fixes — one is a leak here, the other
+			// is memory pressure there — and read against `proc` this separates them.
+			// `memoryUsage.rss()` is the cheap single-value path, and unlike
+			// getrusage's maxRSS it reports CURRENT usage in bytes on every platform
+			// rather than a high-water mark in platform-dependent units.
+			metrics.push(`rss;dur=${process.memoryUsage.rss()}`);
+			// How much of the process is currently swapped out. `fault` proves
+			// memory was fetched back but not from WHERE, and the two sources have
+			// opposite fixes — see util/proc-swap.ts. Null off Linux, where the
+			// panel drops the row rather than printing a zero it can't stand behind.
+			const swapped = swapBytes();
+			if (swapped !== null) metrics.push(`swap;dur=${swapped}`);
+			// Database size against the mapping actually in force. Together these
+			// answer the one question the panel has been inferring: whether reads are
+			// being served from the mapping or through `read(2)`, which bills to
+			// blocked wall time and registers no fault at all. `mmap` is the value
+			// SQLite reported back after the PRAGMA, not the one we asked for — it
+			// clamps at a compile-time maximum, silently.
+			const dbFile = dbFileBytes();
+			if (dbFile.main !== null) metrics.push(`dbsize;dur=${dbFile.main}`);
+			if (dbFile.wal !== null) metrics.push(`walsize;dur=${dbFile.wal}`);
+			const mmap = mmapBytes();
+			if (mmap !== null) metrics.push(`mmap;dur=${mmap}`);
+			metrics.push(`idle;dur=${dur(timing.idleMs)}`);
+			metrics.push(`proc;dur=${dur(process.uptime() * 1000)}`);
+		}
+		response.headers.set('Server-Timing', metrics.join(', '));
+	}
+
+	return response;
+};
+
+/**
+ * Optional on-the-fly compression of dynamic responses. Inside `serverTiming`,
+ * so its cost is reported (`zip`) rather than billed to the network.
+ */
+const compression: Handle = async ({ event, resolve }) => {
+	const response = await resolve(event);
+	// Optional on-the-fly gzip for SSR + JSON, off by default. Use only
+	// when no compression-capable proxy is in front (Synology). See the
+	// COMPRESS_DYNAMIC docstring in env.ts. SSE responses are excluded
+	// inside maybeCompressResponse — the chat-stream UI depends on
+	// unbuffered delivery.
+	const zipStart = performance.now();
+	const out = SHOULD_COMPRESS_DYNAMIC
+		? await maybeCompressResponse(response, event.request)
+		: response;
+	const timing = timings.get(event.locals);
+	if (timing) timing.zipMs = performance.now() - zipStart;
+	return out;
+};
+
+/** Security headers and the revalidate override, on every response — including
+ *  the gates' own 403 and 429 below. */
+const securityHeaders: Handle = async ({ event, resolve }) => {
+	const response = await resolve(event);
+	const path = routedPathname(event.url.pathname);
+	applySecurityHeaders(response, path);
+	if (ALWAYS_REVALIDATE_PATHS.has(event.url.pathname)) {
+		response.headers.set('cache-control', 'no-cache');
+	}
+	return response;
+};
+
+/**
+ * CSRF gate for /api/* state-mutating requests — the ONLY CSRF check:
+ * SvelteKit's own origin check is off (`csrf.trustedOrigins: ['*']` in
+ * sveltekit.config.ts, which says why), and it never looked at the JSON
+ * POST/PATCH/DELETE traffic our API actually uses anyway. It reaches /api/*
+ * only, so tests/unit/csrf-gate-coverage.test.ts fails if a mutating route
+ * or form action appears anywhere else. SameSite=Lax
+ * on the session cookie blocks the cookie from being sent on cross-
+ * origin POSTs already, but that's a property of the cookie, not
+ * the route — a single explicit check here makes the same guarantee
+ * at the route layer regardless of cookie-config drift.
 	//
-	// GET / HEAD are unaffected — no state change, and Origin isn't
-	// consistently sent on them. The OAuth callback flows
-	// (/api/auth/github/callback and /api/auth/oauth/<provider>/callback)
-	// are GET only and protected separately via their state cookie.
+ * Preferred signal is `Sec-Fetch-Site`: it's browser-set, not
+ * spoofable by attacker JS, and unaffected by reverse-proxy header
+ * rewriting (where a missing X-Forwarded-Proto could otherwise make
+ * Origin and event.url.origin disagree on scheme). Falls back to a
+ * straight Origin compare for the handful of browsers too old to
+ * emit Fetch-Metadata headers (pre-2020 Chromium / pre-16.4 Safari).
+	//
+ * GET / HEAD are unaffected — no state change, and Origin isn't
+ * consistently sent on them. The OAuth callback flows
+ * (/api/auth/github/callback and /api/auth/oauth/<provider>/callback)
+ * are GET only and protected separately via their state cookie.
+ */
+const csrf: Handle = async ({ event, resolve }) => {
+	const path = routedPathname(event.url.pathname);
 	if (STATE_MUTATING_METHODS.has(event.request.method) && path.startsWith('/api/')) {
 		const fetchSite = event.request.headers.get('sec-fetch-site');
 		if (fetchSite) {
@@ -349,6 +553,18 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 
+	return resolve(event);
+};
+
+/**
+ * Populate event.locals.user on every request from the session cookie.
+ * Routes/layouts decide whether to require it; this hook just *reads*.
+ *
+ * The bare /api/* surface (other than /api/auth/* and /api/health) checks
+ * locals.user itself — done in each +server.ts to keep the hook simple.
+ */
+const session: Handle = async ({ event, resolve }) => {
+	const path = routedPathname(event.url.pathname);
 	const authStart = performance.now();
 	const token = readSessionCookie(event.cookies);
 	// First authenticated request of the process: run the admin-recovery check
@@ -403,40 +619,50 @@ export const handle: Handle = async ({ event, resolve }) => {
 	if (ctx?.renewed) setSessionCookie(event.cookies, token!, ctx.expiresAt);
 	// Everything above is the session round trip, and on the first request of a
 	// process it also carries the lazy SQLite open + migrate().
-	const authMs = performance.now() - authStart;
+	const timing = timings.get(event.locals);
+	if (timing) timing.authMs = performance.now() - authStart;
 
-	// Rate-limit the UNAUTHENTICATED auth surface.
-	//
-	// The target is CPU, not credential guessing: passkey login/verify runs a
-	// full WebAuthn signature verification on the same event loop that serves
-	// chat SSE, so unbounded volume degrades live conversations. Applied to the
-	// whole `/api/auth/*` subtree — none of the SIGNED-OUT part of it is polled
-	// (the app-lock keep-alive is, but only by a resolved session, which is
-	// exempt below), so a limit generous enough to be invisible to real
-	// sign-ins still blunts a flood.
-	//
-	// Deliberately AFTER session resolution, and skipped for a request whose
-	// session resolved — keyed on `ctx`, NOT `locals.user`: an app-locked
-	// session has no `locals.user` by design, but it is still a real account's
-	// session, and its unlock ceremony must not queue behind an anonymous flood. The bucket key is the client address, which behind a
-	// reverse proxy with no `ADDRESS_HEADER` is the proxy for everyone — one
-	// shared bucket for the whole instance. Limiting signed-in requests too
-	// would hand any unauthenticated client an instance-wide auth kill switch:
-	// hold the shared bucket empty and every real user gets 429 on login, the
-	// OAuth callbacks, logout, and — worst — the session-revocation endpoints,
-	// which is precisely the lever an operator reaches for during the incident
-	// that flood might be covering.
-	//
-	// Ordering costs nothing on the attack path: `validateSessionToken` only
-	// runs when a cookie is actually present, so a cookieless flood still
-	// reaches the limiter having done zero DB work. A flood that DOES carry
-	// cookies pays one indexed lookup per request — far cheaper than the
-	// WebAuthn verification this exists to bound.
-	//
-	// An authenticated user can still exhaust the bucket for the signed-out
-	// surface, but they have an account the operator can disable, which is the
-	// accountability an anonymous flooder lacks.
-	if (!ctx && path.startsWith(AUTH_RATE_LIMIT_PATH_PREFIX)) {
+	return resolve(event);
+};
+
+/**
+ * Rate-limit the UNAUTHENTICATED auth surface.
+ *
+ * The target is CPU, not credential guessing: passkey login/verify runs a
+ * full WebAuthn signature verification on the same event loop that serves
+ * chat SSE, so unbounded volume degrades live conversations. Applied to the
+ * whole `/api/auth/*` subtree — none of the SIGNED-OUT part of it is polled
+ * (the app-lock keep-alive is, but only by a resolved session, which is
+ * exempt below), so a limit generous enough to be invisible to real
+ * sign-ins still blunts a flood.
+ *
+ * Deliberately AFTER session resolution, and skipped for a request whose
+ * session resolved — keyed on `ctx`, NOT `locals.user`: an app-locked
+ * session has no `locals.user` by design, but it is still a real account's
+ * session, and its unlock ceremony must not queue behind an anonymous flood.
+ * The bucket key is the client address, which behind a reverse proxy with no `ADDRESS_HEADER` is the proxy for everyone — one
+ * shared bucket for the whole instance. Limiting signed-in requests too
+ * would hand any unauthenticated client an instance-wide auth kill switch:
+ * hold the shared bucket empty and every real user gets 429 on login, the
+ * OAuth callbacks, logout, and — worst — the session-revocation endpoints,
+ * which is precisely the lever an operator reaches for during the incident
+ * that flood might be covering.
+ *
+ * Ordering costs nothing on the attack path: `validateSessionToken` only
+ * runs when a cookie is actually present, so a cookieless flood still
+ * reaches the limiter having done zero DB work. A flood that DOES carry
+ * cookies pays one indexed lookup per request — far cheaper than the
+ * WebAuthn verification this exists to bound.
+ *
+ * An authenticated user can still exhaust the bucket for the signed-out
+ * surface, but they have an account the operator can disable, which is the
+ * accountability an anonymous flooder lacks.
+ */
+const rateLimit: Handle = async ({ event, resolve }) => {
+	const path = routedPathname(event.url.pathname);
+	// `sessionId` is set exactly when a session resolved, locked or not — the
+	// `ctx` this comment is about, as `session` (above) published it.
+	if (event.locals.sessionId === null && path.startsWith(AUTH_RATE_LIMIT_PATH_PREFIX)) {
 		const decision = consumeRateLimitToken(clientKey(event));
 		if (!decision.allowed) {
 			return new Response('Too many requests', {
@@ -446,6 +672,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 
+	return resolve(event);
+};
+
+/** Innermost: the saved theme on <html>, and the `render` span around the
+ *  route itself. */
+const themeAttribute: Handle = async ({ event, resolve }) => {
 	// Apply the saved theme to <html> before first paint so there's no
 	// flash of the default theme. The `gs-theme` cookie mirrors the DB pref
 	// (written by the prefs PATCH) and is readable here even pre-auth /
@@ -473,167 +705,28 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// trip), or the event loop held by something else entirely — node:sqlite is
 	// synchronous, so a background sweeper mid-batch blocks the request behind
 	// it.
-	const renderMs = performance.now() - renderStart;
-	// Whether this response gets a Server-Timing header, decided here because
-	// compression below can hand back a different Response object.
-	const isDocument = !!response.headers.get('content-type')?.startsWith('text/html');
-
-	applySecurityHeaders(response, path);
-	if (ALWAYS_REVALIDATE_PATHS.has(event.url.pathname)) {
-		response.headers.set('cache-control', 'no-cache');
-	}
-	// Optional on-the-fly gzip for SSR + JSON, off by default. Use only
-	// when no compression-capable proxy is in front (Synology). See the
-	// COMPRESS_DYNAMIC docstring in env.ts. SSE responses are excluded
-	// inside maybeCompressResponse — the chat-stream UI depends on
-	// unbuffered delivery.
-	const zipStart = performance.now();
-	const finalResponse = SHOULD_COMPRESS_DYNAMIC
-		? await maybeCompressResponse(response, event.request)
-		: response;
-	const zipMs = performance.now() - zipStart;
-
-	// Server-Timing on documents only, stamped LAST so the span covers
-	// everything the server did — from request entry (see requestStart) through
-	// compression, which buffers the whole body and costs tens of milliseconds
-	// on a long chat. Any time left outside this span does not vanish: the debug
-	// panel derives network as TTFB minus this number, so it gets billed to the
-	// wire and sends the reader hunting for a network problem that is actually
-	// brotli, or a cold DB open. Documents only because that's the entry the
-	// browser files it on; an API response's timing shows up nowhere the
-	// client can correlate it. Same-origin, so no Timing-Allow-Origin needed.
-	//
-	// `ssr` is the total and the other three are its parts, so the panel can
-	// keep showing one headline number and break it down underneath. `proc` is
-	// process uptime, not a duration of this request — it rides along here
-	// because Server-Timing is already plumbed through to the client and the
-	// question it answers is the first one to ask of a slow SSR: was this the
-	// first request a freshly-started container ever served? A 2.3s render on a
-	// process that booted four seconds ago is a cold start; the same number on
-	// one that's been up nine hours is a different bug entirely, and nothing in
-	// the reading distinguished them.
-	if (isDocument) {
-		const dur = (v: number) => v.toFixed(1);
-		const metrics = [
-			`ssr;dur=${dur(performance.now() - requestStart)}`,
-			`auth;dur=${dur(authMs)}`,
-			`render;dur=${dur(renderMs)}`,
-			`zip;dur=${dur(zipMs)}`,
-			// A slice OF `render`, not a fourth part of `ssr` — time inside
-			// synchronous SQLite, summed over the call sites that opted in via
-			// `timeDb`. Read it as a FLOOR: zero means no wrapped query ran, which
-			// is not the same as none did. See db-timing.ts for the helper's
-			// semantics and how to find what's currently covered.
-			`db;dur=${dur(event.locals.dbMs ?? 0)}`,
-		];
-		// Signed-in only. Uptime is weak but real recon on an internet-facing
-		// box — it dates the last restart, and so the last patch — and the
-		// unauthenticated document surface (/login, /join/<token>) has no debug
-		// panel to read it anyway. `cpu` and `fault` are gated for the same reason
-		// without being the same kind of number: both are deltas across this one
-		// request's span — which is why the panel files them under "This load"
-		// rather than beside the uptime in Environment — but both are read off
-		// process-wide counters, so they still describe the box, and the surface
-		// that would read them doesn't exist unauthenticated either.
-		if (event.locals.user) {
-			const usage = process.resourceUsage();
-			// CPU actually burned during the span above. When it lands far under
-			// `ssr`, the server spent the difference NOT RUNNING — a wholly
-			// different problem from the same wall time spent on honest work, and
-			// one that `ssr` alone cannot distinguish. The case this exists for is
-			// a container idle for hours on a NAS, whose next request pays to fault
-			// back in whatever the host evicted while nothing was asking.
-			//
-			// `fault` (major page faults) counts exactly that, and the database is
-			// squarely in scope: `db/client.ts` sets `PRAGMA mmap_size` to 256MB, so
-			// the main DB file is mapped read-only and file-backed, and a query
-			// touching a page the host reclaimed faults it in as a MAJOR fault.
-			// That's the point rather than a caveat — clean file-backed pages need
-			// no swap to be evicted, so they're the first thing an idle container
-			// loses and the likeliest source of a nonzero reading here.
-			//
-			// Read it in one direction only. Nonzero means memory that was no
-			// longer resident had to be fetched back; zero does NOT clear the box,
-			// because plenty of waiting never reaches this counter — WAL frames,
-			// writes and any main-DB read past the 30MB cap go through read(2),
-			// which bills to blocked wall time alone, and the JS heap is anonymous
-			// memory that only faults back where the host has swap.
-			//
-			// Both counters are process-wide, so concurrent work inflates them and
-			// `cpu` can even exceed `ssr` — libuv's threadpool and the GC burn CPU
-			// on other threads. Acceptable here because the reading this is built
-			// for is a cold launch's first document, which is essentially alone;
-			// anywhere else, read it as an upper bound.
-			const cpuUs =
-				usage.userCPUTime -
-				usageStart.userCPUTime +
-				(usage.systemCPUTime - usageStart.systemCPUTime);
-			metrics.push(`cpu;dur=${dur(cpuUs / 1000)}`);
-			// A count, not a duration — the same `dur=` abuse as `proc`, for the
-			// same reason: Server-Timing is already plumbed through to the client
-			// and PerformanceServerTiming exposes exactly one numeric field.
-			metrics.push(`fault;dur=${usage.majorPageFault - usageStart.majorPageFault}`);
-			// Longest stretch the loop was unavailable while this request was open.
-			// Only meaningful against `cpu`: stalled with cpu to match is synchronous
-			// JavaScript, stalled with almost no cpu is a blocking syscall — which is
-			// what a synchronous SQLite read off a cold page cache looks like, and
-			// what `cpu` alone reports as an idle server.
-			metrics.push(`lag;dur=${dur(maxLoopLagSince(requestStart))}`);
-			// Current resident set, in bytes. The fault counter says memory was
-			// reclaimed; it cannot say whether the process's own footprint is growing
-			// over days or whether a steady footprint is simply being squeezed harder
-			// by the host. Those have opposite fixes — one is a leak here, the other
-			// is memory pressure there — and read against `proc` this separates them.
-			// `memoryUsage.rss()` is the cheap single-value path, and unlike
-			// getrusage's maxRSS it reports CURRENT usage in bytes on every platform
-			// rather than a high-water mark in platform-dependent units.
-			metrics.push(`rss;dur=${process.memoryUsage.rss()}`);
-			// How much of the process is currently swapped out. `fault` proves
-			// memory was fetched back but not from WHERE, and the two sources have
-			// opposite fixes — see util/proc-swap.ts. Null off Linux, where the
-			// panel drops the row rather than printing a zero it can't stand behind.
-			const swapped = swapBytes();
-			if (swapped !== null) metrics.push(`swap;dur=${swapped}`);
-			// Database size against the mapping actually in force. Together these
-			// answer the one question the panel has been inferring: whether reads are
-			// being served from the mapping or through `read(2)`, which bills to
-			// blocked wall time and registers no fault at all. `mmap` is the value
-			// SQLite reported back after the PRAGMA, not the one we asked for — it
-			// clamps at a compile-time maximum, silently.
-			const dbFile = dbFileBytes();
-			if (dbFile.main !== null) metrics.push(`dbsize;dur=${dbFile.main}`);
-			if (dbFile.wal !== null) metrics.push(`walsize;dur=${dbFile.wal}`);
-			const mmap = mmapBytes();
-			if (mmap !== null) metrics.push(`mmap;dur=${mmap}`);
-			metrics.push(`idle;dur=${dur(idleMs)}`);
-			metrics.push(`proc;dur=${dur(process.uptime() * 1000)}`);
-		}
-		finalResponse.headers.set('Server-Timing', metrics.join(', '));
-	}
-
-	// Dormant since SvelteKit 3, which puts the modulepreload hints in the
-	// document's <head> unless `output.linkHeaderPreload` is on (it isn't — see
-	// tests/e2e/proxy-header-budget.spec.ts), so no Link header reaches here.
-	// Kept as the guard for that option: a Link header restates every client
-	// chunk and once pushed the block past a proxy's 4 KB buffer (a 502). Last,
-	// because it prices the block only once every other header is on it —
-	// including the Server-Timing just set above, and any Set-Cookie from a
-	// session renewal. See header-budget.ts for why it trims rather than drops.
-	const link = finalResponse.headers.get('link');
-	if (link) {
-		const others = [...finalResponse.headers].filter(([name]) => name.toLowerCase() !== 'link');
-		const budget =
-			PROXY_HEADER_BUFFER_BYTES -
-			HEADER_BUDGET_RESERVE_BYTES -
-			TRANSPORT_OVERHEAD_BYTES -
-			headerBlockBytes(others) -
-			'link: \r\n'.length;
-		const trimmed = trimToBudget(link, budget);
-		if (trimmed === null) finalResponse.headers.delete('link');
-		else if (trimmed !== link) finalResponse.headers.set('link', trimmed);
-	}
-	return finalResponse;
+	const timing = timings.get(event.locals);
+	if (timing) timing.renderMs = performance.now() - renderStart;
+	return response;
 };
+
+/**
+ * Outermost first. Each hook's work before `resolve` runs in this order, and
+ * its work after `resolve` in reverse — so the gates run timing → CSRF →
+ * session → rate limit, and a response is finished security headers →
+ * compression → Server-Timing → Link budget. The order is the security
+ * property: tests/unit/hooks-handle.test.ts holds it.
+ */
+export const handle: Handle = chainHandles(
+	headerBudget,
+	serverTiming,
+	compression,
+	securityHeaders,
+	csrf,
+	session,
+	rateLimit,
+	themeAttribute,
+);
 
 /**
  * Log unhandled server errors to stderr so Playwright's webServer log
