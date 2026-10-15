@@ -14,11 +14,6 @@ const mocks = vi.hoisted(() => ({
 	graceMs: 0,
 }));
 
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
-
 vi.mock('#lib/server/env.js', () => ({
 	mediaDir: () => mocks.mediaDir,
 	// Coincident, as for any install that leaves DERIVED_DIR unset. The split

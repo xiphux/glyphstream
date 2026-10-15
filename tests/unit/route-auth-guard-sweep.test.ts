@@ -18,11 +18,8 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import type { RequestEvent } from '@sveltejs/kit';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
-
-const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createTestDb, closeTestDb } from './_helpers/test-db';
 
 const ROUTES = join(__dirname, '../../src/routes');
 
@@ -165,7 +162,7 @@ describe('dynamic: guarded handlers refuse a signed-out caller first', () => {
 	const guarded = handlers.filter((h) => !isPublic(h));
 
 	beforeAll(() => {
-		mocks.testDb = createTestDb();
+		createTestDb();
 	});
 	afterAll(() => {
 		closeTestDb();

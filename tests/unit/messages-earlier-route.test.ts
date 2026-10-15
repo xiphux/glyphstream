@@ -4,12 +4,9 @@
  * since `messages` carries no user id.
  */
 import type { RequestEvent } from '@sveltejs/kit';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createTestDb, closeTestDb } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
-
-const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 
 import { GET } from '../../src/routes/api/conversations/[id]/messages/+server';
 import { createConversation } from '#lib/server/db/queries/conversations.js';
@@ -25,7 +22,7 @@ let owner: string;
 let convId: string;
 
 beforeEach(() => {
-	mocks.testDb = createTestDb();
+	createTestDb();
 	owner = seedUser().id;
 	convId = createConversation({
 		userId: owner,

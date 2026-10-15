@@ -1,12 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
+import { createTestDb, closeTestDb } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
-
-const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
 
 // The semantic leg pulls config + the query embedding from these; mock both so
 // we control whether/what the dense leg ranks against (no real endpoint).
@@ -32,7 +26,7 @@ const CFG = {
 };
 
 beforeEach(() => {
-	mocks.testDb = createTestDb();
+	createTestDb();
 	resolveMock.mockReset();
 	embedQueryMock.mockReset();
 });

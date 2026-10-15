@@ -11,10 +11,6 @@ const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
 	secretKey: 'mcp-master-key-one',
 }));
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
 vi.mock('#lib/server/env.js', () => ({
 	mcpSecretKey: () => mocks.secretKey,
 }));

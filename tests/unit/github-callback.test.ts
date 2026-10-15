@@ -30,11 +30,6 @@ const mocks = vi.hoisted(() => ({
 	duringProfileFetch: null as (() => void) | null,
 }));
 
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
-
 // Stub the registry so the route's getProvider('github') hands back a fake
 // github provider whose fetchProfile is deterministic — keeps the OAuth
 // round-trip out of the test without touching the dispatcher logic.

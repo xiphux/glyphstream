@@ -23,7 +23,6 @@ vi.mock('#lib/server/env.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/server/env.js')>()),
 	passkeyLoginEnabled: () => mocks.passkeysEnabled,
 }));
-vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 vi.mock('#lib/server/push/web-push.js', () => ({
 	sendPushNotification: vi.fn(async (_sub: unknown, payload: string) => {
 		mocks.sendCalls.push(payload);

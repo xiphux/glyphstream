@@ -14,7 +14,6 @@ const mocks = vi.hoisted(() => ({
 	duringCeremony: null as (() => void) | null,
 }));
 
-vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 vi.mock('#lib/server/env.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/server/env.js')>()),
 	authSecret: () => 'test-secret-do-not-use-in-prod',

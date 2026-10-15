@@ -3,23 +3,16 @@
  * moving the active leaf back off the summary. Real test DB (mocked getDb) so
  * the leaf move + the active-leaf gate are exercised end to end.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createTestDb, closeTestDb } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
-
-const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
 
 import { createConversation, getConversationMeta } from '#lib/server/db/queries/conversations.js';
 import { appendMessage, walkActiveBranch } from '#lib/server/db/queries/messages.js';
 import { undoCompaction } from '#lib/server/chat/compaction.js';
 
 beforeEach(() => {
-	mocks.testDb = createTestDb();
+	createTestDb();
 });
 afterEach(() => {
 	closeTestDb();

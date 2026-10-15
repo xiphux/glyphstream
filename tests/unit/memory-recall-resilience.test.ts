@@ -1,12 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
+import { createTestDb, closeTestDb } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
-
-const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
 
 // No embeddings — exercise the pure-SQLite ids path (no dense leg to interfere).
 vi.mock('#lib/server/retrieval/embeddings-config.js', () => ({
@@ -32,7 +26,7 @@ const ctx = {
 };
 
 beforeEach(() => {
-	mocks.testDb = createTestDb();
+	createTestDb();
 	recordMock.mockReset();
 });
 afterEach(() => closeTestDb());

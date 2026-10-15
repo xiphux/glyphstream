@@ -21,7 +21,6 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB, root: '' }));
-vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 vi.mock('#lib/server/env.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/server/env.js')>()),
 	mediaDir: () => mocks.root,

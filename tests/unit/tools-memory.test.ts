@@ -1,12 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createTestDb, closeTestDb } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
-
-const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
 
 // Import the tool module for its side-effect registration in the singleton
 // registry, AND the per-tool exports we want to invoke directly.
@@ -32,7 +26,7 @@ function run(t: Tool, args: unknown, c: ToolContext): ToolExecution {
 }
 
 beforeEach(() => {
-	mocks.testDb = createTestDb();
+	createTestDb();
 });
 
 afterEach(() => {

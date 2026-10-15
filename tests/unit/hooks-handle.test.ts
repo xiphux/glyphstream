@@ -20,9 +20,8 @@ import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
+vi.mock('#lib/server/db/client.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/server/db/client.js')>()),
 	dbFileBytes: () => ({ main: null, wal: null }),
 	mmapBytes: () => null,
 }));

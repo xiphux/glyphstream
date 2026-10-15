@@ -14,10 +14,6 @@ const mocks = vi.hoisted(() => ({
 	// Default: every provider enabled. Individual tests flip a provider off.
 	providerEnabled: (_id: string) => true as boolean,
 }));
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
 vi.mock('#lib/server/auth/oauth/registry.js', () => ({
 	isProviderEnabled: (id: string) => mocks.providerEnabled(id),
 }));

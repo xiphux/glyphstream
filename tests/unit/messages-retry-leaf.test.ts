@@ -45,7 +45,6 @@ const mocks = vi.hoisted(() => ({
 	jobs: [] as Array<{ anchorMessageId: string }>,
 }));
 
-vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 vi.mock('#lib/server/endpoints/registry.js', () => ({ getEndpoint: () => ENDPOINT }));
 vi.mock('#lib/server/endpoints/list-models.js', () => ({ listAllModels: async () => [] }));
 vi.mock('#lib/server/chat/tool-context.js', () => ({

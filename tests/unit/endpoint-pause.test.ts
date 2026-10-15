@@ -21,7 +21,6 @@ const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
 	endpoints: new Map<string, unknown>(),
 }));
-vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 vi.mock('#lib/server/endpoints/release.js', () => ({ releaseEndpointResources: async () => true }));
 vi.mock('#lib/server/endpoints/registry.js', () => ({
 	getEndpoint: (id: string) => mocks.endpoints.get(id),

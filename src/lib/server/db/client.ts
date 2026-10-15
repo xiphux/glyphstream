@@ -19,12 +19,33 @@ let cached: { db: DB; sqlite: DatabaseSync } | null = null;
 /** Effective `mmap_size` after the PRAGMA, read back at open. See mmapBytes(). */
 let effectiveMmapBytes: number | null = null;
 
+/** A database a test installed in place of the on-disk one. */
+let injected: DB | null = null;
+
+/**
+ * Install `db` as what `getDb()` returns, or `null` to remove it. For tests:
+ * `createTestDb()` (tests/unit/_helpers/test-db.ts) calls this with a fresh
+ * in-memory database, so a test needs no `vi.mock` of this module to run the
+ * real query helpers against it.
+ */
+export function setDbForTests(db: DB | null): void {
+	injected = db;
+}
+
 /**
  * Open (and memoize) the SQLite connection. PRAGMAs are set on first open;
  * pending migrations are applied automatically.
+ *
+ * Under vitest it refuses to open the on-disk database: a test that reaches
+ * here without `createTestDb()` would otherwise read and write the developer's
+ * own `data/glyphstream.db`.
  */
 export function getDb(): DB {
+	if (injected) return injected;
 	if (cached) return cached.db;
+	if (process.env.VITEST) {
+		throw new Error('getDb() reached the on-disk database from a test. Call createTestDb() first.');
+	}
 
 	const path = resolve(dbPath());
 	let sqlite: DatabaseSync;

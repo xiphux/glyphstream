@@ -1,12 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
+import { createTestDb, closeTestDb } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
-
-const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
 
 // Mock the inference call + the model resolver; let the real generateMemoryTopic,
 // fallbackTopic, and the real DB queries run against the test DB.
@@ -30,7 +24,7 @@ function reply(content: string) {
 }
 
 beforeEach(() => {
-	mocks.testDb = createTestDb();
+	createTestDb();
 	chatMock.mockReset();
 	taskModelMock.mockReset();
 	taskModelMock.mockReturnValue(MODEL);

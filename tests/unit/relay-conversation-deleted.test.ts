@@ -22,10 +22,6 @@ const mocks = vi.hoisted(() => ({
 	beforeResponse: null as null | (() => void),
 }));
 
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
 vi.mock('#lib/server/endpoints/client.js', async (orig) => {
 	const real = await orig<typeof import('#lib/server/endpoints/client.js')>();
 	return {

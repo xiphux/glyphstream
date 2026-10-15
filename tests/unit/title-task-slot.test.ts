@@ -13,7 +13,6 @@ const mocks = vi.hoisted(() => ({
 	chatCompletionSync: vi.fn(),
 }));
 
-vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 vi.mock('#lib/server/endpoints/client.js', async (orig) => ({
 	...(await orig<typeof import('#lib/server/endpoints/client.js')>()),
 	chatCompletionSync: mocks.chatCompletionSync,

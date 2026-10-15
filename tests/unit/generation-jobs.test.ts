@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { Buffer } from 'node:buffer';
 import { Readable } from 'node:stream';
+import { setDbForTests } from '#lib/server/db/client.js';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
@@ -39,7 +40,6 @@ const mocks = vi.hoisted(() => ({
 	endpoint: null as unknown as import('#lib/server/endpoints/config.js').LoadedEndpoint | undefined,
 }));
 
-vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 vi.mock('#lib/server/endpoints/client.js', async (orig) => ({
 	...(await orig<typeof import('#lib/server/endpoints/client.js')>()),
 	imageGeneration: mocks.imageGeneration,
@@ -478,18 +478,18 @@ describe('after a restart', () => {
 		leftover(s);
 		setResourceGroupPaused(endpoint(), true);
 		const real = mocks.testDb;
-		mocks.testDb = {
+		setDbForTests({
 			select: () => {
 				throw new Error('database is locked');
 			},
-		} as unknown as TestDB;
+		} as unknown as TestDB);
 		const err = vi.spyOn(console, 'error').mockImplementation(() => {});
 		resumeGenerationJobs();
 		expect(getInFlightEntries(s.conv.id)).toEqual([]);
 		err.mockRestore();
 
 		// A transient failure must not have marked the queue as taken back.
-		mocks.testDb = real;
+		setDbForTests(real);
 		resumeGenerationJobs();
 		expect(getInFlightEntries(s.conv.id)).toHaveLength(1);
 	});
@@ -516,11 +516,11 @@ describe('after a restart', () => {
 		const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
 		stopGenerationJobResume();
 		const real = mocks.testDb;
-		mocks.testDb = {
+		setDbForTests({
 			select: () => {
 				throw new Error('database is locked');
 			},
-		} as unknown as TestDB;
+		} as unknown as TestDB);
 		const err = vi.spyOn(console, 'error').mockImplementation(() => {});
 		resumeGenerationJobs();
 		mocks.testDb = real;

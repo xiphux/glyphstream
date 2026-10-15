@@ -6,10 +6,6 @@ const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
 	token: '',
 }));
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
 vi.mock('#lib/server/env.js', () => ({
 	setupToken: () => mocks.token,
 	publicBaseUrl: () => 'https://chat.example.test',

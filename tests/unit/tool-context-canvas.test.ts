@@ -1,9 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createTestDb, closeTestDb } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
-
-const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 
 import { createConversation } from '#lib/server/db/queries/conversations.js';
 import {
@@ -15,7 +12,7 @@ import { augmentRequestForCanvas } from '#lib/server/chat/tool-context.js';
 import type { ChatCompletionRequest } from '#lib/server/endpoints/client.js';
 
 beforeEach(() => {
-	mocks.testDb = createTestDb();
+	createTestDb();
 });
 afterEach(() => closeTestDb());
 

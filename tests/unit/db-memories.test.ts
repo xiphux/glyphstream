@@ -5,10 +5,6 @@ import { seedUser } from './_helpers/seed';
 import { composeMemorySection } from '#lib/server/chat/persona-prompt.js';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
 
 import {
 	createMemory,

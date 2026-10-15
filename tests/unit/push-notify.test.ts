@@ -9,11 +9,6 @@ const mocks = vi.hoisted(() => ({
 	sendResultsByEndpoint: new Map<string, { ok: boolean; statusCode?: number }>(),
 }));
 
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
-
 vi.mock('#lib/server/push/web-push.js', () => ({
 	sendPushNotification: vi.fn(async (subscription: { endpoint: string }, payload: string) => {
 		mocks.sendCalls.push({ subscription, payload });

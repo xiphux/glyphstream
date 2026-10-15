@@ -12,10 +12,6 @@ import { eq } from 'drizzle-orm';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
 
 import {
 	bumpUserLastLogin,

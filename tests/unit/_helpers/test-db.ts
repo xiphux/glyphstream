@@ -1,19 +1,17 @@
 /**
  * Per-test SQLite + Drizzle setup. Each call to `createTestDb()` opens
  * a fresh `:memory:` database, applies the project's migrations, and
- * stows the connection in a module-local slot so the
- * `#lib/server/db/client.js` mock can hand it back to query helpers.
+ * installs it as what `getDb()` returns (`setDbForTests`), so the real
+ * query helpers run against it with no mock of `#lib/server/db/client.js`.
  *
  * Pattern in test files:
  *
- *   const mocks = vi.hoisted(() => ({ testDb: null as TestDB | null }));
- *   vi.mock('#lib/server/db/client.js', () => ({
- *     getDb: () => mocks.testDb!,
- *     closeDb: () => {}
- *   }));
- *
- *   beforeEach(() => { mocks.testDb = createTestDb(); });
+ *   beforeEach(() => { createTestDb(); });
  *   afterEach(() => closeTestDb());
+ *
+ * Keep the returned handle when the test queries the database itself.
+ * Without either, `getDb()` throws under vitest rather than opening the
+ * on-disk database.
  *
  * In-memory + foreign_keys ON. WAL is *off* (in-memory + WAL doesn't
  * work); synchronous=OFF is fine because there's no durability target.
@@ -23,6 +21,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { drizzle, type NodeSQLiteDatabase } from 'drizzle-orm/node-sqlite';
 import { migrate } from 'drizzle-orm/node-sqlite/migrator';
 import { resolve } from 'node:path';
+import { setDbForTests } from '../../../src/lib/server/db/client';
 export type TestDB = NodeSQLiteDatabase;
 
 let active: { db: TestDB; sqlite: DatabaseSync } | null = null;
@@ -35,11 +34,13 @@ export function createTestDb(): TestDB {
 	const db = drizzle({ client: sqlite });
 	migrate(db, { migrationsFolder: resolve('./drizzle') });
 	active = { db, sqlite };
+	setDbForTests(db);
 	return db;
 }
 
 export function closeTestDb(): void {
 	if (active) {
+		setDbForTests(null);
 		active.sqlite.close();
 		active = null;
 	}

@@ -4,10 +4,6 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
 
 // Importing the tool module registers `search_conversations` in the singleton
 // registry (vitest isolates the module graph per file, so it's a clean registry).

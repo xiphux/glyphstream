@@ -19,10 +19,6 @@ const mocks = vi.hoisted(() => ({
 	response: null as null | (() => Response),
 }));
 
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
 vi.mock('#lib/server/endpoints/client.js', async (orig) => {
 	const real = await orig<typeof import('#lib/server/endpoints/client.js')>();
 	return { ...real, chatCompletionStream: vi.fn(async () => mocks.response!()) };

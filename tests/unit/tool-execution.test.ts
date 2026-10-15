@@ -1,12 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createTestDb, closeTestDb } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
-
-const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
 
 import { createConversation } from '#lib/server/db/queries/conversations.js';
 import { appendMessage, getMessage, walkActiveBranch } from '#lib/server/db/queries/messages.js';
@@ -21,7 +15,7 @@ import type { ChatMessage, MessagePart, StreamEvent } from '#lib/types/api.js';
 import type { Tool } from '#lib/server/tools/types.js';
 
 beforeEach(() => {
-	mocks.testDb = createTestDb();
+	createTestDb();
 	_resetForTests();
 });
 

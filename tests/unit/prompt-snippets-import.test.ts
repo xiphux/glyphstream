@@ -1,13 +1,7 @@
 import { readFileSync } from 'node:fs';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createTestDb, closeTestDb } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
-
-const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
 
 import {
 	parseSnippetMarkdown,
@@ -26,7 +20,7 @@ import {
 import { listPromptSnippetsForUser } from '#lib/server/db/queries/prompt-snippets.js';
 
 beforeEach(() => {
-	mocks.testDb = createTestDb();
+	createTestDb();
 });
 
 afterEach(() => {

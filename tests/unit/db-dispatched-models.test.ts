@@ -8,12 +8,9 @@
  * is structurally identical to a second branch. Both are covered here.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createTestDb, closeTestDb } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
-
-const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 
 import { createConversation } from '#lib/server/db/queries/conversations.js';
 import {
@@ -25,7 +22,7 @@ import {
 import type { CompareSelection } from '#lib/fanout.js';
 
 beforeEach(() => {
-	mocks.testDb = createTestDb();
+	createTestDb();
 });
 afterEach(() => closeTestDb());
 

@@ -15,7 +15,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
+import { createTestDb, closeTestDb } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 
@@ -38,12 +38,6 @@ const ENDPOINT: LoadedEndpoint = {
 	modelPromptHints: {},
 };
 
-const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
 vi.mock('#lib/server/endpoints/registry.js', () => ({
 	getEndpoint: () => ENDPOINT,
 }));
@@ -56,7 +50,7 @@ import { createConversation } from '#lib/server/db/queries/conversations.js';
 import { appendMessage } from '#lib/server/db/queries/messages.js';
 
 beforeEach(() => {
-	mocks.testDb = createTestDb();
+	createTestDb();
 });
 afterEach(() => closeTestDb());
 

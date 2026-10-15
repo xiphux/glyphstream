@@ -49,10 +49,6 @@ const mocks = vi.hoisted(() => ({
 	executions: 0,
 }));
 
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
 vi.mock('#lib/server/endpoints/registry.js', () => ({
 	getEndpoint: () => ENDPOINT,
 }));

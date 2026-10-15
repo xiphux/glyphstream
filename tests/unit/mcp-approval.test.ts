@@ -7,19 +7,13 @@
  * primitives that feed it.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createTestDb, closeTestDb } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 import { register } from '#lib/server/tools/registry.js';
 import type { Tool, ToolExecution } from '#lib/server/tools/types.js';
 import { buildPendingApprovals } from '#lib/chat-render.js';
 import type { ChatMessage, MessagePart, StreamEvent } from '#lib/types/api.js';
-
-const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
-vi.mock('#lib/server/db/client.js', () => ({
-	getDb: () => mocks.testDb,
-	closeDb: () => {},
-}));
 
 import { executeToolCalls } from '#lib/server/streaming/tool-execution.js';
 import {
@@ -46,7 +40,7 @@ function registerMockTool(name: string, execute: Tool['execute'], category?: str
 }
 
 beforeEach(() => {
-	mocks.testDb = createTestDb();
+	createTestDb();
 });
 
 afterEach(() => {

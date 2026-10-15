@@ -21,7 +21,6 @@ const ORIGIN = 'https://chat.example.test';
 const RP_ID = 'chat.example.test';
 
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB, passkeysOn: true }));
-vi.mock('#lib/server/db/client.js', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 vi.mock('#lib/server/env.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/server/env.js')>()),
 	publicBaseUrl: () => 'https://chat.example.test',
