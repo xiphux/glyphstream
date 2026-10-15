@@ -570,13 +570,16 @@ describe('after a restart', () => {
 		// The fresh modules bring a fresh db/client with no test DB installed;
 		// without this the second resume would fail to read the queue and register
 		// nothing, passing whether or not the guard held.
-		(await import('#lib/server/db/client.js')).setDbForTests(mocks.testDb);
+		const freshClient = await import('#lib/server/db/client.js');
+		freshClient.setDbForTests(mocks.testDb);
 		const fresh = await import('#lib/server/generation/jobs.js');
 		const freshInFlight = await import('#lib/server/streaming/in-flight.js');
 		fresh.resumeGenerationJobs();
 		// The job is still this process's live one — not taken back a second time.
 		expect(freshInFlight.getInFlightEntries(s.conv.id)).toEqual([]);
 		expect(getInFlightEntries(s.conv.id)[0].controller.signal.aborted).toBe(false);
+		// closeTestDb() only reaches the client imported before the reset.
+		freshClient.setDbForTests(null);
 	});
 
 	it('keeps the leftover queue ahead of work submitted after the restart', async () => {
