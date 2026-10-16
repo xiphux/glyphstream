@@ -1,6 +1,7 @@
 /**
  * Part of `pnpm check`: fails if anything the scripts in this directory reach
- * loads a module through a `#` subpath import (`#lib/...`) at runtime.
+ * loads a module through a `#` subpath import (`#lib/...`) or a `$` Kit alias
+ * (`$app/...`, `$lib/...`) at runtime.
  *
  * The scripts run under plain `node`, which strips types but rewrites nothing.
  * `tsc -p scripts/tsconfig.json` (nodenext) already refuses the other ways the
@@ -9,8 +10,15 @@
  * that to `x.ts` and is satisfied, and node looks for `x.js`, which doesn't
  * exist. `resolvePackageJsonImports: false` and a `paths` override are both
  * ignored for this under nodenext, so the check walks the program's files.
+ * Nor `$app/...`: Kit's types declare those modules ambiently, so tsc accepts
+ * them, and only the Vite build can provide them.
  * `import type` is erased before node resolves anything, so it's allowed;
  * `import { type X }` is not — it still loads the module.
+ *
+ * Only literal specifiers in import/export declarations and `import()` are
+ * seen. A computed `import(x)`, `createRequire`, or a reached `.svelte.ts`
+ * (runes type-check as ambient globals, but nothing defines them under node)
+ * would get past both checks; none exists in the scripts' graph today.
  */
 import process from 'node:process';
 import { dirname, relative, resolve } from 'node:path';
@@ -47,7 +55,7 @@ for (const sf of program.getSourceFiles()) {
 	if (sf.isDeclarationFile || sf.fileName.includes('/node_modules/')) continue;
 	const visit = (node: ts.Node): void => {
 		const spec = runtimeSpecifier(node);
-		if (spec && ts.isStringLiteralLike(spec) && spec.text.startsWith('#')) {
+		if (spec && ts.isStringLiteralLike(spec) && /^[#$]/.test(spec.text)) {
 			const { line } = sf.getLineAndCharacterOfPosition(spec.getStart(sf));
 			offenders.push(`${relative(root, sf.fileName)}:${line + 1}: '${spec.text}'`);
 		}
@@ -58,8 +66,9 @@ for (const sf of program.getSourceFiles()) {
 
 if (offenders.length > 0) {
 	console.error(
-		'Files reached from scripts/ must not use # subpath imports — node cannot ' +
-			'resolve them (#lib/x.js names a file that only exists as .ts). ' +
+		'Files reached from scripts/ must not use # subpath imports or $ Kit aliases — ' +
+			'node cannot resolve them (#lib/x.js names a file that only exists as .ts; ' +
+			'$app/* exists only inside the Vite build). ' +
 			'Use a relative import with a .ts extension:\n  ' +
 			offenders.join('\n  '),
 	);

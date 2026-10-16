@@ -455,12 +455,13 @@ exact-match `apple-touch-startup-image` media query.
   is doing it. Read as blanket advice, this bullet used to leave both sides off.
 - **Allowlist by numeric GitHub user ID, not username.** Usernames can be
   deleted and re-registered by someone else.
-- **`schema.ts` must stay `#lib`-free.** It's loaded outside the Vite
-  build — by drizzle-kit, the `import-owui` esbuild bundle, and
-  Playwright's e2e `global-setup.ts`. The first two resolve `#lib` through
-  package.json `imports`; Playwright's plain Node loader does not (a
-  `#lib/….js` specifier names a file that only exists as `.ts`). Import
-  shared code into it with a relative path.
+- **Anything `scripts/` reaches must load under plain `node`** — `schema.ts`
+  included, which drizzle-kit and Playwright's `global-setup.ts` also load
+  outside the Vite build. So: relative imports with a real `.ts` extension, no
+  runtime `#lib/….js` (it names a file that only exists as `.ts`), no `$app`
+  or `$lib`. The graph follows `import type` too, so it includes client
+  modules like `chat-render.ts` that node never runs. `pnpm check` enforces it
+  (`scripts/tsconfig.json` is nodenext, plus `scripts/check-node-imports.ts`).
 - **A snippet passed to a component shadows a same-named script variable
   inside that component's markup.** `<SettingsPage>{#snippet description()}…`
   made a `bind:value={description}` in the same block bind to the snippet, and

@@ -2,9 +2,11 @@
 	// The scripts run under plain `node` (type stripping only), so this program
 	// resolves the way node does: nodenext refuses an extensionless relative
 	// import anywhere in their graph — src/ files included — and the emptied
-	// `paths`/`rootDirs` refuse `$lib`, `$app` and `./$types`, none of which
-	// node can load. `#lib` is the one gap nodenext can't close; see
-	// check-node-imports.ts. Also gives typescript-eslint a program for these
+	// `paths`/`rootDirs` refuse `$lib` and `./$types`, neither of which node
+	// can load. `#lib` and `$app` are the gaps this can't close — `#lib` maps
+	// to the .ts source, and Kit's ambient `declare module '$app/…'` types
+	// (pulled in by the root config's `types`) satisfy `$app` — so
+	// check-node-imports.ts refuses both. Also gives typescript-eslint a program for these
 	// files, which the app tsconfig's `include` doesn't cover.
 	"extends": "../tsconfig.json",
 	"compilerOptions": {
