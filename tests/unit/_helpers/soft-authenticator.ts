@@ -46,11 +46,13 @@ export interface CeremonyOverrides {
 export class SoftAuthenticator {
 	readonly credentialId = randomBytes(16);
 	private readonly keys = keyPair();
+	private readonly rpId: string;
+	private readonly origin: string;
 
-	constructor(
-		private readonly rpId: string,
-		private readonly origin: string,
-	) {}
+	constructor(rpId: string, origin: string) {
+		this.rpId = rpId;
+		this.origin = origin;
+	}
 
 	get id(): string {
 		return b64u(this.credentialId);

@@ -17,12 +17,13 @@ const log = createLogger('videoCancel');
 const MAX_UPSTREAM_REDIRECTS = 5;
 
 export class UpstreamError extends Error {
-	constructor(
-		message: string,
-		readonly status: number | null,
-		readonly body: string | null,
-	) {
+	readonly status: number | null;
+	readonly body: string | null;
+
+	constructor(message: string, status: number | null, body: string | null) {
 		super(message);
+		this.status = status;
+		this.body = body;
 	}
 }
 

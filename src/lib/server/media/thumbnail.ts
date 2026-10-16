@@ -289,8 +289,11 @@ const FFMPEG_THREADS = '1';
  *  can ignore everything else that shares its catch. Not a perfect line — both
  *  encoders write their output too — which is why `failed` entries expire. */
 class DecodeError extends Error {
-	constructor(readonly cause: unknown) {
+	readonly cause: unknown;
+
+	constructor(cause: unknown) {
 		super('thumbnail decode failed');
+		this.cause = cause;
 		this.name = 'DecodeError';
 	}
 }

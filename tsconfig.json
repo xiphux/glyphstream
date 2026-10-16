@@ -1,6 +1,7 @@
 {
 	"extends": "$app/tsconfig",
 	"compilerOptions": {
+		"erasableSyntaxOnly": true,
 		"rewriteRelativeImportExtensions": true,
 		"sourceMap": true,
 		"strict": true

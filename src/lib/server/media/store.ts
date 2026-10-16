@@ -37,8 +37,11 @@ export interface MediaPutStreamInput {
 
 /** Thrown by `putStream` when the stream passed `maxBytes`. */
 export class MediaTooLargeError extends Error {
-	constructor(readonly maxBytes: number) {
+	readonly maxBytes: number;
+
+	constructor(maxBytes: number) {
 		super(`Media stream exceeded ${maxBytes} bytes; nothing was stored.`);
+		this.maxBytes = maxBytes;
 		this.name = 'MediaTooLargeError';
 	}
 }

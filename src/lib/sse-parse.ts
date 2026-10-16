@@ -40,10 +40,13 @@ export interface SSERecord {
 const MAX_SSE_BUFFER_BYTES = 8 * 1024 * 1024;
 
 export class SSEBufferOverflowError extends Error {
-	constructor(public readonly bufferBytes: number) {
+	public readonly bufferBytes: number;
+
+	constructor(bufferBytes: number) {
 		super(
 			`SSE buffer exceeded ${MAX_SSE_BUFFER_BYTES} bytes without a block separator (saw ${bufferBytes} bytes). Aborting to avoid OOM.`,
 		);
+		this.bufferBytes = bufferBytes;
 		this.name = 'SSEBufferOverflowError';
 	}
 }

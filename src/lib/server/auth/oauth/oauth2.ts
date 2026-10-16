@@ -85,7 +85,11 @@ export class OAuth2ResponseError extends Error {
  * later. Only the two fields the providers read are exposed.
  */
 export class OAuth2Tokens {
-	constructor(private readonly data: Record<string, unknown>) {}
+	private readonly data: Record<string, unknown>;
+
+	constructor(data: Record<string, unknown>) {
+		this.data = data;
+	}
 
 	accessToken(): string {
 		const v = this.data.access_token;
