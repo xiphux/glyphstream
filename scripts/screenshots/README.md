@@ -23,7 +23,7 @@ The pieces:
 
 ```bash
 pnpm build                                          # production server build
-pnpm exec tsx scripts/screenshots/seed.ts           # fresh demo data
+node scripts/screenshots/seed.ts                    # fresh demo data
 node scripts/screenshots/mock-upstream.mjs &        # port 3002
 
 HOST=127.0.0.1 PORT=3010 \
@@ -35,7 +35,7 @@ EXTERNAL_BASE_URL=http://localhost:3010 \
 CONFIG_PATH=./scripts/screenshots/config.toml \
 LOG_LEVEL=warn node build/index.js &                # port 3010
 
-pnpm exec tsx scripts/screenshots/capture.ts        # writes docs/images/
+node scripts/screenshots/capture.ts                 # writes docs/images/
 ```
 
 Gotcha: re-running `seed.ts` recreates the DB file, so restart the app

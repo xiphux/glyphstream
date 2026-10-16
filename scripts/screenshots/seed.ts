@@ -11,7 +11,7 @@
  * screenshots show exactly what real persisted messages look like, and
  * gallery images are procedural gradient art rasterized with sharp.
  *
- * Run with: pnpm exec tsx scripts/screenshots/seed.ts
+ * Run with: node scripts/screenshots/seed.ts
  */
 
 import { mkdirSync, existsSync, rmSync, writeFileSync, statSync } from 'node:fs';
@@ -22,9 +22,9 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-sqlite';
 import { migrate } from 'drizzle-orm/node-sqlite/migrator';
 import sharp from 'sharp';
-import * as schema from '../../src/lib/server/db/schema';
-import { renderMarkdown } from '../../src/lib/server/markdown/render';
-import type { MessagePart } from '../../src/lib/types/api';
+import * as schema from '../../src/lib/server/db/schema.ts';
+import { renderMarkdown } from '../../src/lib/server/markdown/render.ts';
+import type { MessagePart } from '../../src/lib/types/api.ts';
 
 const DATA_DIR = resolve('./scripts/screenshots/.demo-data');
 const DB_PATH = resolve(DATA_DIR, 'demo.db');

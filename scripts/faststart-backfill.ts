@@ -3,8 +3,8 @@
  * GlyphStream started doing it at write time.
  *
  * Local dev:
- *   pnpm tsx scripts/faststart-backfill.ts --dry-run
- *   pnpm tsx scripts/faststart-backfill.ts
+ *   node scripts/faststart-backfill.ts --dry-run
+ *   node scripts/faststart-backfill.ts
  *
  * Inside a running container:
  *   docker compose exec glyphstream node /app/build/scripts/faststart-backfill.js

@@ -1,6 +1,6 @@
 /** Shared types between server endpoints and client code. */
 
-import type { CompareSelection } from '../fanout';
+import type { CompareSelection } from '../fanout.ts';
 
 /**
  * The model modalities GlyphStream understands. MODEL_KINDS is the single

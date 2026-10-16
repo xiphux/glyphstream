@@ -23,9 +23,9 @@
 
 import { eq } from 'drizzle-orm';
 import type { NodeSQLiteDatabase } from 'drizzle-orm/node-sqlite';
-import { conversations, messages } from '../db/schema';
-import { generateId } from '../util/id';
-import { renderMarkdown } from '../markdown/render';
+import { conversations, messages } from '../db/schema.ts';
+import { generateId } from '../util/id.ts';
+import { renderMarkdown } from '../markdown/render.ts';
 import type { MessagePart, ModelKind } from '#lib/types/api.js';
 
 export type ImportDb = NodeSQLiteDatabase;

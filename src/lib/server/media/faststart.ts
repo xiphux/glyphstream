@@ -37,7 +37,7 @@ import { open, rename, stat, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import process from 'node:process';
 import { Buffer } from 'node:buffer';
-import { createLogger } from '../log';
+import { createLogger } from '../log.ts';
 
 const log = createLogger('faststart');
 

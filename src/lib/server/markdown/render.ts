@@ -15,7 +15,7 @@
 // that doubles as a type — the instance type is a separate named export.
 import MarkdownItCtor, { type MarkdownIt, type Token } from 'markdown-it';
 import { bundledLanguagesInfo, createHighlighter, type Highlighter } from 'shiki';
-import { createLogger } from '../log';
+import { createLogger } from '../log.ts';
 
 const log = createLogger('markdown');
 

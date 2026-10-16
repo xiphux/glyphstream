@@ -18,13 +18,13 @@
 		"analyze": "ANALYZE=1 vite build",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo '' ; husky || echo ''",
-		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings && tsc -p scripts/tsconfig.json --noEmit",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings && tsc -p scripts/tsconfig.json --noEmit && node scripts/check-node-imports.ts",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "svelte-kit sync && eslint .",
 		"lint:fix": "svelte-kit sync && eslint . --fix && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
-		"gen:splash": "tsx scripts/generate-pwa-splash.ts",
+		"gen:splash": "node scripts/generate-pwa-splash.ts",
 		"db:generate": "drizzle-kit generate",
 		"db:push": "drizzle-kit push",
 		"db:studio": "drizzle-kit studio",
@@ -32,7 +32,7 @@
 		"test:watch": "vitest",
 		"test:e2e": "playwright test",
 		"eval": "vitest run --config vitest.eval.config.ts",
-		"import:owui": "tsx scripts/import-owui.ts"
+		"import:owui": "node scripts/import-owui.ts"
 	},
 	"lint-staged": {
 		"*.{js,mjs,cjs,ts,svelte,json,css,md}": "prettier --write"
@@ -89,7 +89,6 @@
 		"svelte-check": "^4.7.6",
 		"svelte-eslint-parser": "^1.8.1",
 		"tailwindcss": "^4.3.3",
-		"tsx": "^4.23.13",
 		"typescript": "npm:@typescript/typescript6@^6.0.2",
 		"typescript-eslint": "^8.70.0",
 		"undici": "^8.11.2",

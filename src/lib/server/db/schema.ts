@@ -15,7 +15,7 @@ import { sql } from 'drizzle-orm';
 // Playwright's plain Node loader does not, because a `#lib/….js` specifier
 // names a file that only exists as .ts. Keep this module alias-free so it
 // stays loadable everywhere.
-import { MODEL_KINDS } from '../../types/api';
+import { MODEL_KINDS } from '../../types/api.ts';
 
 // --- users + sessions ----------------------------------------------------
 

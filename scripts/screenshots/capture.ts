@@ -2,10 +2,10 @@
  * Capture README screenshots against the seeded demo server.
  *
  * Prereqs (see scripts/screenshots/README.md for the full dance):
- *   1. pnpm exec tsx scripts/screenshots/seed.ts
+ *   1. node scripts/screenshots/seed.ts
  *   2. node scripts/screenshots/mock-upstream.mjs        (port 3002)
  *   3. pnpm build && <demo env> node build/index.js      (port 3010)
- *   4. pnpm exec tsx scripts/screenshots/capture.ts
+ *   4. node scripts/screenshots/capture.ts
  *
  * Output: docs/images/*.jpg. Captured at 2x device scale for crisp
  * rendering on retina displays, then downscaled to 1640px wide (2x of the

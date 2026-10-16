@@ -1,9 +1,18 @@
 {
-	// `scripts/` is outside the SvelteKit-generated tsconfig's `include`
-	// (which covers `src/` and `tests/` only), so typescript-eslint's
-	// project service has no program for these files and they fail to
-	// parse. This gives them one. `import-owui.ts` is bundled by
-	// `pnpm build`, so it's shipped code, not a local-only helper.
+	// The scripts run under plain `node` (type stripping only), so this program
+	// resolves the way node does: nodenext refuses an extensionless relative
+	// import anywhere in their graph — src/ files included — and the emptied
+	// `paths`/`rootDirs` refuse `$lib`, `$app` and `./$types`, none of which
+	// node can load. `#lib` is the one gap nodenext can't close; see
+	// check-node-imports.ts. Also gives typescript-eslint a program for these
+	// files, which the app tsconfig's `include` doesn't cover.
 	"extends": "../tsconfig.json",
+	"compilerOptions": {
+		"module": "nodenext",
+		"moduleResolution": "nodenext",
+		"allowImportingTsExtensions": true,
+		"paths": {},
+		"rootDirs": []
+	},
 	"include": ["**/*.ts"]
 }

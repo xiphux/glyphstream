@@ -7,10 +7,10 @@
  * silent regression here breaks every conversation.
  */
 
-import { unhandled } from './exhaustive';
-import type { ChatMessage, MessagePart, ModelEntry } from './types/api';
-import { arrangeForDisplay, isCompactionSummary } from './chat-compaction';
-import { friendlyModelName } from './model-ids';
+import { unhandled } from './exhaustive.ts';
+import type { ChatMessage, MessagePart, ModelEntry } from './types/api.ts';
+import { arrangeForDisplay, isCompactionSummary } from './chat-compaction.ts';
+import { friendlyModelName } from './model-ids.ts';
 
 /** Who an assistant bubble presents itself as: the name above it, and the
  *  avatar beside that name (null for every message the conversation's own

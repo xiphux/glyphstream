@@ -6,8 +6,8 @@
  * controls once they settle.
  */
 
-import type { InFlightSegment } from './chat-render';
-import type { AvatarDrawPrompt, ChatMessage, ModelKind } from './types/api';
+import type { InFlightSegment } from './chat-render.ts';
+import type { AvatarDrawPrompt, ChatMessage, ModelKind } from './types/api.ts';
 
 /**
  * Hard ceiling on concurrent fan-out branches per conversation. Each branch
