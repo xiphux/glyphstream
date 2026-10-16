@@ -288,6 +288,7 @@
 				'ruff',
 				'deptry',
 				'pre-commit',
+				'prek',
 				'pre-commit/pre-commit-hooks',
 			],
 			matchUpdateTypes: ['minor', 'patch'],
