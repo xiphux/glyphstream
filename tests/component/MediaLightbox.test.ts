@@ -1100,6 +1100,19 @@ describe('MediaLightbox — swipe resolves at the midpoint', () => {
 		expect(t.el.scrollTo).not.toHaveBeenCalled();
 	});
 
+	it("doesn't let a tap arm the re-snap for a later non-touch scroll", async () => {
+		const { container } = render(MediaLightbox, {
+			props: { media: makeImage({ id: 'm-1' }), onClose: vi.fn(), siblings, onNavigate: vi.fn() },
+		});
+		const t = track(container);
+		await fireEvent.touchStart(t.el);
+		await fireEvent.touchEnd(t.el);
+		// A trackpad swipe, paused partway with the fingers still on the pad.
+		t.at(0.3);
+		await settleNavResolve();
+		expect(t.el.scrollTo).not.toHaveBeenCalled();
+	});
+
 	it('asks the caller to prefetch the slides either side', () => {
 		const onPrefetch = vi.fn();
 		render(MediaLightbox, {

@@ -260,20 +260,27 @@
 	 * the track resting partway onto the next slide. A gentle drag crosses with
 	 * the finger still down, so the release snaps normally — which is why only a
 	 * real flick got stuck.
+	 *
+	 * Only a touch that moved the track counts as a release (`touchScrolled`). A
+	 * tap would otherwise leave `touchReleased` armed until some later settle —
+	 * on a device with a trackpad too, a two-finger swipe paused mid-gesture.
 	 */
 	let touchActive = false;
+	let touchScrolled = false;
 	let touchReleased = false;
 	function onTrackTouchStart() {
 		touchActive = true;
+		touchScrolled = false;
 	}
 	function onTrackTouchEnd(e: TouchEvent) {
 		if (e.touches.length > 0) return;
 		touchActive = false;
-		touchReleased = true;
+		if (touchScrolled) touchReleased = true;
 	}
 	function onTrackScroll() {
 		const el = trackEl;
 		if (!el || !siblings) return;
+		if (touchActive) touchScrolled = true;
 		if (el.clientWidth > 0) {
 			// Rounding flips at the halfway point between two slides. Writing
 			// `pendingIndex` re-runs every slide's `slideMounted` (see below), but
@@ -526,6 +533,7 @@
 		scrollTarget = null;
 		lastResolvedId = null;
 		touchActive = false;
+		touchScrolled = false;
 		touchReleased = false;
 	});
 	// And on teardown, for callers that do unmount it.
