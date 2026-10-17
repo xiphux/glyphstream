@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.45.2
+
 ### Fixed
 
 - Swiping through the lightbox now switches the model, prompt and favorite star
