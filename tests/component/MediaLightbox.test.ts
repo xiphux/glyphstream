@@ -1107,10 +1107,44 @@ describe('MediaLightbox — swipe resolves at the midpoint', () => {
 		const t = track(container);
 		await fireEvent.touchStart(t.el);
 		await fireEvent.touchEnd(t.el);
+		await settleNavResolve();
 		// A trackpad swipe, paused partway with the fingers still on the pad.
 		t.at(0.3);
 		await settleNavResolve();
 		expect(t.el.scrollTo).not.toHaveBeenCalled();
+	});
+
+	it("doesn't let a hold that lifts on a slide arm it either", async () => {
+		const { container } = render(MediaLightbox, {
+			props: { media: makeImage({ id: 'm-1' }), onClose: vi.fn(), siblings, onNavigate: vi.fn() },
+		});
+		const t = track(container);
+		// Dragged, held long enough for the settle to pass, lifted with nothing
+		// moving after — no settle follows to consume the release.
+		await fireEvent.touchStart(t.el);
+		t.at(0.3);
+		t.at(1);
+		await settleNavResolve();
+		await fireEvent.touchEnd(t.el);
+		await settleNavResolve();
+		t.at(1.3);
+		await settleNavResolve();
+		expect(t.el.scrollTo).not.toHaveBeenCalled();
+	});
+
+	it('re-snaps a flick that lifts before its first scroll event', async () => {
+		const { container } = render(MediaLightbox, {
+			props: { media: makeImage({ id: 'm-1' }), onClose: vi.fn(), siblings, onNavigate: vi.fn() },
+		});
+		const t = track(container);
+		// Scroll events are per-frame and `touchend` isn't, so the shortest flick
+		// reports its lift first.
+		await fireEvent.touchStart(t.el);
+		await fireEvent.touchEnd(t.el);
+		t.at(0.6);
+		t.at(1.2);
+		await settleNavResolve();
+		expect(t.el.scrollTo).toHaveBeenCalledWith({ left: WIDTH, behavior: 'smooth' });
 	});
 
 	it('asks the caller to prefetch the slides either side', () => {

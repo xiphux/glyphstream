@@ -261,26 +261,33 @@
 	 * the finger still down, so the release snaps normally — which is why only a
 	 * real flick got stuck.
 	 *
-	 * Only a touch that moved the track counts as a release (`touchScrolled`). A
-	 * tap would otherwise leave `touchReleased` armed until some later settle —
+	 * A release stays armed only if the track keeps moving after it: disarmed
+	 * unless a scroll arrives within RELEASE_MOTION_MS. A tap, or a hold that
+	 * lifts on a slide, would otherwise leave it armed until some later settle —
 	 * on a device with a trackpad too, a two-finger swipe paused mid-gesture.
+	 * Judged after the lift rather than by whether the finger moved the track:
+	 * scroll events are per-frame and `touchend` isn't, so the shortest flick can
+	 * lift before its first scroll event.
 	 */
 	let touchActive = false;
-	let touchScrolled = false;
 	let touchReleased = false;
+	const RELEASE_MOTION_MS = 90;
+	let releaseMotionTimer: ReturnType<typeof setTimeout> | undefined;
 	function onTrackTouchStart() {
 		touchActive = true;
-		touchScrolled = false;
+		touchReleased = false;
+		clearTimeout(releaseMotionTimer);
 	}
 	function onTrackTouchEnd(e: TouchEvent) {
 		if (e.touches.length > 0) return;
 		touchActive = false;
-		if (touchScrolled) touchReleased = true;
+		touchReleased = true;
+		releaseMotionTimer = setTimeout(() => (touchReleased = false), RELEASE_MOTION_MS);
 	}
 	function onTrackScroll() {
 		const el = trackEl;
 		if (!el || !siblings) return;
-		if (touchActive) touchScrolled = true;
+		if (!touchActive) clearTimeout(releaseMotionTimer);
 		if (el.clientWidth > 0) {
 			// Rounding flips at the halfway point between two slides. Writing
 			// `pendingIndex` re-runs every slide's `slideMounted` (see below), but
@@ -532,14 +539,15 @@
 		pendingIndex = null;
 		scrollTarget = null;
 		lastResolvedId = null;
+		clearTimeout(releaseMotionTimer);
 		touchActive = false;
-		touchScrolled = false;
 		touchReleased = false;
 	});
 	// And on teardown, for callers that do unmount it.
 	$effect(() => () => {
 		clearTimeout(navResolveTimer);
 		clearTimeout(scrollSettleTimer);
+		clearTimeout(releaseMotionTimer);
 	});
 
 	function fmtDate(ms: number): string {
