@@ -62,8 +62,9 @@ engineStrict: true
 # proposes; this covers what they pull in, and the weekly lockFileMaintenance
 # PR that re-resolves the whole lockfile.
 #
-# Keep it at or below the shortest age .github/renovate.json5 asks for
-# (7 days; it has no shorter patch age), or Renovate's own PRs fail to install. A security fix
+# Keep it at or below the shortest age Renovate asks for (3 days, for
+# patches, set in the shared preset .github/renovate.json5 extends), or
+# Renovate's own PRs fail to install. A security fix
 # younger than this can't be installed either, though Renovate raises those
 # immediately: for an urgent one, add the package to minimumReleaseAgeExclude
 # with a note, and take it back out once that version is three days old.

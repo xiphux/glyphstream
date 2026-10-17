@@ -24,7 +24,8 @@
 # packages; everything else (web-push, simplewebauthn, the MCP SDK, …) is
 # inlined into server chunks with no metadata left (see CLAUDE.md on
 # `dependencies`). Those are covered through the lockfile instead, by
-# Renovate's osv.dev alerts (`osvVulnerabilityAlerts` in renovate.json5), which
+# Renovate's osv.dev alerts (`osvVulnerabilityAlerts`, in the shared preset
+# .github/renovate.json5 extends), which
 # don't care that they're devDependencies — GitHub's alerts can auto-dismiss
 # dev-scoped findings. That is also where a fix lands, since a bundled package
 # only changes by rebuilding.
