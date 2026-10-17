@@ -9,6 +9,11 @@ arrived.
 
 ## Unreleased
 
+### Fixed
+
+- Permanently deleting an image while its thumbnail or resized copy was still
+  being generated could leave that copy on disk with nothing pointing at it.
+
 ## v0.45.2
 
 ### Fixed

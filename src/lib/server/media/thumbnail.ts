@@ -73,6 +73,7 @@ import { dirname, resolve } from 'node:path';
 import { derivedDir, mediaDir } from '../env';
 import { MAX_DECODE_PIXELS } from './decode-limits';
 import { FfmpegDeadline, runFfmpeg } from './ffmpeg';
+import { discardIfOriginalGone } from './derived-orphan';
 import { createLogger } from '../log';
 
 const log = createLogger('thumbnail');
@@ -683,6 +684,10 @@ async function generateThumbnail(
 				throw new DecodeError(e);
 			}
 			await rename(tmpAbs, thumbAbs);
+			// A hard delete that landed mid-encode already unlinked this name and
+			// found nothing; without this the thumb would outlive its original.
+			// Null, not the thumb: the caller then 404s like any deleted media.
+			if (await discardIfOriginalGone(sourceAbs, thumbAbs)) return null;
 			const stats = await stat(thumbAbs);
 			await removeLegacyThumb(storagePath);
 			return { absolutePath: thumbAbs, byteSize: stats.size, contentType: 'image/webp' };

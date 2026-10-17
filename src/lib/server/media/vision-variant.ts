@@ -35,6 +35,7 @@ import { derivedDir, mediaDir } from '../env';
 import { getVisionConfig } from '../endpoints/config';
 import { withGenerationSlot } from './thumbnail';
 import { MAX_DECODE_PIXELS } from './decode-limits';
+import { discardIfOriginalGone } from './derived-orphan';
 import { createLogger } from '../log';
 
 const log = createLogger('vision-variant');
@@ -227,6 +228,8 @@ async function generateVisionVariant(
 		const tmp = `${variantAbs}.${randomUUID()}.tmp`;
 		await writeFile(tmp, encoded);
 		await rename(tmp, variantAbs);
+		// See derived-orphan.ts: a delete mid-encode would otherwise strand it.
+		if (await discardIfOriginalGone(sourceAbs, variantAbs)) return null;
 		return { bytes: encoded, contentType: 'image/jpeg' };
 	} catch (e) {
 		// Corrupt file, exotic codec, unreadable — degrade to the original rather

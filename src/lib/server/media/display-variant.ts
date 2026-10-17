@@ -23,6 +23,7 @@ import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { derivedDir, mediaDir } from '../env';
 import { MAX_DECODE_PIXELS } from './decode-limits';
+import { discardIfOriginalGone } from './derived-orphan';
 import { withGenerationSlot } from './thumbnail';
 import { createLogger } from '../log';
 
@@ -130,6 +131,8 @@ async function generate(
 		// Atomic: a torn write must never be served (immutable for a year).
 		await writeFile(tmp, encoded);
 		await rename(tmp, variantAbs);
+		// See derived-orphan.ts: a delete mid-encode would otherwise strand it.
+		if (await discardIfOriginalGone(resolve(mediaDir(), storagePath), variantAbs)) return null;
 		return { absolutePath: variantAbs, byteSize: encoded.byteLength, contentType: 'image/webp' };
 	} catch (e) {
 		await unlink(tmp).catch(() => {});
