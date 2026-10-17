@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.45.3
+
 ### Fixed
 
 - Permanently deleting an image while its thumbnail or resized copy was still
