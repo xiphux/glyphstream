@@ -686,7 +686,8 @@ async function generateThumbnail(
 			await rename(tmpAbs, thumbAbs);
 			// A hard delete that landed mid-encode already unlinked this name and
 			// found nothing; without this the thumb would outlive its original.
-			// Null, not the thumb: the caller then 404s like any deleted media.
+			// Null, not the thumb: the legacy-JPEG and original fallbacks then find
+			// nothing either, so the endpoint 404s like any deleted media.
 			if (await discardIfOriginalGone(sourceAbs, thumbAbs)) return null;
 			const stats = await stat(thumbAbs);
 			await removeLegacyThumb(storagePath);

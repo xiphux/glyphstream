@@ -1,8 +1,9 @@
 /**
  * A hard delete that lands while a derived file is being generated must not
- * leave that file behind. Real sharp, real files; the only seam is `rename`,
- * which runs the delete first when armed — the moment after the encode has its
- * bytes and before the derived file exists for `DiskMediaStore.delete` to find.
+ * leave that file behind. Real sharp, real files; the only filesystem seam is
+ * `rename`, which runs the delete first when armed — the moment after the encode
+ * has its bytes and before the derived file exists for `DiskMediaStore.delete`
+ * to find.
  */
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
