@@ -251,6 +251,26 @@
 	/** The id most recently handed to `onNavigate`, so the settle can tell when a
 	 *  resolve it didn't end up wanting may still be in flight. */
 	let lastResolvedId: string | null = null;
+	/**
+	 * A finger is on the track, and whether one has lifted since the track last
+	 * came to rest. Feeds the settle's re-snap: a fast flick crosses the midpoint
+	 * after the finger lifts, while the browser's own snap animation is running,
+	 * and the swap that crossing triggers (header, mounted slides, `loading`) is a
+	 * layout change mid-animation. iOS WebKit can drop the snap there and leave
+	 * the track resting partway onto the next slide. A gentle drag crosses with
+	 * the finger still down, so the release snaps normally — which is why only a
+	 * real flick got stuck.
+	 */
+	let touchActive = false;
+	let touchReleased = false;
+	function onTrackTouchStart() {
+		touchActive = true;
+	}
+	function onTrackTouchEnd(e: TouchEvent) {
+		if (e.touches.length > 0) return;
+		touchActive = false;
+		touchReleased = true;
+	}
 	function onTrackScroll() {
 		const el = trackEl;
 		if (!el || !siblings) return;
@@ -289,6 +309,15 @@
 			// nothing rather than cancelling work that may still be wanted.
 			if (!landed) return;
 			scrollTarget = null;
+			// Came to rest off the grid after a touch gesture: the browser dropped
+			// the snap (see `touchActive`), so finish it. Only after a release —
+			// with a finger still down, resting between slides is the user holding
+			// it there, and a trackpad gesture snaps on its own when it ends.
+			if (touchReleased && !touchActive) {
+				touchReleased = false;
+				const left = idx * el.clientWidth;
+				if (Math.abs(el.scrollLeft - left) > 1) el.scrollTo({ left, behavior: 'smooth' });
+			}
 			if (landed.id === media?.id) {
 				// Settled back on what's already shown — so anything still queued is
 				// stale, and letting it fire would drag `media` away from the slide the
@@ -496,6 +525,8 @@
 		pendingIndex = null;
 		scrollTarget = null;
 		lastResolvedId = null;
+		touchActive = false;
+		touchReleased = false;
 	});
 	// And on teardown, for callers that do unmount it.
 	$effect(() => () => {
@@ -891,9 +922,15 @@
 				past others is more jarring than useful.
 			-->
 			<div class="relative flex flex-1 overflow-hidden">
+				<!-- The touch handlers only watch for a finger lifting (passive, no
+				     behaviour of their own) — the scroll is the interaction. -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
 					bind:this={trackEl}
 					onscroll={onTrackScroll}
+					ontouchstart={onTrackTouchStart}
+					ontouchend={onTrackTouchEnd}
+					ontouchcancel={onTrackTouchEnd}
 					class="flex flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 				>
 					{#each siblings! as s, i (s.id)}

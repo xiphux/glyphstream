@@ -13,6 +13,8 @@ arrived.
 
 - Permanently deleting an image while its thumbnail or resized copy was still
   being generated could leave that copy on disk with nothing pointing at it.
+- A quick swipe in the lightbox could stop partway onto the following image
+  instead of landing on the next one.
 
 ## v0.45.2
 

@@ -1059,6 +1059,47 @@ describe('MediaLightbox — swipe resolves at the midpoint', () => {
 		expect(onNavigate).toHaveBeenCalledWith('m-2');
 	});
 
+	it('finishes the snap when a flick comes to rest between slides', async () => {
+		const { container } = render(MediaLightbox, {
+			props: { media: makeImage({ id: 'm-1' }), onClose: vi.fn(), siblings, onNavigate: vi.fn() },
+		});
+		const t = track(container);
+		// A flick: the finger lifts early, and the midpoint swap lands during the
+		// browser's snap animation — which iOS can then drop, leaving the track
+		// partway onto the slide after.
+		await fireEvent.touchStart(t.el);
+		t.at(0.3);
+		await fireEvent.touchEnd(t.el);
+		t.at(0.6);
+		t.at(1.2);
+		await settleNavResolve();
+		expect(t.el.scrollTo).toHaveBeenCalledWith({ left: WIDTH, behavior: 'smooth' });
+	});
+
+	it('leaves a track the finger is still holding between slides alone', async () => {
+		const { container } = render(MediaLightbox, {
+			props: { media: makeImage({ id: 'm-1' }), onClose: vi.fn(), siblings, onNavigate: vi.fn() },
+		});
+		const t = track(container);
+		await fireEvent.touchStart(t.el);
+		t.at(0.7);
+		await settleNavResolve();
+		expect(t.el.scrollTo).not.toHaveBeenCalled();
+	});
+
+	it("doesn't re-snap a track the browser already snapped", async () => {
+		const { container } = render(MediaLightbox, {
+			props: { media: makeImage({ id: 'm-1' }), onClose: vi.fn(), siblings, onNavigate: vi.fn() },
+		});
+		const t = track(container);
+		await fireEvent.touchStart(t.el);
+		t.at(0.3);
+		await fireEvent.touchEnd(t.el);
+		t.at(1);
+		await settleNavResolve();
+		expect(t.el.scrollTo).not.toHaveBeenCalled();
+	});
+
 	it('asks the caller to prefetch the slides either side', () => {
 		const onPrefetch = vi.fn();
 		render(MediaLightbox, {
