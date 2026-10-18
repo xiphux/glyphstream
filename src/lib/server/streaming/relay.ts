@@ -387,6 +387,11 @@ async function runChatTurn(
 	let finalAssistantMessage: ChatMessage | null = null;
 	let finalTextPreview = '';
 	let stoppedFinal = false;
+	// Halted for tool approval: the resume's own relay settles (and counts) this
+	// turn. Tracked rather than read off the final row's `tool_calls` finish —
+	// a reaction-only reply, a Stop during tool execution and the safety bound
+	// all END the turn on a `tool_calls` row too.
+	let haltedForApproval = false;
 	// How many upstream round-trips this turn actually made. Reported on `done`
 	// so the client knows whether it's holding the whole turn or just its last
 	// row — it can no longer infer that from the tool-call frames, since a
@@ -478,7 +483,10 @@ async function runChatTurn(
 			// Any pending_approval rows mean the turn halts here — the
 			// resume endpoint will fill them in and continue with a fresh
 			// SSE stream once the user posts decisions.
-			if (pendingCount > 0) break;
+			if (pendingCount > 0) {
+				haltedForApproval = true;
+				break;
+			}
 
 			// Reaction executed, reply already written: end the turn. The history
 			// this leaves — assistant(text + tool_call), tool(result), user(next)
@@ -518,7 +526,7 @@ async function runChatTurn(
 		// page invalidates and refetches on `done`, which surfaces all
 		// the intermediate role:'tool' rows from the loop.
 		if (finalAssistantMessage) {
-			recordTurnStats(params, finalAssistantMessage);
+			if (!haltedForApproval) recordTurnStats(params, finalAssistantMessage, stoppedFinal);
 			write({
 				type: 'done',
 				assistantMessage: finalAssistantMessage,
@@ -622,21 +630,23 @@ function persistTurnErrorSibling(
 
 /**
  * Count a settled turn against its model. Keyed off the FINAL row, so a turn
- * counts once however many tool-loop iterations it ran — and a turn halted for
- * tool approval (its last row still `tool_calls`) counts when the resume
- * settles it, not twice. A failed turn is an `error`, not a `turn`, matching
- * the backfill; a stopped one is still a turn that ran.
+ * counts once however many tool-loop iterations it ran; a turn halted for tool
+ * approval isn't passed here at all, and counts when the resume settles it. A
+ * failed turn is an `error`, not a `turn`, matching the backfill; a stopped one
+ * is still a turn that ran — `stopped` covers a Stop landing between
+ * iterations, whose final row is the previous `tool_calls` one, not
+ * `cancelled`.
  */
-function recordTurnStats(params: RelayParams, final: ChatMessage): void {
-	if (final.finishReason === 'tool_calls') return;
+function recordTurnStats(params: RelayParams, final: ChatMessage, stopped: boolean): void {
 	const opts = { userId: params.userId };
 	if (final.finishReason === 'error') {
 		recordModelEvent(params.storedModelId, 'error', opts);
 		return;
 	}
 	recordModelEvent(params.storedModelId, 'turn', { ...opts, sum: final.tokensOut ?? 0 });
-	if (final.finishReason === 'cancelled') recordModelEvent(params.storedModelId, 'cancelled');
-	else if (final.finishReason === 'length') recordModelEvent(params.storedModelId, 'truncated');
+	if (stopped || final.finishReason === 'cancelled') {
+		recordModelEvent(params.storedModelId, 'cancelled');
+	} else if (final.finishReason === 'length') recordModelEvent(params.storedModelId, 'truncated');
 }
 
 /**

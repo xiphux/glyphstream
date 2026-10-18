@@ -51,6 +51,7 @@ import { startTitleTaskIfFirstExchange } from '#lib/server/tasks/title-task-runn
 import type { ChatCompletionRequest } from '#lib/server/endpoints/client.js';
 import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 import type { ChatMessage } from '#lib/types/api.js';
+import { modelStatsDaily } from '#lib/server/db/schema.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();
@@ -326,6 +327,63 @@ describe('multi-iteration tool loop', () => {
 			assistantMessage: ChatMessage;
 		};
 		expect(doneEvent.assistantMessage.id).toBe(a2.id);
+	});
+
+	it('counts a turn stopped during tool execution as a cancelled turn', async () => {
+		// The Stop lands while the tool runs, so the loop exits at its top-of-
+		// iteration abort check with the previous `tool_calls` row as the final
+		// one — no `cancelled` finish anywhere. It still ran, and was stopped.
+		const abort = new AbortController();
+		register({
+			definition: {
+				type: 'function',
+				function: {
+					name: 'slow',
+					description: 'slow',
+					parameters: { type: 'object', properties: {}, additionalProperties: false },
+				},
+			},
+			execute: () => {
+				abort.abort();
+				return { content: 'ran' };
+			},
+		});
+
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		mocks.upstreamResponses.push(() =>
+			sseResponse([
+				toolCallStartChunk({ index: 0, id: 'c1', name: 'slow', args: '{}' }),
+				finishChunk('tool_calls'),
+			]),
+		);
+
+		await drainEvents(
+			await startStreamingRelay({
+				conversationId: conv.id,
+				userId,
+				conversationTitle: null,
+				modelKind: 'chat',
+				endpoint,
+				providerQuirk: 'passthrough',
+				requestBody: { model: 'bridge::test', messages: [{ role: 'user', content: 'go' }] },
+				userMessage: user,
+				storedModelId: 'bridge::test',
+				inFlight: inFlightEntryStub(endpoint),
+				abortSignal: abort.signal,
+				onComplete: () => {},
+				rebuildRequestBody: async () => ({ model: 'bridge::test', messages: [] }),
+			}),
+		);
+
+		expect(mocks.upstreamCalls).toHaveLength(1);
+		const counts = Object.fromEntries(
+			mocks.testDb
+				.select()
+				.from(modelStatsDaily)
+				.all()
+				.map((r) => [r.metric, r.count]),
+		);
+		expect(counts).toMatchObject({ turn: 1, cancelled: 1 });
 	});
 
 	it('stops after one iteration when rebuildRequestBody is not provided', async () => {
@@ -668,6 +726,9 @@ describe('multi-iteration tool loop with needsApproval', () => {
 		const types = events.map((e) => (e as { type: string }).type);
 		expect(types).toContain('tool_pending_approval');
 		expect(types[types.length - 1]).toBe('done');
+
+		// Not a turn yet for the model stats: the resume settles and counts it.
+		expect(mocks.testDb.select().from(modelStatsDaily).all()).toEqual([]);
 	});
 
 	it('initialParentMessageId parents iteration 0 to the active_leaf, not userMessage.id', async () => {

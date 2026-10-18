@@ -18,8 +18,12 @@
 -- A chat reply: an assistant row with a model, not a tool-loop step, not an
 -- error sibling, and not a media generation's output (those carry a
 -- message_media link to a generated row from the same model, and are counted
--- from `media` below). One per turn: intermediate tool-loop rows are
--- finish_reason 'tool_calls'.
+-- from `media` below). One per turn, counted on the turn's LAST row. A
+-- 'tool_calls' row is usually an intermediate tool-loop step — its tool
+-- results lead on to the next assistant row — but it ends the turn when
+-- nothing follows them: a reply that also reacted with an emoji, a Stop during
+-- tool execution, the loop's safety bound. (A turn halted for approval and
+-- never resumed looks the same, and is counted too.)
 INSERT INTO model_stats_daily (day, endpoint_id, model_id, metric, count, sum)
 SELECT
 	strftime('%Y-%m-%d', m.created_at / 1000, 'unixepoch'),
@@ -31,7 +35,19 @@ SELECT
 FROM messages m
 WHERE m.role = 'assistant'
 	AND instr(m.model_used, '::') > 1
-	AND coalesce(m.finish_reason, '') <> 'tool_calls'
+	AND (
+		coalesce(m.finish_reason, '') <> 'tool_calls'
+		OR NOT EXISTS (
+			SELECT 1 FROM messages t
+			JOIN messages a
+				ON a.conversation_id = t.conversation_id
+				AND a.parent_message_id = t.id
+				AND a.role = 'assistant'
+			WHERE t.conversation_id = m.conversation_id
+				AND t.parent_message_id = m.id
+				AND t.role = 'tool'
+		)
+	)
 	AND m.content_json NOT LIKE '%"type":"error"%'
 	AND NOT EXISTS (
 		SELECT 1 FROM message_media mm

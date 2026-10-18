@@ -165,9 +165,15 @@ describe('backfill migration', () => {
 			tokensOut: 10,
 			genMs: 100,
 		});
-		appendMessage({
+		const result = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: step.id,
+			role: 'tool',
+			parts: [{ type: 'tool_result', toolCallId: 'c1', result: 'ok' }],
+		});
+		appendMessage({
+			conversationId: conv.id,
+			parentMessageId: result.id,
 			role: 'assistant',
 			parts: [{ type: 'text', text: 'done' }],
 			modelUsed: 'local::qwen',
@@ -191,6 +197,31 @@ describe('backfill migration', () => {
 		const speedMs = rows.find((r) => r.metric === 'speed_ms')!;
 		expect([speedTokens.count, speedTokens.sum]).toEqual([2, 40]);
 		expect([speedMs.count, speedMs.sum]).toEqual([2, 400]);
+	});
+
+	it('counts a turn that ended on its tool step, as a reply with a reaction does', () => {
+		const u = seedUser();
+		const { conv, user } = seedChat(u.id);
+		const reply = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [
+				{ type: 'text', text: 'Congratulations!' },
+				{ type: 'tool_call', toolCallId: 'r1', toolName: 'react_to_message', arguments: '{}' },
+			],
+			modelUsed: 'local::qwen',
+			finishReason: 'tool_calls',
+		});
+		appendMessage({
+			conversationId: conv.id,
+			parentMessageId: reply.id,
+			role: 'tool',
+			parts: [{ type: 'tool_result', toolCallId: 'r1', result: 'ok' }],
+		});
+
+		runBackfill();
+		expect(counters().filter((r) => r.metric === 'turn')).toMatchObject([{ count: 1 }]);
 	});
 
 	it('counts generated media from media rows, not from their carrier message', () => {

@@ -53,6 +53,7 @@ import { appendMessage, walkActiveBranch } from '#lib/server/db/queries/messages
 import { _resetForTests, register } from '#lib/server/tools/registry.js';
 import { reactToMessageTool } from '#lib/server/tools/react.js';
 import { startStreamingRelay } from '#lib/server/streaming/relay.js';
+import { modelStatsDaily, modelUserUsage } from '#lib/server/db/schema.js';
 import { resetEndpointGatesForTests } from '#lib/server/endpoints/concurrency.js';
 import type { ChatCompletionRequest } from '#lib/server/endpoints/client.js';
 import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
@@ -260,6 +261,33 @@ describe('reaction alongside a reply', () => {
 			toolCallId: 'call_r',
 			result: 'ok',
 		});
+	});
+
+	it('counts as one turn for the model stats', async () => {
+		// The turn ends on the reaction's `tool_calls` row, the same finish as a
+		// turn halted for approval — which the stats skip, because its resume
+		// counts it. This one has no resume, so it must count here.
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		mocks.upstreamResponses.push(() =>
+			sseResponse([
+				textChunk('Congratulations!'),
+				toolCallStartChunk({
+					index: 0,
+					id: 'call_r',
+					name: 'react_to_message',
+					args: '{"emoji":"🎉"}',
+				}),
+				finishChunk('tool_calls'),
+			]),
+		);
+
+		await runTurn(conv, user, userId);
+
+		const counters = mocks.testDb.select().from(modelStatsDaily).all();
+		expect(counters.filter((r) => r.metric === 'turn').map((r) => r.count)).toEqual([1]);
+		expect(mocks.testDb.select().from(modelUserUsage).all()).toMatchObject([
+			{ endpointId: 'bridge', modelId: 'test', userId },
+		]);
 	});
 
 	it('emits a reaction frame and none of the tool_call frames', async () => {
