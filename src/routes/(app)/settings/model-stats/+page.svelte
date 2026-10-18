@@ -328,7 +328,7 @@
 				{@const days = daysOfData(m)}
 				<span
 					class="badge badge-accent"
-					title="Only recently counted: a short history, so its numbers may still move. A flag still needs enough evidence to appear."
+					title="Only recently put to use: a short history, so its numbers may still move. A flag still needs enough evidence to appear."
 				>
 					New · {days} day{days === 1 ? '' : 's'} of data
 				</span>
