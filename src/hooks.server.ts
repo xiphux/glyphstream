@@ -187,6 +187,21 @@ void listAllModels().catch(() => {});
 // process open itself, and a job it cuts off is the crash-restart case the job
 // rows already recover from.
 const SHUTDOWN_BACKSTOP_MS = 60_000;
+
+// Drain at the signal too, not only in the hook: adapter-node emits the hook
+// once every connection has closed, up to SHUTDOWN_TIMEOUT later, and in that
+// window the queue went on granting jobs that a supervisor's stop timeout then
+// killed — each costing the job its one interruption (generation/jobs.ts). The
+// hook still drains, for a shutdown that didn't come from a signal.
+//
+// Production only. A SIGINT listener replaces Node's default exit, and under
+// `pnpm dev` adapter-node isn't the one handling it: Ctrl-C would stop
+// working the first time. `once` and a draining no-op make a repeat harmless.
+if (!import.meta.env.DEV) {
+	process.once('SIGTERM', drainEndpointGates);
+	process.once('SIGINT', drainEndpointGates);
+}
+
 process.on('sveltekit:shutdown', async () => {
 	drainEndpointGates();
 	setTimeout(() => {
