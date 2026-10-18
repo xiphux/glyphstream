@@ -365,7 +365,12 @@ ENV NODE_ENV=production \
     # plus 64 KiB for the multipart framing; exactly 25 MiB refused a file at
     # the cap. User can override
     # via .env or compose environment if they want.
-    BODY_SIZE_LIMIT=26279936
+    BODY_SIZE_LIMIT=26279936 \
+    # Pinned, not left to Docker: it derives HOME from /etc/passwd, and a uid
+    # override (see the USER block) has no entry there, so HOME would be `/`.
+    # The MCP SDK passes HOME to stdio servers, and an `npx` one then fails
+    # creating its cache at /.npm. Already this value for the default user.
+    HOME=/home/node
 
 # Just the built app + production node_modules. No compilers, no source.
 COPY --from=builder /app/build ./build
@@ -387,8 +392,10 @@ COPY --from=builder /app/package.json ./
 # Both are group-writable too, so the image also runs under another uid that
 # keeps gid 1000 (compose `user: "10001:1000"`): a uid no host account has, so
 # nothing run as the operator's own user can signal the server (a stray
-# `pkill -f "node build/index.js"`). The default user gains nothing from it —
-# it already owns both — and gid 1000's only other member here is `node`.
+# `pkill -f "node build/index.js"`). So is /home/node, the pinned HOME (see the
+# ENV block), where an `npx`-launched MCP server keeps its npm cache. The
+# default user gains nothing from it — it already owns all three — and gid
+# 1000's only other member here is `node`.
 #
 # Numeric, not `node`: a uid means the same thing on the host (whose passwd the
 # docs' chown and an orchestrator's runAsNonRoot check go by), where a name
@@ -398,7 +405,8 @@ RUN test "$(id -u node):$(id -g node)" = 1000:1000 \
     && mkdir -p /app/data \
     && chown 1000:1000 /app/data \
     && chown -R 1000:1000 "$(readlink -f /app/node_modules/pyodide)" \
-    && chmod -R g+w /app/data "$(readlink -f /app/node_modules/pyodide)"
+    && chmod -R g+w /app/data "$(readlink -f /app/node_modules/pyodide)" \
+    && chmod g+w /home/node
 USER 1000:1000
 
 EXPOSE 3000

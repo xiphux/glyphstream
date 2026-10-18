@@ -114,9 +114,15 @@ sudo chown -R 10001:1000 ./data   # and every separate mount, as above
 ```
 
 The files stay in group 1000, so your account can still read them for backups.
-The other way round, a uid override that changes the **gid** too is not
-supported: the code interpreter caches its packages in a directory inside the
-image that only uid 1000 and gid 1000 can write.
+On an NFS/SMB mount, do the chown on the server, as above; and to go back to the
+default user later, chown everything back to `1000:1000` first — files the
+override created belong to 10001.
+
+The image pins `HOME=/home/node` (group-writable), so an `npx`-launched
+[MCP server](mcp.md) still has somewhere to keep its npm cache: a uid with no
+`/etc/passwd` entry would otherwise get `HOME=/` and fail on startup. A uid
+override that changes the **gid** too is not supported: the code interpreter's
+package directory and that home are writable only by uid 1000 and gid 1000.
 
 ## Faststart backfill (one-shot)
 
