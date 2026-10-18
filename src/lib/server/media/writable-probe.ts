@@ -1,7 +1,7 @@
 /**
  * Boot-time check that the media and derived directories are writable.
  *
- * The image runs as uid 1000, and a directory an older root-run container
+ * The image runs as uid 1000 by default, and a directory an older root-run container
  * created (a separate media mount, a NAS share) stays root-owned. Nothing would
  * say so: an upload fails as a bare 500, a generated image as a raw EACCES in
  * the chat, and thumbnails just stop appearing. The database gets the same

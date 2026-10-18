@@ -188,7 +188,7 @@ export function closeDb(): void {
 
 /**
  * Turn a permission failure opening the database into the fix. The Docker
- * image runs as the unprivileged `node` user (uid 1000); a data
+ * image runs as the unprivileged `node` user (uid 1000) by default; a data
  * directory created by an older, root-run container is owned by root, and the
  * raw error ("attempt to write a readonly database", EACCES) doesn't say so.
  */

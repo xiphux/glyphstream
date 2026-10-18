@@ -109,6 +109,10 @@ services:
     user: '10001:1000'
 ```
 
+Give the gid explicitly. A bare `user: '10001'` — or, on Kubernetes, `runAsUser`
+without `runAsGroup: 1000` — usually runs with gid 0, and then none of the
+image's group-writable paths is writable to it.
+
 ```sh
 sudo chown -R 10001:1000 ./data   # and every separate mount, as above
 ```
