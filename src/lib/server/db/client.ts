@@ -196,10 +196,12 @@ function explainUnwritableDb(e: unknown, path: string): unknown {
 	const message = e instanceof Error ? e.message : String(e);
 	if (!/readonly|EACCES|EPERM|unable to open/i.test(message)) return e;
 	const uid = process.getuid?.();
+	// The running ids, not the image's default — see the writable probe.
+	const owner = `${uid ?? 1000}:${process.getgid?.() ?? 1000}`;
 	return new Error(
 		`Cannot write the database at ${path} (${message}). The server runs as ` +
 			`uid ${uid ?? '?'}; make its data directory writable by that user, e.g. ` +
-			`\`sudo chown -R 1000:1000 ./data\` for the Docker image.`,
+			`\`sudo chown -R ${owner} ./data\` for the Docker image.`,
 		{ cause: e },
 	);
 }

@@ -44,9 +44,11 @@ describe('probeMediaDirsWritable', () => {
 				['DERIVED_DIR', dir],
 			]);
 			expect(err).toHaveBeenCalledTimes(1);
-			expect(String(err.mock.calls[0][0])).toMatch(
-				/MEDIA_DIR .* not writable .*chown -R 1000:1000/s,
-			);
+			// The fix names the ids the process runs as — not the image's default
+			// 1000, which is wrong under a compose `user:` override.
+			const msg = String(err.mock.calls[0][0]);
+			expect(msg).toMatch(/MEDIA_DIR .* not writable /s);
+			expect(msg).toContain(`chown -R ${process.getuid!()}:${process.getgid!()} `);
 		},
 	);
 });

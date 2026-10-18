@@ -95,6 +95,29 @@ directory logs `[storage] MEDIA_DIR (…) is not writable by uid 1000` at boot, 
 uploads and generated media fail until it's fixed. (The health check doesn't
 touch either, so the container still reports healthy.)
 
+### Running under a different uid
+
+If your own host account is uid 1000 — the first user on most Linux installs —
+the container's server process is, as far as the kernel is concerned, yours: a
+`pkill -f node` or `killall node` run as you signals it too. To keep it out of
+reach, run the image as a uid no host account uses, keeping gid 1000 (the image's
+writable paths are group-writable for exactly this):
+
+```yaml
+services:
+  glyphstream:
+    user: '10001:1000'
+```
+
+```sh
+sudo chown -R 10001:1000 ./data   # and every separate mount, as above
+```
+
+The files stay in group 1000, so your account can still read them for backups.
+The other way round, a uid override that changes the **gid** too is not
+supported: the code interpreter caches its packages in a directory inside the
+image that only uid 1000 and gid 1000 can write.
+
 ## Faststart backfill (one-shot)
 
 Videos are stored with their index at the front so a player can start before

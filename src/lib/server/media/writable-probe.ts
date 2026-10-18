@@ -38,10 +38,14 @@ export async function probeMediaDirsWritable(
 			await unlink(probe);
 		} catch (e) {
 			const uid = process.getuid?.();
+			// The running ids, not the image's default: the image also runs under
+			// an operator-chosen uid (docs/deployment.md), and a chown to 1000
+			// would be the wrong fix there.
+			const owner = `${uid ?? 1000}:${process.getgid?.() ?? 1000}`;
 			log.error(
 				`${label} (${abs}) is not writable by uid ${uid ?? '?'}: ` +
 					`${e instanceof Error ? e.message : String(e)}. Uploads and generated ` +
-					`media will fail until it is, e.g. \`sudo chown -R 1000:1000 <that dir>\` ` +
+					`media will fail until it is, e.g. \`sudo chown -R ${owner} <that dir>\` ` +
 					`on the host for the Docker image (on an NFS share, on the server).`,
 			);
 		}

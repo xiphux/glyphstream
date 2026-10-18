@@ -384,6 +384,12 @@ COPY --from=builder /app/package.json ./
 # A bind-mounted ./data from an older, root-run container must be handed over
 # once: `sudo chown -R 1000:1000 ./data` (docs/deployment.md).
 #
+# Both are group-writable too, so the image also runs under another uid that
+# keeps gid 1000 (compose `user: "10001:1000"`): a uid no host account has, so
+# nothing run as the operator's own user can signal the server (a stray
+# `pkill -f "node build/index.js"`). The default user gains nothing from it —
+# it already owns both — and gid 1000's only other member here is `node`.
+#
 # Numeric, not `node`: a uid means the same thing on the host (whose passwd the
 # docs' chown and an orchestrator's runAsNonRoot check go by), where a name
 # needn't resolve. The `test` pins that the base image's `node` IS 1000:1000,
@@ -391,7 +397,8 @@ COPY --from=builder /app/package.json ./
 RUN test "$(id -u node):$(id -g node)" = 1000:1000 \
     && mkdir -p /app/data \
     && chown 1000:1000 /app/data \
-    && chown -R 1000:1000 "$(readlink -f /app/node_modules/pyodide)"
+    && chown -R 1000:1000 "$(readlink -f /app/node_modules/pyodide)" \
+    && chmod -R g+w /app/data "$(readlink -f /app/node_modules/pyodide)"
 USER 1000:1000
 
 EXPOSE 3000

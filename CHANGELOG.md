@@ -9,6 +9,12 @@ arrived.
 
 ## Unreleased
 
+### Added
+
+- The Docker image can run under a uid other than 1000 (compose
+  `user: "10001:1000"`), so a host account that is uid 1000 can't signal the
+  server by accident. See `docs/deployment.md`.
+
 ### Fixed
 
 - Stopping the server while image or video generations are queued no longer
