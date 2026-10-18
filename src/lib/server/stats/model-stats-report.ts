@@ -164,22 +164,6 @@ export function buildModelStatsReport(input: BuildReportInput): ModelStatsReport
 		if (r.sum) m.sums[r.metric] = r.sum;
 	}
 
-	// When each model was first counted, ignoring the window: what makes a model
-	// "new" is how long it has been around, not how much of that the window shows.
-	const firstSeen = db
-		.select({
-			endpointId: modelStatsDaily.endpointId,
-			modelId: modelStatsDaily.modelId,
-			day: sql<string>`min(${modelStatsDaily.day})`,
-		})
-		.from(modelStatsDaily)
-		.groupBy(modelStatsDaily.endpointId, modelStatsDaily.modelId)
-		.all();
-	for (const r of firstSeen) {
-		const m = modelFor(formatModelId(r.endpointId, r.modelId));
-		if (m) m.firstSeenDay = r.day;
-	}
-
 	// A user whose LAST use falls in the window used it in the window — which is
 	// all "used by N" needs, from one row per (model, user).
 	const usage = db
@@ -204,6 +188,24 @@ export function buildModelStatsReport(input: BuildReportInput): ModelStatsReport
 
 	resolvePresets(presetCounts, input.viewerUserId);
 	countFavorites(modelFor);
+
+	// When each model was first counted, ignoring the window: what makes a model
+	// "new" is how long it has been around, not how much of that the window shows.
+	// Annotates only models already in the report — all-time history is no
+	// reason for one with nothing else to show to appear in a windowed view.
+	const firstSeen = db
+		.select({
+			endpointId: modelStatsDaily.endpointId,
+			modelId: modelStatsDaily.modelId,
+			day: sql<string>`min(${modelStatsDaily.day})`,
+		})
+		.from(modelStatsDaily)
+		.groupBy(modelStatsDaily.endpointId, modelStatsDaily.modelId)
+		.all();
+	for (const r of firstSeen) {
+		const m = models.get(formatModelId(r.endpointId, r.modelId));
+		if (m) m.firstSeenDay = r.day;
+	}
 
 	const configured = new Set(input.endpoints.map((e) => e.id));
 	const byEndpoint = new Map<string, ModelStatsModel[]>();

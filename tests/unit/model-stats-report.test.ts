@@ -119,6 +119,16 @@ describe('buildModelStatsReport', () => {
 		expect(find(r, 'cloud::idle')?.firstSeenDay).toBeNull();
 	});
 
+	it("doesn't bring a model with only out-of-window history into a windowed report", () => {
+		// Counted long ago, no last-use stamp (a task call, a reaction), no longer
+		// listed: nothing about it belongs in a 30-day view.
+		recordModelEvent('gone::old-embedder', 'task:embed', { at: NOW - 200 * DAY });
+		const r = build({ window: '30d' });
+		expect(find(r, 'gone::old-embedder')).toBeUndefined();
+		expect(r.endpoints.map((e) => e.id)).not.toContain('gone');
+		expect(find(build({ window: 'all' }), 'gone::old-embedder')).toBeDefined();
+	});
+
 	it('marks a counted model the endpoint no longer lists as retired', () => {
 		recordModelEvent('gpu::old', 'turn', { at: NOW });
 		expect(find(build(), 'gpu::old')).toMatchObject({ listed: false, displayName: 'old' });
