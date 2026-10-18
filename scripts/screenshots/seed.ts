@@ -548,8 +548,8 @@ One caveat: \`wal_checkpoint(TRUNCATE)\` needs a moment with no active readers t
 // 4) Gallery history — months of single generations plus a couple of runs, so
 // the gallery shot shows date headers, the timeline rail, stacks next to solo
 // tiles, and starred favorites. Each is its own conversation (a gallery stack is
-// a conversation with 2+ media), dated weeks back so they sort below the text
-// conversations in the sidebar.
+// a conversation with 2+ media), dated days to months back so they sort below
+// the text conversations in the sidebar.
 const DAY = 24 * HOUR;
 type Gen = {
 	prompt: string;
