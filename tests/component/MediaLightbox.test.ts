@@ -1100,6 +1100,36 @@ describe('MediaLightbox — swipe resolves at the midpoint', () => {
 		expect(t.el.scrollTo).not.toHaveBeenCalled();
 	});
 
+	it('leaves the page alone while a flick coasts, and resolves where it lands', async () => {
+		const onNavigate = vi.fn();
+		const { container } = render(MediaLightbox, {
+			props: { media: makeImage({ id: 'm-1' }), onClose: vi.fn(), siblings, onNavigate },
+		});
+		const t = track(container);
+		await fireEvent.touchStart(t.el);
+		t.at(0.3);
+		await fireEvent.touchEnd(t.el);
+		// Past halfway on momentum: a DOM change now is what made iOS drop the snap.
+		t.at(0.6);
+		t.at(0.9);
+		expect(onNavigate).not.toHaveBeenCalled();
+		expect(screen.getByText('1 / 3')).toBeInTheDocument();
+		t.at(1);
+		await settleNavResolve();
+		expect(onNavigate).toHaveBeenCalledWith('m-2');
+	});
+
+	it('still resolves at the midpoint while the finger is down', async () => {
+		const onNavigate = vi.fn();
+		const { container } = render(MediaLightbox, {
+			props: { media: makeImage({ id: 'm-1' }), onClose: vi.fn(), siblings, onNavigate },
+		});
+		const t = track(container);
+		await fireEvent.touchStart(t.el);
+		t.at(0.6);
+		expect(onNavigate).toHaveBeenCalledWith('m-2');
+	});
+
 	it("doesn't let a tap arm the re-snap for a later non-touch scroll", async () => {
 		const { container } = render(MediaLightbox, {
 			props: { media: makeImage({ id: 'm-1' }), onClose: vi.fn(), siblings, onNavigate: vi.fn() },

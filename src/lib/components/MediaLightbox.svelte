@@ -259,7 +259,9 @@
 	 * layout change mid-animation. iOS WebKit can drop the snap there and leave
 	 * the track resting partway onto the next slide. A gentle drag crosses with
 	 * the finger still down, so the release snaps normally — which is why only a
-	 * real flick got stuck.
+	 * real flick got stuck. `onTrackScroll` now makes no DOM change while
+	 * coasting; the re-snap stays as the backstop for anything else that lays
+	 * out mid-animation.
 	 *
 	 * A release stays armed only if the track keeps moving after it: disarmed
 	 * unless a scroll arrives within RELEASE_MOTION_MS. A tap, or a hold that
@@ -288,7 +290,16 @@
 		const el = trackEl;
 		if (!el || !siblings) return;
 		if (!touchActive) clearTimeout(releaseMotionTimer);
-		if (el.clientWidth > 0) {
+		// Coasting: the finger has lifted and the browser's snap animation is
+		// carrying the track. Neither write below happens then — each changes the
+		// DOM (the header swap, newly mounted slides), and a layout change
+		// mid-animation is what makes iOS drop the snap and overshoot onto the
+		// slide after (`touchActive`). The settle resolves where it landed
+		// instead. `snap-always` stops a flick on the adjacent slide, which the
+		// window around `currentIndex` already has mounted, so nothing is
+		// missing on arrival.
+		const coasting = touchReleased && !touchActive;
+		if (el.clientWidth > 0 && !coasting) {
 			// Rounding flips at the halfway point between two slides. Writing
 			// `pendingIndex` re-runs every slide's `slideMounted` (see below), but
 			// once per swipe, like an arrow press, not once per scroll event.

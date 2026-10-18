@@ -22,6 +22,11 @@ arrived.
 - Settings → Endpoints collapses each endpoint's queued work behind its count,
   so a long queue no longer makes the page a long scroll. Click to expand.
 
+### Fixed
+
+- A quick swipe in the lightbox no longer overshoots onto the image after the
+  next one and slides back; it stops on the next image.
+
 ## v0.45.4
 
 ### Added
