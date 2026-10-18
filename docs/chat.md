@@ -96,6 +96,8 @@ payload honest and visible.
 - **Generations survive disconnects.** Leave mid-reply — close the tab, lose
   signal, let iOS suspend the installed app — and the stream recovers when you
   come back.
+- **Stop works everywhere.** The Stop button cancels chat, image and video
+  generations alike.
 - **Draft autosave.** A half-typed prompt is kept per conversation and restored
   after a reload.
 - **Offline-aware composer.** In a dead zone, Send disables with an inline
