@@ -101,6 +101,16 @@ describe('buildModelStatsReport', () => {
 		expect(find(build({ window: 'all' }), 'gpu::qwen')?.usedBy).toBe(2);
 	});
 
+	it("counts a person who used it early on the window's first day, as the counters do", () => {
+		const u = seedUser();
+		// NOW is noon UTC; 29 days back is the window's first day.
+		const firstDayMorning = Date.UTC(2026, 8, 19, 1);
+		recordModelEvent('gpu::qwen', 'turn', { userId: u.id, at: firstDayMorning });
+		const m = find(build(), 'gpu::qwen')!;
+		expect(m.counts.turn).toBe(1);
+		expect(m.usedBy).toBe(1);
+	});
+
 	it('marks a counted model the endpoint no longer lists as retired', () => {
 		recordModelEvent('gpu::old', 'turn', { at: NOW });
 		expect(find(build(), 'gpu::old')).toMatchObject({ listed: false, displayName: 'old' });

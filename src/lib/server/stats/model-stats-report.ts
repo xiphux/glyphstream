@@ -84,8 +84,10 @@ export interface BuildReportInput {
 export function buildModelStatsReport(input: BuildReportInput): ModelStatsReport {
 	const now = input.now ?? Date.now();
 	const days = WINDOW_DAYS[input.window];
-	const sinceMs = days === null ? null : now - (days - 1) * DAY_MS;
-	const since = sinceMs === null ? null : statsDay(sinceMs);
+	const since = days === null ? null : statsDay(now - (days - 1) * DAY_MS);
+	// The start of that UTC day, so "used by" covers exactly the days the
+	// counters do rather than starting partway through the first one.
+	const sinceMs = since === null ? null : Date.parse(`${since}T00:00:00Z`);
 	const db = getDb();
 
 	// Every model the report mentions, by stored id, created on first sight.
