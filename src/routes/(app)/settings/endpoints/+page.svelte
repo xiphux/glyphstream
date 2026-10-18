@@ -23,6 +23,7 @@
 <script lang="ts">
 	import SettingsPage from '#lib/components/settings/SettingsPage.svelte';
 	import {
+		ChevronRight,
 		CircleAlert,
 		CircleCheck,
 		CircleHelp,
@@ -75,6 +76,12 @@
 	const rechecking = new SvelteSet<string>();
 	// Keyed by resource group, since that is what a pause acts on.
 	const pausing = new SvelteSet<string>();
+	// Endpoints whose queue list is expanded. Collapsed by default: a queue
+	// hundreds deep made the page a long scroll to reach the endpoints below it,
+	// and the Queued tile already says how deep it is. Held here rather than left
+	// to the <details> element so the rows are only built while someone is
+	// reading them — otherwise the poll rebuilds every one every three seconds.
+	const expanded = new SvelteSet<string>();
 
 	// Ticks once a second so elapsed times advance between the 3s polls.
 	let nowMs = $state(Date.now());
@@ -563,67 +570,109 @@
 		</dl>
 
 		{#if ep.active.length > 0 || ep.queued.length > 0 || ep.pending.length > 0}
-			<ul class="mt-2 flex flex-col gap-1.5">
-				{#each ep.active as slot (slot.id)}
-					<li
-						class="flex items-center gap-2 rounded-md border border-border bg-surface-sunken/40 p-2 text-xs"
+			{#if ep.active.length > 0}
+				<ul class="mt-2 flex flex-col gap-1.5">
+					{#each ep.active as slot (slot.id)}
+						<li
+							class="flex items-center gap-2 rounded-md border border-border bg-surface-sunken/40 p-2 text-xs"
+						>
+							{#if slot.state === 'releasing'}
+								<Loader2
+									size={13}
+									strokeWidth={2.25}
+									class="shrink-0 animate-spin text-warning"
+									aria-hidden="true"
+								/>
+							{:else}
+								<span class="size-1.5 shrink-0 rounded-full bg-success" aria-hidden="true"></span>
+							{/if}
+							<span class="shrink-0 font-medium">{purposeLabel(slot.purpose)}</span>
+							{#if slot.modelId}
+								<span class="min-w-0 flex-1 truncate font-mono text-fg-muted">{slot.modelId}</span>
+							{:else}
+								<span class="min-w-0 flex-1"></span>
+							{/if}
+							<span class="shrink-0 tabular-nums text-fg-muted">
+								{slot.state === 'releasing' ? 'freeing memory' : duration(elapsed(slot.since))}
+							</span>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+			{#if ep.queued.length > 0 || ep.pending.length > 0}
+				<!-- Everything behind the running work, collapsed: the tile above
+				     already gives the depth, and the summary repeats it so the
+				     control says what it opens. -->
+				<details
+					class="mt-2 text-xs"
+					open={expanded.has(ep.id)}
+					ontoggle={(e) => {
+						if (e.currentTarget.open) expanded.add(ep.id);
+						else expanded.delete(ep.id);
+					}}
+				>
+					<summary
+						class="flex cursor-pointer list-none items-center gap-1.5 rounded-md px-1 py-1 text-fg-muted select-none hover:text-fg [&::-webkit-details-marker]:hidden"
 					>
-						{#if slot.state === 'releasing'}
-							<Loader2
-								size={13}
-								strokeWidth={2.25}
-								class="shrink-0 animate-spin text-warning"
-								aria-hidden="true"
-							/>
-						{:else}
-							<span class="size-1.5 shrink-0 rounded-full bg-success" aria-hidden="true"></span>
-						{/if}
-						<span class="shrink-0 font-medium">{purposeLabel(slot.purpose)}</span>
-						{#if slot.modelId}
-							<span class="min-w-0 flex-1 truncate font-mono text-fg-muted">{slot.modelId}</span>
-						{:else}
-							<span class="min-w-0 flex-1"></span>
-						{/if}
-						<span class="shrink-0 tabular-nums text-fg-muted">
-							{slot.state === 'releasing' ? 'freeing memory' : duration(elapsed(slot.since))}
+						<ChevronRight
+							size={13}
+							strokeWidth={2.25}
+							class="shrink-0 transition-transform {expanded.has(ep.id) ? 'rotate-90' : ''}"
+							aria-hidden="true"
+						/>
+						<span>
+							{ep.queued.length} queued{ep.pending.length > 0
+								? ` · ${ep.pending.length} not yet in line`
+								: ''}
 						</span>
-					</li>
-				{/each}
-				{#each ep.queued as slot (slot.id)}
-					<li
-						class="flex items-center gap-2 rounded-md border border-dashed border-border p-2 text-xs opacity-70"
-					>
-						<span class="size-1.5 shrink-0 rounded-full bg-fg-muted" aria-hidden="true"></span>
-						<span class="shrink-0 font-medium">{purposeLabel(slot.purpose)}</span>
-						{#if slot.modelId}
-							<span class="min-w-0 flex-1 truncate font-mono text-fg-muted">{slot.modelId}</span>
-						{:else}
-							<span class="min-w-0 flex-1"></span>
-						{/if}
-						<span class="shrink-0 tabular-nums text-fg-muted">
-							waiting {duration(elapsed(slot.since))}
-						</span>
-					</li>
-				{/each}
-				<!-- Last, and faintest: these are behind everything above them, and
+					</summary>
+					{#if expanded.has(ep.id)}
+						<ul class="mt-1 flex flex-col gap-1.5">
+							{#each ep.queued as slot (slot.id)}
+								<li
+									class="flex items-center gap-2 rounded-md border border-dashed border-border p-2 text-xs opacity-70"
+								>
+									<span class="size-1.5 shrink-0 rounded-full bg-fg-muted" aria-hidden="true"
+									></span>
+									<span class="shrink-0 font-medium">{purposeLabel(slot.purpose)}</span>
+									{#if slot.modelId}
+										<span class="min-w-0 flex-1 truncate font-mono text-fg-muted"
+											>{slot.modelId}</span
+										>
+									{:else}
+										<span class="min-w-0 flex-1"></span>
+									{/if}
+									<span class="shrink-0 tabular-nums text-fg-muted">
+										waiting {duration(elapsed(slot.since))}
+									</span>
+								</li>
+							{/each}
+							<!-- Last, and faintest: these are behind everything above them, and
 				     they are the only rows on this page describing work the gate has
 				     not been asked for yet. -->
-				{#each ep.pending as slot (slot.id)}
-					<li
-						class="flex items-center gap-2 rounded-md border border-dashed border-border p-2 text-xs opacity-50"
-					>
-						<span class="size-1.5 shrink-0 rounded-full border border-fg-muted" aria-hidden="true"
-						></span>
-						<span class="shrink-0 font-medium">{purposeLabel(slot.purpose)}</span>
-						{#if slot.modelId}
-							<span class="min-w-0 flex-1 truncate font-mono text-fg-muted">{slot.modelId}</span>
-						{:else}
-							<span class="min-w-0 flex-1"></span>
-						{/if}
-						<span class="shrink-0 text-fg-muted">{blockedLabel(slot)}</span>
-					</li>
-				{/each}
-			</ul>
+							{#each ep.pending as slot (slot.id)}
+								<li
+									class="flex items-center gap-2 rounded-md border border-dashed border-border p-2 text-xs opacity-50"
+								>
+									<span
+										class="size-1.5 shrink-0 rounded-full border border-fg-muted"
+										aria-hidden="true"
+									></span>
+									<span class="shrink-0 font-medium">{purposeLabel(slot.purpose)}</span>
+									{#if slot.modelId}
+										<span class="min-w-0 flex-1 truncate font-mono text-fg-muted"
+											>{slot.modelId}</span
+										>
+									{:else}
+										<span class="min-w-0 flex-1"></span>
+									{/if}
+									<span class="shrink-0 text-fg-muted">{blockedLabel(slot)}</span>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				</details>
+			{/if}
 		{:else}
 			<p class="mt-2 text-xs text-fg-muted">Idle.</p>
 		{/if}

@@ -98,7 +98,10 @@ It also lists work that is _not yet_ in an endpoint's queue because an earlier
 step of the same request is still running elsewhere — a media generation whose
 prompt is being rewritten on the enhancer's endpoint, say — as faint rows
 labelled "after prompt enhance", counted under the Queued tile as "not yet in
-line". See [endpoint health](multi-user.md#endpoint-health).
+line". Queued and not-yet-in-line rows sit in a collapsed list under the
+running work — click the "N queued" line to expand it — so a deep queue doesn't
+push the other endpoints off the page. See
+[endpoint health](multi-user.md#endpoint-health).
 
 Because the cap is per endpoint, a bridge (like `openai-api-bridge`) that
 fronts **both** a local GPU and cloud providers is best split into **two

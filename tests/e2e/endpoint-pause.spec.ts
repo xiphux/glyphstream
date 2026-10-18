@@ -62,8 +62,11 @@ test.describe('endpoint pause', () => {
 
 		// The settings page lists it in line. It learns of it from its 3s poll, so
 		// allow a couple of polls rather than the default 5s, which leaves a slow
-		// runner little headroom.
-		await expect(settings.getByText(/^waiting /)).toBeVisible({ timeout: 10_000 });
+		// runner little headroom. The queue list is collapsed behind its count.
+		const queueToggle = settings.getByText(/^\d+ queued/);
+		await expect(queueToggle).toBeVisible({ timeout: 10_000 });
+		await queueToggle.click();
+		await expect(settings.getByText(/^waiting /)).toBeVisible();
 
 		// Resume → the held generation runs and lands in the chat that's still open.
 		await settings.getByRole('button', { name: 'Resume' }).click();

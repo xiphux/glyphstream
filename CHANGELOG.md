@@ -9,6 +9,11 @@ arrived.
 
 ## Unreleased
 
+### Changed
+
+- Settings → Endpoints collapses each endpoint's queued work behind its count,
+  so a long queue no longer makes the page a long scroll. Click to expand.
+
 ## v0.45.4
 
 ### Added
