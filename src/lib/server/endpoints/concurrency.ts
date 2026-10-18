@@ -229,8 +229,11 @@ const gates = new Map<string, Gate>();
  * upstream call holds the event loop open, and its release granted the next
  * queued job. With a multi-model batch stacked up the process kept generating
  * for as long as the queue lasted, with no listener — up, unhealthy, and never
- * exiting, so a restart policy never replaced it. Queued work is a row the next
- * process resumes (`generation/jobs.ts`), so leaving it ungranted loses nothing.
+ * exiting, so a restart policy never replaced it. A queued generation is a row
+ * the next process resumes (`generation/jobs.ts`), so leaving it ungranted
+ * loses nothing. Other work still in line when the drain lands — a chat turn,
+ * a title, a compaction — has no row, and is dropped: the cost of exiting, the
+ * same as a SIGKILL from a supervisor's stop timeout would have been.
  */
 let draining = false;
 

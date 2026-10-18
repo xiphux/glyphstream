@@ -19,8 +19,8 @@ arrived.
 
 - Stopping the server while image or video generations are queued no longer
   leaves it running but unreachable. The queue now waits for the next start, and
-  the process exits once whatever is already generating finishes (at most a
-  minute later).
+  the process exits once whatever is already generating finishes, or a minute
+  after its connections have closed if that takes longer.
 - Gallery captions no longer show the top of a third line below the "…".
 
 ## v0.45.3

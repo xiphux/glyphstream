@@ -180,9 +180,12 @@ void listAllModels().catch(() => {});
 // them, so closing the server doesn't stop the queue granting its next job, and
 // one running upstream call is enough to keep the loop alive. With the gates
 // drained, the process exits once what already holds a slot finishes. The
-// backstop bounds that (a hung upstream, a long video poll): it's unref'd, so it
-// never holds the process open itself, and a job it cuts off is the
-// crash-restart case the job rows already recover from.
+// backstop bounds that (a hung upstream, a long video poll) for a SIGTERM with
+// no supervisor behind it — under the shipped compose, `stop_grace_period`
+// SIGKILLs first, since this hook only runs once adapter-node has closed every
+// connection (up to SHUTDOWN_TIMEOUT). It's unref'd, so it never holds the
+// process open itself, and a job it cuts off is the crash-restart case the job
+// rows already recover from.
 const SHUTDOWN_BACKSTOP_MS = 60_000;
 process.on('sveltekit:shutdown', async () => {
 	drainEndpointGates();
