@@ -41,6 +41,7 @@ doesn't change chats that already used it.
 - **Endpoints on one GPU can share a queue** and hand the VRAM over — unloading
   the chat model before an image generation starts
   ([configuration](configuration.md#sharing-one-gpu-between-endpoints-resource_group)).
-- Queued image and video generations **survive a GlyphStream restart**, and an
-  admin can **pause** an endpoint's queue to restart its backend without failing
-  what's waiting ([multi-user guide](multi-user.md#endpoint-health)).
+- Queued image and video generations **survive a GlyphStream restart**
+  ([details](multi-user.md#restarting-glyphstream-with-generations-queued)), and
+  an admin can **pause** an endpoint's queue to restart its backend without
+  failing what's waiting ([details](multi-user.md#pausing-a-queue)).
