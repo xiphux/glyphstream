@@ -119,6 +119,17 @@ describe('buildModelStatsReport', () => {
 		expect(find(r, 'cloud::idle')?.firstSeenDay).toBeNull();
 	});
 
+	it('dates first use from its own work, not task calls, which were never backfilled', () => {
+		// A title model in service for months has only live task calls, all from
+		// the upgrade on; dating it from those would call it new.
+		recordModelEvent('gpu::qwen', 'task:title', { at: NOW - 3 * DAY });
+		const r = build({ roles: new Map([['gpu::qwen', ['title']]]) });
+		expect(find(r, 'gpu::qwen')?.firstSeenDay).toBeNull();
+
+		recordModelEvent('gpu::qwen', 'turn', { at: NOW - DAY });
+		expect(find(build(), 'gpu::qwen')?.firstSeenDay).toBe('2026-10-17');
+	});
+
 	it("doesn't bring a model with only out-of-window history into a windowed report", () => {
 		// Counted long ago, no last-use stamp (a task call, a reaction), no longer
 		// listed: nothing about it belongs in a 30-day view.

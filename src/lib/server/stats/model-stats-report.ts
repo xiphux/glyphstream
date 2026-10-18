@@ -34,6 +34,9 @@ import type {
 } from '#lib/types/api.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The metrics that date a model's first use: its own work, success or not. */
+const FIRST_SEEN_METRICS = ['turn', 'error', 'generated', 'failed'] as const;
 const WINDOW_DAYS: Record<ModelStatsWindow, number | null> = { '30d': 30, '90d': 90, all: null };
 
 export function parseModelStatsWindow(raw: string | null): ModelStatsWindow {
@@ -189,8 +192,12 @@ export function buildModelStatsReport(input: BuildReportInput): ModelStatsReport
 	resolvePresets(presetCounts, input.viewerUserId);
 	countFavorites(modelFor);
 
-	// When each model was first counted, ignoring the window: what makes a model
+	// When each model was first used, ignoring the window: what makes a model
 	// "new" is how long it has been around, not how much of that the window shows.
+	// From its own work only — turns and generations, which the upgrade
+	// backfilled from history. Task calls and reactions were never backfilled,
+	// so counting them would date every task-only model (a title or embeddings
+	// model in service for months) to the upgrade, and badge it "New".
 	// Annotates only models already in the report — all-time history is no
 	// reason for one with nothing else to show to appear in a windowed view.
 	const firstSeen = db
@@ -200,6 +207,7 @@ export function buildModelStatsReport(input: BuildReportInput): ModelStatsReport
 			day: sql<string>`min(${modelStatsDaily.day})`,
 		})
 		.from(modelStatsDaily)
+		.where(inArray(modelStatsDaily.metric, [...FIRST_SEEN_METRICS]))
 		.groupBy(modelStatsDaily.endpointId, modelStatsDaily.modelId)
 		.all();
 	for (const r of firstSeen) {

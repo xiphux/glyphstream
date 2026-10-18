@@ -72,7 +72,7 @@ export function taskCallsOf(m: ModelStatsModel): number {
 }
 
 /**
- * How long a model counts as new: first counted within this many days. A
+ * How long a model counts as new: first used within this many days. A
  * matter of time, not of sample size — the flags already guard that. It tells
  * a model that is barely used because it only just arrived from one that is
  * barely used because nobody picks it, and marks numbers that rest on a short
@@ -80,7 +80,8 @@ export function taskCallsOf(m: ModelStatsModel): number {
  */
 export const NEW_MODEL_DAYS = 14;
 
-/** Whole days since the model was first counted, or null if it never was. */
+/** Whole days since the model first did work of its own (a turn or a
+ *  generation), or null if it never has — a task-only model is never new. */
 export function daysOfData(m: ModelStatsModel, now = Date.now()): number | null {
 	if (!m.firstSeenDay) return null;
 	const first = Date.parse(`${m.firstSeenDay}T00:00:00Z`);
