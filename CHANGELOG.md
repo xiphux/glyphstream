@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.45.4
+
 ### Added
 
 - The Docker image can run under a uid other than 1000 (compose
