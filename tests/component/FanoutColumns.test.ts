@@ -64,6 +64,23 @@ describe('FanoutColumns', () => {
 		expect(screen.getByText('Model B')).toBeTruthy();
 	});
 
+	it('says "1 model" / "1 variation" for a single column', () => {
+		const { unmount } = render(FanoutColumns, {
+			props: { columns: [col({})], onPick: vi.fn(), onImageClick: vi.fn() },
+		});
+		expect(screen.getByText(/Comparing 1 model$/i)).toBeTruthy();
+		unmount();
+
+		render(FanoutColumns, {
+			props: {
+				columns: [{ ...col({}), modelKind: 'image' }],
+				onPick: vi.fn(),
+				onImageClick: vi.fn(),
+			},
+		});
+		expect(screen.getByText(/Comparing 1 variation$/i)).toBeTruthy();
+	});
+
 	it('gates "Continue with this" to settled columns and reports the pick', async () => {
 		const onPick = vi.fn<(column: FanoutColumn) => void>();
 		render(FanoutColumns, {

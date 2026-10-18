@@ -96,7 +96,9 @@
 	// strip. Driven by the columns' modality (single-modality per fan-out), not by
 	// which callbacks happen to be wired.
 	const isMedia = $derived(columns.some((c) => isMediaKind(c.modelKind)));
-	const countNoun = $derived(isMedia ? 'variations' : 'models');
+	// One column is reachable — discards, or a grid recovered before its other
+	// branches landed — so the noun follows the count.
+	const countNoun = $derived((isMedia ? 'variation' : 'model') + (columns.length === 1 ? '' : 's'));
 
 	// Ticking clock for the per-column elapsed timer (a branch counts up from its
 	// `start` event — the moment it acquires its concurrency slot — like

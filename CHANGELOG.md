@@ -26,6 +26,8 @@ arrived.
 
 - A quick swipe in the lightbox no longer overshoots onto the image after the
   next one and slides back; it stops on the next image.
+- A comparison down to a single column reads "Comparing 1 variation" (or
+  "1 model") instead of "1 variations".
 
 ## v0.45.4
 
