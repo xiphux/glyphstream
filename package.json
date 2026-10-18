@@ -3,7 +3,7 @@
 	"private": true,
 	"version": "0.45.4",
 	"type": "module",
-	"packageManager": "pnpm@12.12.0",
+	"packageManager": "pnpm@12.12.1",
 	"devEngines": {
 		"runtime": {
 			"name": "node",
