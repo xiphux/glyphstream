@@ -154,9 +154,16 @@ test.describe('flow: comparing avatar models', () => {
 	}) => {
 		const convId = await sendChatFromHome(page, 'Describe how you look');
 		await drawWithTwoModels(page);
-		await expect(page.getByRole('button', { name: 'Use this avatar' })).toHaveCount(2, {
-			timeout: 15_000,
-		});
+		// Wait for both portraits to be DRAWN, not merely for both columns to exist:
+		// every column renders its pick button from the moment it's dispatched,
+		// disabled until its portrait lands. Counting buttons let the reload race the
+		// draw itself — even the second branch's request reaching the server — and a
+		// load that found one portrait done and nothing pending rebuilt a one-column
+		// grid with no recovery poll to notice the other.
+		const ready = page.getByRole('button', { name: 'Use this avatar' });
+		await expect(ready).toHaveCount(2, { timeout: 15_000 });
+		await expect(ready.nth(0)).toBeEnabled({ timeout: 15_000 });
+		await expect(ready.nth(1)).toBeEnabled({ timeout: 15_000 });
 
 		// Walk away and come back with nothing picked. The whole grid is client
 		// state; all the server has is the marker and the sibling portraits.
