@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.46.0
+
 ### Added
 
 - Settings → Model stats (admins): how much each model is used and how its
