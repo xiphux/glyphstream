@@ -20,6 +20,7 @@ import type { LoadedEndpoint } from '../endpoints/config';
 import type { ResolvedTaskModel } from './task-model';
 import { sanitizeModelLabel } from './sanitize-label';
 import { truncateEllipsis } from '#lib/text.js';
+import { recordModelEvent } from '../stats/model-stats';
 
 // Matches the cap the save_memory tool enforces on model-authored topics, so a
 // backfilled label and a tool-authored one render at the same scale.
@@ -103,6 +104,8 @@ async function callTaskModel(
 	messages: TaskMessage[],
 	signal?: AbortSignal,
 ): Promise<string> {
+	// Topic labelling is the one task-model call that skips the endpoint gate.
+	recordModelEvent({ endpointId: endpoint.id, modelId: upstreamId }, 'task:topic');
 	const resp = await chatCompletionSync(
 		endpoint,
 		{

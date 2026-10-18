@@ -1283,8 +1283,37 @@ describe('FanoutController — avatar comparisons', () => {
 		});
 		await fc.pick(fc.columns[0]);
 
-		expect(posts[0].url).toBe('/api/conversations/c1/messages/a/select');
+		// `pick=1`: the model stats count it as a win (Done and ‹N/M› don't).
+		expect(posts[0].url).toBe('/api/conversations/c1/messages/a/select?pick=1');
 		expect(state.activeModel).toEqual({ id: 'bridge::claude', kind: 'chat' });
+	});
+
+	it('Done selects the first column without claiming it won', async () => {
+		// Done hands the server the first column on the user's behalf; marking it a
+		// pick would credit whichever model happened to sit in column one.
+		const posts: string[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) => {
+				posts.push(url);
+				return jsonResponse({});
+			}),
+		);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		fc.syncFromServer({
+			parentMessageId: 'u1',
+			avatar: false,
+			kind: 'chat',
+			siblings: [mediaSibling('a', 'bridge::claude', null, [{ type: 'text', text: 'hi' }])],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		});
+		await fc.dismiss();
+
+		expect(posts[0]).toBe('/api/conversations/c1/messages/a/select');
 	});
 
 	it('restores avatar mode from server truth after a reload', async () => {

@@ -13,6 +13,7 @@ import { conversations, media, messages } from '../schema';
 import { reconcileOverviewAfterConversationDelete } from './users';
 import { parseDisabledFeatures, parseMessageParts, parseModelParameters } from './json-columns';
 import { walkActiveBranch, walkActiveBranchWindow } from './messages';
+import { recordMediaEvent } from '#lib/server/stats/model-stats.js';
 import {
 	decrementMediaForMessages,
 	trashOrphanGeneratedMediaForMessages,
@@ -809,6 +810,9 @@ export function deleteConversation(
 		const trashedMediaIds = opts.deleteMedia
 			? trashOrphanGeneratedMediaForMessages(tx, messageIds, userId)
 			: [];
+		// Tidying up a whole conversation isn't a verdict on any one output in
+		// it — counted apart from a deliberate trash.
+		recordMediaEvent(trashedMediaIds, 'swept', { tx });
 		decrementMediaForMessages(tx, messageIds);
 
 		tx.delete(conversations).where(eq(conversations.id, id)).run();

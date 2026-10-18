@@ -16,6 +16,7 @@ import { requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import { setConversationAvatar } from '#lib/server/db/queries/conversations.js';
 import type { RequestHandler } from './$types';
+import { recordMediaEvent } from '#lib/server/stats/model-stats.js';
 
 interface SetAvatarBody {
 	mediaId?: unknown;
@@ -34,6 +35,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 		if (result.reason === 'not_found') error(404, 'Conversation not found');
 		error(400, 'Media not found');
 	}
+	recordMediaEvent([body.mediaId.trim()], 'avatar_set');
 	return Response.json({ ok: true });
 };
 

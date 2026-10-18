@@ -82,6 +82,7 @@ import { errorMessage, sseWriter, CANCELLED_MESSAGE } from '../streaming/sse-tra
 import type { StreamErrorEvent } from '#lib/types/api.js';
 import { createLogger } from '../log';
 import { appendErrorSibling } from '../streaming/error-sibling';
+import { recordModelEvent } from '../stats/model-stats';
 
 const log = createLogger('generation-jobs');
 const avatarLog = createLogger('avatar');
@@ -649,6 +650,7 @@ function persistFailure(
 			fanoutIndex: row.fanoutIndex,
 			inTransaction: (tx) => {
 				if (!consumeGenerationJob(tx, row.id)) throw new GenerationDiscardedError();
+				recordModelEvent(row.modelId, 'failed', { userId: row.userId, tx });
 			},
 		});
 	} catch (e) {

@@ -55,6 +55,7 @@ import type {
 import { createLogger } from '../log';
 import { appendErrorSibling } from './error-sibling';
 import { settleGeneration } from './settle-generation';
+import { recordModelEvent } from '../stats/model-stats';
 
 const log = createLogger('media-relay');
 
@@ -411,7 +412,10 @@ export async function runMediaRelay(
 					advanceActiveLeaf: params.advanceActiveLeaf ?? true,
 					advanceActiveLeafIfCurrent: params.advanceActiveLeafIfCurrent,
 					fanoutIndex: params.fanoutIndex,
-					inTransaction: params.persistWith,
+					inTransaction: (tx) => {
+						params.persistWith?.(tx);
+						recordModelEvent(params.storedModelId, 'failed', { userId: params.userId, tx });
+					},
 				});
 			} catch (e) {
 				// Best-effort durability — the client still gets the error frame
@@ -454,6 +458,12 @@ export async function runMediaRelay(
 				inTransaction: (tx, messageId) => {
 					linkMessageMedia(messageId, produced.mediaId, tx);
 					params.persistWith?.(tx);
+					// In the append's transaction, so a discarded result un-counts too.
+					recordModelEvent(params.storedModelId, 'generated', { userId: params.userId, tx });
+					recordModelEvent(params.storedModelId, 'speed_ms', {
+						sum: Date.now() - genStartedAt,
+						tx,
+					});
 				},
 			});
 		} catch (e) {

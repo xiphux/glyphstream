@@ -53,6 +53,7 @@ import { CODE_ARG_TOOLS, isReactionTool } from '#lib/chat-render.js';
 import { createLogger } from '../log';
 import { appendErrorSibling } from './error-sibling';
 import { settleGeneration } from './settle-generation';
+import { recordModelEvent } from '../stats/model-stats';
 
 const log = createLogger('stream/relay');
 const upstreamLog = createLogger('stream/upstream');
@@ -517,6 +518,7 @@ async function runChatTurn(
 		// page invalidates and refetches on `done`, which surfaces all
 		// the intermediate role:'tool' rows from the loop.
 		if (finalAssistantMessage) {
+			recordTurnStats(params, finalAssistantMessage);
 			write({
 				type: 'done',
 				assistantMessage: finalAssistantMessage,
@@ -611,10 +613,30 @@ function persistTurnErrorSibling(
 			advanceActiveLeaf: params.advanceActiveLeaf ?? true,
 			fanoutIndex: params.fanoutIndex,
 		});
+		recordModelEvent(params.storedModelId, 'error', { userId: params.userId });
 	} catch (e) {
 		if (conversationIsGone(params)) return;
 		log.warn('failed to persist error sibling:', errorMessage(e));
 	}
+}
+
+/**
+ * Count a settled turn against its model. Keyed off the FINAL row, so a turn
+ * counts once however many tool-loop iterations it ran — and a turn halted for
+ * tool approval (its last row still `tool_calls`) counts when the resume
+ * settles it, not twice. A failed turn is an `error`, not a `turn`, matching
+ * the backfill; a stopped one is still a turn that ran.
+ */
+function recordTurnStats(params: RelayParams, final: ChatMessage): void {
+	if (final.finishReason === 'tool_calls') return;
+	const opts = { userId: params.userId };
+	if (final.finishReason === 'error') {
+		recordModelEvent(params.storedModelId, 'error', opts);
+		return;
+	}
+	recordModelEvent(params.storedModelId, 'turn', { ...opts, sum: final.tokensOut ?? 0 });
+	if (final.finishReason === 'cancelled') recordModelEvent(params.storedModelId, 'cancelled');
+	else if (final.finishReason === 'length') recordModelEvent(params.storedModelId, 'truncated');
 }
 
 /**
@@ -871,6 +893,12 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 		advanceActiveLeaf: params.advanceActiveLeaf ?? true,
 		fanoutIndex: params.fanoutIndex,
 	});
+	// Per row, tool-loop steps included: each is its own decode, and only a row
+	// with both halves can contribute to a tokens/sec figure.
+	if (streamError === null && tokensOut && genMs) {
+		recordModelEvent(params.storedModelId, 'speed_tokens', { sum: tokensOut });
+		recordModelEvent(params.storedModelId, 'speed_ms', { sum: genMs });
+	}
 
 	return { assistantMessage, textForPushPreview: textBuf, stopped };
 

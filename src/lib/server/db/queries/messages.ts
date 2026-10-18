@@ -7,6 +7,7 @@ import { parseDispatchedModels, parseMessageParts } from './json-columns';
 import { getDb, type DB, type Tx } from '../client';
 import { conversations, media, messages } from '../schema';
 import { decrementMediaForMessages, trashOrphanGeneratedMediaForMessages } from './media';
+import { recordMediaEvent, recordModelEvent } from '#lib/server/stats/model-stats.js';
 
 interface AppendInput {
 	conversationId: string;
@@ -1176,6 +1177,20 @@ export function deleteBranch(
 		const deletedIds = [...toDelete];
 		const trashedMediaIds = trashOrphanGeneratedMediaForMessages(tx, deletedIds, userId);
 		decrementMediaForMessages(tx, deletedIds);
+
+		// Stats: the reply the user deleted is the verdict — not every reply that
+		// followed it on the branch, which went along for the ride. A failed
+		// reply was already counted as an error. Its media is a rejection too:
+		// this is the "delete this one" of a comparison grid.
+		const rejected = getMessage(conversationId, messageId, tx);
+		if (
+			rejected?.role === 'assistant' &&
+			rejected.finishReason !== 'error' &&
+			!rejected.parts.some((p) => p.type === 'error')
+		) {
+			recordModelEvent(rejected.modelUsed, 'branch_deleted', { tx });
+		}
+		recordMediaEvent(trashedMediaIds, 'trashed', { tx });
 
 		tx.delete(messages)
 			.where(and(eq(messages.conversationId, conversationId), inArray(messages.id, deletedIds)))

@@ -29,6 +29,7 @@ import {
 } from '#lib/server/db/queries/conversations.js';
 import { getMessage, selectBranch } from '#lib/server/db/queries/messages.js';
 import type { RequestHandler } from './$types';
+import { recordComparisonPick } from '#lib/server/stats/reactions.js';
 
 interface PickAvatarBody {
 	/** The portrait message to adopt — an assistant message in this conversation
@@ -83,6 +84,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// Also clears the parked-fan-out marker, which is what takes the grid down.
 	const selected = selectBranch(params.id, body.messageId);
 	if (!selected) error(404, 'Message not found');
+	recordComparisonPick(params.id, message, 'avatar');
 
 	return Response.json({ ok: true, newActiveLeaf: selected.newActiveLeaf });
 };

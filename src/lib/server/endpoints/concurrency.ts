@@ -31,6 +31,8 @@
 import type { EndpointSlotPurpose, EndpointSlotState } from '#lib/types/api.js';
 import type { LoadedEndpoint } from './config';
 import { releaseEndpointResources } from './release';
+import { parseModelId } from './model-id';
+import { recordModelEvent } from '../stats/model-stats';
 
 /**
  * What a slot is being held (or waited on) FOR. Every acquisition names one, so
@@ -564,6 +566,7 @@ export function acquireEndpointSlot(
 	endpoint: LoadedEndpoint,
 	opts: AcquireOptions,
 ): Promise<EndpointSlot> {
+	recordTaskWork(endpoint, opts.work);
 	try {
 		return acquire(endpoint, opts);
 	} finally {
@@ -576,6 +579,31 @@ export function acquireEndpointSlot(
 		// idempotent.
 		opts.supersedes?.settle();
 	}
+}
+
+/** The gate purposes that are background tasks rather than a person's turn. */
+const TASK_PURPOSES = new Set<EndpointSlotPurpose>([
+	'title',
+	'memory',
+	'dream',
+	'compaction',
+	'enhance',
+]);
+
+/**
+ * Count a background task against its model for the stats page. Here because
+ * every gated task passes through, and `work` already names the purpose — but
+ * the callers disagree on the id's shape (chat and media pass the stored
+ * `endpoint::upstream`, the task runners the bare upstream id), so the endpoint
+ * comes from the endpoint, not the id.
+ */
+function recordTaskWork(endpoint: LoadedEndpoint, work: AcquireOptions['work']): void {
+	if (!TASK_PURPOSES.has(work.purpose) || !work.modelId) return;
+	const modelId = parseModelId(work.modelId)?.upstreamId ?? work.modelId;
+	recordModelEvent(
+		{ endpointId: endpoint.id, modelId },
+		`task:${work.purpose as 'title' | 'memory' | 'dream' | 'compaction' | 'enhance'}`,
+	);
 }
 
 function acquire(endpoint: LoadedEndpoint, opts: AcquireOptions): Promise<EndpointSlot> {

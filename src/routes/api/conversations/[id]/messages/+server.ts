@@ -46,11 +46,12 @@ import { submitGenerationJob } from '#lib/server/generation/jobs.js';
 import { sseResponse } from '#lib/server/streaming/sse-transport.js';
 
 import { isMediaKind } from '#lib/fanout.js';
-import { isModelKind } from '#lib/types/api.js';
+import { isModelKind, type ModelKind } from '#lib/types/api.js';
 import type { EarlierMessagesResponse, ModelEntry, SendMessageRequest } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
 import { enforceGenerationCap } from '#lib/server/generation/user-cap.js';
 import { createLogger } from '#lib/server/log.js';
+import { recordEdit, recordModelSwitch, recordRetry } from '#lib/server/stats/reactions.js';
 
 const log = createLogger('messages');
 
@@ -130,6 +131,9 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// doesn't resolve to a real endpoint) the user picking any real model
 	// here unblocks the send without a separate "fix this chat" flow.
 	// `system_prompt`, `parameters_json`, and `custom_model_id` stay put.
+	// The model this send moves the conversation away from, for the stats —
+	// recorded once the send is known to go ahead, below.
+	let switchedFrom: { modelId: string; kind: ModelKind | null } | null = null;
 	if (typeof body.modelId === 'string' && body.modelId && body.modelId !== meta.modelId) {
 		const newParsed = parseModelId(body.modelId);
 		if (!newParsed) {
@@ -161,6 +165,9 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				modelKind: newKind,
 			});
 		}
+		// A fan-out branch's model is transient, and a retry on another model is
+		// already counted against the reply it replaces.
+		if (persistModel && !isRetry) switchedFrom = { modelId: meta.modelId, kind: meta.modelKind };
 		meta.endpointId = newParsed.endpointId;
 		meta.modelId = body.modelId;
 		meta.modelKind = newKind;
@@ -234,6 +241,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		if (!userMessage) {
 			error(400, 'Retry target has no user-message ancestor');
 		}
+		recordRetry(target);
 		// The active leaf is NOT moved here. A chat retry re-anchors it at the
 		// user message once it reaches the chat path (below), and puts it back
 		// if the attempt persists nothing; a media retry needs no history and
@@ -254,6 +262,10 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// its user message in /prepare, which records the whole cart.
 			dispatchedModels: [{ modelId: meta.modelId, count: 1 }],
 		});
+		if (body.editedMessageId) recordEdit(params.id, body.editedMessageId);
+	}
+	if (switchedFrom) {
+		recordModelSwitch(switchedFrom, { modelId: meta.modelId, kind: meta.modelKind });
 	}
 
 	if (log.enabled('debug')) {

@@ -1136,6 +1136,60 @@ export const pausedResourceGroups = sqliteTable('paused_resource_groups', {
 	pausedAt: integer('paused_at').notNull(),
 });
 
+// --- model stats -------------------------------------------------------------
+
+// Per-model usage and reception counters behind `/settings/model-stats`: one
+// row per (UTC day, endpoint, upstream model, metric), incremented as the
+// event happens. See `server/stats/model-stats.ts` for the metric vocabulary.
+//
+// Counted at the moment of the event rather than derived from `messages` /
+// `media` later, because the evidence doesn't survive: a deleted branch or
+// conversation hard-deletes its replies (and with them every `model_used`), a
+// retry is structurally just another sibling, a trash restore leaves no trace,
+// and deleting a user hard-deletes their media rows. A dashboard read off live
+// rows would grow more flattering the more people curate.
+//
+// `model_id` is the UPSTREAM id, with the endpoint in its own column, so a
+// model can be joined against the endpoint's live listing to spot retired ones.
+// Operator state, not user-owned: nothing here identifies a user or a chat.
+export const modelStatsDaily = sqliteTable(
+	'model_stats_daily',
+	{
+		day: text('day').notNull(),
+		endpointId: text('endpoint_id').notNull(),
+		modelId: text('model_id').notNull(),
+		metric: text('metric').notNull(),
+		count: integer('count').notNull().default(0),
+		// Running total for metrics that carry a quantity (tokens out, gen ms);
+		// 0 for the rest.
+		sum: integer('sum').notNull().default(0),
+	},
+	(t) => [primaryKey({ columns: [t.day, t.endpointId, t.modelId, t.metric] })],
+);
+
+// Who has used each model, and when last — "used by N people" and "last used"
+// on the stats page. One row per (endpoint, model, user), so it stays as small
+// as the cross product of people and the models they actually touch.
+//
+// Carries `user_id` but is only ever read as an aggregate by the admin page
+// (count of users, max of last_used_at) — never one user's row for another.
+// Cascades with the user, so a removed account stops counting.
+export const modelUserUsage = sqliteTable(
+	'model_user_usage',
+	{
+		endpointId: text('endpoint_id').notNull(),
+		modelId: text('model_id').notNull(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		lastUsedAt: integer('last_used_at').notNull(),
+	},
+	(t) => [
+		primaryKey({ columns: [t.endpointId, t.modelId, t.userId] }),
+		index('idx_model_user_usage_user').on(t.userId),
+	],
+);
+
 // --- durable media generations -------------------------------------------
 
 // One row per image / video generation that is QUEUED or RUNNING — the durable

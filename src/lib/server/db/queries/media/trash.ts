@@ -8,6 +8,7 @@ import { getDb } from '../../client';
 import { media, messageMedia } from '../../schema';
 import type { TrashedMediaItem } from '#lib/types/api.js';
 import { withFavoriteFlag } from './shape';
+import { recordMediaEvent } from '#lib/server/stats/model-stats.js';
 
 /**
  * Move one media row to the trash *now*, regardless of refs. Returns false on
@@ -146,6 +147,7 @@ export function restoreMediaForUser(ids: readonly string[], userId: string): str
 			.map((r) => r.id);
 		if (restorable.length === 0) return [];
 		tx.update(media).set({ deletedAt: null }).where(inArray(media.id, restorable)).run();
+		recordMediaEvent(restorable, 'restored', { tx });
 		return restorable;
 	});
 }

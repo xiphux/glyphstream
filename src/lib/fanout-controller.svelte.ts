@@ -867,7 +867,9 @@ export class FanoutController {
 						headers: { 'Content-Type': 'application/json' },
 						body: JSON.stringify({ messageId: targetId }),
 					})
-				: await fetch(`/api/conversations/${convId}/messages/${targetId}/select`, {
+				: // `pick=1`: an explicit pick, which the model stats count as a win —
+					// unlike Done and ‹N/M›, which hit the same endpoint without it.
+					await fetch(`/api/conversations/${convId}/messages/${targetId}/select?pick=1`, {
 						method: 'POST',
 					});
 			if (!res.ok) throw new Error(await errorMessageFromResponse(res));

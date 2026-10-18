@@ -2,6 +2,7 @@ import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import { bulkTrashMediaForUser } from '#lib/server/db/queries/media.js';
+import { recordMediaEvent } from '#lib/server/stats/model-stats.js';
 import type { RequestHandler } from './$types';
 
 /**
@@ -41,5 +42,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	}
 
 	const deleted = bulkTrashMediaForUser(ids, locals.user.id);
+	recordMediaEvent(deleted, 'trashed');
 	return Response.json({ deleted: deleted.length });
 };

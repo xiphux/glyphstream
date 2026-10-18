@@ -35,6 +35,7 @@ import type { CompareSelection } from '#lib/fanout.js';
 import type { PrepareFanoutRequest, PrepareFanoutResponse } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
 import { enforceGenerationCap } from '#lib/server/generation/user-cap.js';
+import { recordEdit } from '#lib/server/stats/reactions.js';
 
 /**
  * Validate the client-supplied compare cart before it's persisted as
@@ -101,6 +102,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		existingTitle: meta.title,
 		dispatchedModels,
 	});
+	if (body.editedMessageId) recordEdit(params.id, body.editedMessageId);
 
 	// Mark the conversation as having an unresolved fan-out parked on this user
 	// message, so a reload mid-comparison can rehydrate the compare grid

@@ -6,6 +6,7 @@ import {
 	trashMediaForUser,
 } from '#lib/server/db/queries/media.js';
 import { parseJsonBody } from '#lib/server/http.js';
+import { recordMediaEvent } from '#lib/server/stats/model-stats.js';
 import type { RequestHandler } from './$types';
 
 /**
@@ -50,5 +51,8 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 export const DELETE: RequestHandler = async ({ locals, params }) => {
 	requireUser(locals);
 	if (!trashMediaForUser(params.id, locals.user.id)) error(404, 'Media not found');
+	// Counted here, at the user's delete, rather than in the query — which
+	// the relay also uses to discard a result nobody ever saw.
+	recordMediaEvent([params.id], 'trashed');
 	return new Response(null, { status: 204 });
 };

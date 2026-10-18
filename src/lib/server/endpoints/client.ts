@@ -10,6 +10,7 @@ import {
 	UrlPolicyError,
 } from '../tools/url-policy-base';
 import { createLogger } from '../log';
+import { recordModelEvent } from '../stats/model-stats';
 
 const log = createLogger('videoCancel');
 
@@ -924,6 +925,10 @@ export async function embeddings(
 		`Network error contacting endpoint "${endpoint.id}" at ${url}`,
 	);
 	await ensureOk(res, `Endpoint "${endpoint.id}" returned HTTP ${res.status} from /embeddings`);
+	// Here rather than at the callers: embeddings and rerank are the two task
+	// calls that skip the endpoint gate (where the other tasks are counted), and
+	// each has exactly one purpose.
+	recordModelEvent({ endpointId: endpoint.id, modelId: body.model }, 'task:embed');
 	return parseJson<EmbeddingsResponse>(
 		res,
 		`Endpoint "${endpoint.id}" returned non-JSON /embeddings`,
@@ -998,6 +1003,7 @@ export async function rerank(
 		`Network error contacting endpoint "${endpoint.id}" at ${url}`,
 	);
 	await ensureOk(res, `Endpoint "${endpoint.id}" returned HTTP ${res.status} from /rerank`);
+	recordModelEvent({ endpointId: endpoint.id, modelId: body.model }, 'task:rerank');
 	const parsed = await parseJson<unknown>(
 		res,
 		`Endpoint "${endpoint.id}" returned non-JSON /rerank`,

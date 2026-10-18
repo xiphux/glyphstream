@@ -20,6 +20,7 @@ import type {
 } from '#lib/types/api.js';
 import { validateDisabledFeaturesOrThrow400 } from '#lib/server/util/validate-features.js';
 import type { RequestHandler } from './$types';
+import { recordModelEvent } from '#lib/server/stats/model-stats.js';
 
 export const GET: RequestHandler = ({ locals, url }) => {
 	requireUser(locals);
@@ -142,5 +143,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		// "Private chat" content seal — create-time only, never mutable via PATCH.
 		private: body.private ?? false,
 	});
+	// Counted against the base model, so a preset's use sits with the model it
+	// costs disk for, and the page can still tell whether the preset is used.
+	if (resolvedCustomModelId) {
+		recordModelEvent(resolvedModelId, `preset_chat:${resolvedCustomModelId}`);
+	}
 	return Response.json({ conversation: conv }, { status: 201 });
 };

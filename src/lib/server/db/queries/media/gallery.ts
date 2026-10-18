@@ -7,6 +7,7 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { getDb } from '../../client';
 import { conversations, media, messageMedia, messages } from '../../schema';
+import { recordMediaEvent } from '#lib/server/stats/model-stats.js';
 import type {
 	ConversationMediaRef,
 	MediaConversationRef,
@@ -432,6 +433,13 @@ let lastFavoritedAt = 0;
  * the index.
  */
 export function setMediaFavorite(mediaId: string, userId: string, favorite: boolean): boolean {
+	// Read before writing so the stats count a transition, not a repeated toggle
+	// (re-starring a starred row still writes — see above).
+	const before = getDb()
+		.select({ favoritedAt: media.favoritedAt })
+		.from(media)
+		.where(and(eq(media.id, mediaId), eq(media.userId, userId)))
+		.get();
 	let stamp: number | null = null;
 	if (favorite) {
 		stamp = Math.max(Date.now(), lastFavoritedAt + 1);
@@ -455,7 +463,11 @@ export function setMediaFavorite(mediaId: string, userId: string, favorite: bool
 			),
 		)
 		.run();
-	return res.changes > 0;
+	const changed = res.changes > 0;
+	if (changed && before && (before.favoritedAt !== null) !== favorite) {
+		recordMediaEvent([mediaId], favorite ? 'favorited' : 'unfavorited');
+	}
+	return changed;
 }
 
 // --- Trash (gallery / branch / conversation delete) ----------------------

@@ -12,7 +12,12 @@
 import { error } from '@sveltejs/kit';
 import { setConversationTitle } from '#lib/server/db/queries/conversations.js';
 import { getMediaForUser, linkMessageMedia } from '#lib/server/db/queries/media.js';
-import { appendMessage, resolveParentForUserMessage } from '#lib/server/db/queries/messages.js';
+import {
+	appendMessage,
+	getMessage,
+	resolveParentForUserMessage,
+} from '#lib/server/db/queries/messages.js';
+import { recordMediaEvent } from '#lib/server/stats/model-stats.js';
 import type { CompareSelection } from '#lib/fanout.js';
 import type { ChatMessage, MessagePart } from '#lib/types/api.js';
 
@@ -110,6 +115,7 @@ export function createUserMessage(input: CreateUserMessageInput): ChatMessage {
 	for (const mid of input.attachedMediaIds) {
 		linkMessageMedia(userMessage.id, mid);
 	}
+	recordMediaEvent(newlyAttached(input), 'remixed');
 	if (!input.existingTitle && input.text) {
 		const preview =
 			input.text.length > TITLE_PREVIEW_MAX
@@ -118,4 +124,20 @@ export function createUserMessage(input: CreateUserMessageInput): ChatMessage {
 		setConversationTitle(input.conversationId, input.userId, preview);
 	}
 	return userMessage;
+}
+
+/**
+ * The attachments that are new to this prompt. Building on a generated output
+ * — attaching it to a new prompt, to edit or animate it or to ask about it — is
+ * a stronger "keep" than leaving it alone, and `recordMediaEvent` counts it for
+ * generated rows only. An edit re-sends whatever the edited prompt already
+ * carried, so those aren't a second use.
+ */
+function newlyAttached(input: CreateUserMessageInput): string[] {
+	if (!input.editedMessageId) return input.attachedMediaIds;
+	const before = getMessage(input.conversationId, input.editedMessageId);
+	const had = new Set(
+		before?.parts.flatMap((p) => ('mediaId' in p && p.mediaId ? [p.mediaId] : [])) ?? [],
+	);
+	return input.attachedMediaIds.filter((id) => !had.has(id));
 }
