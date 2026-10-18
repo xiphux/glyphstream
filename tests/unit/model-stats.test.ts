@@ -14,7 +14,12 @@ import { sql } from 'drizzle-orm';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
-import { modelRefOf, recordModelEvent, statsDay } from '#lib/server/stats/model-stats.js';
+import {
+	bestEffort,
+	modelRefOf,
+	recordModelEvent,
+	statsDay,
+} from '#lib/server/stats/model-stats.js';
 import { createConversation } from '#lib/server/db/queries/conversations.js';
 import { appendMessage } from '#lib/server/db/queries/messages.js';
 import { insertMedia, linkMessageMedia } from '#lib/server/db/queries/media.js';
@@ -50,6 +55,20 @@ describe('modelRefOf', () => {
 		expect(modelRefOf('run_python')).toBeNull();
 		expect(modelRefOf(null)).toBeNull();
 		expect(modelRefOf('')).toBeNull();
+	});
+});
+
+describe('bestEffort', () => {
+	it("returns the lookup's result, or undefined and a warning when it throws", () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		expect(bestEffort('x', () => 42)).toBe(42);
+		expect(
+			bestEffort('x', () => {
+				throw new Error('SQLITE_BUSY');
+			}),
+		).toBeUndefined();
+		expect(warn).toHaveBeenCalledTimes(1);
+		warn.mockRestore();
 	});
 });
 

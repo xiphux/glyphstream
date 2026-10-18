@@ -191,6 +191,22 @@ export function recordModelEvent(
 }
 
 /**
+ * Run stats bookkeeping that READS before it counts — an attribution lookup, a
+ * before-state — under the same never-throw rule as the writes. The counter
+ * writes guard themselves, but a lookup that throws would otherwise turn a
+ * stats problem into a failed send, favourite or delete (or roll back the
+ * delete's transaction). Returns `undefined` when `fn` throws.
+ */
+export function bestEffort<T>(what: string, fn: () => T): T | undefined {
+	try {
+		return fn();
+	} catch (e) {
+		log.warn(`failed to record ${what}`, e);
+		return undefined;
+	}
+}
+
+/**
  * Count a metric against each media row's source model — a trash, a restore, a
  * favourite — one per row. Rows that name no model (uploads, `run_python`
  * plots) are skipped by `modelRefOf`.

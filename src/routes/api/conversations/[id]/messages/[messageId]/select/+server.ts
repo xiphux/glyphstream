@@ -17,27 +17,25 @@
  */
 
 import { requireFound, requireUser } from '#lib/server/auth/guard.js';
-import { getConversationMeta, getFanoutParent } from '#lib/server/db/queries/conversations.js';
-import { getMessage, selectBranch } from '#lib/server/db/queries/messages.js';
-import { recordComparisonPick } from '#lib/server/stats/reactions.js';
+import { getConversationMeta } from '#lib/server/db/queries/conversations.js';
+import { selectBranch } from '#lib/server/db/queries/messages.js';
+import { pendingComparisonPick, recordComparisonPick } from '#lib/server/stats/reactions.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = ({ locals, params, url }) => {
 	requireUser(locals);
 
 	requireFound(getConversationMeta(params.id, locals.user.id), 'Conversation not found');
-	// Read before selectBranch, which clears the parked marker.
 	const picked =
-		url.searchParams.get('pick') === '1' ? getMessage(params.id, params.messageId) : null;
-	const resolvesComparison =
-		picked?.role === 'assistant' &&
-		getFanoutParent(params.id, locals.user.id) === picked.parentMessageId;
+		url.searchParams.get('pick') === '1'
+			? pendingComparisonPick(params.id, locals.user.id, params.messageId)
+			: null;
 	const result = requireFound(
 		selectBranch(params.id, params.messageId),
 		'Message not found in this conversation',
 	);
 
-	if (resolvesComparison) recordComparisonPick(params.id, picked, 'fanout');
+	if (picked) recordComparisonPick(params.id, picked, 'fanout');
 
 	return Response.json({ activeLeafMessageId: result.newActiveLeaf });
 };

@@ -10,7 +10,10 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 vi.mock('#lib/server/endpoints/registry.js', () => ({
-	getEndpoint: (id: string) => (id === 'gone' ? undefined : { id }),
+	getEndpoint: (id: string) => {
+		if (id === 'broken') throw new Error('config.toml is invalid');
+		return id === 'gone' ? undefined : { id };
+	},
 }));
 
 import {
@@ -149,6 +152,18 @@ describe('model switch', () => {
 			{ modelId: 'cloud::gpt', kind: null },
 		);
 		expect(tally()).toEqual({ 'local::qwen switched_away': 2 });
+	});
+
+	it('swallows a lookup that throws rather than failing the send', () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		expect(() =>
+			recordModelSwitch(
+				{ modelId: 'broken::qwen', kind: 'chat' },
+				{ modelId: 'cloud::gpt', kind: 'chat' },
+			),
+		).not.toThrow();
+		expect(tally()).toEqual({});
+		warn.mockRestore();
 	});
 
 	it('ignores a change of medium and a dead imported route', () => {

@@ -2,15 +2,17 @@
  * Attribution for the reactions a send can carry — a retry, an edit, a switch
  * of model — each of which is a verdict on an EARLIER reply, not on the one
  * about to be generated. The send route calls these once it has resolved the
- * request; nothing here throws (the counter write is best-effort).
+ * request. Nothing here throws: the lookups run under `bestEffort` and the
+ * counter writes guard themselves.
  */
 import { and, desc, eq } from 'drizzle-orm';
 import { getDb } from '#lib/server/db/client.js';
 import { messages } from '#lib/server/db/schema.js';
-import { getSiblingAssistants } from '#lib/server/db/queries/messages.js';
+import { getFanoutParent } from '#lib/server/db/queries/conversations.js';
+import { getMessage, getSiblingAssistants } from '#lib/server/db/queries/messages.js';
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
 import type { ChatMessage, ModelKind } from '#lib/types/api.js';
-import { modelRefOf, recordModelEvent } from './model-stats';
+import { bestEffort, modelRefOf, recordModelEvent } from './model-stats';
 
 /** An error sibling isn't a reply anyone judged — it was already counted as an
  *  `error`, and asking again is the only way past it. */
@@ -32,22 +34,24 @@ export function recordRetry(target: ChatMessage): void {
  * (`edit_after_cancel`) from one they blamed on the model (`retry_after_cancel`).
  */
 export function recordEdit(conversationId: string, editedMessageId: string): void {
-	const reply = getDb()
-		.select({ modelUsed: messages.modelUsed, finishReason: messages.finishReason })
-		.from(messages)
-		.where(
-			and(
-				eq(messages.conversationId, conversationId),
-				eq(messages.parentMessageId, editedMessageId),
-				eq(messages.role, 'assistant'),
-			),
-		)
-		.orderBy(desc(messages.createdAt), desc(messages.id))
-		.limit(1)
-		.get();
-	if (!reply?.modelUsed) return;
-	recordModelEvent(reply.modelUsed, 'edit');
-	if (reply.finishReason === 'cancelled') recordModelEvent(reply.modelUsed, 'edit_after_cancel');
+	bestEffort('edit', () => {
+		const reply = getDb()
+			.select({ modelUsed: messages.modelUsed, finishReason: messages.finishReason })
+			.from(messages)
+			.where(
+				and(
+					eq(messages.conversationId, conversationId),
+					eq(messages.parentMessageId, editedMessageId),
+					eq(messages.role, 'assistant'),
+				),
+			)
+			.orderBy(desc(messages.createdAt), desc(messages.id))
+			.limit(1)
+			.get();
+		if (!reply?.modelUsed) return;
+		recordModelEvent(reply.modelUsed, 'edit');
+		if (reply.finishReason === 'cancelled') recordModelEvent(reply.modelUsed, 'edit_after_cancel');
+	});
 }
 
 /** Chat, or a legacy row with no recorded kind (which only chat ever wrote). */
@@ -69,7 +73,8 @@ export function recordModelSwitch(
 	if (from.modelId === to.modelId) return;
 	if (!isChatKind(from.kind) || !isChatKind(to.kind)) return;
 	const ref = modelRefOf(from.modelId);
-	if (!ref || !getEndpoint(ref.endpointId)) return;
+	// `getEndpoint` reads the registry, which throws on a broken config.
+	if (!ref || !bestEffort('switched_away', () => getEndpoint(ref.endpointId))) return;
 	recordModelEvent(ref, 'switched_away');
 }
 
@@ -86,14 +91,40 @@ export function recordComparisonPick(
 	winner: ChatMessage & { parentMessageId?: string | null },
 	kind: 'fanout' | 'avatar',
 ): void {
-	if (!winner.parentMessageId || !winner.modelUsed) return;
-	const models = new Set(
-		getSiblingAssistants(conversationId, winner.parentMessageId)
-			.filter((m) => !isFailure(m) && m.modelUsed)
-			.map((m) => m.modelUsed!),
+	const parentId = winner.parentMessageId;
+	const winnerModel = winner.modelUsed;
+	if (!parentId || !winnerModel) return;
+	bestEffort(`${kind} pick`, () => {
+		const models = new Set(
+			getSiblingAssistants(conversationId, parentId)
+				.filter((m) => !isFailure(m) && m.modelUsed)
+				.map((m) => m.modelUsed!),
+		);
+		models.add(winnerModel);
+		if (models.size < 2) return;
+		for (const m of models)
+			recordModelEvent(m, kind === 'fanout' ? 'fanout_shown' : 'avatar_shown');
+		recordModelEvent(winnerModel, kind === 'fanout' ? 'fanout_win' : 'avatar_win');
+	});
+}
+
+/**
+ * The reply a `/select?pick=1` is picking, when it resolves the comparison
+ * actually parked on the conversation — else null, and nothing is counted.
+ * Read BEFORE `selectBranch`, which clears the parked marker.
+ */
+export function pendingComparisonPick(
+	conversationId: string,
+	userId: string,
+	messageId: string,
+): (ChatMessage & { parentMessageId?: string | null }) | null {
+	return (
+		bestEffort('fanout pick', () => {
+			const picked = getMessage(conversationId, messageId);
+			return picked?.role === 'assistant' &&
+				getFanoutParent(conversationId, userId) === picked.parentMessageId
+				? picked
+				: null;
+		}) ?? null
 	);
-	models.add(winner.modelUsed);
-	if (models.size < 2) return;
-	for (const m of models) recordModelEvent(m, kind === 'fanout' ? 'fanout_shown' : 'avatar_shown');
-	recordModelEvent(winner.modelUsed, kind === 'fanout' ? 'fanout_win' : 'avatar_win');
 }

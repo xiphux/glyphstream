@@ -7,7 +7,7 @@ import { parseDispatchedModels, parseMessageParts } from './json-columns';
 import { getDb, type DB, type Tx } from '../client';
 import { conversations, media, messages } from '../schema';
 import { decrementMediaForMessages, trashOrphanGeneratedMediaForMessages } from './media';
-import { recordMediaEvent, recordModelEvent } from '#lib/server/stats/model-stats.js';
+import { bestEffort, recordMediaEvent, recordModelEvent } from '#lib/server/stats/model-stats.js';
 
 interface AppendInput {
 	conversationId: string;
@@ -1182,7 +1182,8 @@ export function deleteBranch(
 		// followed it on the branch, which went along for the ride. A failed
 		// reply was already counted as an error. Its media is a rejection too:
 		// this is the "delete this one" of a comparison grid.
-		const rejected = getMessage(conversationId, messageId, tx);
+		// Guarded: a failed lookup must not roll back the delete.
+		const rejected = bestEffort('branch_deleted', () => getMessage(conversationId, messageId, tx));
 		if (
 			rejected?.role === 'assistant' &&
 			rejected.finishReason !== 'error' &&

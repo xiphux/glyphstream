@@ -17,7 +17,7 @@ import {
 	getMessage,
 	resolveParentForUserMessage,
 } from '#lib/server/db/queries/messages.js';
-import { recordMediaEvent } from '#lib/server/stats/model-stats.js';
+import { bestEffort, recordMediaEvent } from '#lib/server/stats/model-stats.js';
 import type { CompareSelection } from '#lib/fanout.js';
 import type { ChatMessage, MessagePart } from '#lib/types/api.js';
 
@@ -115,7 +115,7 @@ export function createUserMessage(input: CreateUserMessageInput): ChatMessage {
 	for (const mid of input.attachedMediaIds) {
 		linkMessageMedia(userMessage.id, mid);
 	}
-	recordMediaEvent(newlyAttached(input), 'remixed');
+	recordMediaEvent(bestEffort('remixed', () => newlyAttached(input)) ?? [], 'remixed');
 	if (!input.existingTitle && input.text) {
 		const preview =
 			input.text.length > TITLE_PREVIEW_MAX
