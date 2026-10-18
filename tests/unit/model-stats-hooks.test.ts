@@ -200,6 +200,18 @@ describe('comparison pick', () => {
 		});
 	});
 
+	it('credits no win for picking a failed column', () => {
+		const c = conversation();
+		const u = userTurn(c.id);
+		reply(c.id, u.id, 'local::qwen', { advance: false });
+		const failed = reply(c.id, u.id, 'cloud::gpt', {
+			advance: false,
+			parts: [{ type: 'error', message: 'x' }],
+		});
+		recordComparisonPick(c.id, getMessage(c.id, failed.id)!, 'fanout');
+		expect(tally()).toEqual({});
+	});
+
 	it('skips a comparison of one model against itself', () => {
 		const c = conversation('bridge::flux', 'image');
 		const u = userTurn(c.id);

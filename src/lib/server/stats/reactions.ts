@@ -93,7 +93,8 @@ export function recordComparisonPick(
 ): void {
 	const parentId = winner.parentMessageId;
 	const winnerModel = winner.modelUsed;
-	if (!parentId || !winnerModel) return;
+	// A failed column isn't a reply anyone preferred, whatever was clicked.
+	if (!parentId || !winnerModel || isFailure(winner)) return;
 	bestEffort(`${kind} pick`, () => {
 		const models = new Set(
 			getSiblingAssistants(conversationId, parentId)
