@@ -223,6 +223,13 @@
 # self-report.
 # supports_tools = true
 
+# Optional: this endpoint runs on your own hardware (llama-server, a ComfyUI
+# bridge) rather than a hosted provider. Only affects /settings/model-stats,
+# which lists local endpoints first — an unused local model is disk space you
+# can reclaim, while a hosted catalogue's unused models cost nothing.
+# Defaults to false.
+# local = true
+
 # Optional: cap how many generations run against this endpoint at once.
 # Extra requests queue (FIFO) and stream a "queued" state to the client
 # until a slot frees. The slot is held for the WHOLE generation.

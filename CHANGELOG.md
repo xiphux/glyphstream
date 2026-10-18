@@ -9,6 +9,14 @@ arrived.
 
 ## Unreleased
 
+### Added
+
+- Settings → Model stats (admins): how much each model is used and how its
+  output is received (retries, favorites, deletions, comparison picks), grouped
+  by endpoint with unused models folded away, to help decide which models to
+  keep. Mark your own hardware with `local = true` on an endpoint to list it
+  first. See `docs/models.md`.
+
 ### Changed
 
 - Settings → Endpoints collapses each endpoint's queued work behind its count,

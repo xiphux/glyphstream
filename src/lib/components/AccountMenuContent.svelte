@@ -4,6 +4,7 @@
 
 	import {
 		Brain,
+		ChartColumn,
 		KeyRound,
 		LogOut,
 		Plug,
@@ -119,6 +120,13 @@
 				>
 					<Server size={14} strokeWidth={2.25} />
 					<span>Endpoints</span>
+				</DropdownMenu.Item>
+				<DropdownMenu.Item
+					onSelect={() => goto(resolve('settings/model-stats'))}
+					class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
+				>
+					<ChartColumn size={14} strokeWidth={2.25} />
+					<span>Model stats</span>
 				</DropdownMenu.Item>
 			</DropdownMenu.Group>
 			<DropdownMenu.Separator class="my-1 h-px bg-border" />

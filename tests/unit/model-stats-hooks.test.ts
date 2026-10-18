@@ -119,8 +119,13 @@ describe('edit', () => {
 	it("counts against the edited prompt's newest reply, flagging a stopped one", () => {
 		const c = conversation();
 		const u = userTurn(c.id);
+		// "Newest" is by created_at; two appends in one millisecond would tie.
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(1_000_000);
 		reply(c.id, u.id, 'local::old');
+		vi.setSystemTime(2_000_000);
 		reply(c.id, u.id, 'local::qwen', { finishReason: 'cancelled' });
+		vi.useRealTimers();
 		recordEdit(c.id, u.id);
 		expect(tally()).toEqual({ 'local::qwen edit': 1, 'local::qwen edit_after_cancel': 1 });
 	});

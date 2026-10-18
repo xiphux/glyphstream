@@ -45,3 +45,45 @@ doesn't change chats that already used it.
   ([details](multi-user.md#restarting-glyphstream-with-generations-queued)), and
   an admin can **pause** an endpoint's queue to restart its backend without
   failing what's waiting ([details](multi-user.md#pausing-a-queue)).
+
+## Model stats
+
+**Settings → Model stats** (admins) shows how much each model is used and how
+its output is received. Use it to decide which models are worth keeping,
+which matters most for a multi-gigabyte local model.
+
+Models are grouped by endpoint, with endpoints marked `local = true` first
+([configuration](configuration.md#endpoints)). Models that did nothing in the
+chosen period (30 days, 90 days or all time) are folded into a collapsed
+**unused** list per endpoint, longest-idle first. Models the endpoint no longer
+offers fold into **no longer offered**. A model configured for a background job
+(title, memory, prompt enhancement, embeddings, rerank) is never listed as
+unused; it shows its role and how many calls it served instead.
+
+What's counted:
+
+- **Chat:** turns, speed, how often replies were **retried**, failed, cut off
+  at the length limit or had their branch deleted, how often a conversation
+  **switched away** to another chat model (switching to an image model doesn't
+  count), and **picks** in side-by-side comparisons. A stopped reply is told
+  apart by what follows it: stopping and then retrying is held against the
+  model, stopping and then editing the prompt is not.
+- **Images and video:** outputs, average generation time, how many were
+  **favorited**, **built on** (used as the input to another generation, or as
+  an avatar), **deleted** or failed, and picks in comparisons. Deleting a
+  whole conversation with its media isn't counted as rejecting each image, and
+  restoring from the trash takes a deletion back.
+- **Everyone:** how many people used each model in the period, when it was last
+  used, how many have it among their favorites, and which custom presets are
+  built on it.
+
+Losing a comparison is never held against a model. The others may have been
+fine, just not the best fit. What counts against a model is an output someone
+deleted. Flags such as **Often retried** or **Well liked** only appear once
+there's enough evidence. A model with three replies, all retried, isn't
+flagged.
+
+Stats are counted as things happen, from the version that introduced them.
+Earlier usage (turns, generations, favorites) is filled in from history that
+still exists. Retries, deletions and picks start at zero, because the old data
+can't say why something was deleted.

@@ -42,6 +42,7 @@ base_url = "http://192.168.1.20:8080/v1"
 # api_key_env = "LLAMA_KEY"           # omit for no Authorization header
 # request_timeout_seconds = 600       # non-stream request cap; also the mid-stream idle window (see below)
 # supports_tools = true               # see the tool-calling guide
+# local = true                        # your own hardware; see "Model stats" in models.md
 # max_concurrent = 1                  # see "Limiting concurrency" below
 # context_window = 32768              # fallback token budget; see "Context window" below
 # model_context_windows = { "Gemma4-26B" = 40960 }  # per-model override; see "Context window"
@@ -57,6 +58,10 @@ base_url = "http://192.168.1.20:8080/v1"
   ([openai-api-bridge][bridge]) that expose many real providers under one
   endpoint — the picker buckets by each model's `owned_by` field instead of
   putting everything under one group.
+- **`local = true`** marks an endpoint as your own hardware rather than a
+  hosted provider. It only affects the admin
+  [model stats](models.md#model-stats) page, which lists local endpoints
+  first. Defaults to false.
 - **`request_timeout_seconds`** (default 120) caps a non-streaming request.
   For a streaming chat it does **not** bound the total duration (long answers
   are fine) — it's the **mid-stream idle** window: once tokens are flowing, the

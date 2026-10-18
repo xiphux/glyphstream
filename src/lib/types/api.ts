@@ -2095,3 +2095,74 @@ export interface InviteSummary {
 	createdAt: number;
 	expiresAt: number;
 }
+
+// --- model stats (admin) ---------------------------------------------------
+
+/** The period the stats page covers, from its `?window=` param. */
+export type ModelStatsWindow = '30d' | '90d' | 'all';
+
+/** A background job the operator configured a model for. A model with a role
+ *  is doing a job even when nobody chats with it, so it is never "unused". */
+export type ModelTaskRole = 'title' | 'memory' | 'enhance' | 'embeddings' | 'rerank';
+
+/** A custom-model preset built on the model. `name` only for the viewer's own
+ *  presets; another user's preset is counted without being named. */
+export interface ModelStatsPreset {
+	id: string;
+	name: string | null;
+	/** False once the preset has been deleted. */
+	exists: boolean;
+	/** Conversations started from it within the window. */
+	chats: number;
+}
+
+export interface ModelStatsModel {
+	/** `endpoint::upstream`. */
+	id: string;
+	upstreamId: string;
+	displayName: string;
+	/** From the endpoint's live listing; null for a model it no longer lists. */
+	kind: ModelKind | null;
+	/** Still offered by its endpoint. False is a retired model, shown for its
+	 *  history — and only claimed when the listing actually succeeded. */
+	listed: boolean;
+	roles: ModelTaskRole[];
+	/**
+	 * The window's counters by metric name (`turn`, `retry`, `generated`, …; see
+	 * `server/stats/model-stats.ts`). Sparse: an absent metric is zero. Keyed
+	 * by string rather than a closed union so a page open across a deploy that
+	 * adds a metric still renders.
+	 */
+	counts: Record<string, number>;
+	/** The running `sum` for the metrics that carry one (tokens, ms). */
+	sums: Record<string, number>;
+	/** People who used it within the window. */
+	usedBy: number;
+	/** Last use by anyone, ever — so "last used 4 months ago" survives a 30-day
+	 *  window. Null when it has never been used. */
+	lastUsedAt: number | null;
+	/** People with it (or a preset on it) among their favourite models. */
+	favoritedBy: number;
+	presets: ModelStatsPreset[];
+}
+
+export interface ModelStatsEndpoint {
+	id: string;
+	displayName: string;
+	/** `local = true` in config.toml. */
+	local: boolean;
+	/** No longer in config.toml; every model under it is retired. */
+	removed: boolean;
+	/** The model listing failed with nothing cached, so which models exist
+	 *  (unused / retired) is unknown — only the counted ones can be shown. */
+	listingUnavailable: boolean;
+	models: ModelStatsModel[];
+}
+
+export interface ModelStatsReport {
+	window: ModelStatsWindow;
+	/** First UTC day counted (`YYYY-MM-DD`), or null for all time. */
+	since: string | null;
+	/** Local endpoints first, then config order; removed endpoints last. */
+	endpoints: ModelStatsEndpoint[];
+}

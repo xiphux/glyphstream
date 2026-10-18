@@ -407,6 +407,30 @@ supports_tools = "yes"
 		expect(() => loadEndpoints(path)).toThrow(/supports_tools/);
 	});
 
+	it('defaults local to false and parses local = true', () => {
+		const path = writeConfig(`
+[[endpoints]]
+id = "cloud"
+base_url = "http://x"
+
+[[endpoints]]
+id = "gpu"
+base_url = "http://y"
+local = true
+		`);
+		expect(loadEndpoints(path).map((e) => e.local)).toEqual([false, true]);
+	});
+
+	it('rejects non-boolean local', () => {
+		const path = writeConfig(`
+[[endpoints]]
+id = "x"
+base_url = "http://x"
+local = "yes"
+		`);
+		expect(() => loadEndpoints(path)).toThrow(/local/);
+	});
+
 	it('rejects non-positive request_timeout_seconds', () => {
 		const path = writeConfig(`
 [[endpoints]]

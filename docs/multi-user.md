@@ -9,9 +9,11 @@ else joins by an admin-issued **invite**; there is no open registration.
 
 There are two roles, `admin` and `user`:
 
-- **`admin`** — everything a user can do, plus the two **Administration** pages
-  in the account menu: **Users** (manage accounts, issue invites) and
-  **Endpoints** (health + activity, and pausing a queue). The setup-wizard user is the
+- **`admin`** — everything a user can do, plus the **Administration** pages
+  in the account menu: **Users** (manage accounts, issue invites),
+  **Endpoints** (health + activity, and pausing a queue) and
+  **Model stats** (how each model is used and received — see
+  [models](models.md#model-stats)). The setup-wizard user is the
   admin, and an admin can grant the role to others by issuing an admin-role
   invite.
 - **`user`** — a normal account; the Administration section of the menu isn't
@@ -21,7 +23,10 @@ Role gates **operator capability, not data**. Admins do **not** see other
 users' conversations or media — every row is scoped by `user_id` and nothing
 in the data layer keys off role. That holds for the Endpoints page too: it
 reports what each backend is doing (model, kind of work, elapsed, queue depth)
-and deliberately carries no conversation id, user id, or prompt.
+and deliberately carries no conversation id, user id, or prompt. Model stats
+are counts only: how many people used a model, never who or in which
+conversation, and other users' custom presets are counted without being
+named.
 
 ## Inviting users
 

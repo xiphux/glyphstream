@@ -144,7 +144,7 @@ pnpm dev                               # http://localhost:5173
 | Guide                                            | Covers                                                                                              |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
 | [Chatting](docs/chat.md)                         | Branching, the context bar and compaction, memory and recall, themes, `#q=` links                   |
-| [Models](docs/models.md)                         | The picker, fan-out compare, model sets, custom models, sharing a GPU                               |
+| [Models](docs/models.md)                         | The picker, fan-out compare, model sets, custom models, sharing a GPU, model stats                  |
 | [Images & video](docs/media.md)                  | Generation, aspect ratios, prompt enhancement, the gallery, avatars                                 |
 | [Configuration](docs/configuration.md)           | `config.toml` + `.env`, endpoints, secrets convention, concurrency, auto-titling                    |
 | [Authentication](docs/authentication.md)         | OAuth (GitHub, Google, OIDC) setup, passkeys, the setup wizard, `EXTERNAL_BASE_URL`                 |

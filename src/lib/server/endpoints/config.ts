@@ -71,6 +71,7 @@ interface RawEndpoint {
 	provider_quirk?: unknown;
 	group_by?: unknown;
 	supports_tools?: unknown;
+	local?: unknown;
 	max_concurrent?: unknown;
 	resource_group?: unknown;
 	release?: unknown;
@@ -99,6 +100,14 @@ export interface LoadedEndpoint {
 	 * (`ModelEntry.supportsTools` resolves both layers).
 	 */
 	supportsTools: boolean;
+	/**
+	 * The operator's own hardware rather than a hosted provider. Display only:
+	 * the model-stats page leads with local endpoints, where an unused model is
+	 * gigabytes of disk worth reclaiming, and keeps a hosted catalogue's hundreds
+	 * of never-touched models out of the way. Absent reads as hosted — optional
+	 * so a test fixture needn't spell out a flag nothing it exercises reads.
+	 */
+	local?: boolean;
 	/**
 	 * Max generations allowed to run against this endpoint at once. Extra
 	 * requests queue (FIFO) until a slot frees — the slot is held for the
@@ -1070,6 +1079,8 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 			? false
 			: requireBoolean(raw.supports_tools, 'supports_tools', at);
 
+	const local = raw.local === undefined ? false : requireBoolean(raw.local, 'local', at);
+
 	const resourceGroup =
 		raw.resource_group === undefined ? id : requireString(raw.resource_group, 'resource_group', at);
 
@@ -1168,6 +1179,7 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 		providerQuirk,
 		groupBy,
 		supportsTools,
+		local,
 		maxConcurrent,
 		resourceGroup,
 		// Placeholder: the real value needs every member of the group, so it's

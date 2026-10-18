@@ -53,6 +53,11 @@ const ROUTES: Record<string, RouteCase> = {
 	},
 	'/(app)/settings/mcp': { path: () => '/settings/mcp', renders: ['admin', 'user'] },
 	'/(app)/settings/memories': { path: () => '/settings/memories', renders: ['admin', 'user'] },
+	'/(app)/settings/model-stats': {
+		path: () => '/settings/model-stats',
+		renders: ['admin'],
+		refused: ['user'],
+	},
 	'/(app)/settings/models': { path: () => '/settings/models', renders: ['admin', 'user'] },
 	'/(app)/settings/permissions': {
 		path: () => '/settings/permissions',
