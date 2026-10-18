@@ -60,10 +60,11 @@ export type ModelMetric =
 	 *  just not the best fit, so there is deliberately no "loss" — rejection is
 	 *  what `branch_deleted` / `trashed` count. */
 	| 'fanout_win'
-	/** Tokens out across turns whose duration is known (`sum`), paired with
-	 *  `speed_ms` for a tokens/sec figure free of turns missing either half. */
+	/** Tokens out (`sum`) across decodes whose duration is known — each
+	 *  assistant row, tool-loop steps included — paired with `speed_ms` for a
+	 *  tokens/sec figure free of rows missing either half. */
 	| 'speed_tokens'
-	/** Generation time in ms (`sum`) — for chat, of the turns `speed_tokens`
+	/** Generation time in ms (`sum`) — for chat, of the rows `speed_tokens`
 	 *  counts; for media, of every generation that reported one. */
 	| 'speed_ms'
 	// --- image / video ---
@@ -77,13 +78,16 @@ export type ModelMetric =
 	/** Trashed as a side effect of deleting the whole conversation with "also
 	 *  delete media" — the user cleaning up, not judging this output. */
 	| 'swept'
-	/** Brought back out of the trash. Nets against `trashed` / `swept`. */
+	/** Brought back out of the trash, whether it had been trashed or swept.
+	 *  The page nets it against `trashed` alone — the commoner of the two, and
+	 *  the counters can't tell which a restore undid. */
 	| 'restored'
 	| 'favorited'
 	| 'unfavorited'
 	/** A GENERATED output used as the input to a new generation. */
 	| 'remixed'
-	/** A generated image chosen as a conversation's avatar. */
+	/** A generated image chosen as an avatar: a conversation's (set from the
+	 *  lightbox or picked from a comparison) or a custom preset's. */
 	| 'avatar_set'
 	/** In a multi-model avatar comparison the user picked from, and picked —
 	 *  relative, like `fanout_shown` / `fanout_win`. */
