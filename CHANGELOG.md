@@ -15,6 +15,7 @@ arrived.
   leaves it running but unreachable. The queue now waits for the next start, and
   the process exits once whatever is already generating finishes (at most a
   minute later).
+- Gallery captions no longer show the top of a third line below the "…".
 
 ## v0.45.3
 

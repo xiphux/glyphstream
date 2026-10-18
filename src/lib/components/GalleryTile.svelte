@@ -77,12 +77,15 @@
 			/>
 			<GalleryCornerBadges starred={favorite} isVideo={kind === 'video'} />
 			{#if caption}
+				<!-- The clamp is on an inner span, not this padded box: line-clamp
+				     clips at the padding edge, so with it here the top of a third
+				     line showed through the bottom padding. -->
 				<div
-					class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-8 pb-1.5 pl-2 text-left text-xs text-white line-clamp-2 {captionBesideAction
+					class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-8 pb-1.5 pl-2 text-left text-xs text-white {captionBesideAction
 						? 'pr-11'
 						: 'pr-2'}"
 				>
-					{caption}
+					<span class="line-clamp-2">{caption}</span>
 				</div>
 			{/if}
 		</div>
