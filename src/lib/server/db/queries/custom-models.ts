@@ -155,7 +155,9 @@ export function updateCustomModel(
  * a cross-user avatar id indistinguishable from a typo'd preset id.
  */
 export type SetAvatarResult =
-	{ ok: true; model: CustomModel } | { ok: false; reason: 'not_found' | 'media_not_found' };
+	/** `changed` is false for the no-op of setting the avatar it already has. */
+	| { ok: true; model: CustomModel; changed: boolean }
+	| { ok: false; reason: 'not_found' | 'media_not_found' };
 
 /**
  * Set (or clear, with `mediaId = null`) a preset's avatar.
@@ -182,7 +184,9 @@ export function setCustomModelAvatar(
 			.where(and(eq(customModels.id, id), eq(customModels.userId, userId)))
 			.get();
 		if (!existing) return { ok: false, reason: 'not_found' };
-		if (existing.avatarMediaId === mediaId) return { ok: true, model: rowToCustomModel(existing) };
+		if (existing.avatarMediaId === mediaId) {
+			return { ok: true, model: rowToCustomModel(existing), changed: false };
+		}
 
 		if (mediaId !== null) {
 			// Scoped to the caller AND to a live row, in the same transaction that
@@ -222,7 +226,7 @@ export function setCustomModelAvatar(
 			.run();
 		const refreshed = tx.select().from(customModels).where(eq(customModels.id, id)).get();
 		return refreshed
-			? { ok: true, model: rowToCustomModel(refreshed) }
+			? { ok: true, model: rowToCustomModel(refreshed), changed: true }
 			: { ok: false, reason: 'not_found' };
 	});
 }

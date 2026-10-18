@@ -131,8 +131,8 @@ describe('custom-model avatars — reference lifetime', () => {
 		const cm = makePreset(u.id);
 		const m = makeUpload(u.id);
 
-		setCustomModelAvatar(cm.id, u.id, m);
-		setCustomModelAvatar(cm.id, u.id, m);
+		expect(setCustomModelAvatar(cm.id, u.id, m)).toMatchObject({ ok: true, changed: true });
+		expect(setCustomModelAvatar(cm.id, u.id, m)).toMatchObject({ ok: true, changed: false });
 
 		expect(mediaRow(m)?.refCount).toBe(1);
 	});
@@ -287,10 +287,10 @@ describe('conversation avatars', () => {
 		const conv = seedConversation(u.id);
 		const m = makeUpload(u.id);
 
-		expect(setConversationAvatar(conv.id, u.id, m)).toEqual({ ok: true });
+		expect(setConversationAvatar(conv.id, u.id, m)).toEqual({ ok: true, changed: true });
 		expect(mediaRow(m)).toMatchObject({ refCount: 1, unreferencedSince: null });
 
-		expect(setConversationAvatar(conv.id, u.id, null)).toEqual({ ok: true });
+		expect(setConversationAvatar(conv.id, u.id, null)).toEqual({ ok: true, changed: true });
 		expect(mediaRow(m)?.refCount).toBe(0);
 	});
 
@@ -299,7 +299,9 @@ describe('conversation avatars', () => {
 		const conv = seedConversation(u.id);
 		const m = makeUpload(u.id);
 		setConversationAvatar(conv.id, u.id, m);
-		setConversationAvatar(conv.id, u.id, m);
+		// `changed: false` is what keeps the avatar route from counting the
+		// repeat as a second `avatar_set` in the model stats.
+		expect(setConversationAvatar(conv.id, u.id, m)).toEqual({ ok: true, changed: false });
 		expect(mediaRow(m)?.refCount).toBe(1);
 	});
 

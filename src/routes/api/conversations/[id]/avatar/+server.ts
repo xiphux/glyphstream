@@ -35,7 +35,8 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 		if (result.reason === 'not_found') error(404, 'Conversation not found');
 		error(400, 'Media not found');
 	}
-	recordMediaEvent([body.mediaId.trim()], 'avatar_set');
+	// Re-setting the current avatar succeeds without changing anything.
+	if (result.changed) recordMediaEvent([body.mediaId.trim()], 'avatar_set');
 	return Response.json({ ok: true });
 };
 

@@ -711,7 +711,8 @@ export function getConversationFirstExchange(id: string, userId: string): FirstE
  * side so the two routes can map identically to 404 / 400.
  */
 export type SetConversationAvatarResult =
-	{ ok: true } | { ok: false; reason: 'not_found' | 'media_not_found' };
+	/** `changed` is false for the no-op of setting the avatar it already has. */
+	{ ok: true; changed: boolean } | { ok: false; reason: 'not_found' | 'media_not_found' };
 
 /**
  * Set (or clear) a conversation's avatar — the per-conversation override of
@@ -735,7 +736,7 @@ export function setConversationAvatar(
 			.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
 			.get();
 		if (!existing) return { ok: false, reason: 'not_found' };
-		if (existing.avatarMediaId === mediaId) return { ok: true };
+		if (existing.avatarMediaId === mediaId) return { ok: true, changed: false };
 
 		if (mediaId !== null) {
 			const row = tx
@@ -766,7 +767,7 @@ export function setConversationAvatar(
 		if (mediaId !== null) linkAvatarMedia(tx, mediaId);
 
 		tx.update(conversations).set({ avatarMediaId: mediaId }).where(eq(conversations.id, id)).run();
-		return { ok: true };
+		return { ok: true, changed: true };
 	});
 }
 
