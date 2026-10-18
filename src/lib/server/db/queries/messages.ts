@@ -1059,6 +1059,11 @@ export function deleteBranch(
 	| { refusedReason: 'no-siblings' }
 	| null {
 	const db = getDb();
+	// Stats only: the reply being rejected. Read BEFORE the transaction, so a
+	// failed lookup can't disturb the delete — a SQLite I/O or memory error
+	// inside it may roll the transaction back under the statements after it.
+	// Nothing awaits between here and the delete, so the row can't change.
+	const rejected = bestEffort('branch_deleted', () => getMessage(conversationId, messageId, db));
 	return db.transaction((tx) => {
 		// One-shot fetch of every row in the conversation: cheap (conversation
 		// scoped) and lets us do parent/child lookups in memory without
@@ -1182,8 +1187,6 @@ export function deleteBranch(
 		// followed it on the branch, which went along for the ride. A failed
 		// reply was already counted as an error. Its media is a rejection too:
 		// this is the "delete this one" of a comparison grid.
-		// Guarded: a failed lookup must not roll back the delete.
-		const rejected = bestEffort('branch_deleted', () => getMessage(conversationId, messageId, tx));
 		if (
 			rejected?.role === 'assistant' &&
 			rejected.finishReason !== 'error' &&
