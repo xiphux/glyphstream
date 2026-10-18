@@ -219,6 +219,26 @@ export function setPausedResourceGroupSource(source: (resourceGroup: string) => 
 
 const gates = new Map<string, Gate>();
 
+/**
+ * Set once by the shutdown hook: grant nothing new, on any group, for the rest
+ * of the process. Unlike `paused` it isn't per group and isn't announced to
+ * waiters — the HTTP server is already closed, so there is nobody to tell.
+ *
+ * Without it a SIGTERM never finished. Durable generations run with no HTTP
+ * request behind them, so closing the server doesn't end them; each running
+ * upstream call holds the event loop open, and its release granted the next
+ * queued job. With a multi-model batch stacked up the process kept generating
+ * for as long as the queue lasted, with no listener — up, unhealthy, and never
+ * exiting, so a restart policy never replaced it. Queued work is a row the next
+ * process resumes (`generation/jobs.ts`), so leaving it ungranted loses nothing.
+ */
+let draining = false;
+
+/** Stop granting slots for good — the shutdown hook. A held slot runs on. */
+export function drainEndpointGates(): void {
+	draining = true;
+}
+
 function getGate(resourceGroup: string, max: number): Gate {
 	const existing = gates.get(resourceGroup);
 	if (existing) {
@@ -477,7 +497,13 @@ function makeSlot(gate: Gate, record: WorkRecord): EndpointSlot {
 
 function pump(gate: Gate): void {
 	let granted = 0;
-	while (gate.active < gate.max && !gate.evicting && !gate.paused && gate.waiters.length > 0) {
+	while (
+		gate.active < gate.max &&
+		!gate.evicting &&
+		!gate.paused &&
+		!draining &&
+		gate.waiters.length > 0
+	) {
 		const waiter = gate.waiters.shift()!;
 		if (waiter.signal && waiter.onAbort) {
 			waiter.signal.removeEventListener('abort', waiter.onAbort);
@@ -564,7 +590,7 @@ function acquire(endpoint: LoadedEndpoint, opts: AcquireOptions): Promise<Endpoi
 	// Fast path: capacity available (always true for an effectively-unlimited max),
 	// no eviction in flight, and not paused — a paused group queues even when
 	// idle, which is the point: its backend may be down for a restart.
-	if (gate.active < gate.max && !gate.evicting && !gate.paused) {
+	if (gate.active < gate.max && !gate.evicting && !gate.paused && !draining) {
 		// Increment BEFORE any await in `takeSlot`: the slot is ours from this
 		// moment. At a cap of 1 that alone makes a concurrent acquire queue; above
 		// 1 it doesn't, which is what `gate.evicting` is for.
@@ -755,4 +781,5 @@ export function resetEndpointGatesForTests(): void {
 	}
 	gates.clear();
 	pausedSource = () => false;
+	draining = false;
 }

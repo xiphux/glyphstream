@@ -16,6 +16,7 @@ vi.mock('#lib/server/endpoints/release.js', () => ({ releaseEndpointResources: r
 import {
 	acquireEndpointSlot,
 	type AcquireOptions,
+	drainEndpointGates,
 	getResourceQueueDepth,
 	resetEndpointGatesForTests,
 } from '#lib/server/endpoints/concurrency.js';
@@ -329,6 +330,44 @@ describe('acquireEndpointSlot', () => {
 		expect(getResourceQueueDepth('ep-b')).toEqual({ active: 1, waiting: 0 });
 		a.release();
 		b.release();
+	});
+});
+
+// The shutdown hook drains the gates so durable generations — which have no
+// HTTP request behind them — stop being granted once the server closes. Without
+// it, each release granted the next queued job and the process never exited.
+describe('draining for shutdown', () => {
+	it('grants nobody from the line once drained, and leaves the holder alone', async () => {
+		const endpoint = ep('ep', 1);
+		const holder = await acquire(endpoint);
+		let granted = false;
+		// The afterEach reset rejects whoever is still in line.
+		void acquire(endpoint).then(
+			() => (granted = true),
+			() => {},
+		);
+		await flush();
+
+		drainEndpointGates();
+		expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 1 });
+		holder.release();
+		await flush();
+
+		expect(granted).toBe(false);
+		expect(getResourceQueueDepth('ep')).toEqual({ active: 0, waiting: 1 });
+	});
+
+	it('queues an arrival on an idle group instead of taking the fast path', async () => {
+		drainEndpointGates();
+		let granted = false;
+		void acquire(ep('idle', 2)).then(
+			() => (granted = true),
+			() => {},
+		);
+		await flush();
+
+		expect(granted).toBe(false);
+		expect(getResourceQueueDepth('idle')).toEqual({ active: 0, waiting: 1 });
 	});
 });
 

@@ -41,6 +41,7 @@ import {
 import { bootstrapMcp } from '#lib/server/mcp/bootstrap.js';
 import { listAllModels } from '#lib/server/endpoints/list-models.js';
 import { installPersistedPauses } from '#lib/server/endpoints/pause.js';
+import { drainEndpointGates } from '#lib/server/endpoints/concurrency.js';
 import {
 	resumeGenerationJobs,
 	scheduleGenerationJobResume,
@@ -62,6 +63,7 @@ import { createLogger } from '#lib/server/log.js';
 
 const authLog = createLogger('auth');
 const serverErrorLog = createLogger('server error');
+const shutdownLog = createLogger('shutdown');
 
 // Refuse to start if the auth-method toggles leave no way in. Better to
 // crash at boot with a clear message than serve a /login page with zero
@@ -173,7 +175,21 @@ void listAllModels().catch(() => {});
 // SHUTDOWN_TIMEOUT / stop_grace_period window provides the time budget.
 // A future slow operation added here won't block shutdown; if blocking
 // is ever needed, call process.exit() explicitly after the awaits.
+//
+// Draining the gates comes first: durable generations have no request behind
+// them, so closing the server doesn't stop the queue granting its next job, and
+// one running upstream call is enough to keep the loop alive. With the gates
+// drained, the process exits once what already holds a slot finishes. The
+// backstop bounds that (a hung upstream, a long video poll): it's unref'd, so it
+// never holds the process open itself, and a job it cuts off is the
+// crash-restart case the job rows already recover from.
+const SHUTDOWN_BACKSTOP_MS = 60_000;
 process.on('sveltekit:shutdown', async () => {
+	drainEndpointGates();
+	setTimeout(() => {
+		shutdownLog.warn(`still running ${SHUTDOWN_BACKSTOP_MS / 1000}s after shutdown began; exiting`);
+		process.exit(0);
+	}, SHUTDOWN_BACKSTOP_MS).unref();
 	stopMediaPurger();
 	stopSessionSweeper();
 	stopDreamingWorker();
