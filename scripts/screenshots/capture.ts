@@ -27,6 +27,7 @@ const OUT_DIR = resolve('./docs/images');
 const manifest = JSON.parse(readFileSync(resolve(DATA_DIR, 'manifest.json'), 'utf8')) as {
 	hero: string;
 	fanout: string;
+	imageChat: string;
 };
 
 async function settle(page: Page) {
@@ -52,6 +53,11 @@ try {
 		deviceScaleFactor: 2,
 		colorScheme: 'light',
 	});
+	// A remembered aspect-ratio pick, so the image composer's ratio picker shows
+	// a chosen shape rather than "Default" (the same key the app writes).
+	await context.addInitScript(() => {
+		localStorage.setItem('glyphstream:aspectRatio', '16:9');
+	});
 	const page = await context.newPage();
 
 	// Hero — the active chat conversation, light and dark.
@@ -68,6 +74,14 @@ try {
 	await page.goto(`${BASE}/chat/${manifest.fanout}`);
 	await settle(page);
 	await shoot(page, 'fanout');
+
+	// Image conversation with the aspect-ratio picker open — otherwise it's only
+	// a chip. Not the fan-out: a parked compare disables the composer.
+	await page.goto(`${BASE}/chat/${manifest.imageChat}`);
+	await settle(page);
+	await page.getByTitle('Aspect ratio').click();
+	await settle(page);
+	await shoot(page, 'image-chat');
 
 	// Gallery.
 	await page.goto(`${BASE}/gallery`);

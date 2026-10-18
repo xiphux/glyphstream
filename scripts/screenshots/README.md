@@ -16,8 +16,9 @@ The pieces:
   image fan-out, procedural gradient-art media for the gallery, and a
   pre-authenticated session for Playwright.
 - `capture.ts` — drives Chromium over the seeded pages and writes
-  `docs/images/*.jpg` (captured at 2× scale, downscaled to 1640px wide
-  and JPEG-encoded so the README loads fast).
+  `docs/images/*.jpg`: hero (light + dark), fanout, image-chat and gallery.
+  Captured at 2× scale, downscaled to 1640px wide and JPEG-encoded so the
+  README loads fast.
 
 ## The dance
 

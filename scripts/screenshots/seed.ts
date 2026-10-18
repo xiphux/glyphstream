@@ -489,16 +489,17 @@ One caveat: \`wal_checkpoint(TRUNCATE)\` needs a moment with no active readers t
 		.run();
 }
 
-// 3) Image chain — fills the gallery alongside the fan-out images.
+// 3) Image chain — the image-chat screenshot (composer + aspect-ratio picker),
+// and fills the gallery alongside the fan-out images.
 {
 	const at = NOW - 26 * HOUR;
-	const conv = insertConversation({
+	const conv = (manifest.imageChat = insertConversation({
 		title: 'Synthwave skyline posters',
 		endpointId: 'bridge',
 		modelId: FLUX_DEV,
 		modelKind: 'image',
 		createdAt: at,
-	});
+	}));
 	const prompts = [
 		'Synthwave city skyline at dusk, neon grid horizon, retro poster composition',
 		'Same skyline, but raining — wet asphalt reflections, moodier palette',
@@ -521,8 +522,10 @@ One caveat: \`wal_checkpoint(TRUNCATE)\` needs a moment with no active readers t
 		const genMs = 12_000 + i * 1_700;
 		const mediaId = await insertArtMedia({
 			seed: i + 1,
-			w: i % 2 === 0 ? 1216 : 1024,
-			h: i % 2 === 0 ? 832 : 1024,
+			// Last one wide: it's what the image-chat shot lands on, and a square
+			// fills the viewport, pushing its prompt out of frame.
+			w: i % 2 === 0 || i === prompts.length - 1 ? 1216 : 1024,
+			h: i % 2 === 0 || i === prompts.length - 1 ? 832 : 1024,
 			sourceModel: modelFor(i),
 			prompt: prompts[i],
 			createdAt: t + genMs,
@@ -542,7 +545,224 @@ One caveat: \`wal_checkpoint(TRUNCATE)\` needs a moment with no active readers t
 	touchConversation(conv, t, parent);
 }
 
-// 4) Sidebar filler — recents list with believable titles + searchable text.
+// 4) Gallery history — months of single generations plus a couple of runs, so
+// the gallery shot shows date headers, the timeline rail, stacks next to solo
+// tiles, and starred favorites. Each is its own conversation (a gallery stack is
+// a conversation with 2+ media), dated weeks back so they sort below the text
+// conversations in the sidebar.
+const DAY = 24 * HOUR;
+type Gen = {
+	prompt: string;
+	model: string;
+	seed: number;
+	shape?: 'wide' | 'tall';
+	favorite?: boolean;
+};
+
+async function imageConversation(title: string, at: number, gens: Gen[]) {
+	const conv = insertConversation({
+		title,
+		endpointId: 'bridge',
+		modelId: gens[0].model,
+		modelKind: 'image',
+		createdAt: at,
+	});
+	let parent: string | null = null;
+	let t = at;
+	for (const g of gens) {
+		parent = await insertMessage({
+			conversationId: conv,
+			parentMessageId: parent,
+			role: 'user',
+			parts: [{ type: 'text', text: g.prompt }],
+			createdAt: t,
+		});
+		const genMs = 9_000 + (g.seed % 7) * 1_300;
+		const [w, h] =
+			g.shape === 'wide' ? [1216, 832] : g.shape === 'tall' ? [832, 1216] : [1024, 1024];
+		const mediaId = await insertArtMedia({
+			seed: g.seed,
+			w,
+			h,
+			sourceModel: g.model,
+			prompt: g.prompt,
+			createdAt: t + genMs,
+		});
+		if (g.favorite) {
+			db.update(schema.media)
+				.set({ favoritedAt: t + genMs + MIN })
+				.where(eq(schema.media.id, mediaId))
+				.run();
+		}
+		parent = await insertMessage({
+			conversationId: conv,
+			parentMessageId: parent,
+			role: 'assistant',
+			parts: [{ type: 'image', mediaId }],
+			modelUsed: g.model,
+			genMs,
+			createdAt: t + genMs,
+		});
+		linkMedia(parent, mediaId);
+		t += 25 * MIN;
+	}
+	touchConversation(conv, t, parent);
+}
+
+const solos: Array<[string, number, Gen]> = [
+	[
+		'Desert observatory',
+		5,
+		{
+			prompt: 'Lone observatory dome on a desert ridge under a violet dusk, long shadows',
+			model: FLUX_DEV,
+			seed: 7,
+			shape: 'wide',
+			favorite: true,
+		},
+	],
+	[
+		'Neon harbor',
+		8,
+		{
+			prompt: 'Harbor at night, neon signage reflected in still water, synthwave palette',
+			model: VENICE,
+			seed: 8,
+		},
+	],
+	[
+		'Tidal flats',
+		11,
+		{
+			prompt: 'Tidal flats at low sun, mirror-like pools, minimal composition',
+			model: FLUX_SCHNELL,
+			seed: 10,
+			shape: 'tall',
+		},
+	],
+	[
+		'Glacier dawn',
+		14,
+		{
+			prompt: 'First light over a glacier tongue, cold blues, distant peaks',
+			model: FLUX_DEV,
+			seed: 4,
+		},
+	],
+	[
+		'Volcanic coast',
+		22,
+		{
+			prompt: 'Black-sand volcanic coast at sunset, ember sky, wide angle',
+			model: FLUX_DEV,
+			seed: 9,
+			shape: 'wide',
+		},
+	],
+	[
+		'Album cover: Afterglow',
+		27,
+		{
+			prompt: 'Album cover, "Afterglow" — a setting sun over layered ridges, retro gradient',
+			model: VENICE,
+			seed: 13,
+			favorite: true,
+		},
+	],
+	[
+		'Orchid valley',
+		33,
+		{
+			prompt: 'A valley of glowing orchid light, soft bloom, dreamlike haze',
+			model: FLUX_SCHNELL,
+			seed: 17,
+		},
+	],
+	[
+		'Polar night',
+		38,
+		{
+			prompt: 'Polar night over frozen ridges, faint aurora, star field',
+			model: FLUX_DEV,
+			seed: 14,
+			shape: 'tall',
+		},
+	],
+	[
+		'Ember dunes',
+		46,
+		{
+			prompt: 'Wind-carved dunes glowing like embers at dusk',
+			model: VENICE,
+			seed: 15,
+			shape: 'wide',
+		},
+	],
+	[
+		'Moonrise over the pass',
+		53,
+		{ prompt: 'Moonrise over a mountain pass, cold palette, cinematic', model: FLUX_DEV, seed: 16 },
+	],
+	[
+		'Phone wallpaper',
+		61,
+		{
+			prompt: 'Minimal phone wallpaper, gradient sky over a single ridge line',
+			model: FLUX_SCHNELL,
+			seed: 19,
+			shape: 'tall',
+			favorite: true,
+		},
+	],
+	[
+		'Aurora study',
+		68,
+		{ prompt: 'Aurora curtain over a dark treeline, long exposure', model: FLUX_DEV, seed: 20 },
+	],
+	[
+		'Cyan sunset',
+		79,
+		{ prompt: 'A cyan sun setting into a violet sea, retro poster style', model: VENICE, seed: 25 },
+	],
+	[
+		'Canyon at noon',
+		88,
+		{
+			prompt: 'Red rock canyon at high noon, heat haze, deep shadows',
+			model: FLUX_DEV,
+			seed: 21,
+			shape: 'wide',
+		},
+	],
+];
+for (const [title, daysAgo, gen] of solos) {
+	await imageConversation(title, NOW - daysAgo * DAY, [gen]);
+}
+
+await imageConversation('Book cover concepts', NOW - 18 * DAY, [
+	{
+		prompt: 'Book cover, "The Long Horizon" — sun on the horizon, layered mountains',
+		model: FLUX_DEV,
+		seed: 26,
+		shape: 'tall',
+	},
+	{
+		prompt: 'Same cover, warmer palette, bigger sun',
+		model: FLUX_DEV,
+		seed: 27,
+		shape: 'tall',
+		favorite: true,
+	},
+	{ prompt: 'Same cover, night version with stars', model: FLUX_DEV, seed: 28, shape: 'tall' },
+]);
+await imageConversation('Travel poster series', NOW - 57 * DAY, [
+	{ prompt: 'Vintage travel poster, alpine lake at dusk', model: VENICE, seed: 31 },
+	{ prompt: 'Vintage travel poster, desert mesa at sunrise', model: VENICE, seed: 33 },
+	{ prompt: 'Vintage travel poster, northern lights over a fjord', model: VENICE, seed: 32 },
+	{ prompt: 'Vintage travel poster, tropical volcano at sunset', model: VENICE, seed: 34 },
+]);
+
+// 5) Sidebar filler — recents list with believable titles + searchable text.
 await textConversation({
 	title: 'Explain Reciprocal Rank Fusion',
 	modelId: DEEPSEEK,

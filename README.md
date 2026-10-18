@@ -65,7 +65,7 @@ them into a single fast chat UI with one model picker.
 ### Images & video
 
 <p align="center">
-  <img src="docs/images/gallery.jpg" alt="Media gallery" width="820">
+  <img src="docs/images/image-chat.jpg" alt="Image conversation with the aspect-ratio picker open" width="820">
 </p>
 
 - Inline image and video generation, **image-to-image** follow-ups, and an
@@ -75,6 +75,10 @@ them into a single fast chat UI with one model picker.
 - A **gallery** with prompt search, stacks, favorites, a timeline, and a 30-day
   Recently deleted.
 - **Conversation avatars** — the model describes itself, an image model draws it.
+
+<p align="center">
+  <img src="docs/images/gallery.jpg" alt="Media gallery" width="820">
+</p>
 
 [More on images & video →](docs/media.md)
 

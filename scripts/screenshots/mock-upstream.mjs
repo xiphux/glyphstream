@@ -20,21 +20,87 @@ import { createServer } from 'node:http';
 
 const PORT = Number(process.env.DEMO_UPSTREAM_PORT ?? 3002);
 
+const RATIOS = [
+	{ value: '1:1', label: 'Square' },
+	{ value: '4:3', label: 'Landscape' },
+	{ value: '16:9', label: 'Widescreen' },
+	{ value: '3:4', label: 'Portrait' },
+	{ value: '9:16', label: 'Tall' },
+];
+
 const CATALOGS = {
 	workstation: [
-		{ id: 'llama-3.3-70b-instruct', display_name: 'Llama 3.3 70B', kind: 'chat' },
-		{ id: 'qwen2.5-coder-32b-instruct', display_name: 'Qwen2.5 Coder 32B', kind: 'chat' },
-		{ id: 'deepseek-r1-distill-qwen-32b', display_name: 'DeepSeek-R1 32B', kind: 'chat' },
+		// meta.n_ctx is llama.cpp's configured context — it's what lets the
+		// composer's context bar show `used / window`.
+		{
+			id: 'llama-3.3-70b-instruct',
+			display_name: 'Llama 3.3 70B',
+			kind: 'chat',
+			meta: { n_ctx: 32768 },
+		},
+		{
+			id: 'qwen2.5-coder-32b-instruct',
+			display_name: 'Qwen2.5 Coder 32B',
+			kind: 'chat',
+			meta: { n_ctx: 32768 },
+		},
+		{
+			id: 'deepseek-r1-distill-qwen-32b',
+			display_name: 'DeepSeek-R1 32B',
+			kind: 'chat',
+			meta: { n_ctx: 32768 },
+		},
 	],
 	groq: [
 		{ id: 'llama-3.1-8b-instant', display_name: 'Llama 3.1 8B Instant', kind: 'chat' },
 		{ id: 'llama-3.3-70b-versatile', display_name: 'Llama 3.3 70B Versatile', kind: 'chat' },
 	],
 	bridge: [
-		{ id: 'flux-dev', display_name: 'FLUX.1 dev', kind: 'image', owned_by: 'comfyui' },
-		{ id: 'flux-schnell', display_name: 'FLUX.1 schnell', kind: 'image', owned_by: 'comfyui' },
-		{ id: 'ltx-video', display_name: 'LTX Video', kind: 'video', owned_by: 'comfyui' },
-		{ id: 'venice-sd35', display_name: 'Venice SD3.5', kind: 'image', owned_by: 'venice' },
+		// `capabilities` drives the picker's modality pills (T2I / I2I / TI2V);
+		// `aspect_ratios` drives the composer's aspect-ratio picker.
+		{
+			id: 'flux-dev',
+			display_name: 'FLUX.1 dev',
+			kind: 'image',
+			owned_by: 'comfyui',
+			capabilities: ['text-to-image'],
+			aspect_ratios: RATIOS,
+			aspect_ratio_default: '1:1',
+		},
+		{
+			id: 'flux-kontext',
+			display_name: 'FLUX.1 Kontext',
+			kind: 'image',
+			owned_by: 'comfyui',
+			capabilities: ['image-to-image'],
+			aspect_ratios: RATIOS,
+		},
+		{
+			id: 'flux-schnell',
+			display_name: 'FLUX.1 schnell',
+			kind: 'image',
+			owned_by: 'comfyui',
+			capabilities: ['text-to-image'],
+			aspect_ratios: RATIOS,
+			aspect_ratio_default: '1:1',
+		},
+		{
+			id: 'ltx-video',
+			display_name: 'LTX Video',
+			kind: 'video',
+			owned_by: 'comfyui',
+			capabilities: ['text-to-video', 'image-to-video'],
+			aspect_ratios: [RATIOS[2], RATIOS[4]],
+		},
+		{
+			id: 'venice-sd35',
+			display_name: 'Venice SD3.5',
+			kind: 'image',
+			owned_by: 'venice',
+			capabilities: ['text-to-image'],
+			aspect_ratios: RATIOS,
+			aspect_ratio_default: '1:1',
+		},
 	],
 };
 
