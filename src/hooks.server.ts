@@ -194,13 +194,12 @@ const SHUTDOWN_BACKSTOP_MS = 60_000;
 // killed — each costing the job its one interruption (generation/jobs.ts). The
 // hook still drains, for a shutdown that didn't come from a signal.
 //
-// Production only. A SIGINT listener replaces Node's default exit, and under
-// `pnpm dev` adapter-node isn't the one handling it: Ctrl-C would stop
-// working the first time. `once` and a draining no-op make a repeat harmless.
-if (!import.meta.env.DEV) {
-	process.once('SIGTERM', drainEndpointGates);
-	process.once('SIGINT', drainEndpointGates);
-}
+// SIGTERM only, and not under `pnpm dev`: a signal listener replaces Node's
+// default exit, so it's safe only where something else already handles the
+// signal. adapter-node handles SIGTERM and SIGINT; `vite preview` only
+// SIGTERM, and `vite dev` neither — a SIGINT listener here made Ctrl-C stop
+// working there. Supervisors (`docker stop`, systemd) send SIGTERM anyway.
+if (!import.meta.env.DEV) process.once('SIGTERM', drainEndpointGates);
 
 process.on('sveltekit:shutdown', async () => {
 	drainEndpointGates();
