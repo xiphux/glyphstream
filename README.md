@@ -27,7 +27,8 @@ them into a single fast chat UI with one model picker.
 - **Tools that do real work.** Web search, page reading, a Python sandbox, MCP
   servers, agent skills — and a memory of you that it keeps tidy on its own.
 - **Safe on the public internet.** OAuth and passkeys, invite-only accounts with
-  per-user isolation, and an app lock for the installed app.
+  per-user isolation, an app lock for the installed app, plus CSP, SSRF-guarded
+  tool egress, and same-origin checks on every mutating API.
 
 ## Features
 
