@@ -263,6 +263,22 @@ describe('backfill migration', () => {
 		);
 	});
 
+	it('does not count a compaction summary as a turn', () => {
+		const u = seedUser();
+		const { conv, user } = seedChat(u.id);
+		appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'Summary of the conversation so far' }],
+			modelUsed: 'local::qwen',
+			compactionResumeFromMessageId: user.id,
+		});
+
+		runBackfill();
+		expect(counters().filter((r) => r.metric === 'turn')).toEqual([]);
+	});
+
 	it('counts generated media from media rows, not from their carrier message', () => {
 		const u = seedUser();
 		const conv = createConversation({

@@ -20,7 +20,9 @@
 -- finish), and not a media generation's output, which is counted from `media`
 -- below. A generation is told by its image / video part — a chat reply never
 -- carries one (tool output lands on `tool` rows) — rather than by its
--- message_media link, which trashing the output deletes. One per turn, counted on the turn's LAST row. A
+-- message_media link, which trashing the output deletes. A compaction summary
+-- is an assistant row too, and is left out: live, it counts as
+-- `task:compaction`, never as a turn. One per turn, counted on the turn's LAST row. A
 -- 'tool_calls' row is usually an intermediate tool-loop step — its tool
 -- results lead on to the next assistant row — but it ends the turn when
 -- nothing follows them: a reply that also reacted with an emoji, a Stop during
@@ -50,6 +52,7 @@ WHERE m.role = 'assistant'
 				AND t.role = 'tool'
 		)
 	)
+	AND m.compaction_resume_from_message_id IS NULL
 	AND coalesce(m.finish_reason, '') <> 'error'
 	AND m.content_json NOT LIKE '%"type":"error"%'
 	AND m.content_json NOT LIKE '%"type":"image"%'
