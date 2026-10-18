@@ -30,6 +30,7 @@ import {
 import { getMessage, selectBranch } from '#lib/server/db/queries/messages.js';
 import type { RequestHandler } from './$types';
 import { recordComparisonPick } from '#lib/server/stats/reactions.js';
+import { recordMediaEvent } from '#lib/server/stats/model-stats.js';
 
 interface PickAvatarBody {
 	/** The portrait message to adopt — an assistant message in this conversation
@@ -85,6 +86,10 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	const selected = selectBranch(params.id, body.messageId);
 	if (!selected) error(404, 'Message not found');
 	recordComparisonPick(params.id, message, 'avatar');
+	// Also an avatar chosen, like one set from the lightbox — and the only
+	// record of the choice when every portrait came from the same model,
+	// which the comparison counters skip.
+	if (applied.changed) recordMediaEvent([image.mediaId], 'avatar_set');
 
 	return Response.json({ ok: true, newActiveLeaf: selected.newActiveLeaf });
 };

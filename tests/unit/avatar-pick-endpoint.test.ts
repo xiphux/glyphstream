@@ -12,7 +12,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
 	getConversationMeta: vi.fn<(...a: unknown[]) => unknown>(),
-	setConversationAvatar: vi.fn<(...a: unknown[]) => { ok: boolean; reason?: string }>(),
+	setConversationAvatar:
+		vi.fn<(...a: unknown[]) => { ok: boolean; changed?: boolean; reason?: string }>(),
+	recordMediaEvent: vi.fn<(...a: unknown[]) => void>(),
 	getMessage: vi.fn<(...a: unknown[]) => unknown>(),
 	selectBranch: vi.fn<(...a: unknown[]) => { newActiveLeaf: string } | null>(),
 	getFanoutParent: vi.fn<(...a: unknown[]) => string | null>(),
@@ -26,6 +28,11 @@ vi.mock('#lib/server/db/queries/conversations.js', () => ({
 vi.mock('#lib/server/db/queries/messages.js', () => ({
 	getMessage: (...a: unknown[]) => mocks.getMessage(...a),
 	selectBranch: (...a: unknown[]) => mocks.selectBranch(...a),
+}));
+
+vi.mock('#lib/server/stats/model-stats.js', async (orig) => ({
+	...(await orig<typeof import('#lib/server/stats/model-stats.js')>()),
+	recordMediaEvent: (...a: unknown[]) => mocks.recordMediaEvent(...a),
 }));
 
 import { POST } from '../../src/routes/api/conversations/[id]/avatar/pick/+server';
@@ -54,7 +61,8 @@ function call(messageId: unknown = 'p1') {
 
 beforeEach(() => {
 	mocks.getConversationMeta.mockReset().mockReturnValue({ id: 'c1', title: 'T' });
-	mocks.setConversationAvatar.mockReset().mockReturnValue({ ok: true });
+	mocks.setConversationAvatar.mockReset().mockReturnValue({ ok: true, changed: true });
+	mocks.recordMediaEvent.mockReset();
 	mocks.selectBranch.mockReset().mockReturnValue({ newActiveLeaf: 'p1' });
 	mocks.getFanoutParent.mockReset().mockReturnValue('desc');
 	mocks.getMessage.mockReset().mockImplementation((_c: unknown, id: unknown) => {
@@ -74,6 +82,14 @@ describe('POST /avatar/pick', () => {
 		// id, never a media id, so a pick can't be steered at unrelated media.
 		expect(mocks.setConversationAvatar.mock.calls).toEqual([['c1', 'u1', 'media-42']]);
 		expect(mocks.selectBranch.mock.calls).toEqual([['c1', 'p1']]);
+		// Counted as an avatar chosen, for the model stats.
+		expect(mocks.recordMediaEvent.mock.calls).toEqual([[['media-42'], 'avatar_set']]);
+	});
+
+	it('counts no avatar_set when the pick is already the avatar', async () => {
+		mocks.setConversationAvatar.mockReturnValue({ ok: true, changed: false });
+		await call();
+		expect(mocks.recordMediaEvent).not.toHaveBeenCalled();
 	});
 
 	it('leaves the thread where it was when the apply fails', async () => {
