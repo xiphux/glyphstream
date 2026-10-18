@@ -79,8 +79,8 @@
 	// Endpoints whose queue list is expanded. Collapsed by default: a queue
 	// hundreds deep made the page a long scroll to reach the endpoints below it,
 	// and the Queued tile already says how deep it is. Held here rather than left
-	// to the <details> element so the rows are only built while someone is
-	// reading them — otherwise the poll rebuilds every one every three seconds.
+	// to the <details> element so the rows are only mounted while someone is
+	// reading them — otherwise the 1s tick re-renders every row's waiting timer.
 	const expanded = new SvelteSet<string>();
 
 	// Ticks once a second so elapsed times advance between the 3s polls.
@@ -648,8 +648,8 @@
 								</li>
 							{/each}
 							<!-- Last, and faintest: these are behind everything above them, and
-				     they are the only rows on this page describing work the gate has
-				     not been asked for yet. -->
+							     they are the only rows on this page describing work the gate has
+							     not been asked for yet. -->
 							{#each ep.pending as slot (slot.id)}
 								<li
 									class="flex items-center gap-2 rounded-md border border-dashed border-border p-2 text-xs opacity-50"
