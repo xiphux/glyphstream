@@ -226,9 +226,14 @@ tests/e2e/            # playwright (production-build webServer)
   `never` and throws internally — write `error(404, '…')`, not
   `throw error(404, '…')`. Control flow still narrows after the call.
 - **Docs track user-facing features + config, not fixes.** `README.md` is a
-  landing page + feature tour; `docs/<topic>.md` are the per-topic guides.
-  Shipping a user-facing feature → add a line to the README feature tour; if
-  it needs configuration → also add/update its `docs/` page and the
+  landing page — a pitch, not a manual; `docs/<topic>.md` are the per-topic
+  guides (`chat`, `models`, `media` hold the user-side tour). Shipping a
+  user-facing feature → the detail goes in its `docs/` page; the README gets
+  at most a short bullet, and only if it's a selling point (otherwise
+  nothing — not every feature belongs on the landing page). A README bullet
+  that needs a second sentence of how-it-works belongs in `docs/` instead;
+  the README once grew to 350 lines this way, mostly lone paragraphs that
+  existed nowhere else. Needs configuration → also update the
   `config.toml.example` / `.env.example` annotations. Infra, CI, build, deps,
   and bugfixes get no doc change. (Same rule applies to operator-facing
   behavior changes — e.g. a new auth/onboarding flow updates the relevant

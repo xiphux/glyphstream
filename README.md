@@ -16,95 +16,34 @@ them into a single fast chat UI with one model picker.
 
 ## Why GlyphStream
 
-- **Genuinely lightweight.** One Node process + SQLite. ~200 KB gzip client
-  bundle. Markdown renders server-side (shiki highlighting included) and is
-  cached per message — the client stays lean.
-- **Spec-first, not vendor-first.** Developed against the OpenAI API spec, so
-  any compatible upstream works. Per-vendor streaming quirks (DeepSeek-R1
-  reasoning, o-series, OpenRouter) are small opt-in normalizers, not forks.
-- **Safe to put on the public internet.** OAuth (GitHub, Google, OIDC) +
-  passkey (WebAuthn) login, a first-run setup wizard, and invite-only
-  multi-user accounts (admin
-  role + per-user data isolation); CSP, SSRF-guarded tool egress, same-origin
-  enforcement on mutating APIs.
-- **Multi-model is a first-class workflow.** Fan a prompt out to several
-  models side by side — text, image, or video — and compare in one grid.
-- **Easy exit from Open WebUI.** A one-command importer migrates your full
-  OWUI chat history, tree-shaped branches included.
+- **Genuinely lightweight.** One Node process and a SQLite file. A ~200 KB gzip
+  client; markdown and code highlighting render on the server and are cached.
+- **Any OpenAI-compatible backend.** Built against the spec, not a vendor —
+  local or cloud, chat, image or video, all in one picker.
+- **Compare models side by side.** Send one prompt to several models — text,
+  image or video — and keep the winner.
+- **Images and video are first-class.** Generation, image-to-image, aspect
+  ratios, prompt enhancement, and a searchable gallery of everything you've made.
+- **Tools that do real work.** Web search, page reading, a Python sandbox, MCP
+  servers, agent skills — and a memory of you that it keeps tidy on its own.
+- **Safe on the public internet.** OAuth and passkeys, invite-only accounts with
+  per-user isolation, and an app lock for the installed app.
 
 ## Features
 
 ### Chat
 
-- Streaming responses with **live markdown rendering** and syntax-highlighted
-  code, swapped post-stream for the server's full-coverage highlight.
-- **Collapsible reasoning blocks** for thinking models (DeepSeek-R1, o-series).
-- **Branching conversations** — edit or retry any message and navigate
-  siblings with ‹ N/M › arrows; the schema is a tree, not a log.
-- **Canvas** — a side-by-side document the assistant drafts and revises across
-  turns for work that takes several passes (prose, a spec, a config), instead
-  of re-pasting the whole thing into chat each turn ([guide](docs/canvas.md)).
-- **New chat from any prompt** — reuse a prompt in a fresh conversation, image
-  attachments, model (or whole compare set) and all. It lands in the composer
-  ready to tweak, never auto-sent.
-- **Emoji reactions** — the assistant can tap a single emoji onto your message,
-  the way a person does in iMessage or Messenger. It reads the register — warm
-  and playful threads earn one every so often, technical ones rarely or never —
-  and the call is invisible, so the emoji just appears rather than being
-  announced. Off or on per conversation, and per user by default — fitting for a
-  roleplay thread, unwelcome in a work one.
-- **Full-text search** across every conversation.
-- **Archive** a conversation to clear it from the sidebar without deleting it;
-  the Archived page lists them, to reopen, unarchive or delete.
-- **Auto-titling** via a small, fast task model of your choice.
-- Token usage and generation speed (tok/s) per message; Stop button wired
-  across chat, image, and video generations. A bar above the composer shows the
-  thread's running context size against the model's window (`27,725 / 40,960
-tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
-  set per endpoint ([configuration](docs/configuration.md#context-window-context_window)).
-- **The model knows what day it is, in your timezone.** Your browser's IANA zone
-  is synced to your profile and the current date rides in the system prompt, so
-  relative dates ("last Tuesday", "is that still current?") resolve against
-  today instead of the model's training cutoff. `get_current_time` answers in
-  your zone too, rather than UTC.
-- **Bulky tool results are capped on the way to the model**, not in your
-  transcript. A tool result rides along on every later turn, so one fetch of a
-  fat page would otherwise be permanent rent on the window; the model gets the
-  head and tail with the middle elided, while you keep the whole thing
-  ([configuration](docs/configuration.md#tool-result-size-tools-max_tool_result_chars)).
-- **Images are downscaled before they're sent to the model**, not before they're
-  stored. An attached image rides along on every later turn of the conversation,
-  so a 4 MB photo costs 4 MB again and again; the model downscales it internally
-  anyway. GlyphStream inlines a 1568px JPEG copy instead and keeps your original
-  untouched for the gallery, downloads, and image-to-image
-  ([configuration](docs/configuration.md#inlined-image-size-vision)).
-- **Context breakdown** — click that bar to see what's actually filling the
-  window, itemized: saved memories, the skills catalog, each tool definition,
-  messages, tool results, images. It separates the overhead re-sent on every turn
-  from the history compaction can reclaim, so "compacting won't help here" is
-  something you can see rather than discover.
-- **Context compaction** — when a thread fills a small window, summarize the
-  older turns through the conversation's own model and keep going. The real
-  messages stay in the thread (the summary is a collapsed divider); only what's
-  sent to the model is trimmed. On by default (at 80% of the window) because it's
-  the only windowing there is — otherwise a thread just grows until the model
-  refuses it. Compact by hand any time from the bar above the composer, tune the
-  threshold or switch it off in Preferences. A compaction is reversible — undo it
-  from the toast or the summary divider until you send the next message.
-- In-flight generations **survive disconnects and iOS PWA suspends** — leave
-  and come back; the stream recovers.
-- **Draft autosave** — a half-typed prompt is kept per-conversation in local
-  storage and restored after a reload, so an interrupted message (e.g. an iOS
-  PWA frozen in the background) isn't lost.
-- **Offline-aware composer** — walk into a dead zone or tunnel and Send
-  disables with an inline notice; your typed message stays put (in the box and
-  its draft) and sending re-enables the moment you're back online.
-- **Prompt snippets** — a library of reusable prompt _pieces_ (a visual style,
-  a tone instruction, a recurring character). Type `;` in the composer to
-  insert one at the cursor and keep typing around it; stack several in one
-  prompt. Filtered by what the active model does, so image styles stay out of a
-  text chat. Import or export the whole library as one Markdown file —
-  see [docs/prompt-snippets.md](docs/prompt-snippets.md).
+- Streaming markdown, collapsible reasoning, and **branching** — edit or retry
+  anything and flip between versions.
+- A **context bar** with an itemised breakdown of what's filling the window, and
+  reversible **compaction** when it fills.
+- **Canvas** for documents revised over several turns, **prompt snippets**, full-text
+  search, archive, and auto-titling.
+- Generations **survive disconnects** and iOS app suspends; drafts autosave.
+- Themes (including a frosted-glass Signature look), personalization, and an
+  installable PWA with **push notifications**.
+
+[More on chatting →](docs/chat.md)
 
 ### Multi-model
 
@@ -112,23 +51,16 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   <img src="docs/images/fanout.jpg" alt="Multi-model fan-out comparison grid" width="820">
 </p>
 
-- Every endpoint's models in **one searchable picker**, grouped by provider,
-  with favorites (drag-to-reorder, pinned in the sidebar) and per-turn
-  switching mid-conversation.
-- **Fan-out compare**: select several models and send one prompt to all of
-  them — text, image, or video — streaming side by side with per-branch
-  queue states and timers. Keep the winner or keep them all.
-- **Split attachments**: fan N input images across M models for a full
-  cross-product comparison grid.
-- **Saved model sets**: name a compare cart you reach for often (your go-to
-  image models, say) and re-apply it to a new prompt in one click.
-- Per-endpoint concurrency caps queue requests instead of OOMing your
-  single-GPU box ([configuration](docs/configuration.md#limiting-concurrency-max_concurrent)).
-  Queued image and video generations survive a GlyphStream restart
-  ([guide](docs/multi-user.md#restarting-glyphstream-with-generations-queued)).
-- Endpoints that share one GPU can share a queue — and hand the VRAM over,
-  unloading the chat model before an image generation starts
-  ([configuration](docs/configuration.md#sharing-one-gpu-between-endpoints-resource_group)).
+- Every endpoint's models in **one searchable picker**, with favorites and
+  per-turn switching.
+- **Fan-out compare** across text, image and video models; **split attachments**
+  for a cross-product grid; **saved model sets** for the comparisons you repeat.
+- **Custom models** — presets of base model + system prompt + params, like
+  custom GPTs.
+- Concurrency caps and **shared-GPU queues** that hand VRAM over between chat and
+  image models, so a single-GPU box queues instead of running out of memory.
+
+[More on models →](docs/models.md)
 
 ### Images & video
 
@@ -136,148 +68,41 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   <img src="docs/images/gallery.jpg" alt="Media gallery" width="820">
 </p>
 
-- Inline **image and video generation** through `/v1/images` / `/v1/videos`
-  upstreams, with job-status progress for long video renders.
-- **Image-to-image follow-ups** auto-attach the last generated image;
-  re-rolls are additive, never destructive.
-- **Modality-aware model picker** — each image/video model shows what it takes
-  and makes (`T2I`, `I2I`, `TI2V`), so the text-to-image and image-to-image
-  listings of the same family are easy to tell apart. Models that only edit an
-  image (upscalers, background removal, image-to-video) require an attachment
-  before you can send, instead of failing after you've written a prompt.
-- **Aspect ratio picker** — models that advertise the shapes they accept get a
-  selector beside the prompt box, so you ask for "widescreen" or "portrait"
-  rather than computing pixels. The size budget stays with the model, which
-  means every offered shape fits the hardware it was configured for and no
-  prompt can ask for an image large enough to exhaust it. Your last choice is
-  remembered, one pick covers a whole multi-model compare, and a model whose
-  own list doesn't have it renders the nearest shape it does. **Default** sends
-  no shape at all, so each model falls back to its own — which for a compare
-  across several means each renders at the shape it was built for. Name a shape
-  in the prompt itself — "create a 9:16 poster of…" — and the picker follows
-  along and says it did; pick a shape yourself and it stands down, until the
-  prose asks for something again — a different shape, or the same one in a later
-  prompt.
-- **Prompt enhancement** (optional) — before generating, an LLM rewrites your
-  prompt into the format the target model prefers: for images (natural-language
-  narrative, booru tags, keyword soup, hybrid, or structured JSON) and for video
-  (cinematic prose, structured shot description, or a labeled multimodal script
-  with its own soundscape, adding camera motion and
-  pacing). A prompt you already wrote in the target image model's format is
-  preserved rather than restyled. Per-model, fans out per-branch in a
-  multi-model compare, and the original prompt is kept and shown alongside the
-  result ([configuration](docs/configuration.md#prompt-enhancement-image_enhancement)).
-- A **gallery** of everything ever generated: lightbox, bulk operations,
-  jump back to the source conversation, or launch a new one from any image.
-  Related media (a whole conversation, or a multi-model batch sharing one
-  prompt) **stack** into a single card you can expand — toggle it off for the
-  flat view. **Search your prompts** to find any generation (keyword, plus
-  semantic synonym matching when an embedding model is configured), **filter by
-  the model** that made it, and browse by time with **sticky date headers** (day
-  or month) plus a right-edge **timeline rail** to jump to any month. **Star**
-  the ones that came out well — from the gallery lightbox or straight from the
-  chat you made them in — and filter the gallery down to your favorites, on its
-  own or combined with search and the other filters. Deleted images and videos
-  — from the gallery, a discarded branch or fan-out cell, or a deleted
-  conversation — wait in **Recently deleted** for 30 days, so a mis-tap can be
-  restored.
-- **Permanent media storage** — assets are pulled from the upstream on
-  generation, ref-counted, and purged only after a grace period with zero
-  references.
-- Attach images and files to messages (drag-drop, paste); images are resized
-  client-side before upload, and iPhone HEIC photos are converted to JPEG.
+- Inline image and video generation, **image-to-image** follow-ups, and an
+  **aspect-ratio picker** that also follows a shape named in your prompt.
+- Optional **prompt enhancement** rewrites your prompt into the format each
+  target model prefers.
+- A **gallery** with prompt search, stacks, favorites, a timeline, and a 30-day
+  Recently deleted.
+- **Conversation avatars** — the model describes itself, an image model draws it.
 
-### Tools & agents
+[More on images & video →](docs/media.md)
 
-- **Native OpenAI tool calling** with a multi-step loop — the model chains
-  tools until it's done ([guide](docs/tools.md)).
-- **Web search** via self-hosted SearxNG — instant-answer/infobox blocks,
-  freshness & category filters, de-duplicated results — and **`fetch_url`**
-  page reading with Mozilla Readability extraction plus hybrid BM25 + embeddings
-  retrieval for long pages, optionally sharpened by a cross-encoder **reranker**
+### Tools & memory
+
+- **Native tool calling** with a multi-step loop ([guide](docs/tools.md)).
+- **Web search** via SearxNG and **page reading** with hybrid retrieval
   ([guide](docs/web-search.md)).
-- **Python code interpreter** — a sandboxed Pyodide runtime with numpy /
-  pandas / matplotlib, persistent per-conversation state, and file round-trip
-  to chat attachments ([guide](docs/code-interpreter.md)).
-- **MCP servers** — point `config.toml` at any Model Context Protocol server
-  (stdio or HTTP) and its tools join the registry, gated by per-tool
-  Allow / Allow Always approval (revocable from the Permissions page);
-  authenticate with a shared token or each user's own credential. High-tool-count servers can set `defer_tools` to hide
-  behind a `search_tools` lookup (hybrid keyword + embeddings) so they don't
-  spend context every request ([guide](docs/mcp.md)).
-- **Agent skills** ([agentskills.io](https://agentskills.io) spec) — import
-  skill bundles, activate them by model judgment or an explicit `/skill-name`
-  slash command.
-- **Per-user memory** the model can save, update, and forget across sessions —
-  once the store grows large the most relevant facts (recently or often recalled,
-  or freshly saved) stay inlined in full while the rest collapse to a compact
-  topic index, and the model reads those bodies back on demand by id or search
-  (semantic search is added when an embedding model is configured). With an
-  optional `[memory_model]` configured, a scheduled background "dreaming" pass
-  periodically tidies the store — merging duplicates, folding superseded facts,
-  and distilling stale notes — with soft-delete reversibility, so anything it
-  changes stays reviewable and restorable from settings for ~30 days.
-- **Conversation recall** — a `search_conversations` tool lets the model search
-  your past chats (full message history, owner-scoped, with an optional recency
-  filter) when you refer back to something discussed before, instead of guessing.
-  Gated by the same Personalization toggle as memory ([guide](docs/tools.md)).
-- **Per-conversation privacy toggles** — switch off web access, code
-  execution, personalization, emoji reactions, or any MCP server for a single
-  conversation. Preferences sets where each one starts for a new chat, so a
-  standing "never this one" doesn't need re-flipping every time.
-- **Private chat** — an incognito mode (toggle on the new-chat screen) that
-  airgaps a conversation: its content never feeds your memories, summaries, topic
-  overview, or `search_conversations`, and personalization / web / MCP tools are
-  sealed off for the chat. Code execution and skills stay on. The whole app
-  re-tints so you can't miss that you're in it ([guide](docs/tools.md)).
+- A sandboxed **Python interpreter** with numpy / pandas / matplotlib
+  ([guide](docs/code-interpreter.md)).
+- **MCP servers** (stdio or HTTP) with per-tool approval and per-user
+  credentials ([guide](docs/mcp.md)), and **agent skills**
+  ([agentskills.io](https://agentskills.io)).
+- **Memory** across conversations, tidied in the background, plus **recall** of
+  past chats — and a **private chat** mode that keeps a conversation out of both
+  ([more](docs/chat.md#memory-and-recall)).
+- Every tool can be switched off per conversation.
 
-### Self-hosting & polish
+### Self-hosting
 
-- **OAuth (GitHub, Google, generic OIDC) + passkeys**, together or alone;
-  token-gated first-run setup wizard; a signed-in device list with per-session
-  revoke and "sign out everywhere else"; one-flag account revocation; an
-  optional **app lock** that asks for your passkey (Face ID on an iPhone) when
-  you return to the installed app ([guide](docs/authentication.md#app-lock)).
-- **Invite-only multi-user** — the setup-wizard account is the admin; everyone
-  else joins via an admin-issued `/join` link (any OAuth provider or passkey). Per-user
-  data isolation, plus an admin panel to invite, disable, or remove accounts
+- OAuth (GitHub, Google, generic OIDC) and passkeys; a token-gated first-run
+  wizard; per-device session management ([guide](docs/authentication.md)).
+- **Invite-only multi-user** with an admin panel and an endpoint health view
+  that shows what each backend is generating and queueing
   ([guide](docs/multi-user.md)).
-- **Endpoint health view** — an admin-only diagnostic page showing every
-  configured endpoint's reachability, how many models it advertises, what it is
-  generating right now (including background work like title generation and
-  memory consolidation), and how deep the queue behind it is — so a shared-GPU
-  box that looks stalled can be told from one that's simply busy
-  ([guide](docs/multi-user.md#endpoint-health)). An admin can **pause** an
-  endpoint's queue to restart its backend without failing the generations
-  waiting in line ([guide](docs/multi-user.md#pausing-a-queue)).
-- **Installable PWA** with iOS-aware safe areas and **push notifications**
-  when long generations finish — a count on the app icon for threads waiting
-  on you, plus a sidebar dot marking any conversation still generating (filled
-  for the one running, hollow for the ones queued behind it), so a thread you
-  walked away from mid-video isn't silent
-  ([guide](docs/notifications.md)).
-- **Start a chat from a URL** — open the home page with a `#q=` fragment
-  (e.g. `https://your-host/#q=write%20a%20haiku`) to prefill the composer.
-  Handy for an iOS share-sheet Shortcut, since iOS won't let a PWA receive
-  shares directly; the fragment keeps even long prompts off the request line.
-- **Themes**: the Signature frosted-glass look, plus Claude and ChatGPT
-  themes; light / dark / system, with per-theme motion personalities.
-- Personalization: structured persona fields (name, about you, custom
-  instructions) and rotating greetings.
-- **Custom models** — saved presets of base model + system prompt + params,
-  like custom GPTs, with per-preset feature-toggle defaults and an optional
-  avatar shown beside the preset's name above each of its replies.
-- **Conversation avatars** — ask the model to describe an image of itself, then
-  draw it with any configured image model and make the result that
-  conversation's face. Useful for roleplay (the character designs its own
-  portrait) but not limited to it. The description stays in the thread as
-  continuity; the image is shown but never re-sent to the model. Pick several
-  image models and they each draw a candidate side by side — different models
-  read a description very differently — and the one you choose becomes the
-  avatar; the rest stay in the thread as alternatives.
-- **Docker deployment** in a ~260 MB image, automatic migrations, any
-  reverse proxy in front ([guide](docs/deployment.md)).
-- **Open WebUI import** ([guide](docs/import-owui.md)).
+- A ~260 MB Docker image with automatic migrations
+  ([guide](docs/deployment.md)), and a one-command **Open WebUI importer** that
+  brings your history across, branches included ([guide](docs/import-owui.md)).
 
 ## Quick start
 
@@ -313,6 +138,9 @@ pnpm dev                               # http://localhost:5173
 
 | Guide                                            | Covers                                                                                              |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| [Chatting](docs/chat.md)                         | Branching, the context bar and compaction, memory and recall, themes, `#q=` links                   |
+| [Models](docs/models.md)                         | The picker, fan-out compare, model sets, custom models, sharing a GPU                               |
+| [Images & video](docs/media.md)                  | Generation, aspect ratios, prompt enhancement, the gallery, avatars                                 |
 | [Configuration](docs/configuration.md)           | `config.toml` + `.env`, endpoints, secrets convention, concurrency, auto-titling                    |
 | [Authentication](docs/authentication.md)         | OAuth (GitHub, Google, OIDC) setup, passkeys, the setup wizard, `EXTERNAL_BASE_URL`                 |
 | [Multi-user & admin](docs/multi-user.md)         | Roles, issuing invites, the `/join` flow, enabling / disabling / removing accounts, endpoint health |
