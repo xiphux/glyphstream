@@ -223,12 +223,13 @@
 	});
 
 	// Swipe handler. A swipe resolves the slide it's heading for as soon as it
-	// crosses the midpoint, not once the scroll settles: until `media` moves, the
-	// header describes the slide the user is swiping away from — a lit star over
-	// an unstarred image, and a star or trash button that acts on the previous
-	// image if tapped. Settling took the snap animation, the debounce below and
-	// then (chat) a fetch; with the caller prefetching neighbours (`onPrefetch`)
-	// the midpoint swap is usually synchronous.
+	// crosses the midpoint with the finger down, not once the scroll settles:
+	// until `media` moves, the header describes the slide the user is swiping
+	// away from — a lit star over an unstarred image, and a star or trash button
+	// that acts on the previous image if tapped. Settling took the snap
+	// animation, the debounce below and then (chat) a fetch; with the caller
+	// prefetching neighbours (`onPrefetch`) the midpoint swap is usually
+	// synchronous.
 	//
 	// It used to wait for the settle for two reasons that no longer hold. One
 	// resolve per landing rather than per slide crossed: `snap-always` stops a
@@ -240,6 +241,13 @@
 	//
 	// The settle stays as the backstop and the final word on where the user
 	// landed — the midpoint is a guess the finger can still take back.
+	//
+	// A flick is the exception: it crosses the midpoint after the finger lifts,
+	// mid-snap-animation, where any DOM change makes iOS drop the snap (see
+	// `coasting` in `onTrackScroll`). So it resolves at the settle, and until then
+	// the header — counter, star, delete — is still the previous slide's, actions
+	// live. Marking it `stale` would be a DOM change too; the window is the
+	// coast plus the debounce, and a tap on the track ends the coast anyway.
 	let scrollSettleTimer: ReturnType<typeof setTimeout> | undefined;
 	/**
 	 * The slide a smooth `scrollTo` from `navigate()` is heading for. The track
@@ -291,13 +299,14 @@
 		if (!el || !siblings) return;
 		if (!touchActive) clearTimeout(releaseMotionTimer);
 		// Coasting: the finger has lifted and the browser's snap animation is
-		// carrying the track. Neither write below happens then — each changes the
-		// DOM (the header swap, newly mounted slides), and a layout change
+		// carrying the track. None of the writes below happens then — the header
+		// swap and the mounting window change the DOM, and a layout change
 		// mid-animation is what makes iOS drop the snap and overshoot onto the
 		// slide after (`touchActive`). The settle resolves where it landed
 		// instead. `snap-always` stops a flick on the adjacent slide, which the
 		// window around `currentIndex` already has mounted, so nothing is
-		// missing on arrival.
+		// missing on arrival. An arrow press's `scrollTarget` is cleared by the
+		// settle instead.
 		const coasting = touchReleased && !touchActive;
 		if (el.clientWidth > 0 && !coasting) {
 			// Rounding flips at the halfway point between two slides. Writing
@@ -310,8 +319,9 @@
 				pendingIndex = idx;
 				resolveSlide(siblings[idx].id);
 			}
-			// Track the live position while scrolling, not just on settle — that's
-			// what keeps the slides being scrolled through mounted.
+			// Track the live position while scrolling (except coasting, above), not
+			// just on settle — that's what keeps the slides being scrolled through
+			// mounted.
 			//
 			// Quantized to SLIDE_WINDOW steps rather than written per crossed slide.
 			// `slideMounted` is called inside the per-item `{#if}` of an each-block
