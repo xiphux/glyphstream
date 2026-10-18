@@ -135,6 +135,17 @@
 		if (next.now < appliedAt && appliedAt - next.now < REORDER_WINDOW_MS) return;
 		appliedAt = next.now;
 		status = next;
+		// A drained queue forgets it was expanded, so the next batch to arrive
+		// starts collapsed instead of reopening hundreds of rows unasked.
+		if (expanded.size > 0) {
+			const stillQueued = new Set(
+				next.groups
+					.flatMap((g) => g.endpoints)
+					.filter((ep) => ep.queued.length > 0 || ep.pending.length > 0)
+					.map((ep) => ep.id),
+			);
+			for (const id of expanded) if (!stillQueued.has(id)) expanded.delete(id);
+		}
 		const at = Date.now();
 		skewMs = at - next.now;
 		// Re-stamp `nowMs` from the SAME instant the skew was measured. `elapsed`
