@@ -259,7 +259,17 @@ function resolvePresets(
 		};
 		c.model.presets.push(preset);
 	}
-	for (const c of counts) c.model.presets.sort((a, b) => b.chats - a.chats);
+	// Busiest first; ties put the viewer's named presets ahead of anonymous
+	// ones, then go by id — otherwise a tie lands in preset-id order, which is
+	// random.
+	for (const c of counts) {
+		c.model.presets.sort(
+			(a, b) =>
+				b.chats - a.chats ||
+				Number(b.name !== null) - Number(a.name !== null) ||
+				a.id.localeCompare(b.id),
+		);
+	}
 }
 
 /**
