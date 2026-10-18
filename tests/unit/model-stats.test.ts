@@ -282,6 +282,36 @@ describe('backfill migration', () => {
 		);
 	});
 
+	it('still counts a stopped tool turn that a compaction summary followed', () => {
+		const u = seedUser();
+		const { conv, user } = seedChat(u.id);
+		const step = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'running it' }],
+			modelUsed: 'local::qwen',
+			finishReason: 'tool_calls',
+		});
+		const result = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: step.id,
+			role: 'tool',
+			parts: [{ type: 'tool_result', toolCallId: 'c1', result: 'ok' }],
+		});
+		appendMessage({
+			conversationId: conv.id,
+			parentMessageId: result.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'Summary so far' }],
+			modelUsed: 'local::qwen',
+			compactionResumeFromMessageId: user.id,
+		});
+
+		runBackfill();
+		expect(counters().filter((r) => r.metric === 'turn')).toMatchObject([{ count: 1 }]);
+	});
+
 	it('does not count a compaction summary as a turn', () => {
 		const u = seedUser();
 		const { conv, user } = seedChat(u.id);

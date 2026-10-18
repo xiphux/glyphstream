@@ -47,6 +47,9 @@ WHERE m.role = 'assistant'
 				ON a.conversation_id = t.conversation_id
 				AND a.parent_message_id = t.id
 				AND a.role = 'assistant'
+				-- A compaction summary appended after a stopped turn's tool row
+				-- isn't that turn continuing.
+				AND a.compaction_resume_from_message_id IS NULL
 			WHERE t.conversation_id = m.conversation_id
 				AND t.parent_message_id = m.id
 				AND t.role = 'tool'
