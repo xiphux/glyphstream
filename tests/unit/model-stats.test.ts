@@ -224,6 +224,45 @@ describe('backfill migration', () => {
 		expect(counters().filter((r) => r.metric === 'turn')).toMatchObject([{ count: 1 }]);
 	});
 
+	it('does not count a generation whose output was trashed, or a failed finish, as a turn', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::flux',
+			modelKind: 'image',
+		});
+		const user = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'a cat' }],
+		});
+		// Trashing the output deleted its message_media link; the part remains.
+		appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'image', mediaId: 'trashed-one' }],
+			modelUsed: 'bridge::flux',
+		});
+		appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'half a rep' }],
+			modelUsed: 'local::qwen',
+			finishReason: 'error',
+			tokensOut: 5,
+			genMs: 50,
+		});
+
+		runBackfill();
+		expect(counters().filter((r) => r.metric === 'turn' || r.metric.startsWith('speed'))).toEqual(
+			[],
+		);
+	});
+
 	it('counts generated media from media rows, not from their carrier message', () => {
 		const u = seedUser();
 		const conv = createConversation({

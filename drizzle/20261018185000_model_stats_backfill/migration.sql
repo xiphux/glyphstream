@@ -15,10 +15,12 @@
 -- (code-interpreter `run_python` outputs, uploads) name no model and are
 -- skipped. Days are UTC, matching `statsDay()`.
 
--- A chat reply: an assistant row with a model, not a tool-loop step, not an
--- error sibling, and not a media generation's output (those carry a
--- message_media link to a generated row from the same model, and are counted
--- from `media` below). One per turn, counted on the turn's LAST row. A
+-- A chat reply: an assistant row with a model, not a tool-loop step, not a
+-- failure (an error sibling's error part, or a mid-stream failure's 'error'
+-- finish), and not a media generation's output, which is counted from `media`
+-- below. A generation is told by its image / video part — a chat reply never
+-- carries one (tool output lands on `tool` rows) — rather than by its
+-- message_media link, which trashing the output deletes. One per turn, counted on the turn's LAST row. A
 -- 'tool_calls' row is usually an intermediate tool-loop step — its tool
 -- results lead on to the next assistant row — but it ends the turn when
 -- nothing follows them: a reply that also reacted with an emoji, a Stop during
@@ -48,12 +50,10 @@ WHERE m.role = 'assistant'
 				AND t.role = 'tool'
 		)
 	)
+	AND coalesce(m.finish_reason, '') <> 'error'
 	AND m.content_json NOT LIKE '%"type":"error"%'
-	AND NOT EXISTS (
-		SELECT 1 FROM message_media mm
-		JOIN media md ON md.id = mm.media_id
-		WHERE mm.message_id = m.id AND md.origin = 'generated' AND md.source_model = m.model_used
-	)
+	AND m.content_json NOT LIKE '%"type":"image"%'
+	AND m.content_json NOT LIKE '%"type":"video"%'
 GROUP BY 1, 2, 3;
 --> statement-breakpoint
 INSERT INTO model_stats_daily (day, endpoint_id, model_id, metric, count, sum)
@@ -70,12 +70,10 @@ WHERE m.role = 'assistant'
 	AND instr(m.model_used, '::') > 1
 	AND m.tokens_out > 0
 	AND m.gen_ms > 0
+	AND coalesce(m.finish_reason, '') <> 'error'
 	AND m.content_json NOT LIKE '%"type":"error"%'
-	AND NOT EXISTS (
-		SELECT 1 FROM message_media mm
-		JOIN media md ON md.id = mm.media_id
-		WHERE mm.message_id = m.id AND md.origin = 'generated' AND md.source_model = m.model_used
-	)
+	AND m.content_json NOT LIKE '%"type":"image"%'
+	AND m.content_json NOT LIKE '%"type":"video"%'
 GROUP BY 1, 2, 3, 4;
 --> statement-breakpoint
 -- Every generated output, trashed or not: it was generated either way.
