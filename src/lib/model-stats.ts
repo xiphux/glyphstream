@@ -71,6 +71,27 @@ export function taskCallsOf(m: ModelStatsModel): number {
 	return Object.entries(m.counts).reduce((n, [k, v]) => (k.startsWith('task:') ? n + v : n), 0);
 }
 
+/**
+ * How long a model counts as new: first counted within this many days. A
+ * matter of time, not of sample size — the flags already guard that. It tells
+ * a model that is barely used because it only just arrived from one that is
+ * barely used because nobody picks it, and marks numbers that rest on a short
+ * history and may still move.
+ */
+export const NEW_MODEL_DAYS = 14;
+
+/** Whole days since the model was first counted, or null if it never was. */
+export function daysOfData(m: ModelStatsModel, now = Date.now()): number | null {
+	if (!m.firstSeenDay) return null;
+	const first = Date.parse(`${m.firstSeenDay}T00:00:00Z`);
+	return Math.max(1, Math.floor((now - first) / 86_400_000) + 1);
+}
+
+export function isNewModel(m: ModelStatsModel, now = Date.now()): boolean {
+	const days = daysOfData(m, now);
+	return days !== null && days <= NEW_MODEL_DAYS;
+}
+
 export type ModelBucket = 'active' | 'unused' | 'retired';
 
 /**
@@ -98,7 +119,8 @@ export interface ChatSignals {
 	 *  model) rather than edited (blamed their prompt). */
 	stoppedThenRetried: number;
 	stoppedThenEdited: number;
-	switchedAway: number;
+	/** Turns after which the conversation moved to another chat model. */
+	switchedAway: Rate;
 	branchesDeleted: Rate;
 	picked: Rate;
 	tokensPerSecond: number | null;
@@ -114,7 +136,7 @@ export function chatSignals(m: ModelStatsModel): ChatSignals {
 		retries: { k: c(m, 'retry'), n: turns },
 		stoppedThenRetried: c(m, 'retry_after_cancel'),
 		stoppedThenEdited: c(m, 'edit_after_cancel'),
-		switchedAway: c(m, 'switched_away'),
+		switchedAway: { k: Math.min(c(m, 'switched_away'), turns), n: turns },
 		branchesDeleted: { k: c(m, 'branch_deleted'), n: turns },
 		picked: { k: c(m, 'fanout_win'), n: c(m, 'fanout_shown') },
 		tokensPerSecond: ms > 0 ? s(m, 'speed_tokens') / (ms / 1000) : null,
@@ -127,8 +149,10 @@ export interface MediaSignals {
 	favorites: Rate;
 	/** Trashed by the user (net of restores), out of what was generated. */
 	rejected: Rate;
-	/** Built on (remixed) or worn as an avatar. */
-	used: number;
+	/** Built on (remixed) or worn as an avatar, out of what was generated. One
+	 *  output can be used more than once, so the count is capped at the outputs
+	 *  — "every one of them" is the ceiling a share can mean. */
+	used: Rate;
 	avatarPicked: Rate;
 	picked: Rate;
 	avgSeconds: number | null;
@@ -146,7 +170,7 @@ export function mediaSignals(m: ModelStatsModel): MediaSignals {
 		failures: { k: c(m, 'failed'), n: generated + c(m, 'failed') },
 		favorites: { k: Math.min(favorites, generated), n: generated },
 		rejected: { k: Math.min(rejected, generated), n: generated },
-		used: c(m, 'remixed') + c(m, 'avatar_set'),
+		used: { k: Math.min(c(m, 'remixed') + c(m, 'avatar_set'), generated), n: generated },
 		avatarPicked: { k: c(m, 'avatar_win'), n: c(m, 'avatar_shown') },
 		picked: { k: c(m, 'fanout_win'), n: c(m, 'fanout_shown') },
 		avgSeconds: timed > 0 ? s(m, 'speed_ms') / timed / 1000 : null,

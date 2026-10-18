@@ -15,9 +15,11 @@
 	import {
 		bucketOf,
 		chatSignals,
+		daysOfData,
 		flagsFor,
 		formatRate,
 		isMediaModel,
+		isNewModel,
 		mediaSignals,
 		type Rate,
 	} from '#lib/model-stats.js';
@@ -132,14 +134,11 @@
 			}
 			out.push(
 				...rateStat('Favorited', sig.favorites, 'Outputs starred in the gallery'),
-				...(sig.used > 0
-					? [
-							{
-								text: `Built on ${n(sig.used)}`,
-								title: 'Outputs used as the input to another generation, or as an avatar',
-							},
-						]
-					: []),
+				...rateStat(
+					'Built on',
+					sig.used,
+					'Outputs used as the input to another generation, or as an avatar',
+				),
 				...rateStat('Deleted', sig.rejected, 'Outputs the user deleted (net of restores)'),
 				...rateStat('Failed', sig.failures, 'Generations that failed'),
 				...picksStat('Avatar pick', sig.avatarPicked, 'Chosen in multi-model avatar comparisons'),
@@ -158,12 +157,13 @@
 				...rateStat('Cut off', sig.truncated, 'Replies stopped at the length limit'),
 				...rateStat('Branch deleted', sig.branchesDeleted, 'Replies whose branch was deleted'),
 			);
-			if (sig.switchedAway > 0) {
-				out.push({
-					text: `Switched away ${n(sig.switchedAway)}×`,
-					title: 'Conversations moved from this model to another chat model',
-				});
-			}
+			out.push(
+				...rateStat(
+					'Switched away',
+					sig.switchedAway,
+					'Turns after which the conversation moved to another chat model',
+				),
+			);
 			if (sig.stoppedThenRetried + sig.stoppedThenEdited > 0) {
 				out.push({
 					text: `Stopped → retried ${sig.stoppedThenRetried}, edited ${sig.stoppedThenEdited}`,
@@ -323,6 +323,15 @@
 			{/each}
 			{#if !m.listed && m.roles.length === 0}
 				<span class="badge" title="The endpoint no longer lists this model">Retired</span>
+			{/if}
+			{#if isNewModel(m)}
+				{@const days = daysOfData(m)}
+				<span
+					class="badge badge-accent"
+					title="Only recently counted: a short history, so its numbers may still move. A flag still needs enough evidence to appear."
+				>
+					New · {days} day{days === 1 ? '' : 's'} of data
+				</span>
 			{/if}
 			{#each flagsFor(m) as flag (flag.label)}
 				<span class="badge {flag.tone === 'good' ? 'badge-good' : 'badge-bad'}" title={flag.detail}>

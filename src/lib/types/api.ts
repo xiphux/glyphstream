@@ -2143,6 +2143,10 @@ export interface ModelStatsModel {
 	lastUsedAt: number | null;
 	/** People with it (or a preset on it) among their favourite models. */
 	favoritedBy: number;
+	/** The first UTC day (`YYYY-MM-DD`) anything was counted for it, all time —
+	 *  backfilled history included. Null when nothing ever was. Tells a model
+	 *  that is barely used because it is new from one nobody picks. */
+	firstSeenDay: string | null;
 	presets: ModelStatsPreset[];
 }
 

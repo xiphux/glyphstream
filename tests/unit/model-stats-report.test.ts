@@ -111,6 +111,14 @@ describe('buildModelStatsReport', () => {
 		expect(m.usedBy).toBe(1);
 	});
 
+	it('reports the first day a model was counted, regardless of the window', () => {
+		recordModelEvent('gpu::qwen', 'turn', { at: NOW - 200 * DAY });
+		recordModelEvent('gpu::qwen', 'turn', { at: NOW });
+		const r = build({ window: '30d' });
+		expect(find(r, 'gpu::qwen')?.firstSeenDay).toBe('2026-04-01');
+		expect(find(r, 'cloud::idle')?.firstSeenDay).toBeNull();
+	});
+
 	it('marks a counted model the endpoint no longer lists as retired', () => {
 		recordModelEvent('gpu::old', 'turn', { at: NOW });
 		expect(find(build(), 'gpu::old')).toMatchObject({ listed: false, displayName: 'old' });

@@ -6,6 +6,8 @@ import { describe, expect, it } from 'vitest';
 import {
 	bucketOf,
 	chatSignals,
+	daysOfData,
+	isNewModel,
 	flagsFor,
 	formatRate,
 	mediaSignals,
@@ -26,6 +28,7 @@ function model(over: Partial<ModelStatsModel> = {}): ModelStatsModel {
 		usedBy: 0,
 		lastUsedAt: null,
 		favoritedBy: 0,
+		firstSeenDay: null,
 		presets: [],
 		...over,
 	};
@@ -93,6 +96,43 @@ describe('signals', () => {
 			model({ kind: 'image', counts: { generated: 10, trashed: 4, restored: 1, swept: 5 } }),
 		);
 		expect(sig.rejected).toEqual({ k: 3, n: 10 });
+	});
+});
+
+describe('volume-neutral signals', () => {
+	// A model in use for months racks up more of everything than one installed
+	// last week; reading a count as a verdict would penalise the long-kept one.
+	it('reads "built on" and "switched away" as shares, not running totals', () => {
+		const old = mediaSignals(
+			model({ kind: 'image', counts: { generated: 1000, remixed: 90, avatar_set: 10 } }),
+		);
+		const fresh = mediaSignals(model({ kind: 'image', counts: { generated: 10, remixed: 5 } }));
+		expect(old.used).toEqual({ k: 100, n: 1000 });
+		expect(fresh.used).toEqual({ k: 5, n: 10 });
+
+		const chat = chatSignals(model({ counts: { turn: 200, switched_away: 10 } }));
+		expect(chat.switchedAway).toEqual({ k: 10, n: 200 });
+	});
+
+	it('caps "built on" at the outputs when one is used more than once', () => {
+		const sig = mediaSignals(model({ kind: 'image', counts: { generated: 2, remixed: 5 } }));
+		expect(sig.used).toEqual({ k: 2, n: 2 });
+	});
+});
+
+describe('new models', () => {
+	const NOW = Date.UTC(2026, 9, 18, 12);
+
+	it('counts days of data from the first counted day, inclusive', () => {
+		expect(daysOfData(model({ firstSeenDay: '2026-10-18' }), NOW)).toBe(1);
+		expect(daysOfData(model({ firstSeenDay: '2026-10-16' }), NOW)).toBe(3);
+		expect(daysOfData(model(), NOW)).toBeNull();
+	});
+
+	it('calls a model new for its first two weeks only', () => {
+		expect(isNewModel(model({ firstSeenDay: '2026-10-05' }), NOW)).toBe(true);
+		expect(isNewModel(model({ firstSeenDay: '2026-10-04' }), NOW)).toBe(false);
+		expect(isNewModel(model(), NOW)).toBe(false);
 	});
 });
 

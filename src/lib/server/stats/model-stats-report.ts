@@ -109,6 +109,7 @@ export function buildModelStatsReport(input: BuildReportInput): ModelStatsReport
 			usedBy: 0,
 			lastUsedAt: null,
 			favoritedBy: 0,
+			firstSeenDay: null,
 			presets: [],
 		};
 		models.set(id, m);
@@ -161,6 +162,22 @@ export function buildModelStatsReport(input: BuildReportInput): ModelStatsReport
 		}
 		m.counts[r.metric] = r.count;
 		if (r.sum) m.sums[r.metric] = r.sum;
+	}
+
+	// When each model was first counted, ignoring the window: what makes a model
+	// "new" is how long it has been around, not how much of that the window shows.
+	const firstSeen = db
+		.select({
+			endpointId: modelStatsDaily.endpointId,
+			modelId: modelStatsDaily.modelId,
+			day: sql<string>`min(${modelStatsDaily.day})`,
+		})
+		.from(modelStatsDaily)
+		.groupBy(modelStatsDaily.endpointId, modelStatsDaily.modelId)
+		.all();
+	for (const r of firstSeen) {
+		const m = modelFor(formatModelId(r.endpointId, r.modelId));
+		if (m) m.firstSeenDay = r.day;
 	}
 
 	// A user whose LAST use falls in the window used it in the window — which is
