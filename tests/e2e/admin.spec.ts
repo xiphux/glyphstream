@@ -23,7 +23,24 @@ test.describe('admin: invites', () => {
 
 		// Create → the one-time join URL is revealed and the invite lands in
 		// the pending list as 'active'.
-		await page.getByRole('button', { name: 'Create invite' }).click();
+		//
+		// The click retries until it actually sends the request. `goto` resolves at
+		// `load`, but SvelteKit boots from a dynamic import that `load` doesn't wait
+		// for, so a click can land on the server-rendered button before hydration
+		// attaches its handler and do nothing — CI caught that: no POST, and the
+		// page's chunks still arriving after the click (see flows.spec.ts' theme
+		// switcher). Unlike a theme pick, creating an invite isn't idempotent, so the
+		// gate is the request leaving, not the result appearing: a click that did
+		// send one is never repeated, however slow the response.
+		const createButton = page.getByRole('button', { name: 'Create invite' });
+		await expect(async () => {
+			const sent = page.waitForRequest(
+				(r) => r.method() === 'POST' && new URL(r.url()).pathname === '/api/admin/invites',
+				{ timeout: 1_000 },
+			);
+			await createButton.click();
+			await sent;
+		}).toPass({ timeout: 10_000 });
 		const urlInput = page.locator('input[readonly]');
 		await expect(urlInput).toBeVisible();
 		await expect(urlInput).toHaveValue(/\/join\//);
