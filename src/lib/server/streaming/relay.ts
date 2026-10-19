@@ -21,7 +21,6 @@
  * the title race), and `onComplete` in the outer `finally` is the backstop.
  */
 
-import { randomBytes } from 'node:crypto';
 import { unhandled } from '../../exhaustive';
 import type {
 	ChatMessage,
@@ -51,7 +50,7 @@ import { errorMessage, isAbortError, sseWriter, type SseWriter } from './sse-tra
 import { executeToolCalls } from './tool-execution';
 import type { Tool } from '../tools/types';
 import { CODE_ARG_TOOLS, REACTION_TOOL_NAME, isReactionTool } from '#lib/chat-render.js';
-import { catchLeadingReaction } from './leading-reaction';
+import { catchLeadingReaction, syntheticReactionId } from './leading-reaction';
 import { createLogger } from '../log';
 import { appendErrorSibling } from './error-sibling';
 import { settleGeneration } from './settle-generation';
@@ -440,7 +439,7 @@ async function runChatTurn(
 				write,
 				reactionCatchId:
 					!reactedThisTurn && offersReactions(params, currentRequestBody)
-						? `call_${randomBytes(12).toString('hex')}`
+						? syntheticReactionId()
 						: null,
 			});
 			if (!iterationResult) return; // failed (error already emitted) or conversation deleted mid-turn

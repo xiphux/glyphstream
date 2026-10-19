@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	catchLeadingReaction,
 	classifyLeadingText,
+	syntheticReactionId,
 } from '#lib/server/streaming/leading-reaction.js';
 import type {
 	NormalizedDelta,
@@ -263,5 +264,11 @@ describe('catchLeadingReaction', () => {
 		const norm = catchLeadingReaction(scripted([{ deltas: [text('❤️\n')] }]), 'call_x');
 		expect(norm.process(record).deltas).toEqual([]);
 		expect(norm.flush().deltas).toEqual([text('❤️\n')]);
+	});
+});
+
+describe('syntheticReactionId', () => {
+	it('is nine alphanumerics, the strictest tool-call id format an upstream enforces', () => {
+		for (let i = 0; i < 50; i++) expect(syntheticReactionId()).toMatch(/^[A-Za-z0-9]{9}$/);
 	});
 });

@@ -39,6 +39,7 @@
  * streamed without it. A reply cut off there has bigger problems.
  */
 
+import { randomBytes } from 'node:crypto';
 import { REACTION_TOOL_NAME, isReactionTool, validateEmoji } from '#lib/chat-render.js';
 import type { NormalizedDelta, NormalizedResult, StreamNormalizer } from './normalizers';
 
@@ -110,6 +111,20 @@ function classify(held: string): Verdict {
 	if (!blank) return MAYBE_BLANK_LINE.test(after) ? { kind: 'hold' } : { kind: 'release' };
 	const rest = after.slice(blank[0].length);
 	return rest === '' ? { kind: 'hold' } : { kind: 'react', emoji, rest };
+}
+
+const ID_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+/**
+ * An id for the synthetic call. It is persisted and re-sent upstream on every
+ * later turn, and until now every id came from an upstream, so it was always one
+ * that upstream accepts. Nine alphanumerics is the strictest format in use —
+ * Mistral's tokenizer (vLLM with `mistral_common`) rejects anything else, which
+ * would 400 every later turn of the conversation — and every other upstream
+ * takes it.
+ */
+export function syntheticReactionId(): string {
+	return Array.from(randomBytes(9), (b) => ID_ALPHABET[b % ID_ALPHABET.length]).join('');
 }
 
 /**
