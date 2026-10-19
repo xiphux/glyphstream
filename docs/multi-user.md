@@ -160,7 +160,9 @@ example by pointing another client at llama-server. So after a **Resume**, and
 likewise after GlyphStream itself starts, it doesn't assume it knows what's
 loaded. If the group has a member with `release` set, the first job that goes to
 a _different_ member asks that one to unload first, the same way it would after
-a chat turn. If nothing is loaded, this costs one quick check.
+a chat turn. If nothing is loaded, this costs one quick check. If that member's
+backend is down, every job to the other member retries the check (logging a
+warning each time) until it comes back.
 
 The pause is **saved in the database**, so it survives restarting GlyphStream
 itself: an endpoint paused before a redeploy is still paused when the new

@@ -252,6 +252,13 @@ export function setResourceGroupMembersSource(source: () => readonly LoadedEndpo
  * grant to that member itself is a same-endpoint grant and evicts nothing. Only
  * one can be named, so a group with several releasable members presumes the
  * first in config order.
+ *
+ * If that member is unreachable, the cost is not one check: a failed release
+ * leaves it as `lastHolder` (see `takeSlot`), so every grant to another member
+ * retries, with a warning, until it answers or is granted itself. Not
+ * distinguished from a model that wouldn't unload, because `releaseEndpointResources`
+ * reports only whether everything was freed — and giving up on that one is the
+ * OOM this exists to prevent.
  */
 function presumeResident(gate: Gate, resourceGroup: string): void {
 	if (gate.lastHolder?.release) return;
