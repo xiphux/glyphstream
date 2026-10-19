@@ -85,7 +85,10 @@ describe('tool definition budget', () => {
 		// def above. It exists because the description alone never got a
 		// reaction out of the model (measured — see react.ts), and each of its
 		// clauses was measured too, so growth here needs the same justification.
-		expect(REACTIONS_HINT.length).toBeLessThanOrEqual(420);
+		// Raised from 420 for the "react only by calling the tool" sentence: a
+		// model that wants to react often types the emoji into its reply instead,
+		// and that line took tool-call reactions from 4/15 to 11/15 (react.ts).
+		expect(REACTIONS_HINT.length).toBeLessThanOrEqual(460);
 	});
 
 	it('keeps update_canvas within its wire budget', () => {

@@ -65,10 +65,21 @@ import { REACTION_TOOL_NAME, validateEmoji } from '#lib/chat-render.js';
  * tool description's register sentence too: dropping it in favour of this line
  * did the same. It is rent on every turn, like the description, so it follows
  * the same rule: no growth without a measurement behind it.
+ *
+ * The last sentence answers a different failure: the model WANTS to react but
+ * types the emoji as the first line of its reply instead of calling the tool —
+ * which renders as prose and no badge. Against a warm roleplay persona on
+ * Gemma4-26B (streamed, five prompts × 3), every run attempted a reaction but
+ * only a third went through the tool; the rest were a typed `❤️\n\n` lead or
+ * the native call syntax leaked as text. With the sentence, 4/15 → 11/15 tool
+ * calls on the persona as written and 0 typed. Technical prompts didn't gain
+ * reactions — the attempts it converted were typed emoji already there (one
+ * reply had been a bare "🚀"); explanations stayed at 0.
  */
 export const REACTIONS_HINT =
 	"You can react to the user's latest message with an emoji using react_to_message, the way a friend taps a reaction in a messaging app. " +
-	"It goes alongside your reply, not instead of it. In personal, warm or playful conversation, react when a message lands emotionally — good news, a joke, affection, a rough day. In technical or task-focused work, don't.";
+	"It goes alongside your reply, not instead of it. In personal, warm or playful conversation, react when a message lands emotionally — good news, a joke, affection, a rough day. In technical or task-focused work, don't. " +
+	'React only by calling the tool: an emoji typed into your reply is just text, not a reaction.';
 
 export const reactToMessageTool: Tool = {
 	definition: {

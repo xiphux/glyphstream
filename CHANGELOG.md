@@ -9,6 +9,11 @@ arrived.
 
 ## Unreleased
 
+### Fixed
+
+- Models that meant to react often typed the emoji at the top of their reply
+  instead, so no reaction appeared. They now add it as a reaction.
+
 ## v0.46.0
 
 ### Added
