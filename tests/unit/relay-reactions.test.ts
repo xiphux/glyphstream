@@ -198,8 +198,9 @@ async function runTurn(
 	conv: { id: string },
 	user: ChatMessage,
 	userId: string,
-	opts: { disabledFeatures?: string[] } = {},
+	opts: { disabledFeatures?: string[]; requestBody?: ChatCompletionRequest } = {},
 ) {
+	const body = opts.requestBody ?? initialBody;
 	let rebuildCalls = 0;
 	const stream = await startStreamingRelay({
 		...(opts.disabledFeatures ? { disabledFeatures: opts.disabledFeatures } : {}),
@@ -209,14 +210,14 @@ async function runTurn(
 		modelKind: 'chat',
 		endpoint,
 		providerQuirk: 'passthrough',
-		requestBody: initialBody,
+		requestBody: body,
 		userMessage: user,
 		storedModelId: 'bridge::test',
 		inFlight: inFlightEntryStub(endpoint),
 		onComplete: () => {},
 		rebuildRequestBody: async () => {
 			rebuildCalls++;
-			return initialBody;
+			return body;
 		},
 	});
 	const events = await drainEvents(stream);
@@ -531,5 +532,97 @@ describe('a reaction the model got wrong', () => {
 		// ...but visible to the model, which reads it next turn.
 		const toolMsg = walkActiveBranch(conv.id)[2];
 		expect(toolMsg.parts[0]).toMatchObject({ type: 'tool_result', isError: true });
+	});
+});
+
+describe('a reaction the model typed instead of calling the tool', () => {
+	// leading-reaction.ts covers the shape; these cover what the relay does with
+	// the call it synthesizes — the same as with a real one.
+	const typed = () =>
+		sseResponse([
+			textChunk('❤️'),
+			textChunk('\n\n'),
+			textChunk('Oh, Chris. Come here.'),
+			finishChunk('stop'),
+		]);
+	const textOf = (m: ChatMessage) =>
+		m.parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('');
+
+	it('becomes a reaction, and the reply keeps its words without the emoji', async () => {
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		mocks.upstreamResponses.push(typed);
+
+		const { events, rebuildCalls } = await runTurn(conv, user, userId);
+
+		// Short-circuits like a real reaction alongside a reply.
+		expect(mocks.upstreamCalls).toHaveLength(1);
+		expect(rebuildCalls).toBe(0);
+		const branch = walkActiveBranch(conv.id);
+		expect(branch.map((m) => m.role)).toEqual(['user', 'assistant', 'tool']);
+		const [, assistant, tool] = branch;
+		expect(textOf(assistant)).toBe('Oh, Chris. Come here.');
+		expect(assistant.finishReason).toBe('tool_calls');
+		const call = assistant.parts.find((p) => p.type === 'tool_call');
+		expect(call).toMatchObject({ toolName: 'react_to_message', arguments: '{"emoji":"❤️"}' });
+		// The tool really ran — the result answers the synthesized call.
+		expect(tool.parts[0]).toMatchObject({
+			type: 'tool_result',
+			toolCallId: call?.type === 'tool_call' ? call.toolCallId : '',
+			result: 'ok',
+		});
+
+		// The client never saw the emoji as text, and got the badge.
+		const chunks = events.filter((e) => eventType(e) === 'text') as Array<{ chunk: string }>;
+		expect(chunks.map((c) => c.chunk).join('')).toBe('Oh, Chris. Come here.');
+		expect(events.map(eventType)).not.toContain('tool_call_start');
+		const reaction = events.find((e) => eventType(e) === 'reaction') as StreamReactionEvent;
+		expect(reaction).toMatchObject({ emoji: '❤️', messageId: user.id });
+	});
+
+	it('is left as text when reactions are switched off', async () => {
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		mocks.upstreamResponses.push(typed);
+
+		const { events } = await runTurn(conv, user, userId, { disabledFeatures: ['reactions'] });
+
+		const [, assistant] = walkActiveBranch(conv.id);
+		expect(textOf(assistant)).toBe('❤️\n\nOh, Chris. Come here.');
+		expect(assistant.parts.some((p) => p.type === 'tool_call')).toBe(false);
+		expect(events.map(eventType)).not.toContain('reaction');
+	});
+
+	it('is left as text when the request did not offer the tool', async () => {
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		mocks.upstreamResponses.push(typed);
+
+		const { tools: _tools, tool_choice: _choice, ...noTools } = initialBody;
+		await runTurn(conv, user, userId, { requestBody: noTools });
+
+		const [, assistant] = walkActiveBranch(conv.id);
+		expect(textOf(assistant)).toBe('❤️\n\nOh, Chris. Come here.');
+		expect(assistant.finishReason).toBe('stop');
+	});
+
+	it('is left as text once the model has already reacted this turn', async () => {
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		mocks.upstreamResponses.push(() =>
+			sseResponse([
+				toolCallStartChunk({
+					index: 0,
+					id: 'call_r',
+					name: 'react_to_message',
+					args: '{"emoji":"🎉"}',
+				}),
+				finishChunk('tool_calls'),
+			]),
+		);
+		mocks.upstreamResponses.push(typed);
+
+		await runTurn(conv, user, userId);
+
+		const branch = walkActiveBranch(conv.id);
+		expect(branch.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant']);
+		expect(textOf(branch[3])).toBe('❤️\n\nOh, Chris. Come here.');
+		expect(branch[3].parts.some((p) => p.type === 'tool_call')).toBe(false);
 	});
 });

@@ -21,6 +21,7 @@
  * the title race), and `onComplete` in the outer `finally` is the backstop.
  */
 
+import { randomBytes } from 'node:crypto';
 import { unhandled } from '../../exhaustive';
 import type {
 	ChatMessage,
@@ -49,7 +50,8 @@ import { createNormalizer, type NormalizedDelta } from './normalizers';
 import { errorMessage, isAbortError, sseWriter, type SseWriter } from './sse-transport';
 import { executeToolCalls } from './tool-execution';
 import type { Tool } from '../tools/types';
-import { CODE_ARG_TOOLS, isReactionTool } from '#lib/chat-render.js';
+import { CODE_ARG_TOOLS, REACTION_TOOL_NAME, isReactionTool } from '#lib/chat-render.js';
+import { catchLeadingReaction } from './leading-reaction';
 import { createLogger } from '../log';
 import { appendErrorSibling } from './error-sibling';
 import { settleGeneration } from './settle-generation';
@@ -107,6 +109,21 @@ async function maybeRenderCodeArg(toolName: string, rawArgs: string): Promise<st
  *  a reaction is an ADDITION to a reply, never a reply on its own. */
 function hasNonEmptyText(message: ChatMessage): boolean {
 	return message.parts.some((p) => p.type === 'text' && p.text.trim().length > 0);
+}
+
+/** Whether this request lets the model react — the condition for watching its
+ *  reply for a typed one. Read off the request itself, so a tool the caller
+ *  filtered out of `tools[]` is never synthesized. */
+function offersReactions(params: RelayParams, body: ChatCompletionRequest): boolean {
+	if ((params.disabledFeatures ?? []).includes('reactions')) return false;
+	return body.tools?.some((t) => t.function.name === REACTION_TOOL_NAME) ?? false;
+}
+
+/** The iteration's normalizer, with the typed-reaction catch when it applies.
+ *  Built the same way for the client branch and the recorder, which must agree. */
+function iterationNormalizer(params: RelayParams, reactionCatchId: string | null) {
+	const norm = createNormalizer(params.providerQuirk);
+	return reactionCatchId ? catchLeadingReaction(norm, reactionCatchId) : norm;
 }
 
 function relayModalityFor(kind: ModelKind | null): NotifyModality {
@@ -405,6 +422,9 @@ async function runChatTurn(
 	// tools[] for iterations 2..N). Persisted on the search_tools result rows
 	// too, so the next turn's branch scan seeds them again.
 	const activatedTools = new Set<string>();
+	// One reaction per turn: once the model has reacted (by the tool, or by a
+	// typed emoji the catch turned into one), later iterations aren't watched.
+	let reactedThisTurn = false;
 
 	try {
 		for (let iter = 0; iter < maxIterations; iter++) {
@@ -418,8 +438,19 @@ async function runChatTurn(
 				requestBody: currentRequestBody,
 				parentMessageId,
 				write,
+				reactionCatchId:
+					!reactedThisTurn && offersReactions(params, currentRequestBody)
+						? `call_${randomBytes(12).toString('hex')}`
+						: null,
 			});
 			if (!iterationResult) return; // failed (error already emitted) or conversation deleted mid-turn
+			if (
+				iterationResult.assistantMessage.parts.some(
+					(p) => p.type === 'tool_call' && isReactionTool(p.toolName),
+				)
+			) {
+				reactedThisTurn = true;
+			}
 
 			iterationsRun++;
 			finalAssistantMessage = iterationResult.assistantMessage;
@@ -663,8 +694,11 @@ async function runOneIteration(args: {
 	requestBody: ChatCompletionRequest;
 	parentMessageId: string;
 	write: SseWriter['write'];
+	/** Id for a reaction caught from typed text, or null to not watch for one
+	 *  (see leading-reaction.ts). */
+	reactionCatchId: string | null;
 }): Promise<IterationResult | null> {
-	const { params, requestBody, parentMessageId, write } = args;
+	const { params, requestBody, parentMessageId, write, reactionCatchId } = args;
 	let upstreamResponse: Response;
 	try {
 		upstreamResponse = await chatCompletionStream(params.endpoint, requestBody, params.abortSignal);
@@ -701,6 +735,7 @@ async function runOneIteration(args: {
 		upstream: forRecorder,
 		params,
 		parentMessageId,
+		reactionCatchId,
 	}).catch((e) => {
 		if (conversationIsGone(params)) {
 			log.info(`conversation ${params.conversationId} was deleted mid-turn; dropping the reply`);
@@ -718,7 +753,7 @@ async function runOneIteration(args: {
 
 	// Drive the client-facing branch to completion (or abort).
 	try {
-		const norm = createNormalizer(params.providerQuirk);
+		const norm = iterationNormalizer(params, reactionCatchId);
 		// Per-iteration, because tool_call ids are only unique within one
 		// upstream response.
 		const hiddenToolCallIds = new Set<string>();
@@ -756,6 +791,7 @@ interface RecorderArgs {
 	upstream: ReadableStream<Uint8Array>;
 	params: RelayParams;
 	parentMessageId: string;
+	reactionCatchId: string | null;
 }
 
 /**
@@ -764,8 +800,8 @@ interface RecorderArgs {
  * Survives client disconnect (the caller's start() function keeps running).
  */
 async function recordAndPersistOneIteration(args: RecorderArgs): Promise<IterationResult> {
-	const { upstream, params, parentMessageId } = args;
-	const norm = createNormalizer(params.providerQuirk);
+	const { upstream, params, parentMessageId, reactionCatchId } = args;
+	const norm = iterationNormalizer(params, reactionCatchId);
 	let textBuf = '';
 	let reasoningBuf = '';
 	let finishReason: string | null = null;
