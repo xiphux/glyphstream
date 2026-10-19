@@ -219,6 +219,52 @@ export function setPausedResourceGroupSource(source: (resourceGroup: string) => 
 	pausedSource = source;
 }
 
+/**
+ * Every configured endpoint, for `presumeResident`. Injected for the same reason
+ * as `pausedSource`: the answer comes from config.toml, and the pure-logic tests
+ * of this module have none. Without a source nothing is presumed, which is the
+ * old behaviour.
+ */
+let membersSource: () => readonly LoadedEndpoint[] = () => [];
+
+export function setResourceGroupMembersSource(source: () => readonly LoadedEndpoint[]): void {
+	membersSource = source;
+}
+
+/**
+ * Point `lastHolder` at a member of the group that can release, unless it
+ * already names one — for the moments this process stops knowing what's
+ * resident.
+ *
+ * `lastHolder` only records what THIS process granted, and two moments make that
+ * record worthless. A new gate (first request after boot) has none, though the
+ * backend may have kept a model loaded straight through the restart. And a
+ * pause is exactly when something else gets at the backend: the operator pauses
+ * the image queue, uses llama-server from another client, and resumes with a
+ * model still loaded — while `lastHolder`, after a run of image jobs, names the
+ * image endpoint. Either way the first image grant reads as no handover, evicts
+ * nothing, and OOMs, and so does the next.
+ *
+ * Presuming the releasable member resident makes the first grant to any OTHER
+ * member ask it to let go; with nothing loaded that costs one `GET /models`. A
+ * grant to that member itself is a same-endpoint grant and evicts nothing. Only
+ * one can be named, so a group with several releasable members presumes the
+ * first in config order.
+ */
+function presumeResident(gate: Gate, resourceGroup: string): void {
+	if (gate.lastHolder?.release) return;
+	let members: readonly LoadedEndpoint[];
+	try {
+		members = membersSource();
+	} catch {
+		// A config.toml that broke since boot. Best-effort, like the eviction
+		// itself: failing the acquisition over a presumption would be worse.
+		return;
+	}
+	gate.lastHolder =
+		members.find((m) => m.resourceGroup === resourceGroup && m.release) ?? gate.lastHolder;
+}
+
 const gates = new Map<string, Gate>();
 
 /**
@@ -263,6 +309,7 @@ function getGate(resourceGroup: string, max: number): Gate {
 		pending: new Set(),
 		paused: pausedSource(resourceGroup),
 	};
+	presumeResident(gate, resourceGroup);
 	gates.set(resourceGroup, gate);
 	return gate;
 }
@@ -678,11 +725,14 @@ function acquire(endpoint: LoadedEndpoint, opts: AcquireOptions): Promise<Endpoi
  * group paused while idle may have waiters that were admissible all along.
  * Either way every waiter is re-notified so an open stream flips between
  * "queued" and "paused" without waiting for the line to move.
+ *
+ * A resume also forgets who has the resource resident — see `presumeResident`.
  */
 export function setResourceGroupPaused(endpoint: LoadedEndpoint, paused: boolean): void {
 	const gate = getGate(endpoint.resourceGroup, endpoint.resourceGroupMaxConcurrent);
 	if (gate.paused === paused) return;
 	gate.paused = paused;
+	if (!paused) presumeResident(gate, endpoint.resourceGroup);
 	notifyWaiterPositions(gate);
 	if (!paused) pump(gate);
 }
@@ -812,5 +862,6 @@ export function resetEndpointGatesForTests(): void {
 	}
 	gates.clear();
 	pausedSource = () => false;
+	membersSource = () => [];
 	draining = false;
 }

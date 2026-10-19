@@ -41,7 +41,11 @@ import {
 import { bootstrapMcp } from '#lib/server/mcp/bootstrap.js';
 import { listAllModels } from '#lib/server/endpoints/list-models.js';
 import { installPersistedPauses } from '#lib/server/endpoints/pause.js';
-import { drainEndpointGates } from '#lib/server/endpoints/concurrency.js';
+import {
+	drainEndpointGates,
+	setResourceGroupMembersSource,
+} from '#lib/server/endpoints/concurrency.js';
+import { listEndpoints } from '#lib/server/endpoints/registry.js';
 import {
 	resumeGenerationJobs,
 	scheduleGenerationJobResume,
@@ -91,6 +95,10 @@ const SHOULD_COMPRESS_DYNAMIC = compressDynamicResponses();
 // concurrency gate at them before anything can acquire a slot. Opens nothing
 // yet — the set is read on the first gate created.
 installPersistedPauses();
+// A new gate, or a resumed one, presumes a group member that can release still
+// has its model resident — this process can't know what survived the restart or
+// what loaded while paused. Read lazily, like the pauses.
+setResourceGroupMembersSource(listEndpoints);
 
 // Image / video generations are durable jobs; whatever was queued or running
 // when the last process stopped goes back in line. Resumed by the first

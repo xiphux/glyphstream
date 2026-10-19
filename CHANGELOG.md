@@ -13,6 +13,10 @@ arrived.
 
 - Models that meant to react often typed the emoji at the top of their reply
   instead, so no reaction appeared. They now add it as a reaction.
+- A shared GPU is now freed before the first job after Glyphstream starts and
+  after a paused queue is resumed, so a model left loaded through a restart, or
+  loaded from outside Glyphstream during a pause, no longer crashes it (with
+  `release = "llama-cpp-router"` on a `resource_group` member).
 
 ## v0.46.0
 

@@ -20,8 +20,9 @@ import { seedUser } from './_helpers/seed';
 const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
 	endpoints: new Map<string, unknown>(),
+	release: vi.fn(async (_endpoint: unknown) => true),
 }));
-vi.mock('#lib/server/endpoints/release.js', () => ({ releaseEndpointResources: async () => true }));
+vi.mock('#lib/server/endpoints/release.js', () => ({ releaseEndpointResources: mocks.release }));
 vi.mock('#lib/server/endpoints/registry.js', () => ({
 	getEndpoint: (id: string) => mocks.endpoints.get(id),
 	listEndpoints: () => [...mocks.endpoints.values()],
@@ -34,6 +35,7 @@ import {
 	isResourceGroupPaused,
 	type QueuedInfo,
 	resetEndpointGatesForTests,
+	setResourceGroupMembersSource,
 	setResourceGroupPaused,
 } from '#lib/server/endpoints/concurrency.js';
 import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
@@ -94,6 +96,8 @@ function track<T>(p: Promise<T>) {
 beforeEach(() => {
 	mocks.testDb = createTestDb();
 	mocks.endpoints.clear();
+	mocks.release.mockClear();
+	setResourceGroupMembersSource(() => [...mocks.endpoints.values()] as LoadedEndpoint[]);
 });
 
 afterEach(() => {
@@ -178,6 +182,69 @@ describe('gate', () => {
 		ctl.abort();
 		await expect(p).rejects.toThrow(/aborted/);
 		expect(getResourceQueueDepth('comfy')).toEqual({ active: 0, waiting: 0 });
+	});
+});
+
+describe('presuming a releasable member resident', () => {
+	// The case: image jobs ran (so the group's last holder is the image
+	// endpoint), the operator paused, loaded a model into llama-server from
+	// another client, and resumed. Or the process restarted with a model still
+	// loaded. Without the presumption the first grant evicts nothing and OOMs.
+	function group() {
+		const comfy = { ...ep('comfy', 1, 'gpu') };
+		const llama = { ...ep('llama', 1, 'gpu'), release: 'llama-cpp-router' as const };
+		mocks.endpoints.set('llama', llama);
+		mocks.endpoints.set('comfy', comfy);
+		return { comfy, llama };
+	}
+
+	it('asks the releasable member to let go before the first grant after startup', async () => {
+		const { comfy, llama } = group();
+		(await acquire(comfy)).release();
+		(await acquire(comfy)).release();
+		expect(mocks.release).toHaveBeenCalledExactlyOnceWith(llama, undefined);
+	});
+
+	it('evicts nothing when the first grant after startup is the releasable member itself', async () => {
+		const { llama } = group();
+		(await acquire(llama)).release();
+		expect(mocks.release).not.toHaveBeenCalled();
+	});
+
+	it('asks the releasable member to let go before the first grant after a resume', async () => {
+		const { comfy, llama } = group();
+		(await acquire(comfy)).release();
+		mocks.release.mockClear();
+		pauseResourceGroup(comfy, true);
+		const waiter = track(acquire(comfy));
+		pauseResourceGroup(comfy, false);
+		await flush();
+		expect(waiter.done).toBe(true);
+		expect(mocks.release).toHaveBeenCalledExactlyOnceWith(llama, undefined);
+	});
+
+	it('evicts nothing when the first grant after a resume is the releasable member itself', async () => {
+		const { comfy, llama } = group();
+		(await acquire(comfy)).release();
+		mocks.release.mockClear();
+		pauseResourceGroup(comfy, true);
+		const waiter = track(acquire(llama));
+		pauseResourceGroup(comfy, false);
+		await flush();
+		expect(waiter.done).toBe(true);
+		expect(mocks.release).not.toHaveBeenCalled();
+	});
+
+	it('changes nothing in a group with no releasable member', async () => {
+		const comfy = ep('comfy', 1);
+		mocks.endpoints.set('comfy', comfy);
+		(await acquire(comfy)).release();
+		pauseResourceGroup(comfy, true);
+		const waiter = track(acquire(comfy));
+		pauseResourceGroup(comfy, false);
+		await flush();
+		expect(waiter.done).toBe(true);
+		expect(mocks.release).not.toHaveBeenCalled();
 	});
 });
 

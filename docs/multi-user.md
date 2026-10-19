@@ -155,6 +155,13 @@ A pause applies to the endpoint's whole `resource_group` — members of a group
 share one queue — and it applies to _all_ work on it, not just images: a paused
 LLM endpoint holds chat turns, titles and memory work too.
 
+While a queue is paused, you might use the GPU from outside GlyphStream, for
+example by pointing another client at llama-server. So after a **Resume**, and
+likewise after GlyphStream itself starts, it doesn't assume it knows what's
+loaded. If the group has a member with `release` set, the first job that goes to
+a _different_ member asks that one to unload first, the same way it would after
+a chat turn. If nothing is loaded, this costs one quick check.
+
 The pause is **saved in the database**, so it survives restarting GlyphStream
 itself: an endpoint paused before a redeploy is still paused when the new
 container starts, and stays that way until you resume it.
