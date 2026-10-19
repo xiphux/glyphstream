@@ -40,7 +40,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { REACTION_TOOL_NAME, isReactionTool, validateEmoji } from '#lib/chat-render.js';
+import { REACTION_TOOL_NAME, graphemes, isReactionTool, validateEmoji } from '#lib/chat-render.js';
 import type { NormalizedDelta, NormalizedResult, StreamNormalizer } from './normalizers';
 
 /** Finish reasons that say the reply didn't complete, kept as they are. */
@@ -71,11 +71,9 @@ const BLANK_LINE_AFTER = /^[ \t]*\r?\n[ \t]*\r?\n\s*/;
 /** What may still grow into BLANK_LINE_AFTER. */
 const MAYBE_BLANK_LINE = /^[ \t]*(\r?\n[ \t]*)?\r?$/;
 
-let segmenter: Intl.Segmenter | null = null;
 function firstTwoGraphemes(s: string): string[] {
-	segmenter ??= new Intl.Segmenter('en', { granularity: 'grapheme' });
 	const out: string[] = [];
-	for (const { segment } of segmenter.segment(s)) {
+	for (const { segment } of graphemes().segment(s)) {
 		out.push(segment);
 		if (out.length === 2) break;
 	}

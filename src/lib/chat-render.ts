@@ -802,7 +802,7 @@ const EXTENDED_PICTOGRAPHIC = /\p{Extended_Pictographic}/u;
  *  Lazy so module evaluation stays free for the many importers that never
  *  validate an emoji. */
 let graphemeSegmenter: Intl.Segmenter | null = null;
-function graphemes(): Intl.Segmenter {
+export function graphemes(): Intl.Segmenter {
 	graphemeSegmenter ??= new Intl.Segmenter('en', { granularity: 'grapheme' });
 	return graphemeSegmenter;
 }
