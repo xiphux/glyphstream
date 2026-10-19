@@ -31,14 +31,19 @@
  * the recorder that persists the row — and both must see the same rewrite. Each
  * wraps its own normalizer with the same `toolCallId`.
  *
- * A reply cut off by `length` keeps the upstream's finish reason, so the relay
- * drops the synthetic call as never-executed and the emoji is lost with it. That
- * is the one case it can't undo — the text has already streamed — and a
- * truncated reply has bigger problems.
+ * A caught reply reads as a tool turn whatever finish reason the upstream gave
+ * (`stop`, a vendor's own `eos_token`, or none at all), except `length` and
+ * `content_filter`, which say the reply didn't complete and are kept. On those,
+ * and on a Stop or stream error after the catch, the relay drops the synthetic
+ * call as never-executed and the emoji is lost with it — the text has already
+ * streamed without it. A reply cut off there has bigger problems.
  */
 
 import { REACTION_TOOL_NAME, isReactionTool, validateEmoji } from '#lib/chat-render.js';
 import type { NormalizedDelta, NormalizedResult, StreamNormalizer } from './normalizers';
+
+/** Finish reasons that say the reply didn't complete, kept as they are. */
+const INCOMPLETE_FINISH = new Set(['length', 'content_filter']);
 
 /** Upstream tool-call indexes count up from 0, so this can't collide. */
 const SYNTHETIC_INDEX = -1;
@@ -121,6 +126,7 @@ export function catchLeadingReaction(
 	// A real reaction call arriving after we synthesized one would be a second
 	// reaction to the same message; ours stands in for it.
 	const suppressed = new Set<number>();
+	let sawFinish = false;
 
 	function transform(r: NormalizedResult, final: boolean): NormalizedResult {
 		const out: NormalizedDelta[] = [];
@@ -172,10 +178,16 @@ export function catchLeadingReaction(
 		}
 		// The reply's text is over: whatever is still held was never the shape.
 		if (state === 'holding' && (final || r.finishReason || r.done)) release();
-		// A reply that ends on `stop` has to read as a tool turn, or the relay
-		// never runs the tool and drops the call as unexecuted.
-		const finishReason =
-			state === 'reacted' && r.finishReason === 'stop' ? 'tool_calls' : r.finishReason;
+		// A caught reply has to read as a tool turn, or the relay never runs the
+		// tool and drops the call as unexecuted.
+		if (r.finishReason) sawFinish = true;
+		let finishReason = r.finishReason;
+		if (state === 'reacted') {
+			if (finishReason && !INCOMPLETE_FINISH.has(finishReason)) finishReason = 'tool_calls';
+			// An upstream that never sent one: the recorder reads the finish reason
+			// off the `[DONE]` result, so supply it there.
+			else if (!sawFinish && r.done) finishReason = 'tool_calls';
+		}
 		return { ...r, deltas: out, ...(finishReason !== undefined ? { finishReason } : {}) };
 	}
 

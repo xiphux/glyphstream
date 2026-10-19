@@ -113,6 +113,27 @@ describe('catchLeadingReaction', () => {
 		expect(run(['🥹\n\nYou say that…']).finish).toBe('tool_calls');
 	});
 
+	it("reports a vendor's own finish reason as tool_calls too", () => {
+		expect(run(['🥹\n\nYou say that…'], 'eos_token').finish).toBe('tool_calls');
+	});
+
+	it('supplies tool_calls on [DONE] when the upstream never sent a finish reason', () => {
+		const norm = catchLeadingReaction(
+			scripted([{ deltas: [text('🥹\n\nYou say that…')] }, { deltas: [], done: true }]),
+			'call_x',
+		);
+		expect(norm.process(record).finishReason).toBeUndefined();
+		expect(norm.process(record).finishReason).toBe('tool_calls');
+	});
+
+	it('keeps content_filter, which says the reply did not complete', () => {
+		expect(run(['🥹\n\nYou say'], 'content_filter').finish).toBe('content_filter');
+	});
+
+	it('leaves the finish reason of an ordinary reply alone', () => {
+		expect(run(['Hello'], 'eos_token').finish).toBe('eos_token');
+	});
+
 	it('keeps a length finish, which the relay will not execute', () => {
 		expect(run(['🥹\n\nYou say'], 'length').finish).toBe('length');
 	});
