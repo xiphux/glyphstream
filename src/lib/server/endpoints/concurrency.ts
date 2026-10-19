@@ -140,10 +140,12 @@ interface Gate {
 	max: number;
 	waiters: Waiter[];
 	/**
-	 * The last member of this group to be granted a slot. Kept after release so
-	 * a handover can be recognised while the group sits idle — which is exactly
-	 * when it matters, since the resident model that needs evicting is held by
-	 * an endpoint that has already finished.
+	 * The member presumed to have the shared resource resident: usually the last
+	 * one granted a slot, but after startup or a resume the group's first
+	 * releasable member, granted or not — see `presumeResident`. Kept after
+	 * release so a handover can be recognised while the group sits idle — which
+	 * is exactly when it matters, since the resident model that needs evicting
+	 * is held by an endpoint that has already finished.
 	 */
 	lastHolder: LoadedEndpoint | null;
 	/**
@@ -257,7 +259,8 @@ function presumeResident(gate: Gate, resourceGroup: string): void {
 	try {
 		members = membersSource();
 	} catch {
-		// A config.toml that broke since boot. Best-effort, like the eviction
+		// A registry that failed to build (a successful build is memoized, so a
+		// later config.toml edit can't land here). Best-effort, like the eviction
 		// itself: failing the acquisition over a presumption would be worse.
 		return;
 	}
@@ -781,8 +784,9 @@ export interface ResourceGroupSnapshot {
 	max: number | null;
 	evicting: boolean;
 	paused: boolean;
-	/** Which member was granted the group's slot most recently — on a shared GPU,
-	 *  the endpoint whose model is presumed still resident. */
+	/** The member whose model is presumed still resident on a shared GPU: the
+	 *  one granted the slot most recently, or, after startup or a resume, the
+	 *  group's first releasable member — see `Gate.lastHolder`. */
 	lastHolderId: string | null;
 	holders: SlotSnapshot[];
 	queued: SlotSnapshot[];

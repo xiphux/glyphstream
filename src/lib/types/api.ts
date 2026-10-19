@@ -1984,8 +1984,9 @@ export interface EndpointGroupStatus {
 	/** An admin paused the group: work already holding a slot finishes, nothing
 	 *  new is granted until resumed. Persisted, so it survives a restart. */
 	paused: boolean;
-	/** The member granted the group's slot most recently — on a shared GPU, the
-	 *  endpoint whose model is presumed still resident. Null before any traffic. */
+	/** The member whose model is presumed still resident on a shared GPU: the
+	 *  one granted the slot most recently, or, after startup or a resume, the
+	 *  group's first releasable member. Null for a group with neither. */
 	lastHolderId: string | null;
 	endpoints: EndpointStatus[];
 }
