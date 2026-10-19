@@ -571,6 +571,7 @@ instructions, for nuance the styles can't carry — and for `json` it's where th
 | Lustify v8/v9, ChromaHD       | `keyword-soup`     | cinematic/photography phrases, camera + film                   |
 | Anima                         | `hybrid`           | tags→prose; spaces not underscores; `@artist`                  |
 | Ideogram 4                    | `json`             | the JSON field schema (see below)                              |
+| MOSS-Image                    | `natural-language` | long English prose; quote visible text verbatim — see below    |
 
 Style follows the **base model, not the checkpoint family** — a fine-tune keeps
 its base's prompt regime, and a checkpoint that rebases changes style with it.
@@ -593,6 +594,20 @@ its prompt field (Ideogram's ComfyUI node does) — the enhancer just produces t
 JSON string; the downstream has to consume it. (The default `max_tokens` is
 sized to fit a structured prompt, so you only need to raise it for unusually
 complex JSON scenes.)
+
+**MOSS-Image** takes two prompt formats: descriptive prose (a "caption") and
+an experimental JSON Layout with pixel bounding boxes. The enhancer targets the
+caption. A Layout's boxes are absolute pixels for the exact output size, which
+the enhancer is never told. A hint distilled from MOSS's own
+[enhancer skill](https://github.com/OpenMOSS/MOSS-Image/blob/main/skills/moss-image-prompt-enhancer/SKILL.md):
+
+```toml
+[endpoints.model_prompt_hints]
+  "moss-image" = "MOSS-Image reads long, detailed English prose well. Write cohesive paragraphs describing only visible choices: subject and action, appearance, setting, camera/framing, medium, lighting, materials, palette and mood, with spatial relations in words. No quality tags, coordinates or JSON. Quote any text the image should show exactly, verbatim in its original language with its punctuation, capitalization and line breaks. If the user asks for a sign, poster or label without giving its wording, write concrete copy that fits rather than a placeholder. Keep a minimalist request minimalist."
+```
+
+GlyphStream sends no negative prompt, so set MOSS's recommended one in the
+workflow.
 
 #### Video styles
 
@@ -663,9 +678,10 @@ workflow's `meta.json` — the bridge surfaces them in `/v1/models` for image an
 video models alike, and the config override above still wins.
 
 > **Double-enhancement caveat:** some upstreams run their _own_ prompt enhancer
-> (Qwen on DashScope via `prompt_extend`, ERNIE-Image via `use_pe`), both default-
-> on. Stacking GlyphStream's enhancer on top double-expands and dilutes intent —
-> disable the upstream one, or turn GlyphStream enhancement off for those models.
+> (Qwen on DashScope via `prompt_extend`, ERNIE-Image via `use_pe`, both
+> default-on; some MOSS-Image ComfyUI workflows build one in). Stacking
+> GlyphStream's enhancer on top double-expands and dilutes intent — disable the
+> upstream one, or turn GlyphStream enhancement off for those models.
 
 ## Memory consolidation (`[memory_model]`)
 
