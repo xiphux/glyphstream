@@ -4,8 +4,9 @@
  * A model that means to react often writes the emoji as the first line of its
  * reply — `❤️\n\nOh, Chris…` — rather than calling `react_to_message`. That
  * renders as prose and no badge. Measured against a warm roleplay persona on
- * Gemma4-26B, it was most of the reactions the model attempted until the hint
- * told it not to, and still turns up after (see REACTIONS_HINT in react.ts).
+ * Gemma4-26B, it was up to two thirds of the reactions the model attempted until
+ * the hint told it not to (see REACTIONS_HINT in react.ts). The hint's streamed
+ * run then typed none, but full turns replayed after it still typed 2 of 4.
  *
  * This stage turns that shape back into what the model meant: it holds the
  * reply's opening text until it can tell, and when it is a lone emoji on its own
