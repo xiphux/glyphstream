@@ -3,6 +3,7 @@
 	import { formatBytes } from '#lib/format.js';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import { Popover } from 'bits-ui';
 	import {
@@ -220,6 +221,26 @@
 		if (!el || idx < 0 || hasPositioned) return;
 		el.scrollTo({ left: idx * el.clientWidth, behavior: 'auto' });
 		hasPositioned = true;
+	});
+
+	// Follow `media` when the caller moves it somewhere the track isn't — the
+	// trash restoring the open item and stepping to its neighbour, or the
+	// slides shifting under it when a reload drops one. Left on the old slide,
+	// the next scroll event (any re-snap) reads that slide's index as a swipe
+	// and resolves it, dragging `media` back; when that's the item the caller
+	// just removed, the lightbox closes. A user's own navigation never trips
+	// this: a swipe resolves the slide the track is already on, and an arrow
+	// press is skipped while its `pendingIndex` / `scrollTarget` is live.
+	$effect(() => {
+		const el = trackEl;
+		const idx = currentIndex;
+		if (!el || idx < 0) return;
+		untrack(() => {
+			if (!hasPositioned || el.clientWidth === 0) return;
+			if (pendingIndex !== null || scrollTarget !== null || touchActive || touchReleased) return;
+			if (Math.round(el.scrollLeft / el.clientWidth) === idx) return;
+			el.scrollTo({ left: idx * el.clientWidth, behavior: 'auto' });
+		});
 	});
 
 	// Swipe handler. A swipe resolves the slide it's heading for as soon as it

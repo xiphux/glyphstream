@@ -9,6 +9,10 @@ arrived.
 
 ## Unreleased
 
+### Fixed
+
+- Restoring an item from the Recently deleted viewer could close the viewer instead of moving on to the next item.
+
 ## v0.46.1
 
 ### Fixed

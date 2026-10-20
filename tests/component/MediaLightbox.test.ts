@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import MediaLightbox from '#lib/components/MediaLightbox.svelte';
+import { tick } from 'svelte';
 import type { MediaConversationRef, MediaListItem } from '#lib/types/api.js';
 
 const gotoMock = vi.hoisted(() => vi.fn(async () => {}));
@@ -994,6 +995,37 @@ describe('MediaLightbox — swipe resolves at the midpoint', () => {
 		// Settling back on m-1 has to supersede it, or its response would move
 		// `media` to m-2 under a track resting on m-1.
 		expect(onNavigate).toHaveBeenLastCalledWith('m-1');
+	});
+
+	// The trash's Restore steps `media` to a neighbour itself. Left on the restored
+	// slide, the track's next scroll event read as a swipe back to it — and once
+	// the reload dropped that item, the lightbox closed.
+	it('follows media when the caller moves it, so the next scroll does not drag it back', async () => {
+		const onNavigate = vi.fn();
+		const props = { media: makeImage({ id: 'm-1' }), onClose: vi.fn(), siblings, onNavigate };
+		const { container, rerender } = render(MediaLightbox, { props });
+		const t = track(container);
+		void rerender({ ...props, media: makeImage({ id: 'm-3' }) });
+		await tick();
+		expect(t.el.scrollTo).toHaveBeenCalledWith({ left: 2 * WIDTH, behavior: 'auto' });
+		t.at(2);
+		await settleNavResolve();
+		expect(onNavigate).not.toHaveBeenCalled();
+	});
+
+	it('keeps the track on the open item when a reload drops a slide before it', async () => {
+		const props = {
+			media: makeImage({ id: 'm-2' }),
+			onClose: vi.fn(),
+			siblings,
+			onNavigate: vi.fn(),
+		};
+		const { container, rerender } = render(MediaLightbox, { props });
+		const t = track(container);
+		t.el.scrollLeft = WIDTH;
+		void rerender({ ...props, siblings: siblings.slice(1) });
+		await tick();
+		expect(t.el.scrollTo).toHaveBeenCalledWith({ left: 0, behavior: 'auto' });
 	});
 
 	it("doesn't let an arrow burst's smooth scroll pull it back slide by slide", async () => {
