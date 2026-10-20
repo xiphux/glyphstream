@@ -1449,7 +1449,7 @@
 				{/snippet}
 
 				{#if searching}
-					<!-- Search: a flat relevance-ranked grid (no date sections). Windowed as
+					<!-- Search: a flat grid, relevance- or newest-ordered (no date sections). Windowed as
 					     a single section. -->
 					{@const win = flatWindow(orderedSearchItems.length)}
 					<!-- The sort sits on the results line rather than in View options: it is
