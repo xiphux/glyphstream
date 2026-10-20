@@ -1,7 +1,7 @@
 {
 	"name": "glyphstream",
 	"private": true,
-	"version": "0.46.0",
+	"version": "0.46.1",
 	"type": "module",
 	"packageManager": "pnpm@12.12.1",
 	"devEngines": {

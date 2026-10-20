@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.46.1
+
 ### Fixed
 
 - Models that meant to react often typed the emoji at the top of their reply
