@@ -696,8 +696,9 @@
 		'inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover disabled:opacity-50';
 
 	async function regenerateWith(m: MediaListItem, prompt: string | null) {
-		// Skip silently if there is genuinely no prompt — the button shouldn't
-		// render in that case, but defense-in-depth.
+		// Skip silently if there is genuinely no prompt — the button shouldn't be
+		// reachable then (it's absent, or held hidden and inert in a carousel), but
+		// defense-in-depth.
 		if (!prompt) return;
 		stashIntent({
 			kind: 'regenerate',
