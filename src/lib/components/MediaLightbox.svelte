@@ -1202,6 +1202,10 @@
 									sideOffset={4}
 									class="z-overlay w-64 rounded-md border border-border surface-glass gs-pop p-1 shadow-lg"
 								>
+									<!-- The items carry the trigger's `stale` guard too: an open menu
+									     stays open across an arrow-key move to another enhanced slide,
+									     and mid-swipe `m` is still the image the user left, not the
+									     slide now on screen. -->
 									<p
 										class="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-muted"
 									>
@@ -1210,7 +1214,8 @@
 									<button
 										type="button"
 										onclick={() => regenerateWith(m, m.originalPrompt)}
-										class="flex w-full flex-col rounded px-2 py-1.5 text-left text-xs transition hover:bg-surface-sunken"
+										disabled={stale}
+										class="flex w-full flex-col rounded px-2 py-1.5 text-left text-xs transition hover:bg-surface-sunken disabled:opacity-60"
 									>
 										Your original prompt
 										<span class="text-[11px] text-fg-muted">Enhanced again for the model</span>
@@ -1218,7 +1223,8 @@
 									<button
 										type="button"
 										onclick={() => regenerateWith(m, enhancedPromptOf(m))}
-										class="flex w-full flex-col rounded px-2 py-1.5 text-left text-xs transition hover:bg-surface-sunken"
+										disabled={stale}
+										class="flex w-full flex-col rounded px-2 py-1.5 text-left text-xs transition hover:bg-surface-sunken disabled:opacity-60"
 									>
 										The enhanced prompt
 										<span class="text-[11px] text-fg-muted">Exactly what made this image</span>
