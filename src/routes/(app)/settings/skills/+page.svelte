@@ -8,7 +8,7 @@
 	import { confirmDialog } from '#lib/confirm.svelte.js';
 	import { toast } from '#lib/toast.svelte.js';
 
-	let { data } = $props<{ data: { skills: Skill[] } }>();
+	let { data }: { data: { skills: Skill[] } } = $props();
 
 	let pasteText = $state('');
 	let busy = $state(false);

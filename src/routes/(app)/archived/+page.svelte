@@ -9,7 +9,7 @@
 	import { setArchived, deleteConversation } from '#lib/conversation-actions.js';
 	import { resolve } from '$app/paths';
 
-	let { data } = $props<{ data: { archivedConversations: ConversationSummary[] } }>();
+	let { data }: { data: { archivedConversations: ConversationSummary[] } } = $props();
 
 	let busyId = $state<string | null>(null);
 	let deleteTargetId = $state<string | null>(null);

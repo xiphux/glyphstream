@@ -8,13 +8,15 @@
 	import { confirmDialog } from '#lib/confirm.svelte.js';
 	import { toast } from '#lib/toast.svelte.js';
 
-	let { data } = $props<{
+	let {
+		data,
+	}: {
 		data: {
 			memories: Memory[];
 			deletedMemories?: DeletedMemory[];
 			conversationOverview?: { overview: string | null; updatedAt: number | null };
 		};
-	}>();
+	} = $props();
 
 	let busyId = $state<string | null>(null);
 

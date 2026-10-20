@@ -1,5 +1,5 @@
 <script lang="ts">
-	let { children } = $props<{ children: import('svelte').Snippet }>();
+	let { children }: { children: import('svelte').Snippet } = $props();
 </script>
 
 <!-- The status-bar sampler, and the ONLY place it still exists.

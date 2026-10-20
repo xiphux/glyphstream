@@ -9,7 +9,7 @@
 	import { confirmDialog } from '#lib/confirm.svelte.js';
 	import { toast } from '#lib/toast.svelte.js';
 
-	let { data } = $props<{ data: { promptSnippets: PromptSnippet[] } }>();
+	let { data }: { data: { promptSnippets: PromptSnippet[] } } = $props();
 
 	let busy = $state(false);
 	let busyId = $state<string | null>(null);

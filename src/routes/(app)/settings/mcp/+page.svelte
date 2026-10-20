@@ -26,7 +26,7 @@
 		tools: ToolRow[];
 	}
 
-	let { data } = $props<{ data: { servers: ServerInfo[]; isAdmin: boolean } }>();
+	let { data }: { data: { servers: ServerInfo[]; isAdmin: boolean } } = $props();
 
 	let busyName = $state<string | null>(null);
 	let retryingId = $state<string | null>(null);

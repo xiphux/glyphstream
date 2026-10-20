@@ -35,7 +35,9 @@
 	} from '#lib/types/api.js';
 	import { toast } from '#lib/toast.svelte.js';
 
-	let { data } = $props<{
+	let {
+		data,
+	}: {
 		data: {
 			mode: 'browse' | 'search';
 			searchItems?: MediaListItem[];
@@ -48,7 +50,7 @@
 			 *  avatar of. */
 			customModels: CustomModel[];
 		};
-	}>();
+	} = $props();
 
 	// Search is a relevance-ranked mode: date headers, timeline rail, and stacking
 	// are all suspended; results come pre-ranked + cursorless from the server as a

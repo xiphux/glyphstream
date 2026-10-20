@@ -16,14 +16,16 @@
 		type ModelEntry,
 	} from '#lib/types/api.js';
 
-	let { data } = $props<{
+	let {
+		data,
+	}: {
 		data: {
 			customModels: CustomModel[];
 			models: ModelEntry[];
 			modelsError: string | null;
 			featureCategories: FeatureCategoryEntry[];
 		};
-	}>();
+	} = $props();
 
 	// Form state. `editingId` null = creating a new preset; non-null = editing.
 	let editingId = $state<string | null>(null);

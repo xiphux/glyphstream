@@ -18,7 +18,9 @@
 		enabled: boolean;
 	}
 
-	let { data } = $props<{
+	let {
+		data,
+	}: {
 		data: {
 			passkeys: PasskeySummary[];
 			oauthAccounts: OAuthAccountSummary[];
@@ -29,7 +31,7 @@
 			// From the (app) layout.
 			appLock?: { timeoutMs: number; sliding: boolean } | null;
 		};
-	}>();
+	} = $props();
 
 	let sessionBusyId = $state<string | null>(null);
 	let revokeAllBusy = $state(false);

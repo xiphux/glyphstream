@@ -12,7 +12,7 @@
 		tools: string[];
 	}
 
-	let { data } = $props<{ data: { groups: Group[] } }>();
+	let { data }: { data: { groups: Group[] } } = $props();
 
 	let busyTool = $state<string | null>(null);
 

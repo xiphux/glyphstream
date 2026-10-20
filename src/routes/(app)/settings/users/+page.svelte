@@ -12,7 +12,7 @@
 		UserSummary as UserRow,
 	} from '#lib/types/api.js';
 
-	let { data } = $props<{ data: { me: string; users: UserRow[]; invites: InviteRow[] } }>();
+	let { data }: { data: { me: string; users: UserRow[]; invites: InviteRow[] } } = $props();
 
 	// Resolve an inviter id to a display label from the loaded user list. A
 	// dangling id (inviter since deleted — invited_by is a soft reference) just

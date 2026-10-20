@@ -25,7 +25,9 @@
 		unsubscribe as unsubscribeFromPush,
 	} from '#lib/push-subscribe.js';
 
-	let { data } = $props<{
+	let {
+		data,
+	}: {
 		data: {
 			prefs: UserPreferences;
 			featureCategories: FeatureCategoryEntry[];
@@ -33,7 +35,7 @@
 			// server-side (push/notify.ts); the checkbox just says so.
 			appLock?: { timeoutMs: number; sliding: boolean } | null;
 		};
-	}>();
+	} = $props();
 
 	// Form state. Snapshot data.prefs once at mount — the form is the
 	// source of truth between mount and Save, so we don't want each
