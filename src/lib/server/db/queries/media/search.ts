@@ -32,7 +32,12 @@ export type MediaSearchOpts = {
 	limit?: number;
 };
 
-/** Keyword leg: bm25-ranked FTS5 hits as full `MediaListItem`s (titles attached). */
+/**
+ * Keyword leg: bm25-ranked FTS5 hits as full `MediaListItem`s (titles attached).
+ * Equal scores (the same prompt regenerated, or a one-term query every hit
+ * contains once in a same-length prompt) fall back to newest-first rather than
+ * FTS rowid order.
+ */
 export function ftsRankMedia(
 	userId: string,
 	match: string,
@@ -89,7 +94,7 @@ export function ftsRankMedia(
 			${kindCond}
 			${modelCond}
 			${favoriteCond}
-		ORDER BY bm25(media_prompt_fts) ASC
+		ORDER BY bm25(media_prompt_fts) ASC, media.created_at DESC, media.id DESC
 		LIMIT ${limit}
 	`);
 

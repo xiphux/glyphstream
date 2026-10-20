@@ -9,7 +9,13 @@ arrived.
 
 ## Unreleased
 
+### Added
+
+- Gallery search results can be sorted newest-first as well as by relevance.
+
 ### Fixed
+
+- Gallery search results that match equally well now come newest-first instead of in arbitrary order.
 
 - Restoring an item from the Recently deleted viewer could close the viewer instead of moving on to the next item.
 

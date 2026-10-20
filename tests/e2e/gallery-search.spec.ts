@@ -71,4 +71,32 @@ test.describe('gallery: prompt search', () => {
 		await expect(page.getByText('No results for "zzzznomatch".')).toBeVisible();
 		await expect(page.locator(TILE)).toHaveCount(0);
 	});
+
+	test('re-sorts the same results newest-first without re-running the search', async ({ page }) => {
+		// seedMediaPrompts dates index 0 newest. The short prompt is the OLDER one,
+		// but bm25 favours it (same term, shorter doc), so relevance and newest disagree.
+		resetData();
+		seedMediaPrompts(['a portrait of Mira in a red coat standing by the sea', 'Mira']);
+		await page.goto('/gallery?q=mira');
+		const tiles = page.locator(TILE);
+		await expect(tiles).toHaveCount(2);
+		await expect(tiles.first()).toHaveAttribute('alt', 'Mira');
+
+		// The load never reads `sort`, so the flip must not re-run the search. Only
+		// a data request FOR the sorted URL counts: an unrelated invalidation from
+		// mount can still be in flight here.
+		let refetched = false;
+		page.on('request', (r) => {
+			if (r.url().includes('__data.json') && r.url().includes('sort=')) refetched = true;
+		});
+		const sort = page.getByRole('group', { name: 'Sort results' });
+		await sort.getByRole('button', { name: 'Newest' }).click();
+		await expect(page).toHaveURL(/sort=new/);
+		await expect(tiles.first()).toHaveAttribute('alt', /red coat/);
+		expect(refetched).toBe(false);
+
+		await sort.getByRole('button', { name: 'Relevance' }).click();
+		await expect(page).not.toHaveURL(/sort=/);
+		await expect(tiles.first()).toHaveAttribute('alt', 'Mira');
+	});
 });

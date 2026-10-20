@@ -677,6 +677,15 @@ describe('searchMediaForUser (keyword prompt search)', () => {
 		expect(hits[0].id).toBe(twice.id); // more "blue" → better bm25
 	});
 
+	it('breaks bm25 ties newest-first', async () => {
+		const u = seedUser();
+		const older = makeMedia(u.id, { promptFull: 'a portrait of Mira' });
+		const newer = makeMedia(u.id, { promptFull: 'a portrait of Mira' });
+		setCreatedAt(older.id, 1_700_000_000_000);
+		setCreatedAt(newer.id, 1_700_000_100_000);
+		expect((await searchMediaForUser(u.id, 'mira')).map((h) => h.id)).toEqual([newer.id, older.id]);
+	});
+
 	it('AND-joins multiple tokens (all must be present)', async () => {
 		const u = seedUser();
 		const both = makeMedia(u.id, { promptFull: 'a red barn in a field' });

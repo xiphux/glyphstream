@@ -56,7 +56,9 @@ Everything ever generated, in one place.
   sharing one prompt — stacks into a single card you can expand. Toggle it off
   for the flat view.
 - **Search your prompts** by keyword, plus semantic matching when an embedding
-  model is configured ([embeddings](web-search.md)). **Filter** by the model that
+  model is configured ([embeddings](web-search.md)). Results come best-match
+  first; switch to **Newest** above them when the query is a name every result
+  contains and relevance has nothing to rank on. **Filter** by the model that
   made it.
 - **Browse by time** with sticky day or month headers and a right-edge timeline
   rail to jump to any month.

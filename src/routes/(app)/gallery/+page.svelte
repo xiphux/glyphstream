@@ -190,6 +190,32 @@
 		}
 	}
 
+	// Search results in display order. Relevance is the server's order; Newest
+	// re-sorts the same result set client-side. A bare-name query that every hit
+	// contains once leaves bm25 ranking on prompt length alone, which reads as
+	// random, so this is the escape hatch. A URL param like the facets so it
+	// survives a reload and a new query — but the load never reads it, and Kit
+	// tracks search params per key, so flipping it doesn't re-run the search.
+	const searchSort = $derived<'relevance' | 'newest'>(
+		page.url.searchParams.get('sort') === 'new' ? 'newest' : 'relevance',
+	);
+	const orderedSearchItems = $derived(
+		searchSort === 'newest'
+			? searchItems.toSorted((a, b) => b.createdAt - a.createdAt)
+			: searchItems,
+	);
+	function setSearchSort(sort: 'relevance' | 'newest') {
+		const url = new URL(page.url.href);
+		if (sort === 'newest') url.searchParams.set('sort', 'new');
+		else url.searchParams.delete('sort');
+		void goto(url, { reset: false, replace: true });
+		// A re-sort reorders everything, so the place you were scrolled to means nothing.
+		if (scrollContainer) {
+			scrollContainer.scrollTop = 0;
+			scrollTop = 0;
+		}
+	}
+
 	// Keep search results in sync with SSR navigation (each keystroke re-runs load).
 	$effect(() => {
 		if (data.mode === 'search') searchItems = [...(data.searchItems ?? [])];
@@ -293,7 +319,10 @@
 		const trimmed = q.trim();
 		committedQuery = trimmed;
 		if (trimmed) url.searchParams.set('q', trimmed);
-		else url.searchParams.delete('q');
+		else {
+			url.searchParams.delete('q');
+			url.searchParams.delete('sort');
+		}
 		void goto(url, { reset: false, replace: true });
 	}
 	function onQueryInput() {
@@ -441,7 +470,7 @@
 		drillItems
 			? drillItems.map((m) => ({ id: m.id, kind: m.kind }))
 			: searching
-				? searchItems.map((m) => ({ id: m.id, kind: m.kind }))
+				? orderedSearchItems.map((m) => ({ id: m.id, kind: m.kind }))
 				: feed.loadedLeaders(),
 	);
 
@@ -1422,15 +1451,43 @@
 				{#if searching}
 					<!-- Search: a flat relevance-ranked grid (no date sections). Windowed as
 					     a single section. -->
-					{@const win = flatWindow(searchItems.length)}
-					<p class="mb-3 text-xs text-fg-muted">
-						{searchItems.length} result{searchItems.length === 1 ? '' : 's'} for "{data.q}"
-					</p>
+					{@const win = flatWindow(orderedSearchItems.length)}
+					<!-- The sort sits on the results line rather than in View options: it is
+					     the one control that explains the order you're looking at, and the
+					     toolbar has no room for it at 360px. -->
+					<div class="mb-3 flex items-center justify-between gap-3">
+						<p class="min-w-0 truncate text-xs text-fg-muted">
+							{searchItems.length} result{searchItems.length === 1 ? '' : 's'} for "{data.q}"
+						</p>
+						{#if searchItems.length > 1}
+							<div
+								class="inline-flex shrink-0 overflow-hidden rounded-md border border-border-strong text-xs"
+								role="group"
+								aria-label="Sort results"
+							>
+								{#each [{ s: 'relevance', label: 'Relevance' }, { s: 'newest', label: 'Newest' }] as { s, label }, i (s)}
+									{@const active = searchSort === s}
+									<button
+										type="button"
+										onclick={() => setSearchSort(s as 'relevance' | 'newest')}
+										aria-pressed={active}
+										class="px-2.5 py-1 transition {i > 0
+											? 'border-l border-border-strong'
+											: ''} {active
+											? 'bg-surface-inverse text-fg-inverse'
+											: 'bg-surface-panel hover:bg-surface-raised'}"
+									>
+										{label}
+									</button>
+								{/each}
+							</div>
+						{/if}
+					</div>
 					<ul
 						class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
 						style={win ? `padding-top:${win.padTop}px;padding-bottom:${win.padBottom}px` : ''}
 					>
-						{#each win ? searchItems.slice(win.firstUnit, win.unitEnd) : searchItems as m (m.id)}
+						{#each win ? orderedSearchItems.slice(win.firstUnit, win.unitEnd) : orderedSearchItems as m (m.id)}
 							{@render mediaTile(m)}
 						{/each}
 					</ul>
