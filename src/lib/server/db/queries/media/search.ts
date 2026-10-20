@@ -29,14 +29,18 @@ export type MediaSearchOpts = {
 	/** Restrict to starred media, so the Favorites filter still applies while
 	 *  searching (the gallery keeps its facets visible in search mode). */
 	favorite?: boolean;
+	/** `newest` orders by date BEFORE the cap, so a query matching more than
+	 *  {@link MEDIA_SEARCH_CAP} rows returns the newest of them — not the
+	 *  best-scoring ones re-sorted. Default `relevance`. */
+	sort?: 'relevance' | 'newest';
 	limit?: number;
 };
 
 /**
- * Keyword leg: bm25-ranked FTS5 hits as full `MediaListItem`s (titles attached).
- * Equal scores (the same prompt regenerated, or a one-term query every hit
- * contains once in a same-length prompt) fall back to newest-first rather than
- * FTS rowid order.
+ * Keyword leg: bm25-ranked FTS5 hits as full `MediaListItem`s (titles attached),
+ * or newest-first under `sort: 'newest'`. Equal bm25 scores (the same prompt
+ * regenerated, or a one-term query every hit contains once in a same-length
+ * prompt) fall back to newest-first rather than FTS rowid order.
  */
 export function ftsRankMedia(
 	userId: string,
@@ -49,6 +53,10 @@ export function ftsRankMedia(
 		: sql`AND media.kind IN ('image', 'video')`;
 	const modelCond = opts.model ? sql`AND media.source_model = ${opts.model}` : sql``;
 	const favoriteCond = opts.favorite ? sql`AND media.favorited_at IS NOT NULL` : sql``;
+	const orderBy =
+		opts.sort === 'newest'
+			? sql`media.created_at DESC, media.id DESC`
+			: sql`bm25(media_prompt_fts) ASC, media.created_at DESC, media.id DESC`;
 
 	// Raw SQL: drizzle doesn't model FTS5 virtual tables, and bm25()/MATCH must
 	// share one SELECT. Params are bound (no injection). The media table keeps
@@ -94,7 +102,7 @@ export function ftsRankMedia(
 			${kindCond}
 			${modelCond}
 			${favoriteCond}
-		ORDER BY bm25(media_prompt_fts) ASC, media.created_at DESC, media.id DESC
+		ORDER BY ${orderBy}
 		LIMIT ${limit}
 	`);
 

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 
 import {
 	bulkTrashMediaForUser,
+	MEDIA_SEARCH_CAP,
 	decrementMediaForMessages,
 	claimExpiredTrash,
 	findPurgeCandidates,
@@ -684,6 +685,29 @@ describe('searchMediaForUser (keyword prompt search)', () => {
 		setCreatedAt(older.id, 1_700_000_000_000);
 		setCreatedAt(newer.id, 1_700_000_100_000);
 		expect((await searchMediaForUser(u.id, 'mira')).map((h) => h.id)).toEqual([newer.id, older.id]);
+	});
+
+	it('sort: newest takes the newest matches before the cap, not the best-scoring', async () => {
+		const u = seedUser();
+		// MEDIA_SEARCH_CAP short prompts outscore one long, newer prompt on bm25,
+		// so relevance cuts the long one; newest must return it first.
+		for (let i = 0; i < MEDIA_SEARCH_CAP; i++) {
+			const m = makeMedia(u.id, { promptFull: 'Mira' });
+			setCreatedAt(m.id, 1_700_000_000_000 + i);
+		}
+		const latest = makeMedia(u.id, {
+			promptFull: 'a portrait of Mira in a red coat standing by the sea at dusk',
+		});
+		setCreatedAt(latest.id, 1_800_000_000_000);
+
+		const relevance = await searchMediaForUser(u.id, 'mira');
+		expect(relevance).toHaveLength(MEDIA_SEARCH_CAP);
+		expect(relevance.map((h) => h.id)).not.toContain(latest.id);
+		const newest = await searchMediaForUser(u.id, 'mira', { sort: 'newest' });
+		expect(newest).toHaveLength(MEDIA_SEARCH_CAP);
+		expect(newest[0].id).toBe(latest.id);
+		const dates = newest.map((h) => h.createdAt);
+		expect(dates).toEqual(dates.toSorted((a, b) => b - a));
 	});
 
 	it('AND-joins multiple tokens (all must be present)', async () => {

@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTestDb, closeTestDb } from './_helpers/test-db';
+import { eq } from 'drizzle-orm';
+import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
+import { media } from '#lib/server/db/schema.js';
 import { seedUser } from './_helpers/seed';
 
 // The semantic leg pulls config + the query embedding from these; mock both so
@@ -25,8 +27,9 @@ const CFG = {
 	maxInputTokens: 512,
 };
 
+let testDb: TestDB;
 beforeEach(() => {
-	createTestDb();
+	testDb = createTestDb();
 	resolveMock.mockReset();
 	embedQueryMock.mockReset();
 });
@@ -141,6 +144,24 @@ describe('searchMediaForUser (semantic fusion)', () => {
 		expect(await searchMediaForUser(u.id, 'dog')).toEqual([]); // warms the cache
 		const puppy = addMedia(u.id, 'a golden retriever puppy', [1, 0]);
 		expect((await searchMediaForUser(u.id, 'dog')).map((h) => h.id)).toEqual([puppy]);
+	});
+
+	it('orders the fused set by date under sort: newest', async () => {
+		resolveMock.mockReturnValue(CFG);
+		embedQueryMock.mockResolvedValue([1, 0]);
+		const u = seedUser();
+		// The keyword hit is in both legs and wins on relevance; the synonym is
+		// newer and only the dense leg finds it.
+		const apple = addMedia(u.id, 'a red apple', [1, 0]);
+		const fruit = addMedia(u.id, 'a crisp orchard fruit', [0.9, 0.1]);
+		testDb.update(media).set({ createdAt: 1_700_000_000_000 }).where(eq(media.id, apple)).run();
+		testDb.update(media).set({ createdAt: 1_700_000_100_000 }).where(eq(media.id, fruit)).run();
+
+		expect((await searchMediaForUser(u.id, 'apple')).map((h) => h.id)).toEqual([apple, fruit]);
+		expect((await searchMediaForUser(u.id, 'apple', { sort: 'newest' })).map((h) => h.id)).toEqual([
+			fruit,
+			apple,
+		]);
 	});
 
 	it('drops a trashed item from a cached corpus', async () => {

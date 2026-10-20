@@ -72,7 +72,7 @@ test.describe('gallery: prompt search', () => {
 		await expect(page.locator(TILE)).toHaveCount(0);
 	});
 
-	test('re-sorts the same results newest-first without re-running the search', async ({ page }) => {
+	test('sorts results newest-first, and keeps the sort across a reload', async ({ page }) => {
 		// seedMediaPrompts dates index 0 newest. The short prompt is the OLDER one,
 		// but bm25 favours it (same term, shorter doc), so relevance and newest disagree.
 		resetData();
@@ -82,18 +82,16 @@ test.describe('gallery: prompt search', () => {
 		await expect(tiles).toHaveCount(2);
 		await expect(tiles.first()).toHaveAttribute('alt', 'Mira');
 
-		// The load never reads `sort`, so the flip must not re-run the search. Only
-		// a data request FOR the sorted URL counts: an unrelated invalidation from
-		// mount can still be in flight here.
-		let refetched = false;
-		page.on('request', (r) => {
-			if (r.url().includes('__data.json') && r.url().includes('sort=')) refetched = true;
-		});
 		const sort = page.getByRole('group', { name: 'Sort results' });
-		await sort.getByRole('button', { name: 'Newest' }).click();
+		const newest = sort.getByRole('button', { name: 'Newest' });
+		await newest.click();
 		await expect(page).toHaveURL(/sort=new/);
 		await expect(tiles.first()).toHaveAttribute('alt', /red coat/);
-		expect(refetched).toBe(false);
+
+		// The server sorts, so a cold load of the URL renders the same order.
+		await page.reload();
+		await expect(newest).toHaveAttribute('aria-pressed', 'true');
+		await expect(tiles.first()).toHaveAttribute('alt', /red coat/);
 
 		await sort.getByRole('button', { name: 'Relevance' }).click();
 		await expect(page).not.toHaveURL(/sort=/);

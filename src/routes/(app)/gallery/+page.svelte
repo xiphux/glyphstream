@@ -46,6 +46,7 @@
 			favorite: boolean;
 			modelFacets: Array<ModelFacet & { label: string }>;
 			q: string | null;
+			sort: 'relevance' | 'newest';
 			/** From the (app) layout — the presets an image can be made the
 			 *  avatar of. */
 			customModels: CustomModel[];
@@ -190,30 +191,25 @@
 		}
 	}
 
-	// Search results in display order. Relevance is the server's order; Newest
-	// re-sorts the same result set client-side. A bare-name query that every hit
-	// contains once leaves bm25 ranking on prompt length alone, which reads as
-	// random, so this is the escape hatch. A URL param like the facets so it
-	// survives a reload and a new query — but the load never reads it, and Kit
-	// tracks search params per key, so flipping it doesn't re-run the search.
-	const searchSort = $derived<'relevance' | 'newest'>(
-		page.url.searchParams.get('sort') === 'new' ? 'newest' : 'relevance',
-	);
-	const orderedSearchItems = $derived(
-		searchSort === 'newest'
-			? searchItems.toSorted((a, b) => b.createdAt - a.createdAt)
-			: searchItems,
-	);
+	// Search order: Relevance (bm25, fused with the semantic leg) or Newest. A
+	// bare-name query that every hit contains once leaves bm25 ranking on prompt
+	// length alone, which reads as random, so Newest is the escape hatch. A URL
+	// param like the facets so it survives a reload and a new query. The server
+	// sorts, not the client: the result set is capped, and the newest matches
+	// aren't the best-scoring ones put in date order.
+	const searchSort = $derived(data.sort);
 	function setSearchSort(sort: 'relevance' | 'newest') {
 		const url = new URL(page.url.href);
 		if (sort === 'newest') url.searchParams.set('sort', 'new');
 		else url.searchParams.delete('sort');
-		void goto(url, { reset: false, replace: true });
-		// A re-sort reorders everything, so the place you were scrolled to means nothing.
-		if (scrollContainer) {
-			scrollContainer.scrollTop = 0;
-			scrollTop = 0;
-		}
+		// A re-sort reorders everything, so the place you were scrolled to means
+		// nothing. Once the new order has landed, not before — it's a load.
+		void goto(url, { reset: false, replace: true }).then(() => {
+			if (scrollContainer) {
+				scrollContainer.scrollTop = 0;
+				scrollTop = 0;
+			}
+		});
 	}
 
 	// Keep search results in sync with SSR navigation (each keystroke re-runs load).
@@ -470,7 +466,7 @@
 		drillItems
 			? drillItems.map((m) => ({ id: m.id, kind: m.kind }))
 			: searching
-				? orderedSearchItems.map((m) => ({ id: m.id, kind: m.kind }))
+				? searchItems.map((m) => ({ id: m.id, kind: m.kind }))
 				: feed.loadedLeaders(),
 	);
 
@@ -1451,7 +1447,7 @@
 				{#if searching}
 					<!-- Search: a flat grid, relevance- or newest-ordered (no date sections). Windowed as
 					     a single section. -->
-					{@const win = flatWindow(orderedSearchItems.length)}
+					{@const win = flatWindow(searchItems.length)}
 					<!-- The sort sits on the results line rather than in View options: it is
 					     the one control that explains the order you're looking at, and the
 					     toolbar has no room for it at 360px. -->
@@ -1487,7 +1483,7 @@
 						class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
 						style={win ? `padding-top:${win.padTop}px;padding-bottom:${win.padBottom}px` : ''}
 					>
-						{#each win ? orderedSearchItems.slice(win.firstUnit, win.unitEnd) : orderedSearchItems as m (m.id)}
+						{#each win ? searchItems.slice(win.firstUnit, win.unitEnd) : searchItems as m (m.id)}
 							{@render mediaTile(m)}
 						{/each}
 					</ul>

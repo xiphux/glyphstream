@@ -51,6 +51,7 @@ const browseData = {
 	favorite: false,
 	modelFacets: [],
 	q: null,
+	sort: 'relevance' as const,
 	customModels: [],
 };
 

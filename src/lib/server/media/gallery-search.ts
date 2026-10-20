@@ -83,7 +83,8 @@ function denseCorpusFor(
  * stored `prompt_full` vectors) fuses in via RRF, surfacing synonym matches the
  * keyword leg misses; it degrades to keyword-only on any failure (no config,
  * endpoint down) — same as memory recall. Returns up to {@link MEDIA_SEARCH_CAP}
- * `MediaListItem`s best-match-first, no cursor (a ranked mode, not the browse).
+ * `MediaListItem`s best-match-first (or newest-first under `sort: 'newest'`),
+ * no cursor (a ranked mode, not the browse).
  *
  * Visibility (deleted_at / origin) + kind/model/favorite compose on both legs —
  * the dense leg included, or a semantic-only neighbour outside the filter would
@@ -139,6 +140,16 @@ export async function searchMediaForUser(
 		// matches surface; keyword hits get an extra contribution and rank higher.
 		const ftsIds = ftsItems.map((i) => i.id);
 		const idList = [...new Set([...ftsIds, ...denseIds])];
+
+		// Newest: the result set is the same union; only the order differs, so
+		// there's nothing for RRF to do. The keyword leg is already date-ordered
+		// under its cap, so the newest keyword hits are all in the union.
+		if (opts.sort === 'newest') {
+			const items = materialize(userId, ftsItems, idList);
+			items.sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : -1));
+			return items.slice(0, limit);
+		}
+
 		const idxOf = new Map(idList.map((id, i) => [id, i]));
 		const ftsRanking = ftsIds.map((id) => ({ index: idxOf.get(id)!, score: 0 }));
 		const denseRanking = denseIds.map((id) => ({ index: idxOf.get(id)!, score: 0 }));
@@ -146,14 +157,18 @@ export async function searchMediaForUser(
 			.slice(0, limit)
 			.map((sc) => idList[sc.index]);
 
-		// Materialize: reuse the keyword rows we already have; fetch only the
-		// semantic-only ids.
-		const byId = new Map(ftsItems.map((i) => [i.id, i]));
-		const missing = orderedIds.filter((id) => !byId.has(id));
-		for (const it of getMediaListItemsByIds(userId, missing)) byId.set(it.id, it);
-		return orderedIds.map((id) => byId.get(id)).filter((x): x is MediaListItem => !!x);
+		return materialize(userId, ftsItems, orderedIds);
 	} catch (e) {
 		log.warn('dense leg failed; keyword-only:', e);
 		return ftsItems.slice(0, limit);
 	}
+}
+
+/** `ids` as full rows, in order: reuse the keyword rows we already have and
+ *  fetch only the semantic-only ids. */
+function materialize(userId: string, ftsItems: MediaListItem[], ids: string[]): MediaListItem[] {
+	const byId = new Map(ftsItems.map((i) => [i.id, i]));
+	const missing = ids.filter((id) => !byId.has(id));
+	for (const it of getMediaListItemsByIds(userId, missing)) byId.set(it.id, it);
+	return ids.map((id) => byId.get(id)).filter((x): x is MediaListItem => !!x);
 }
