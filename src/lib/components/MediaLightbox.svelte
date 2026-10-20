@@ -692,6 +692,9 @@
 		return m.promptFull ?? m.promptExcerpt;
 	}
 
+	const ACTION_BUTTON =
+		'inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover disabled:opacity-50';
+
 	async function regenerateWith(m: MediaListItem, prompt: string | null) {
 		// Skip silently if there is genuinely no prompt — the button shouldn't
 		// render in that case, but defense-in-depth.
@@ -841,6 +844,13 @@
 	}
 </script>
 
+<!-- An action caption that shortens below `sm`, so the action row fits one line
+     on a phone. The caller puts `full` in aria-label too: both spans are in the
+     DOM, and the accessible name shouldn't read both. -->
+{#snippet caption(short: string, full: string)}
+	<span class="sm:hidden">{short}</span><span class="hidden sm:inline">{full}</span>
+{/snippet}
+
 <svelte:window onkeydown={onKey} />
 
 {#if media}
@@ -850,6 +860,10 @@
 	<!-- Images only: a video has no still to stand in for a preset, and the
 	     avatar surfaces render an <img>. -->
 	{@const canSetAvatar = m.kind === 'image' && !!onSetAvatar && avatarTargets.length > 0}
+	<!-- Whether the action row holds each kind of slot (a carousel keeps one even
+	     where it doesn't apply; see the row). -->
+	{@const avatarSlot = canSetAvatar || (showCarousel && !!onSetAvatar && avatarTargets.length > 0)}
+	{@const launchSlots = !trashed && (hasPrompt || canUseAsStarting || showCarousel)}
 	<!-- Mid-swipe the star shows neither state: the old one would be a claim
 	     about an image the user has left. -->
 	{@const starred = m.favorite && !stale}
@@ -1144,154 +1158,186 @@
 				{/if}
 			</div>
 		{/if}
-		{#if canSetAvatar || (showCarousel && !!onSetAvatar && avatarTargets.length > 0)}
+		{#if avatarSlot || launchSlots}
 			<!--
-				"Set as avatar" — the cheapest path to a preset portrait: generate
-				one however you like (including a fan-out of variants), then keep
-				the one you want. Sits with the other act-on-this-image actions
-				rather than in the top toolbar, which is reserved for
-				share/delete/close.
-			-->
-			<!-- A video can't be an avatar, but in a carousel its slide keeps the
-			     row's space (hidden and inert) so swiping between an image and a
-			     video doesn't resize the image. Same reason as the prompt strip. -->
-			<div
-				class="mx-auto mt-3 flex shrink-0 flex-wrap justify-center gap-2 {canSetAvatar
-					? ''
-					: 'invisible'}"
-				inert={!canSetAvatar}
-			>
-				{#if avatarTargets.length === 1}
-					<!-- One preset: a menu to choose between one option is a wasted
-					     click, so name it in the button instead. -->
-					{@const only = avatarTargets[0]}
-					<button
-						type="button"
-						disabled={stale || settingAvatar || only.avatarMediaId === m.id}
-						onclick={() => onSetAvatar?.({ kind: only.kind, id: only.id }, m.id)}
-						title={only.avatarMediaId === m.id
-							? `Already ${only.name}'s avatar`
-							: `Show this image beside ${only.name}'s replies`}
-						class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover disabled:opacity-50"
-					>
-						<UserRound size={13} strokeWidth={2.25} />
-						{only.avatarMediaId === m.id
-							? `Avatar for ${only.name}`
-							: `Set as avatar for ${only.name}`}
-					</button>
-				{:else}
-					<Popover.Root>
-						<Popover.Trigger
-							disabled={stale || settingAvatar}
-							title="Show this image beside a preset's replies"
-							class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover disabled:opacity-50"
-						>
-							<UserRound size={13} strokeWidth={2.25} />
-							Set as avatar…
-						</Popover.Trigger>
-						<Popover.Portal>
-							<Popover.Content
-								sideOffset={4}
-								class="z-overlay max-h-72 w-64 overflow-y-auto rounded-md border border-border surface-glass gs-pop p-1 shadow-lg"
-							>
-								<p
-									class="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-muted"
-								>
-									Set as avatar for
-								</p>
-								{#each avatarTargets as t (t.kind + ':' + t.id)}
-									{@const current = t.avatarMediaId === m.id}
-									<button
-										type="button"
-										disabled={settingAvatar || current}
-										onclick={() => onSetAvatar?.({ kind: t.kind, id: t.id }, m.id)}
-										class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition hover:bg-surface-sunken disabled:opacity-60"
-									>
-										{#if t.avatarMediaId}
-											<img
-												src="/api/media/{t.avatarMediaId}/thumbnail"
-												alt=""
-												loading="lazy"
-												class="size-5 shrink-0 rounded-full object-cover"
-											/>
-										{:else}
-											<span
-												class="size-5 shrink-0 rounded-full border border-dashed border-border-strong"
-											></span>
-										{/if}
-										<span class="min-w-0 flex-1 truncate">{t.name}</span>
-										{#if current}
-											<Check size={13} strokeWidth={2.25} class="shrink-0 text-fg-muted" />
-										{/if}
-									</button>
-								{/each}
-							</Popover.Content>
-						</Popover.Portal>
-					</Popover.Root>
-				{/if}
-			</div>
-		{/if}
-		{#if !trashed && (hasPrompt || canUseAsStarting)}
-			<!--
-				Gallery-launch actions: "Regenerate with this prompt" and
-				"Use as starting image" send the user to / pre-loaded with
-				the relevant intent (see the LAUNCH_KEY pattern at the top
-				of this file). Sit just below the prompt strip so they
-				read as actions *on* the prompt and image, not generic
-				toolbar buttons — placement matters when the dialog is
-				dense. Hidden when there's nothing meaningful to launch
-				with (no prompt and not an image).
+				The act-on-this-image actions, in ONE row: "Regenerate" and "Edit" send
+				the user to / pre-loaded with the relevant intent (see the LAUNCH_KEY
+				pattern at the top of this file); "Set as avatar" is the cheapest path
+				to a preset portrait (generate however you like, including a fan-out of
+				variants, then keep the one you want). They sit just below the prompt
+				strip so they read as actions *on* the prompt and image — the top
+				toolbar is reserved for share/delete/close.
+
+				Sized to fit one line on a phone: below `sm` each button shows a short
+				caption (the full one stays the accessible name), and the enhanced
+				prompt's two regenerate choices share one button behind a menu. In a
+				carousel every slot holds its place, hidden and inert, on a slide where
+				it doesn't apply (a video can't be an avatar or an edit source; an
+				upload has no prompt). This row used to be two rows whose button count
+				varied per slide, so wrapping changed the height and resized the image
+				mid-swipe — same reason as the prompt strip.
 			-->
 			<div class="mx-auto mt-3 flex shrink-0 flex-wrap justify-center gap-2">
-				{#if hasPrompt}
+				{#if launchSlots && (hasPrompt || showCarousel)}
+					{@const regenLabel = inConversation
+						? 'Regenerate in a new chat'
+						: 'Regenerate with this prompt'}
 					{#if m.originalPrompt}
 						<!-- The prompt was enhanced, so offer both: regenerate from the
 						     user's ORIGINAL (re-enhances fresh) or from the EXACT enhanced
 						     prompt that made this image. -->
-						<button
-							type="button"
-							onclick={() => regenerateWith(m, m.originalPrompt)}
-							disabled={stale}
-							title="Start a new conversation from your original prompt (it will be enhanced again)"
-							class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover disabled:opacity-50"
-						>
-							<RotateCcw size={13} strokeWidth={2.25} />
-							Regenerate (original)
-						</button>
-						<button
-							type="button"
-							onclick={() => regenerateWith(m, enhancedPromptOf(m))}
-							disabled={stale}
-							title="Start a new conversation from the exact enhanced prompt that made this image"
-							class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover disabled:opacity-50"
-						>
-							<RotateCcw size={13} strokeWidth={2.25} />
-							Regenerate (enhanced)
-						</button>
+						<Popover.Root>
+							<Popover.Trigger
+								disabled={stale}
+								aria-label="{regenLabel}…"
+								title="Start a new conversation from your original or the enhanced prompt"
+								class={ACTION_BUTTON}
+							>
+								<RotateCcw size={13} strokeWidth={2.25} />
+								{@render caption('Regenerate…', `${regenLabel}…`)}
+							</Popover.Trigger>
+							<Popover.Portal>
+								<Popover.Content
+									sideOffset={4}
+									class="z-overlay w-64 rounded-md border border-border surface-glass gs-pop p-1 shadow-lg"
+								>
+									<p
+										class="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-muted"
+									>
+										Regenerate from
+									</p>
+									<button
+										type="button"
+										onclick={() => regenerateWith(m, m.originalPrompt)}
+										class="flex w-full flex-col rounded px-2 py-1.5 text-left text-xs transition hover:bg-surface-sunken"
+									>
+										Your original prompt
+										<span class="text-[11px] text-fg-muted">Enhanced again for the model</span>
+									</button>
+									<button
+										type="button"
+										onclick={() => regenerateWith(m, enhancedPromptOf(m))}
+										class="flex w-full flex-col rounded px-2 py-1.5 text-left text-xs transition hover:bg-surface-sunken"
+									>
+										The enhanced prompt
+										<span class="text-[11px] text-fg-muted">Exactly what made this image</span>
+									</button>
+								</Popover.Content>
+							</Popover.Portal>
+						</Popover.Root>
 					{:else}
 						<button
 							type="button"
 							onclick={() => regenerateWith(m, enhancedPromptOf(m))}
-							disabled={stale}
+							disabled={stale || !hasPrompt}
+							inert={!hasPrompt}
+							aria-label={regenLabel}
 							title="Start a new conversation pre-filled with this prompt"
-							class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover disabled:opacity-50"
+							class="{ACTION_BUTTON} {hasPrompt ? '' : 'invisible'}"
 						>
 							<RotateCcw size={13} strokeWidth={2.25} />
-							{inConversation ? 'Regenerate in a new chat' : 'Regenerate with this prompt'}
+							{@render caption('Regenerate', regenLabel)}
 						</button>
 					{/if}
 				{/if}
-				{#if canUseAsStarting}
+				{#if launchSlots && (canUseAsStarting || showCarousel)}
+					{@const editLabel = inConversation ? 'Edit in a new chat' : 'Use as starting image'}
 					<button
 						type="button"
 						onclick={() => useAsStartingImage(m)}
-						disabled={stale}
+						disabled={stale || !canUseAsStarting}
+						inert={!canUseAsStarting}
+						aria-label={editLabel}
 						title="Start a new conversation with this image attached"
-						class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover disabled:opacity-50"
+						class="{ACTION_BUTTON} {canUseAsStarting ? '' : 'invisible'}"
 					>
 						<ImagePlus size={13} strokeWidth={2.25} />
-						{inConversation ? 'Edit in a new chat' : 'Use as starting image'}
+						{@render caption('Edit', editLabel)}
 					</button>
+				{/if}
+				{#if avatarSlot}
+					<!-- `invisible` inherits through `contents`, so this hides the button
+					     without the wrapper taking a place of its own in the row. -->
+					<div class="contents {canSetAvatar ? '' : 'invisible'}" inert={!canSetAvatar}>
+						{#if avatarTargets.length === 1}
+							<!-- One preset: a menu to choose between one option is a wasted
+							     click, so name it in the button instead. -->
+							{@const only = avatarTargets[0]}
+							{@const current = only.avatarMediaId === m.id}
+							{@const avatarLabel = current
+								? `Avatar for ${only.name}`
+								: `Set as avatar for ${only.name}`}
+							<button
+								type="button"
+								disabled={stale || settingAvatar || current}
+								onclick={() => onSetAvatar?.({ kind: only.kind, id: only.id }, m.id)}
+								aria-label={avatarLabel}
+								title={current
+									? `Already ${only.name}'s avatar`
+									: `Show this image beside ${only.name}'s replies`}
+								class={ACTION_BUTTON}
+							>
+								<!-- The short caption drops the name, so the check carries
+								     "already" on a phone. -->
+								{#if current}
+									<Check size={13} strokeWidth={2.25} />
+								{:else}
+									<UserRound size={13} strokeWidth={2.25} />
+								{/if}
+								{@render caption(current ? 'Avatar' : 'Set avatar', avatarLabel)}
+							</button>
+						{:else}
+							<Popover.Root>
+								<Popover.Trigger
+									disabled={stale || settingAvatar}
+									aria-label="Set as avatar…"
+									title="Show this image beside a preset's replies"
+									class={ACTION_BUTTON}
+								>
+									<UserRound size={13} strokeWidth={2.25} />
+									{@render caption('Set avatar…', 'Set as avatar…')}
+								</Popover.Trigger>
+								<Popover.Portal>
+									<Popover.Content
+										sideOffset={4}
+										class="z-overlay max-h-72 w-64 overflow-y-auto rounded-md border border-border surface-glass gs-pop p-1 shadow-lg"
+									>
+										<p
+											class="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-muted"
+										>
+											Set as avatar for
+										</p>
+										{#each avatarTargets as t (t.kind + ':' + t.id)}
+											{@const current = t.avatarMediaId === m.id}
+											<button
+												type="button"
+												disabled={settingAvatar || current}
+												onclick={() => onSetAvatar?.({ kind: t.kind, id: t.id }, m.id)}
+												class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition hover:bg-surface-sunken disabled:opacity-60"
+											>
+												{#if t.avatarMediaId}
+													<img
+														src="/api/media/{t.avatarMediaId}/thumbnail"
+														alt=""
+														loading="lazy"
+														class="size-5 shrink-0 rounded-full object-cover"
+													/>
+												{:else}
+													<span
+														class="size-5 shrink-0 rounded-full border border-dashed border-border-strong"
+													></span>
+												{/if}
+												<span class="min-w-0 flex-1 truncate">{t.name}</span>
+												{#if current}
+													<Check size={13} strokeWidth={2.25} class="shrink-0 text-fg-muted" />
+												{/if}
+											</button>
+										{/each}
+									</Popover.Content>
+								</Popover.Portal>
+							</Popover.Root>
+						{/if}
+					</div>
 				{/if}
 			</div>
 		{/if}

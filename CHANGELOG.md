@@ -13,6 +13,10 @@ arrived.
 
 - Gallery search results can be sorted newest-first as well as by relevance.
 
+### Changed
+
+- The image viewer's actions now sit on one row, with shorter labels on phones, so swiping between images no longer makes the view jump in height. Regenerating an enhanced image offers the original or the enhanced prompt from one menu.
+
 ### Fixed
 
 - Gallery search results that match equally well now come newest-first instead of in arbitrary order.

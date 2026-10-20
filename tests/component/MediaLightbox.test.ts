@@ -520,6 +520,60 @@ describe('MediaLightbox — prompt + launch actions', () => {
 		expect(screen.queryByRole('button', { name: 'Edit in a new chat' })).toBeNull();
 	});
 
+	it("puts an enhanced prompt's two regenerate choices behind one button", async () => {
+		const user = userEvent.setup();
+		const media = makeImage({ promptFull: 'enhanced sky', originalPrompt: 'sky' });
+		render(MediaLightbox, { props: { media, onClose: vi.fn() } });
+
+		// One button, so the row has the same shape enhanced or not.
+		expect(screen.getAllByRole('button', { name: /^Regenerate/ })).toHaveLength(1);
+		await user.click(screen.getByRole('button', { name: 'Regenerate with this prompt…' }));
+		// Portaled to document.body — hence screen.*.
+		await user.click(screen.getByRole('button', { name: /Your original prompt/ }));
+		const stashed = JSON.parse(window.sessionStorage.getItem('glyphstream:galleryLaunch')!) as {
+			prompt?: string;
+		};
+		expect(stashed.prompt).toBe('sky');
+	});
+
+	it('regenerates from the exact enhanced prompt when chosen from the menu', async () => {
+		const user = userEvent.setup();
+		const media = makeImage({ promptFull: 'enhanced sky', originalPrompt: 'sky' });
+		render(MediaLightbox, { props: { media, onClose: vi.fn() } });
+
+		await user.click(screen.getByRole('button', { name: 'Regenerate with this prompt…' }));
+		await user.click(screen.getByRole('button', { name: /The enhanced prompt/ }));
+		const stashed = JSON.parse(window.sessionStorage.getItem('glyphstream:galleryLaunch')!) as {
+			prompt?: string;
+		};
+		expect(stashed.prompt).toBe('enhanced sky');
+	});
+
+	it('holds the action slots in place, hidden, on a carousel slide they do not apply to', () => {
+		// A row whose buttons come and go per slide reflows, and the height change
+		// resizes the image mid-swipe.
+		const { container } = render(MediaLightbox, {
+			props: {
+				media: makeVideo({ id: 'm-2', promptFull: null, promptExcerpt: null }),
+				onClose: vi.fn(),
+				siblings: [
+					{ id: 'm-1', kind: 'image' as const },
+					{ id: 'm-2', kind: 'video' as const },
+				],
+				onNavigate: vi.fn(),
+			},
+		});
+		// Hidden and inert, but still laid out.
+		const held = container.querySelectorAll(
+			'button[aria-label="Regenerate with this prompt"], button[aria-label="Use as starting image"]',
+		);
+		expect(held).toHaveLength(2);
+		for (const b of held) {
+			expect(b).toHaveClass('invisible');
+			expect(b).toHaveAttribute('inert');
+		}
+	});
+
 	it('Regenerate stashes the intent and navigates to /', async () => {
 		const user = userEvent.setup();
 		const onClose = vi.fn();
