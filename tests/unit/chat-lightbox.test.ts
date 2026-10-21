@@ -316,6 +316,19 @@ describe('discarding from a fan-out grid', () => {
 		expect(lb.deletingId).toBeNull();
 	});
 
+	it('records the star of the image it moves to, like any other row', async () => {
+		stubFetch(['g1', 'g2', 'g3'], {
+			'GET /api/media/g3': () => Promise.resolve(Response.json(item('g3', { favorite: true }))),
+		});
+		const cols = [column('b1', ['g1']), column('b2', ['g2']), column('b3', ['g3'])];
+		const { lb, favorites } = setup(cols);
+		await lb.open('g2');
+		await settle();
+		await lb.discard('g2');
+		expect(lb.media?.id).toBe('g3');
+		expect(favorites.isFavorite('g3', false)).toBe(true);
+	});
+
 	it('toasts the controller’s reason when the discard is refused', async () => {
 		stubFetch(['g1', 'g2']);
 		const { lb, fanout, page } = setup([column('b1', ['g1']), column('b2', ['g2'])]);

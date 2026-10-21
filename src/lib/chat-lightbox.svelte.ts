@@ -319,7 +319,9 @@ export class ChatLightbox {
 			// still shows what was deleted.
 			this.siblings = survivors;
 			if (this.media?.id === mediaId) {
-				this.media = nextItem;
+				// Through `#withStar` like every other row the lightbox shows, so the
+				// page's stars hear about it too.
+				this.media = nextItem && this.#withStar(nextItem);
 				if (!nextItem) this.#items.clear();
 			}
 		} finally {
