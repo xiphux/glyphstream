@@ -35,6 +35,7 @@ import {
 	countOrphanMediaInConversation,
 	insertMedia,
 	linkMessageMedia,
+	setMediaFavorite,
 } from '#lib/server/db/queries/media.js';
 import { getFanoutRecoveryState } from '#lib/server/messages/fanout-recovery.js';
 import { registerInFlight, resetInFlight } from '#lib/server/streaming/in-flight.js';
@@ -1885,6 +1886,38 @@ describe('multi-model fan-out: sibling appends + active_leaf pinning', () => {
 		);
 		expect(byId.get(edited.id)).toBe(inputImg.id);
 		expect(byId.get(plain.id)).toBeNull();
+	});
+
+	it('getSiblingAssistants marks a starred result, so a recovered grid shows its star', () => {
+		const { u, conv, user } = seedConvWithUser();
+		const result = (name: string) => {
+			const out = insertMedia({
+				userId: u.id,
+				storagePath: `ab/cd/${name}.png`,
+				contentType: 'image/png',
+				byteSize: 2048,
+				kind: 'image',
+				sourceEndpointId: 'bridge',
+				sourceModel: 'bridge::sdxl',
+				promptExcerpt: 'a panda',
+			});
+			const msg = appendMessage({
+				conversationId: conv.id,
+				parentMessageId: user.id,
+				role: 'assistant',
+				parts: [{ type: 'image', mediaId: out.id }],
+				modelUsed: 'bridge::sdxl',
+				advanceActiveLeaf: false,
+			});
+			return { out, msg };
+		};
+		const starred = result('starred');
+		const plain = result('plain');
+		setMediaFavorite(starred.out.id, u.id, true);
+		const byId = new Map(getSiblingAssistants(conv.id, user.id).map((m) => [m.id, m]));
+		expect(byId.get(starred.msg.id)?.favorite).toBe(true);
+		// Absent, not false: an unstarred branch doesn't pay for the key.
+		expect(byId.get(plain.msg.id)).not.toHaveProperty('favorite');
 	});
 
 	it('getSiblingAssistants recovers each portrait’s re-roll prompt only when asked', () => {

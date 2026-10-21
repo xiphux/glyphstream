@@ -16,7 +16,7 @@
 	column state, and the pick / discard / regenerate requests.
 -->
 <script lang="ts">
-	import { Check, Trash2, RefreshCw, CircleAlert } from '@lucide/svelte';
+	import { Check, Trash2, RefreshCw, CircleAlert, Star } from '@lucide/svelte';
 	import { untrack } from 'svelte';
 	import RenderBlocks from './RenderBlocks.svelte';
 	import {
@@ -26,10 +26,11 @@
 		type ToolResultEntry,
 	} from '#lib/chat-render.js';
 	import {
+		atActiveBranchCapacity,
 		canDiscardColumn,
+		columnMediaIds,
 		isColumnSettled,
 		isMediaKind,
-		MAX_FANOUT_BRANCHES_PER_CONVERSATION,
 		type FanoutColumn,
 	} from '#lib/fanout.js';
 
@@ -54,6 +55,14 @@
 		onImageClick: (mediaId: string) => void;
 		/** A pick/discard/regenerate request is in flight — disables the controls. */
 		busy?: boolean;
+		/** Star or unstar a column's image. Wired for media fan-out, so the grid
+		 *  offers every triage reaction the lightbox does. */
+		onToggleFavorite?: (mediaId: string, next: boolean) => void;
+		/** Whether an image is starred. Owned by the page, which shares it with
+		 *  the lightbox's star. */
+		isFavorite?: (mediaId: string) => boolean;
+		/** A star is in flight — every star disables until it lands. */
+		favoriteBusy?: boolean;
 	}
 
 	let {
@@ -65,6 +74,9 @@
 		canRegenerate = () => true,
 		onImageClick,
 		busy = false,
+		onToggleFavorite,
+		isFavorite = () => false,
+		favoriteBusy = false,
 	}: Props = $props();
 
 	// Fan-out branches are single-iteration with tools disabled, so there are
@@ -137,14 +149,16 @@
 	function canDiscard(c: FanoutColumn): boolean {
 		return canDiscardColumn(columns, c);
 	}
-	// Re-roll is additive (a new sibling per click), so it's gated by the same
-	// per-conversation ceiling the server enforces — but on the ACTIVE branch
-	// count, matching the server's in-flight cap (finished variations don't
-	// count). At the cap, every Regenerate disables until something settles.
-	const activeCount = $derived(
-		columns.filter((c) => c.status === 'queued' || c.status === 'streaming').length,
-	);
-	const atActiveCapacity = $derived(activeCount >= MAX_FANOUT_BRANCHES_PER_CONVERSATION);
+	const atActiveCapacity = $derived(atActiveBranchCapacity(columns));
+	// The image a column's star is about: its only one. A batch branch (one
+	// request that came back with several) has no single image for a footer star
+	// to mean, so it gets none; each of its images can still be starred from the
+	// lightbox. Nor does a branch with nothing to show yet, or a failure.
+	function starredImageOf(c: FanoutColumn): string | null {
+		if (!isColumnSettled(c)) return null;
+		const ids = columnMediaIds(c);
+		return ids.length === 1 ? ids[0] : null;
+	}
 </script>
 
 <section class="mt-2" aria-label="Model comparison">
@@ -232,8 +246,30 @@
 					{/if}
 				</div>
 
-				{#if onPick || onRegenerate || onDiscard}
+				{#if onPick || onRegenerate || onDiscard || onToggleFavorite}
+					{@const starId = onToggleFavorite ? starredImageOf(c) : null}
+					{@const starred = starId !== null && isFavorite(starId)}
 					<footer class="mt-auto flex items-center gap-2 border-t border-border px-2 py-2">
+						{#if onToggleFavorite}
+							<!-- Opposite the trash: the two quick reactions at the two ends,
+							     so one is never a near-miss for the other. Holds its place,
+							     hidden, on a column with no single image to star, so the
+							     footers stay aligned across the grid. -->
+							<button
+								type="button"
+								onclick={() => starId && onToggleFavorite(starId, !starred)}
+								disabled={favoriteBusy || starId === null}
+								inert={starId === null}
+								aria-label={starred ? 'Remove from favorites' : 'Add to favorites'}
+								aria-pressed={starred}
+								title={starred ? 'Remove from favorites' : 'Add to favorites'}
+								class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition hover:bg-surface-sunken disabled:opacity-30 {starred
+									? 'text-favorite'
+									: 'text-fg-muted hover:text-fg-secondary'} {starId === null ? 'invisible' : ''}"
+							>
+								<Star size={14} fill={starred ? 'currentColor' : 'none'} />
+							</button>
+						{/if}
 						{#if onPick}
 							<button
 								type="button"

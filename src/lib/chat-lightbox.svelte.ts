@@ -22,6 +22,7 @@
 import { errorMessageFromResponse } from './fetch-error.js';
 import {
 	applyDisplayOrder,
+	atActiveBranchCapacity,
 	canDiscardColumn,
 	columnMediaIds,
 	columnShowingMedia,
@@ -29,6 +30,7 @@ import {
 	survivorInSlot,
 } from './fanout.js';
 import { MediaItemCache } from './media-item-cache.js';
+import type { MediaFavorites } from './media-favorites.svelte.js';
 import { toast } from './toast.svelte.js';
 import type { FanoutController } from './fanout-controller.svelte.js';
 import type { ConversationMediaRef, MediaListItem } from './types/api.js';
@@ -42,6 +44,8 @@ export interface ChatLightboxDeps {
 	/** The conversation currently on screen. */
 	conversationId(): string;
 	fanout: FanoutController;
+	/** The page's stars, shared with the fan-out grid's. */
+	favorites: MediaFavorites;
 	/** The page's error banner, which a refused fan-out discard writes to. */
 	error(): string | null;
 }
@@ -69,7 +73,6 @@ export class ChatLightbox {
 	siblings = $state.raw<ConversationMediaRef[]>([]);
 
 	deletingId = $state<string | null>(null);
-	favoritingId = $state<string | null>(null);
 
 	/** Rows fetched this open session. Cleared on close and on reset.
 	 *
@@ -101,6 +104,27 @@ export class ChatLightbox {
 	readonly discardable = $derived.by(
 		() => !!this.#column && canDiscardColumn(this.#deps.fanout.columns, this.#column),
 	);
+
+	/**
+	 * The open image is one the media fan-out grid on screen is showing — the
+	 * user is triaging it. The lightbox then trades its own actions for the
+	 * grid's footer (star, re-roll, the avatar pick, discard), so the swipe
+	 * through a fresh grid offers what the grid does, and "Regenerate" means
+	 * what it means there.
+	 */
+	readonly triaging = $derived(!!this.#column);
+	/** Whether the grid's Regenerate is offered for the open image (an avatar
+	 *  portrait recovered without its prompt has nothing to re-roll from). */
+	readonly canRegenerate = $derived.by(
+		() => !!this.#column && this.#deps.fanout.canRegenerate(this.#column),
+	);
+	/** Re-roll is offered but can't start yet: the grid is at its in-flight cap. */
+	readonly regenerateBlocked = $derived.by(() => atActiveBranchCapacity(this.#deps.fanout.columns));
+
+	/** Media id whose star is in flight; see `MediaFavorites.pendingId`. */
+	get favoritingId(): string | null {
+		return this.#deps.favorites.pendingId;
+	}
 
 	constructor(deps: ChatLightboxDeps) {
 		this.#deps = deps;
@@ -165,13 +189,13 @@ export class ChatLightbox {
 		const cached = this.#items.peek(mediaId);
 		if (cached) {
 			this.openingFor = null;
-			this.media = cached;
+			this.media = this.#withStar(cached);
 			return;
 		}
 		this.openingFor = mediaId;
 		try {
 			const m = await this.#items.load(mediaId);
-			if (this.openingFor === mediaId) this.media = m;
+			if (this.openingFor === mediaId) this.media = this.#withStar(m);
 		} catch (e) {
 			if (this.openingFor === mediaId) {
 				toast.error(`Couldn't load image details: ${e instanceof Error ? e.message : String(e)}`);
@@ -181,37 +205,67 @@ export class ChatLightbox {
 		}
 	}
 
+	/** A fetched row, reconciled with the page's stars: its own `favorite` is
+	 *  server truth, recorded for the grid, unless a star is in flight for it,
+	 *  in which case the optimistic value wins (the read may predate the write). */
+	#withStar(m: MediaListItem): MediaListItem {
+		const { favorites } = this.#deps;
+		if (favorites.pendingId !== m.id) {
+			favorites.observe(m.id, m.favorite);
+			return m;
+		}
+		const favorite = favorites.isFavorite(m.id, m.favorite);
+		return favorite === m.favorite ? m : { ...m, favorite };
+	}
+
 	/**
 	 * Star / unstar the open image, so the "that one came out well" reaction can
 	 * happen where it actually occurs — right after generating — instead of
 	 * requiring a later trip to the gallery.
 	 *
-	 * Purely local: nothing on the chat page reads the flag except the open
-	 * lightbox, so there's no `invalidate` to run — and that route deliberately
-	 * avoids one (it ships a window of the active branch with `content_html`, so
-	 * re-running its load to move a star would re-serialize all of it). The
-	 * gallery re-reads the truth from the server on its own next load.
+	 * The request is the page's `MediaFavorites`, shared with the fan-out grid's
+	 * star; this flips the lightbox's own copy of the row alongside it. No
+	 * `invalidate` to run — that route deliberately avoids one (it ships a window
+	 * of the active branch with `content_html`, so re-running its load to move a
+	 * star would re-serialize all of it). The gallery re-reads the truth from the
+	 * server on its own next load.
 	 */
 	async toggleFavorite(mediaId: string, next: boolean): Promise<void> {
-		if (this.favoritingId) return;
-		this.favoritingId = mediaId;
-		if (this.media?.id === mediaId) this.media = { ...this.media, favorite: next };
-		// Or swiping away and back would bring the old star with it.
-		this.#items.patch(mediaId, { favorite: next });
-		try {
-			const res = await fetch(`/api/media/${mediaId}`, {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ favorite: next }),
-			});
-			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
-		} catch (e) {
-			if (this.media?.id === mediaId) this.media = { ...this.media, favorite: !next };
-			this.#items.patch(mediaId, { favorite: !next });
-			toast.error(`Couldn't update favorite: ${e instanceof Error ? e.message : String(e)}`);
-		} finally {
-			this.favoritingId = null;
-		}
+		if (this.#deps.favorites.pendingId) return;
+		const show = (favorite: boolean) => {
+			if (this.media?.id === mediaId) this.media = { ...this.media, favorite };
+			// Or swiping away and back would bring the old star with it.
+			this.#items.patch(mediaId, { favorite });
+		};
+		show(next);
+		if (!(await this.#deps.favorites.toggle(mediaId, next))) show(!next);
+	}
+
+	/**
+	 * The grid's Regenerate, from the lightbox: another variation from the open
+	 * image's model, added to the grid beside it. The carousel's set is loaded
+	 * once per open, so the new variation shows in the grid but not here until
+	 * the lightbox reopens; the toast is what says the tap did something.
+	 */
+	regenerate(mediaId: string): void {
+		const { fanout } = this.#deps;
+		const col = columnShowingMedia(fanout.columns, mediaId);
+		if (!col || !fanout.canRegenerate(col) || this.regenerateBlocked || fanout.picking) return;
+		void fanout.regenerate(col);
+		toast.info('Generating another variation');
+	}
+
+	/**
+	 * An avatar comparison's pick, from the lightbox. It ends the comparison —
+	 * the grid clears, as Done does — so the lightbox closes with it rather than
+	 * leave the user swiping a set whose grid no longer exists.
+	 */
+	pick(mediaId: string): void {
+		const { fanout } = this.#deps;
+		const col = columnShowingMedia(fanout.columns, mediaId);
+		if (!col || fanout.picking) return;
+		this.close();
+		void fanout.pick(col);
 	}
 
 	/**

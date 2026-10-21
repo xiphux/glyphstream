@@ -62,9 +62,9 @@ Everything ever generated, in one place.
   made it.
 - **Browse by time** with sticky day or month headers and a right-edge timeline
   rail to jump to any month.
-- **Favorites.** Star the ones that came out well — from the lightbox or from
-  the chat you made them in — and filter down to them, alone or combined with
-  search and the other filters.
+- **Favorites.** Star the ones that came out well — from the lightbox, or from
+  the chat you made them in, compare grid included — and filter down to them,
+  alone or combined with search and the other filters.
 - **Bulk operations** via multi-select.
 - **Recently deleted.** Deleted images and videos — from the gallery, a
   discarded branch or compare cell, or a deleted conversation — wait 30 days

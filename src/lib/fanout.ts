@@ -352,6 +352,18 @@ export function canDiscardColumn(columns: readonly FanoutColumn[], c: FanoutColu
 	return isColumnSettled(c) && columns.length > 1;
 }
 
+/**
+ * Re-roll is additive (a new branch per click), so it's gated by the same
+ * per-conversation ceiling the server enforces — but on the ACTIVE branch
+ * count, matching the server's in-flight cap (finished variations don't
+ * count). At the cap every Regenerate disables until something settles.
+ * Shared by the grid's Regenerate and the lightbox's.
+ */
+export function atActiveBranchCapacity(columns: readonly FanoutColumn[]): boolean {
+	const active = columns.filter((c) => c.status === 'queued' || c.status === 'streaming').length;
+	return active >= MAX_FANOUT_BRANCHES_PER_CONVERSATION;
+}
+
 /** The column showing media `mediaId`, or undefined if no column shows it. */
 export function columnShowingMedia(
 	columns: readonly FanoutColumn[],

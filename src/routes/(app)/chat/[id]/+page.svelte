@@ -72,8 +72,10 @@
 	import { AvatarDrawController } from '#lib/avatar-draw-controller.svelte.js';
 	import { AvatarDrawWorkflow } from '#lib/avatar-draw-workflow.svelte.js';
 	import { ChatLightbox } from '#lib/chat-lightbox.svelte.js';
+	import { MediaFavorites } from '#lib/media-favorites.svelte.js';
 	import FanoutColumns from '#lib/components/chat/FanoutColumns.svelte';
 	import {
+		columnShowingMedia,
 		expandCompareSelections,
 		expandFanoutBranches,
 		type CompareSelection,
@@ -869,6 +871,7 @@
 		attachments.clear();
 		autoAttached = null;
 		lightbox.reset();
+		favorites.clear();
 	}
 
 	// One place for what happens when the reused /chat/[id] component enters a
@@ -1362,11 +1365,20 @@
 
 	// The inline media lightbox: tap a generated image to open it, swipe through
 	// the conversation's media, star it, or discard its fan-out branch.
+	// The page's stars, shared by the fan-out grid and the lightbox.
+	const favorites = new MediaFavorites();
 	const lightbox = new ChatLightbox({
 		conversationId: () => data.conversation.id,
 		fanout,
+		favorites,
 		error: () => errorMsg,
 	});
+	// A grid star's seed: what the branch's row said when the grid was rebuilt
+	// from server truth (a live branch has none, and nothing has starred it).
+	function gridFavorite(mediaId: string): boolean {
+		const col = columnShowingMedia(fanout.columns, mediaId);
+		return favorites.isFavorite(mediaId, col?.persisted?.favorite ?? false);
+	}
 
 	// Looking at a thread is the acknowledgment its notification was asking
 	// for: retract the tray entry and re-derive the app-icon badge. The rules
@@ -2628,6 +2640,11 @@
 							canRegenerate={(c: FanoutColumn) => fanout.canRegenerate(c)}
 							onImageClick={(id: string) => void lightbox.open(id)}
 							busy={fanout.picking}
+							onToggleFavorite={fanout.isMedia
+								? (id: string, next: boolean) => void favorites.toggle(id, next)
+								: undefined}
+							isFavorite={gridFavorite}
+							favoriteBusy={favorites.pendingId !== null}
 						/>
 						{#if fanout.columnsSettled}
 							<div class="mt-2 flex justify-center">

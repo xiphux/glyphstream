@@ -12,6 +12,7 @@ arrived.
 ### Added
 
 - Gallery search results can be sorted newest-first as well as by relevance.
+- Images in a multi-model compare grid can be starred right from the grid.
 
 ### Changed
 

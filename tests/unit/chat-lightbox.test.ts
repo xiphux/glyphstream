@@ -4,16 +4,20 @@
  * Runs the real runes (the sveltekit() vitest plugin compiles the .svelte.ts
  * module) against a stubbed fan-out controller and `fetch`. The fan-out stub
  * holds only what the lightbox reads: whether a media grid is open, its
- * columns, whether it is mid-pick, and its discard.
+ * columns, whether it is mid-pick, and its discard, re-roll and pick. The
+ * page's stars are a real `MediaFavorites`, since the lightbox shares it with
+ * the grid.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const toastError = vi.fn<(message: string) => void>();
+const toastInfo = vi.fn<(message: string) => void>();
 vi.mock('#lib/toast.svelte.js', () => ({
-	toast: { error: (m: string) => toastError(m) },
+	toast: { error: (m: string) => toastError(m), info: (m: string) => toastInfo(m) },
 }));
 
 import { ChatLightbox } from '#lib/chat-lightbox.svelte.js';
+import { MediaFavorites } from '#lib/media-favorites.svelte.js';
 import type { FanoutColumn } from '#lib/fanout.js';
 import type { FanoutController } from '#lib/fanout-controller.svelte.js';
 import type { MediaListItem } from '#lib/types/api.js';
@@ -50,19 +54,27 @@ function setup(columns: FanoutColumn[] = []) {
 		columns,
 		picking: false,
 		discard: vi.fn(async () => true),
+		regenerate: vi.fn(async () => {}),
+		pick: vi.fn(async () => {}),
+		canRegenerate: vi.fn(() => true),
 	};
+	const favorites = new MediaFavorites();
 	const lb = new ChatLightbox({
 		conversationId: () => page.conversationId,
 		fanout: fanout as unknown as FanoutController,
+		favorites,
 		error: () => page.error,
 	});
-	return { lb, page, fanout };
+	return { lb, page, fanout, favorites };
 }
 
 /** Let the fire-and-forget carousel fetch settle. */
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
-beforeEach(() => toastError.mockReset());
+beforeEach(() => {
+	toastError.mockReset();
+	toastInfo.mockReset();
+});
 afterEach(() => vi.unstubAllGlobals());
 
 describe('opening', () => {
@@ -202,6 +214,80 @@ describe('favoriting', () => {
 		expect(lb.media?.favorite).toBe(false);
 		expect(toastError).toHaveBeenCalled();
 		expect(lb.favoritingId).toBeNull();
+	});
+
+	it('shares its stars with the grid, both ways', async () => {
+		let landWrite = () => {};
+		stubFetch(['g1', 'g2'], {
+			'PATCH /api/media/g2': () =>
+				new Promise((r) => (landWrite = () => r(Response.json({ ok: true })))),
+		});
+		const { lb, favorites } = setup([column('b1', ['g1']), column('b2', ['g2'])]);
+		await lb.open('g1');
+		await lb.toggleFavorite('g1', true);
+		// What the grid's star reads.
+		expect(favorites.isFavorite('g1')).toBe(true);
+
+		// Starred from the grid, and the row comes back while that write is still
+		// in flight: the row may predate it, so the star in flight wins.
+		const write = favorites.toggle('g2', true);
+		await lb.open('g2');
+		expect(lb.media?.favorite).toBe(true);
+		landWrite();
+		await write;
+		expect(favorites.isFavorite('g2')).toBe(true);
+	});
+
+	it('records a fetched row’s star, so the grid follows a change made elsewhere', async () => {
+		stubFetch([], {
+			'GET /api/media/g1': () => Promise.resolve(Response.json(item('g1', { favorite: true }))),
+		});
+		const { lb, favorites } = setup([column('b1', ['g1'])]);
+		await lb.open('g1');
+		expect(favorites.isFavorite('g1', false)).toBe(true);
+	});
+});
+
+describe('triaging a fan-out grid', () => {
+	it('triages only an image the open media grid is showing', async () => {
+		stubFetch(['g1', 'old']);
+		const { lb } = setup([column('b1', ['g1']), column('b2', ['g2'])]);
+		await lb.open('g1');
+		expect(lb.triaging).toBe(true);
+		await lb.open('old');
+		expect(lb.triaging).toBe(false);
+	});
+
+	it('re-rolls the open image’s column and says so', async () => {
+		stubFetch(['g1', 'g2']);
+		const cols = [column('b1', ['g1']), column('b2', ['g2'])];
+		const { lb, fanout } = setup(cols);
+		await lb.open('g2');
+		lb.regenerate('g2');
+		expect(fanout.regenerate).toHaveBeenCalledWith(cols[1]);
+		expect(toastInfo).toHaveBeenCalled();
+		// Stays open: the user keeps swiping.
+		expect(lb.media?.id).toBe('g2');
+	});
+
+	it('offers no re-roll for a column with nothing to re-roll from', async () => {
+		stubFetch(['g1']);
+		const { lb, fanout } = setup([column('b1', ['g1']), column('b2', ['g2'])]);
+		fanout.canRegenerate.mockReturnValue(false);
+		await lb.open('g1');
+		expect(lb.canRegenerate).toBe(false);
+		lb.regenerate('g1');
+		expect(fanout.regenerate).not.toHaveBeenCalled();
+	});
+
+	it('closes when the avatar pick ends the comparison', async () => {
+		stubFetch(['g1', 'g2']);
+		const cols = [column('b1', ['g1']), column('b2', ['g2'])];
+		const { lb, fanout } = setup(cols);
+		await lb.open('g1');
+		lb.pick('g1');
+		expect(fanout.pick).toHaveBeenCalledWith(cols[0]);
+		expect(lb.media).toBeNull();
 	});
 });
 

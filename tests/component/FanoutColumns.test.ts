@@ -438,3 +438,71 @@ describe('FanoutColumns — an avatar comparison', () => {
 		expect(screen.queryByRole('button', { name: /Regenerate/ })).toBeNull();
 	});
 });
+
+describe('FanoutColumns — starring', () => {
+	function imageColumn(id: string, mediaIds: string[], status: FanoutColumn['status'] = 'done') {
+		const message = persisted(id, '');
+		message.parts = mediaIds.map((mediaId) => ({ type: 'image' as const, mediaId }));
+		return col({
+			branchId: id,
+			modelKind: 'image',
+			status,
+			persisted: mediaIds.length > 0 ? message : null,
+		});
+	}
+
+	it('stars a column’s image and shows what the page says is starred', async () => {
+		const onToggleFavorite = vi.fn<(mediaId: string, next: boolean) => void>();
+		render(FanoutColumns, {
+			props: {
+				columns: [imageColumn('a', ['a-img']), imageColumn('b', ['b-img'])],
+				onDiscard: vi.fn(),
+				onImageClick: vi.fn(),
+				onToggleFavorite,
+				isFavorite: (id: string) => id === 'b-img',
+			},
+		});
+		const unstarred = screen.getByRole('button', { name: 'Add to favorites' });
+		const starred = screen.getByRole('button', { name: 'Remove from favorites' });
+		expect(starred).toHaveAttribute('aria-pressed', 'true');
+		await userEvent.click(unstarred);
+		expect(onToggleFavorite).toHaveBeenCalledWith('a-img', true);
+		await userEvent.click(starred);
+		expect(onToggleFavorite).toHaveBeenLastCalledWith('b-img', false);
+	});
+
+	it('holds the star’s place, hidden, where there is no single image to star', () => {
+		// A batch branch (several images from one request) and a failure have no
+		// one image for the star to mean; the slot stays so the footers line up.
+		render(FanoutColumns, {
+			props: {
+				columns: [
+					imageColumn('batch', ['x1', 'x2']),
+					imageColumn('failed', [], 'error'),
+					imageColumn('one', ['solo']),
+				],
+				onDiscard: vi.fn(),
+				onImageClick: vi.fn(),
+				onToggleFavorite: vi.fn(),
+			},
+		});
+		const stars = screen.getAllByRole('button', { name: 'Add to favorites' });
+		expect(stars).toHaveLength(3);
+		expect(stars.filter((b) => b.classList.contains('invisible'))).toHaveLength(2);
+		expect(stars.filter((b) => !b.hasAttribute('inert'))).toHaveLength(1);
+	});
+
+	it('disables every star while one is in flight', () => {
+		render(FanoutColumns, {
+			props: {
+				columns: [imageColumn('a', ['a-img']), imageColumn('b', ['b-img'])],
+				onImageClick: vi.fn(),
+				onToggleFavorite: vi.fn(),
+				favoriteBusy: true,
+			},
+		});
+		for (const b of screen.getAllByRole('button', { name: 'Add to favorites' })) {
+			expect(b).toBeDisabled();
+		}
+	});
+});

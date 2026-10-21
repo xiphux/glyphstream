@@ -844,6 +844,7 @@ export function getSiblingAssistants(
 				ratio: media.aspectRatio,
 				promptFull: media.promptFull,
 				originalPrompt: media.originalPrompt,
+				favoritedAt: media.favoritedAt,
 			})
 			.from(media)
 			.where(inArray(media.id, outputIds))
@@ -858,6 +859,9 @@ export function getSiblingAssistants(
 			// rebuilt after a reload has to reproduce its column's shape rather than
 			// reframe it at the model's default.
 			m.aspectRatio = row?.ratio ?? null;
+			// Seeds the grid's star, so a recovered grid shows what was already
+			// starred. Only when set: an unstarred branch doesn't pay for the key.
+			if (row?.favoritedAt != null) m.favorite = true;
 			if (opts?.avatarPrompts) {
 				// The typed prompt, never the enhancer's output — see `AvatarDrawPrompt`.
 				const prompt = row?.originalPrompt ?? row?.promptFull ?? null;

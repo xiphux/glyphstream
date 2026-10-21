@@ -658,6 +658,13 @@ export interface ChatMessage {
 	 * elsewhere, and on a branch that failed (no media row to read it off).
 	 */
 	avatarPrompt?: AvatarDrawPrompt | null;
+	/**
+	 * Whether this branch's generated media is starred. Populated by
+	 * `getSiblingAssistants` only, so a fan-out grid rebuilt from server truth
+	 * shows its stars; set only when true, so absent means "not starred" (and
+	 * a branch fresh off the stream, which has none, reads correctly too).
+	 */
+	favorite?: boolean;
 }
 
 /**
