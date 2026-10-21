@@ -97,6 +97,15 @@
 		 */
 		onPrefetch?: (id: string) => void;
 		/**
+		 * A slide's star as the caller already knows it (a row it has in hand,
+		 * usually from `onPrefetch`), or undefined. Read while a flick coasts onto
+		 * that slide: nothing else in the header changes until the track settles
+		 * (see `coasting` in `onTrackScroll`), but the star is what a pass through
+		 * the images watches from one to the next, and recolouring it moves
+		 * nothing. Optional: without it the star waits for the settle too.
+		 */
+		peekFavorite?: (id: string) => boolean | undefined;
+		/**
 		 * Things this image can be made the avatar of — custom-model presets, and
 		 * (from a conversation) that conversation itself. Empty / omitted hides
 		 * the action entirely.
@@ -198,6 +207,7 @@
 		siblings = undefined,
 		onNavigate = undefined,
 		onPrefetch = undefined,
+		peekFavorite = undefined,
 		avatarTargets = [],
 		onSetAvatar = undefined,
 		settingAvatar = false,
@@ -337,11 +347,19 @@
 	 */
 	let touchActive = false;
 	let touchReleased = false;
+	/**
+	 * The slide a coasting flick is heading for, once past its midpoint; null
+	 * otherwise. The one thing a coast writes, and only the star reads it (see
+	 * `peekFavorite`): it may not lay anything out, and recolouring a star
+	 * doesn't. Cleared by the settle, which takes over from there.
+	 */
+	let coastIndex = $state<number | null>(null);
 	const RELEASE_MOTION_MS = 90;
 	let releaseMotionTimer: ReturnType<typeof setTimeout> | undefined;
 	function onTrackTouchStart() {
 		touchActive = true;
 		touchReleased = false;
+		coastIndex = null;
 		clearTimeout(releaseMotionTimer);
 	}
 	function onTrackTouchEnd(e: TouchEvent) {
@@ -364,6 +382,11 @@
 		// missing on arrival. An arrow press's `scrollTarget` is cleared by the
 		// settle instead.
 		const coasting = touchReleased && !touchActive;
+		if (coasting && el.clientWidth > 0) {
+			const idx = Math.round(el.scrollLeft / el.clientWidth);
+			const ahead = idx !== displayIndex && siblings[idx] ? idx : null;
+			if (ahead !== coastIndex) coastIndex = ahead;
+		}
 		if (el.clientWidth > 0 && !coasting) {
 			// Rounding flips at the halfway point between two slides. Writing
 			// `pendingIndex` re-runs every slide's `slideMounted` (see below), but
@@ -394,6 +417,7 @@
 		}
 		clearTimeout(scrollSettleTimer);
 		scrollSettleTimer = setTimeout(() => {
+			coastIndex = null;
 			const idx = Math.round(el.scrollLeft / el.clientWidth);
 			const landed = siblings[idx];
 			// Couldn't read a position (a zero-width track makes `idx` NaN) — say
@@ -492,6 +516,7 @@
 	$effect(() => {
 		void siblingsKey;
 		pendingIndex = null;
+		coastIndex = null;
 	});
 
 	/** The slide the UI should present as current: where the user has navigated to,
@@ -509,6 +534,22 @@
 	 * tick as `pendingIndex`.
 	 */
 	const stale = $derived(showCarousel && displayIndex !== currentIndex);
+
+	/** The star of the slide the user is headed for, when that isn't `media`
+	 *  yet and the caller can say (`peekFavorite`): ahead of a coasting flick, or
+	 *  of a resolve still in flight. */
+	const starAhead = $derived.by(() => {
+		const i = coastIndex ?? (stale ? displayIndex : null);
+		const s = i === null ? undefined : siblings?.[i];
+		return s && peekFavorite ? peekFavorite(s.id) : undefined;
+	});
+
+	// A coasting flick's star may already be the next slide's while `media`,
+	// which a tap acts on, is still the one behind. The coast lasts a fraction
+	// of a second; a tap inside it does nothing rather than star the wrong one.
+	function tapStar(m: MediaListItem) {
+		if (coastIndex === null) void onToggleFavorite?.(m.id, !m.favorite);
+	}
 
 	// Warm the rows either side of the resolved slide, so the next swipe either
 	// way resolves without a round trip.
@@ -619,6 +660,7 @@
 		clearTimeout(releaseMotionTimer);
 		touchActive = false;
 		touchReleased = false;
+		coastIndex = null;
 	});
 	// And on teardown, for callers that do unmount it.
 	$effect(() => () => {
@@ -903,9 +945,12 @@
 	     where it doesn't apply; see the row). -->
 	{@const avatarSlot = canSetAvatar || (showCarousel && !!onSetAvatar && avatarTargets.length > 0)}
 	{@const launchSlots = !trashed && (hasPrompt || canUseAsStarting || showCarousel)}
-	<!-- Mid-swipe the star shows neither state: the old one would be a claim
-	     about an image the user has left. -->
-	{@const starred = m.favorite && !stale}
+	<!-- Mid-swipe the star shows the slide ahead's when the caller knows it, and
+	     otherwise neither state: the old one would be a claim about an image the
+	     user has left. A coasting flick with nothing known keeps the old one, as
+	     the rest of the header does until the settle (see `coasting`). -->
+	{@const starred =
+		coastIndex !== null ? (starAhead ?? m.favorite) : stale ? (starAhead ?? false) : m.favorite}
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
 	<div
 		role="dialog"
@@ -956,7 +1001,7 @@
 					-->
 					<button
 						type="button"
-						onclick={() => onToggleFavorite?.(m.id, !m.favorite)}
+						onclick={() => tapStar(m)}
 						disabled={stale || favoritingId !== null}
 						title={starred ? 'Remove from favorites' : 'Add to favorites'}
 						aria-label={starred ? 'Remove from favorites' : 'Add to favorites'}
@@ -1210,7 +1255,7 @@
 				{#if onToggleFavorite}
 					<button
 						type="button"
-						onclick={() => onToggleFavorite?.(m.id, !m.favorite)}
+						onclick={() => tapStar(m)}
 						disabled={stale || favoritingId !== null}
 						title={starred ? 'Remove from favorites' : 'Add to favorites'}
 						aria-label={starred ? 'Remove from favorites' : 'Add to favorites'}

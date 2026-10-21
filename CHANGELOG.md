@@ -9,6 +9,11 @@ arrived.
 
 ## Unreleased
 
+### Changed
+
+- Flicking through the lightbox now updates the favorite star while the image is
+  still sliding in, instead of once it stops.
+
 ### Fixed
 
 - A compare grid cell still generating shows its Favorite button, and after

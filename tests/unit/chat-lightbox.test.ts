@@ -183,6 +183,29 @@ describe('swiping onto a prefetched slide', () => {
 		await lb.open('m1');
 		expect(lb.media?.favorite).toBe(true);
 	});
+
+	it('says a prefetched slide’s star before it opens, as opening it would', async () => {
+		// MediaLightbox reads this while a flick coasts onto the slide.
+		let release!: (r: Response) => void;
+		stubFetch(['m1', 'm2', 'm3'], {
+			'GET /api/media/m2': () => Promise.resolve(Response.json(item('m2', { favorite: true }))),
+			'PATCH /api/media/m3': () => new Promise((r) => (release = r)),
+		});
+		const { lb } = setup();
+		await lb.open('m1');
+		expect(lb.peekFavorite('m2')).toBeUndefined();
+		lb.prefetch('m2');
+		lb.prefetch('m3');
+		await settle();
+		expect(lb.peekFavorite('m2')).toBe(true);
+		// A star in flight wins over the row, as `open` reconciles it.
+		await lb.open('m3');
+		const write = lb.toggleFavorite('m3', true);
+		await lb.open('m1');
+		expect(lb.peekFavorite('m3')).toBe(true);
+		release(Response.json({}));
+		await write;
+	});
 });
 
 describe('closing', () => {

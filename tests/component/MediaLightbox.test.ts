@@ -1205,6 +1205,62 @@ describe('MediaLightbox — swipe resolves at the midpoint', () => {
 		expect(onNavigate).toHaveBeenCalledWith('m-2');
 	});
 
+	it('previews the star of the slide a flick coasts onto, and nothing else', async () => {
+		// The star is what a pass through the images watches from one to the next,
+		// and recolouring it lays nothing out; the rest waits for the settle.
+		const onNavigate = vi.fn();
+		const onToggleFavorite = vi.fn();
+		const { container } = render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'm-1', favorite: true }),
+				onClose: vi.fn(),
+				siblings,
+				onNavigate,
+				onToggleFavorite,
+				peekFavorite: (id: string) => (id === 'm-2' ? false : undefined),
+			},
+		});
+		const t = track(container);
+		await fireEvent.touchStart(t.el);
+		t.at(0.3);
+		await fireEvent.touchEnd(t.el);
+		t.at(0.6);
+		await tick();
+		const star = screen.getByRole('button', { name: 'Add to favorites' });
+		expect(star).toHaveAttribute('aria-pressed', 'false');
+		expect(screen.getByText('1 / 3')).toBeInTheDocument();
+		expect(onNavigate).not.toHaveBeenCalled();
+		// `media` is still m-1, so a tap now would star the image behind.
+		await fireEvent.click(star);
+		expect(onToggleFavorite).not.toHaveBeenCalled();
+		t.at(1);
+		await settleNavResolve();
+		expect(onNavigate).toHaveBeenCalledWith('m-2');
+	});
+
+	it("keeps the old star through a coast when the caller can't say the next one", async () => {
+		const { container } = render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'm-1', favorite: true }),
+				onClose: vi.fn(),
+				siblings,
+				onNavigate: vi.fn(),
+				onToggleFavorite: vi.fn(),
+				peekFavorite: () => undefined,
+			},
+		});
+		const t = track(container);
+		await fireEvent.touchStart(t.el);
+		t.at(0.3);
+		await fireEvent.touchEnd(t.el);
+		t.at(0.6);
+		await tick();
+		expect(screen.getByRole('button', { name: 'Remove from favorites' })).toHaveAttribute(
+			'aria-pressed',
+			'true',
+		);
+	});
+
 	it('still resolves at the midpoint while the finger is down', async () => {
 		const onNavigate = vi.fn();
 		const { container } = render(MediaLightbox, {

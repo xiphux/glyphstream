@@ -1576,6 +1576,7 @@
 	siblings={lightboxSiblings}
 	onNavigate={openLightboxById}
 	onPrefetch={prefetchLightboxItem}
+	peekFavorite={(id: string) => (localLightboxItem(id) ?? lightboxItems.peek(id))?.favorite}
 	avatarTargets={data.customModels.map((c: CustomModel) => ({
 		kind: 'preset' as const,
 		id: c.id,

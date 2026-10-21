@@ -205,6 +205,17 @@ export class ChatLightbox {
 		}
 	}
 
+	/** The star `open` would show for `mediaId` right now, if its row is in
+	 *  hand; MediaLightbox's `peekFavorite`. */
+	peekFavorite(mediaId: string): boolean | undefined {
+		const row = this.#items.peek(mediaId);
+		if (!row) return undefined;
+		const { favorites } = this.#deps;
+		return favorites.pendingId === mediaId
+			? favorites.isFavorite(mediaId, row.favorite)
+			: row.favorite;
+	}
+
 	/** A fetched row, reconciled with the page's stars: its own `favorite` is
 	 *  server truth, recorded for the grid, unless a star is in flight for it,
 	 *  in which case the optimistic value wins (the read may predate the write). */
