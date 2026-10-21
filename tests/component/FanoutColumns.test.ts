@@ -436,6 +436,30 @@ describe('FanoutColumns — an avatar comparison', () => {
 		});
 		expect(screen.queryByRole('button', { name: /Regenerate/ })).toBeNull();
 	});
+
+	it('hides a re-roll the column can never have, and disables one it will', () => {
+		// A recovered portrait has no prompt until it lands (then the grid rebuilds
+		// with one); a recovered failure never gets one. Hiding the in-flight one
+		// too left a gap in every footer still generating.
+		render(FanoutColumns, {
+			props: {
+				columns: [
+					{ ...portrait('failed', 'SDXL'), status: 'error' as const, persisted: null },
+					{ ...portrait('generating', 'Flux'), status: 'streaming' as const, persisted: null },
+				],
+				onRegenerate: vi.fn(),
+				canRegenerate: () => false,
+				onDiscard: vi.fn(),
+				onImageClick: vi.fn(),
+			},
+		});
+		const [failed, generating] = screen.getAllByRole('button', { name: /Regenerate/ });
+		expect(failed).toHaveClass('invisible');
+		expect(failed).toHaveAttribute('inert');
+		expect(generating).not.toHaveClass('invisible');
+		expect(generating).not.toHaveAttribute('inert');
+		expect(generating).toBeDisabled();
+	});
 });
 
 describe('FanoutColumns — starring', () => {

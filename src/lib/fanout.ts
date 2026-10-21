@@ -243,7 +243,8 @@ export interface FanoutColumn {
 	 * means this portrait's prompt, not the latest round's. Null in a turn fan-out
 	 * (the server re-derives that prompt), and for a recovered avatar column with
 	 * nothing to read one from: a failed branch, or one still generating. Those
-	 * offer no Regenerate — see `FanoutController.canRegenerate`.
+	 * can't re-roll — see `FanoutController.canRegenerate` — though the generating
+	 * one shows its Regenerate disabled, since landing gives it a prompt.
 	 */
 	avatarPrompt: AvatarDrawPrompt | null;
 	/** The persisted assistant message, set on the branch's `done` event (or

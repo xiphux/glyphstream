@@ -11,8 +11,9 @@ arrived.
 
 ### Fixed
 
-- A compare grid cell still generating shows its Favorite button disabled, like
-  the others, instead of leaving a gap where it goes.
+- A compare grid cell still generating shows its Favorite button, and after
+  switching away and back its Regenerate button, disabled like the others
+  instead of leaving a gap where they go.
 
 ## v0.47.0
 

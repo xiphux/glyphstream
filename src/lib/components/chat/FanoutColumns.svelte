@@ -51,9 +51,10 @@
 		/** Re-roll a column: add a fresh variation with the same model/prompt
 		 *  beside it (additive, non-destructive). */
 		onRegenerate?: (column: FanoutColumn) => void;
-		/** Per-column gate on Regenerate, which is hidden where this says no. An
-		 *  avatar portrait recovered without its prompt (a failed branch) has
-		 *  nothing to re-roll from. Defaults to every column. */
+		/** Per-column gate on Regenerate. An avatar portrait recovered without its
+		 *  prompt has nothing to re-roll from: hidden for a failed branch, which
+		 *  never gets one, and disabled for one still generating, which gets one
+		 *  when it lands. Defaults to every column. */
 		canRegenerate?: (column: FanoutColumn) => boolean;
 		onImageClick: (mediaId: string) => void;
 		/** A pick/discard/regenerate request is in flight — disables the controls. */
@@ -259,6 +260,7 @@
 					{@const starred = starId !== null && isFavorite(starId)}
 					{@const starless = isColumnSettled(c) && starId === null}
 					{@const regenerable = !!onRegenerate && canRegenerate(c)}
+					{@const unregenerable = isColumnSettled(c) && !regenerable}
 					<!--
 						A media grid is triaged — every result gets kept, starred, re-rolled
 						or discarded — so its actions are equals: one width each, icon over
@@ -293,11 +295,11 @@
 								type="button"
 								onclick={() => onRegenerate(c)}
 								disabled={busy || !regenerable || !isColumnSettled(c) || atActiveCapacity}
-								inert={!regenerable}
+								inert={unregenerable}
 								title={atActiveCapacity
 									? 'Too many generating at once — wait for some to finish'
 									: 'Generate another variation with this model'}
-								class="{TRIAGE_BUTTON} text-fg-secondary {regenerable ? '' : 'invisible'}"
+								class="{TRIAGE_BUTTON} text-fg-secondary {unregenerable ? 'invisible' : ''}"
 							>
 								<RefreshCw size={16} strokeWidth={2.25} />
 								Regenerate
