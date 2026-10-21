@@ -1261,6 +1261,32 @@ describe('MediaLightbox — swipe resolves at the midpoint', () => {
 		);
 	});
 
+	it('shows neither star through a coast that starts before the last swipe resolved', async () => {
+		// `media` is two slides behind by the time the flick lands; its star would
+		// be a claim about an image the user has left twice over.
+		const { container } = render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'm-1', favorite: true }),
+				onClose: vi.fn(),
+				siblings,
+				onNavigate: vi.fn(),
+				onToggleFavorite: vi.fn(),
+				peekFavorite: () => undefined,
+			},
+		});
+		const t = track(container);
+		await fireEvent.touchStart(t.el);
+		t.at(0.6);
+		t.at(1);
+		await fireEvent.touchEnd(t.el);
+		t.at(1.6);
+		await tick();
+		expect(screen.getByRole('button', { name: 'Add to favorites' })).toHaveAttribute(
+			'aria-pressed',
+			'false',
+		);
+	});
+
 	it('still resolves at the midpoint while the finger is down', async () => {
 		const onNavigate = vi.fn();
 		const { container } = render(MediaLightbox, {

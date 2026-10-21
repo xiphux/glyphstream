@@ -949,8 +949,7 @@
 	     otherwise neither state: the old one would be a claim about an image the
 	     user has left. A coasting flick with nothing known keeps the old one, as
 	     the rest of the header does until the settle (see `coasting`). -->
-	{@const starred =
-		coastIndex !== null ? (starAhead ?? m.favorite) : stale ? (starAhead ?? false) : m.favorite}
+	{@const starred = starAhead ?? (stale ? false : m.favorite)}
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
 	<div
 		role="dialog"
