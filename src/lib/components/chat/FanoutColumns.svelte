@@ -159,7 +159,9 @@
 	// The image a column's star is about: its only one. A batch branch (one
 	// request that came back with several) has no single image for a footer star
 	// to mean, so it gets none; each of its images can still be starred from the
-	// lightbox. Nor does a branch with nothing to show yet, or a failure.
+	// lightbox. Nor does a failure, or a branch with nothing to show yet — but
+	// that one's star is only waiting, so the footer shows it disabled rather
+	// than hidden, like Regenerate's.
 	function starredImageOf(c: FanoutColumn): string | null {
 		if (!isColumnSettled(c)) return null;
 		const ids = columnMediaIds(c);
@@ -255,6 +257,7 @@
 				{#if isMedia && (onPick || onRegenerate || onDiscard || onToggleFavorite)}
 					{@const starId = onToggleFavorite ? starredImageOf(c) : null}
 					{@const starred = starId !== null && isFavorite(starId)}
+					{@const starless = isColumnSettled(c) && starId === null}
 					{@const regenerable = !!onRegenerate && canRegenerate(c)}
 					<!--
 						A media grid is triaged — every result gets kept, starred, re-rolled
@@ -262,8 +265,9 @@
 						caption, none dressed as the one to press. The star and the trash sit
 						at the two ends, so neither is a near-miss for the other, and the
 						trash is told apart by colour rather than by being harder to hit.
-						A slot that doesn't apply to a column (no single image to star, no
-						prompt to re-roll) holds its place, hidden, so the footers line up.
+						A slot that can never apply to a column (no single image to star, no
+						prompt to re-roll) holds its place, hidden, so the footers line up;
+						one that applies once the column finishes shows disabled until then.
 						The lightbox's triage row is this same set (see MediaLightbox).
 					-->
 					<footer class="mt-auto flex items-stretch gap-1.5 border-t border-border px-2 py-2">
@@ -272,12 +276,11 @@
 								type="button"
 								onclick={() => starId && onToggleFavorite(starId, !starred)}
 								disabled={favoriteBusy || starId === null}
-								inert={starId === null}
+								inert={starless}
 								aria-label={starred ? 'Remove from favorites' : 'Add to favorites'}
 								aria-pressed={starred}
 								title={starred ? 'Remove from favorites' : 'Add to favorites'}
-								class="{TRIAGE_BUTTON} {starred ? 'text-favorite' : 'text-fg-secondary'} {starId ===
-								null
+								class="{TRIAGE_BUTTON} {starred ? 'text-favorite' : 'text-fg-secondary'} {starless
 									? 'invisible'
 									: ''}"
 							>

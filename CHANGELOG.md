@@ -9,6 +9,11 @@ arrived.
 
 ## Unreleased
 
+### Fixed
+
+- A compare grid cell still generating shows its Favorite button disabled, like
+  the others, instead of leaving a gap where it goes.
+
 ## v0.47.0
 
 ### Added

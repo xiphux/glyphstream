@@ -491,6 +491,24 @@ describe('FanoutColumns — starring', () => {
 		expect(stars.filter((b) => !b.hasAttribute('inert'))).toHaveLength(1);
 	});
 
+	it('shows a still-generating column’s star, disabled, rather than hiding it', () => {
+		// Its star applies once the image lands, like Regenerate; hiding it left a
+		// gap at the front of every footer in the grid until then.
+		render(FanoutColumns, {
+			props: {
+				columns: [imageColumn('a', [], 'streaming'), imageColumn('b', [], 'queued')],
+				onDiscard: vi.fn(),
+				onImageClick: vi.fn(),
+				onToggleFavorite: vi.fn(),
+			},
+		});
+		for (const b of screen.getAllByRole('button', { name: 'Add to favorites' })) {
+			expect(b).toBeDisabled();
+			expect(b).not.toHaveClass('invisible');
+			expect(b).not.toHaveAttribute('inert');
+		}
+	});
+
 	it('disables every star while one is in flight', () => {
 		render(FanoutColumns, {
 			props: {
