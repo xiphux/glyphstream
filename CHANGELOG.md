@@ -17,6 +17,7 @@ arrived.
 ### Changed
 
 - The image viewer's actions now sit on one row, with shorter labels on phones, so swiping between images no longer makes the view jump in height. Regenerating an enhanced image offers the original or the enhanced prompt from one menu.
+- Swiping through a fresh compare grid in the image viewer now offers the grid's own actions as one row of larger buttons — star, regenerate another variation, the avatar pick, and delete — with star and delete at opposite ends instead of side by side in the corner.
 
 ### Fixed
 

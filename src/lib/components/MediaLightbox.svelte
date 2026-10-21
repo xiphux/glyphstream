@@ -12,6 +12,7 @@
 		ChevronRight,
 		Download,
 		ImagePlus,
+		RefreshCw,
 		RotateCcw,
 		Share,
 		Star,
@@ -149,6 +150,32 @@
 		 * about to be gone. Restore first.
 		 */
 		trashed?: boolean;
+		/**
+		 * Triage mode: the open image is one the media fan-out grid on screen is
+		 * showing, and the user is swiping through it deciding what to keep. The
+		 * action row becomes the grid's own footer, in the grid's order: the star,
+		 * "Regenerate" (another variation from that model, in this chat), an avatar
+		 * comparison's pick, and discard (`onDelete`). The corner's star and trash
+		 * give way to it, so there's one of each and they're far apart: small and
+		 * side by side up there, starring was a near-miss for deleting.
+		 *
+		 * The usual row's actions — Regenerate in a new chat, Edit, Set as avatar —
+		 * are withheld: the grid offers none of them, and mid-triage "Regenerate"
+		 * should mean only what it means on the grid. They're back once the grid's
+		 * Done ends the triage. Null outside a grid.
+		 */
+		triage?: {
+			/** The grid's re-roll. Omit to withhold it (an avatar portrait recovered
+			 *  without its prompt has nothing to re-roll from). */
+			onRegenerate?: (id: string) => void;
+			/** Offered, but the grid is at its in-flight cap. */
+			regenerateBlocked?: boolean;
+			/** An avatar comparison's pick, under `pickLabel`. */
+			onPick?: (id: string) => void;
+			pickLabel?: string;
+			/** A grid-wide request (pick, discard, Done) is in flight. */
+			busy?: boolean;
+		} | null;
 	}
 
 	let {
@@ -170,6 +197,7 @@
 		onToggleFavorite = undefined,
 		favoritingId = null,
 		trashed = false,
+		triage = null,
 	}: Props = $props();
 
 	/** Query suffix for every byte URL this component renders. */
@@ -907,7 +935,7 @@
 				<span class="opacity-70">{metaLine(m)}</span>
 			</div>
 			<div class="flex gap-1.5">
-				{#if onToggleFavorite}
+				{#if onToggleFavorite && !triage}
 					<!--
 						Leads the toolbar: the cheapest, most repeatable action here, and
 						the one a reviewing pass uses over and over. Unlike the picker's
@@ -958,7 +986,7 @@
 						<Undo2 size={14} strokeWidth={2.25} />
 					</button>
 				{/if}
-				{#if onDelete}
+				{#if onDelete && !triage}
 					<button
 						type="button"
 						onclick={() => onDelete?.(m.id)}
@@ -1159,7 +1187,75 @@
 				{/if}
 			</div>
 		{/if}
-		{#if avatarSlot || launchSlots}
+		{#if triage}
+			<!--
+				The grid's footer (see `triage`): the star and the trash at the two
+				ends, the variation and pick actions between. Bigger than the corner
+				buttons they replace — these are the actions a triage pass repeats on
+				every image. One line, like the usual row, and held to the same height
+				in a carousel, which mixes grid images with older ones.
+			-->
+			<div
+				class="mx-auto mt-3 flex w-full max-w-md shrink-0 items-center gap-2 {showCarousel
+					? 'min-h-9'
+					: ''}"
+			>
+				{#if onToggleFavorite}
+					<button
+						type="button"
+						onclick={() => onToggleFavorite?.(m.id, !m.favorite)}
+						disabled={stale || favoritingId !== null}
+						title={starred ? 'Remove from favorites' : 'Add to favorites'}
+						aria-label={starred ? 'Remove from favorites' : 'Add to favorites'}
+						aria-pressed={starred}
+						class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-media-border bg-media-surface transition hover:bg-media-surface-hover disabled:opacity-50 {starred
+							? 'text-favorite'
+							: 'text-media-fg-secondary'}"
+					>
+						<Star size={16} strokeWidth={2.25} fill={starred ? 'currentColor' : 'none'} />
+					</button>
+				{/if}
+				<div class="flex min-w-0 flex-1 gap-2">
+					{#if triage.onRegenerate}
+						<button
+							type="button"
+							onclick={() => triage?.onRegenerate?.(m.id)}
+							disabled={stale || triage.busy || triage.regenerateBlocked}
+							title={triage.regenerateBlocked
+								? 'Too many generating at once — wait for some to finish'
+								: 'Generate another variation with this model'}
+							class="{ACTION_BUTTON} h-9 min-w-0 flex-1 justify-center"
+						>
+							<RefreshCw size={13} strokeWidth={2.25} />
+							Regenerate
+						</button>
+					{/if}
+					{#if triage.onPick}
+						<button
+							type="button"
+							onclick={() => triage?.onPick?.(m.id)}
+							disabled={stale || triage.busy}
+							class="{ACTION_BUTTON} h-9 min-w-0 flex-1 justify-center"
+						>
+							<Check size={13} strokeWidth={2.25} />
+							{triage.pickLabel ?? 'Use this'}
+						</button>
+					{/if}
+				</div>
+				<!-- Disabled rather than absent when the grid won't discard this one
+				     (its last column), so the row keeps its shape and says why. -->
+				<button
+					type="button"
+					onclick={() => onDelete?.(m.id)}
+					disabled={stale || !onDelete || triage.busy || deletingId === m.id}
+					title={!onDelete ? 'Keep at least one' : deletingId === m.id ? 'Deleting…' : 'Delete'}
+					aria-label="Delete"
+					class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md btn-danger transition disabled:opacity-50"
+				>
+					<Trash2 size={16} strokeWidth={2.25} />
+				</button>
+			</div>
+		{:else if avatarSlot || launchSlots}
 			<!--
 				The act-on-this-image actions, in ONE row: "Regenerate" and "Edit" send
 				the user to / pre-loaded with the relevant intent (see the LAUNCH_KEY
@@ -1178,7 +1274,11 @@
 				varied per slide, so wrapping changed the height and resized the image
 				mid-swipe — same reason as the prompt strip.
 			-->
-			<div class="mx-auto mt-3 flex shrink-0 flex-wrap justify-center gap-2">
+			<div
+				class="mx-auto mt-3 flex shrink-0 flex-wrap items-center justify-center gap-2 {showCarousel
+					? 'min-h-9'
+					: ''}"
+			>
 				{#if launchSlots && (hasPrompt || showCarousel)}
 					{@const regenLabel = inConversation
 						? 'Regenerate in a new chat'

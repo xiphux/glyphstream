@@ -1488,3 +1488,69 @@ describe('MediaLightbox — set as avatar', () => {
 		expect(screen.getByRole('button', { name: 'Marta' })).toBeEnabled();
 	});
 });
+
+/**
+ * Triage mode: the open image is in the media fan-out grid on screen, and the
+ * action row becomes that grid's footer.
+ */
+describe('MediaLightbox — triaging a fan-out grid', () => {
+	const base = () => ({
+		media: makeImage({ id: 'g1', promptFull: 'a lighthouse', originalPrompt: 'lighthouse' }),
+		onClose: vi.fn(),
+		inConversation: true,
+		onToggleFavorite: vi.fn(),
+		onDelete: vi.fn(),
+		onSetAvatar: vi.fn(),
+		avatarTargets: [{ kind: 'preset' as const, id: 'cm-1', name: 'Ilya', avatarMediaId: null }],
+	});
+
+	it('offers the grid’s actions in place of the usual row and the corner pair', async () => {
+		const user = userEvent.setup();
+		const props = base();
+		const onRegenerate = vi.fn();
+		render(MediaLightbox, { props: { ...props, triage: { onRegenerate } } });
+
+		// One star and one trash: the corner's give way to the row's.
+		expect(screen.getAllByRole('button', { name: 'Add to favorites' })).toHaveLength(1);
+		expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(1);
+		// "Regenerate" means only the grid's re-roll here.
+		expect(screen.queryByRole('button', { name: /Regenerate in a new chat/ })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Edit in a new chat' })).toBeNull();
+		expect(screen.queryByRole('button', { name: /avatar/i })).toBeNull();
+
+		await user.click(screen.getByRole('button', { name: 'Regenerate' }));
+		expect(onRegenerate).toHaveBeenCalledWith('g1');
+		await user.click(screen.getByRole('button', { name: 'Add to favorites' }));
+		expect(props.onToggleFavorite).toHaveBeenCalledWith('g1', true);
+		await user.click(screen.getByRole('button', { name: 'Delete' }));
+		expect(props.onDelete).toHaveBeenCalledWith('g1');
+	});
+
+	it('offers an avatar comparison’s pick alongside', async () => {
+		const user = userEvent.setup();
+		const onPick = vi.fn();
+		render(MediaLightbox, {
+			props: { ...base(), triage: { onRegenerate: vi.fn(), onPick, pickLabel: 'Use this avatar' } },
+		});
+		await user.click(screen.getByRole('button', { name: 'Use this avatar' }));
+		expect(onPick).toHaveBeenCalledWith('g1');
+	});
+
+	it('keeps the trash, disabled, where the grid won’t discard', () => {
+		// The grid's last column: it keeps at least one.
+		render(MediaLightbox, {
+			props: { ...base(), onDelete: undefined, triage: { onRegenerate: vi.fn() } },
+		});
+		expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+	});
+
+	it('disables Regenerate at the grid’s in-flight cap, and withholds it where there’s nothing to re-roll', () => {
+		const { unmount } = render(MediaLightbox, {
+			props: { ...base(), triage: { onRegenerate: vi.fn(), regenerateBlocked: true } },
+		});
+		expect(screen.getByRole('button', { name: 'Regenerate' })).toBeDisabled();
+		unmount();
+		render(MediaLightbox, { props: { ...base(), triage: {} } });
+		expect(screen.queryByRole('button', { name: 'Regenerate' })).toBeNull();
+	});
+});

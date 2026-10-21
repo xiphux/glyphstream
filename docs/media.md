@@ -18,6 +18,9 @@ project that puts ComfyUI, Venice, ImageRouter and OpenRouter behind that API.
   before you can send, instead of failing after you've written a prompt.
 - **Compare across models** — fan one prompt out to several image or video
   models and pick from the grid ([models](models.md#multi-model-compare)).
+  Each result can be starred, re-rolled for another variation, or discarded,
+  from the grid or while swiping through it in the lightbox, which shows the
+  grid's own buttons until you tap **Done**.
 
 ## Aspect ratios
 

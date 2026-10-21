@@ -2857,6 +2857,17 @@
 				? (id: string, next: boolean) => void lightbox.toggleFavorite(id, next)
 				: undefined}
 			favoritingId={lightbox.favoritingId}
+			triage={lightbox.triaging
+				? {
+						onRegenerate: lightbox.canRegenerate
+							? (id: string) => lightbox.regenerate(id)
+							: undefined,
+						regenerateBlocked: lightbox.regenerateBlocked,
+						onPick: fanout.isAvatar ? (id: string) => lightbox.pick(id) : undefined,
+						pickLabel: 'Use this avatar',
+						busy: fanout.picking,
+					}
+				: null}
 		/>
 	{/await}
 {/if}
