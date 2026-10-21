@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.47.0
+
 ### Added
 
 - Gallery search results can be sorted newest-first as well as by relevance.
