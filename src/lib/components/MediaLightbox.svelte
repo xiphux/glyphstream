@@ -101,8 +101,10 @@
 		 * usually from `onPrefetch`), or undefined. Read while a flick coasts onto
 		 * that slide: nothing else in the header changes until the track settles
 		 * (see `coasting` in `onTrackScroll`), but the star is what a pass through
-		 * the images watches from one to the next, and recolouring it moves
-		 * nothing. Optional: without it the star waits for the settle too.
+		 * the images watches from one to the next, and changing it resizes
+		 * nothing: a colour, a fill, and in triage mode a caption inside a
+		 * fixed-size button. Optional: without it the star waits for the settle
+		 * too.
 		 */
 		peekFavorite?: (id: string) => boolean | undefined;
 		/**
@@ -350,8 +352,10 @@
 	/**
 	 * The slide a coasting flick is heading for, once past its midpoint; null
 	 * otherwise. The one thing a coast writes, and only the star reads it (see
-	 * `peekFavorite`): it may not lay anything out, and recolouring a star
-	 * doesn't. Cleared by the settle, which takes over from there.
+	 * `peekFavorite`): it may not resize anything, and the star's change stays
+	 * inside its own fixed-size button. Unproven on iOS beyond that; if flicks
+	 * start overshooting again, this is the write to suspect. Cleared by the
+	 * settle, which takes over from there, and by an arrow press.
 	 */
 	let coastIndex = $state<number | null>(null);
 	const RELEASE_MOTION_MS = 90;
@@ -948,10 +952,11 @@
 	     where it doesn't apply; see the row). -->
 	{@const avatarSlot = canSetAvatar || (showCarousel && !!onSetAvatar && avatarTargets.length > 0)}
 	{@const launchSlots = !trashed && (hasPrompt || canUseAsStarting || showCarousel)}
-	<!-- Mid-swipe the star shows the slide ahead's when the caller knows it, and
-	     otherwise neither state: the old one would be a claim about an image the
-	     user has left. A coasting flick with nothing known keeps the old one, as
-	     the rest of the header does until the settle (see `coasting`). -->
+	<!-- Mid-swipe the star shows the slide ahead's when the caller knows it. With
+	     nothing known it shows neither state while `media` is behind (the old one
+	     would be a claim about an image the user has left), and through a coast
+	     from a resolved slide keeps `media`'s, as the rest of the header does
+	     until the settle (see `coasting`). -->
 	{@const starred = starAhead ?? (stale ? false : m.favorite)}
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
 	<div
