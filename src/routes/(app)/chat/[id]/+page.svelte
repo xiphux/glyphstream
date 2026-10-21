@@ -2633,6 +2633,7 @@
 								? undefined
 								: (c: FanoutColumn) => void fanout.pick(c)}
 							pickLabel={fanout.isAvatar ? 'Use this avatar' : 'Continue with this'}
+							pickCaption={fanout.isAvatar ? 'Use avatar' : undefined}
 							onDiscard={fanout.isMedia ? (c: FanoutColumn) => void fanout.discard(c) : undefined}
 							onRegenerate={fanout.isMedia
 								? (c: FanoutColumn) => void fanout.regenerate(c)
@@ -2865,6 +2866,7 @@
 						regenerateBlocked: lightbox.regenerateBlocked,
 						onPick: fanout.isAvatar ? (id: string) => lightbox.pick(id) : undefined,
 						pickLabel: 'Use this avatar',
+						pickCaption: 'Use avatar',
 						busy: fanout.picking,
 					}
 				: null}

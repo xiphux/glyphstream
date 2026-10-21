@@ -378,13 +378,12 @@ describe('FanoutColumns — an avatar comparison', () => {
 	function portrait(id: string, label: string): FanoutColumn {
 		const message = persisted(id, '');
 		message.parts = [{ type: 'image', mediaId: `${id}-media` }];
-		return col({
-			branchId: id,
-			modelKind: 'image',
-			label,
-			status: 'done',
-			persisted: message,
-		});
+		// Spread, not passed: `col` pins modelKind to 'chat', which would render a
+		// text comparison's footer instead of an image grid's.
+		return {
+			...col({ branchId: id, label, status: 'done', persisted: message }),
+			modelKind: 'image' as const,
+		};
 	}
 
 	it('names what the pick actually does', async () => {
@@ -443,12 +442,12 @@ describe('FanoutColumns — starring', () => {
 	function imageColumn(id: string, mediaIds: string[], status: FanoutColumn['status'] = 'done') {
 		const message = persisted(id, '');
 		message.parts = mediaIds.map((mediaId) => ({ type: 'image' as const, mediaId }));
-		return col({
-			branchId: id,
-			modelKind: 'image',
-			status,
-			persisted: mediaIds.length > 0 ? message : null,
-		});
+		// `col` pins modelKind to 'chat'; the spread is what makes this an image
+		// column, and so a media grid.
+		return {
+			...col({ branchId: id, status, persisted: mediaIds.length > 0 ? message : null }),
+			modelKind: 'image' as const,
+		};
 	}
 
 	it('stars a column’s image and shows what the page says is starred', async () => {

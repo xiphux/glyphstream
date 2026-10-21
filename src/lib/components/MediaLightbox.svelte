@@ -162,7 +162,12 @@
 		 * The usual row's actions — Regenerate in a new chat, Edit, Set as avatar —
 		 * are withheld: the grid offers none of them, and mid-triage "Regenerate"
 		 * should mean only what it means on the grid. They're back once the grid's
-		 * Done ends the triage. Null outside a grid.
+		 * Done ends the triage.
+		 *
+		 * Null when the open image isn't in a grid; left undefined by a caller that
+		 * never triages (the gallery). The difference matters in a carousel: one
+		 * that can mix the two rows holds the usual row at the triage row's taller
+		 * height, so a swipe between them doesn't resize the image.
 		 */
 		triage?: {
 			/** The grid's re-roll. Omit to withhold it (an avatar portrait recovered
@@ -170,9 +175,11 @@
 			onRegenerate?: (id: string) => void;
 			/** Offered, but the grid is at its in-flight cap. */
 			regenerateBlocked?: boolean;
-			/** An avatar comparison's pick, under `pickLabel`. */
+			/** An avatar comparison's pick. `pickLabel` is its accessible name;
+			 *  `pickCaption`, when set, the shorter text the equal-width button shows. */
 			onPick?: (id: string) => void;
 			pickLabel?: string;
+			pickCaption?: string;
 			/** A grid-wide request (pick, discard, Done) is in flight. */
 			busy?: boolean;
 		} | null;
@@ -197,7 +204,7 @@
 		onToggleFavorite = undefined,
 		favoritingId = null,
 		trashed = false,
-		triage = null,
+		triage = undefined,
 	}: Props = $props();
 
 	/** Query suffix for every byte URL this component renders. */
@@ -720,6 +727,9 @@
 		return m.promptFull ?? m.promptExcerpt;
 	}
 
+	const TRIAGE_BUTTON =
+		'flex h-11 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-md border border-media-border bg-media-surface px-1 text-[11px] font-medium leading-tight transition hover:bg-media-surface-hover disabled:opacity-50';
+
 	const ACTION_BUTTON =
 		'inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover disabled:opacity-50';
 
@@ -1189,17 +1199,14 @@
 		{/if}
 		{#if triage}
 			<!--
-				The grid's footer (see `triage`): the star and the trash at the two
-				ends, the variation and pick actions between. Bigger than the corner
-				buttons they replace — these are the actions a triage pass repeats on
-				every image. One line, like the usual row, and held to the same height
-				in a carousel, which mixes grid images with older ones.
+				The grid's footer (see `triage`), drawn the way the grid draws it:
+				equal-width buttons, icon over caption, none dressed as the one to
+				press, since a triage pass is a choice between them. The star and the
+				trash sit at the two ends and the trash is told apart by colour. A
+				line taller than the usual row, which a carousel matches (see
+				`triage` on that row), since it mixes grid images with older ones.
 			-->
-			<div
-				class="mx-auto mt-3 flex w-full max-w-md shrink-0 items-center gap-2 {showCarousel
-					? 'min-h-9'
-					: ''}"
-			>
+			<div class="mx-auto mt-3 flex w-full max-w-md shrink-0 items-stretch gap-1.5">
 				{#if onToggleFavorite}
 					<button
 						type="button"
@@ -1208,40 +1215,38 @@
 						title={starred ? 'Remove from favorites' : 'Add to favorites'}
 						aria-label={starred ? 'Remove from favorites' : 'Add to favorites'}
 						aria-pressed={starred}
-						class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-media-border bg-media-surface transition hover:bg-media-surface-hover disabled:opacity-50 {starred
-							? 'text-favorite'
-							: 'text-media-fg-secondary'}"
+						class="{TRIAGE_BUTTON} {starred ? 'text-favorite' : 'text-media-fg'}"
 					>
 						<Star size={16} strokeWidth={2.25} fill={starred ? 'currentColor' : 'none'} />
+						<span aria-hidden="true">{starred ? 'Favorited' : 'Favorite'}</span>
 					</button>
 				{/if}
-				<div class="flex min-w-0 flex-1 gap-2">
-					{#if triage.onRegenerate}
-						<button
-							type="button"
-							onclick={() => triage?.onRegenerate?.(m.id)}
-							disabled={stale || triage.busy || triage.regenerateBlocked}
-							title={triage.regenerateBlocked
-								? 'Too many generating at once — wait for some to finish'
-								: 'Generate another variation with this model'}
-							class="{ACTION_BUTTON} h-9 min-w-0 flex-1 justify-center"
-						>
-							<RefreshCw size={13} strokeWidth={2.25} />
-							Regenerate
-						</button>
-					{/if}
-					{#if triage.onPick}
-						<button
-							type="button"
-							onclick={() => triage?.onPick?.(m.id)}
-							disabled={stale || triage.busy}
-							class="{ACTION_BUTTON} h-9 min-w-0 flex-1 justify-center"
-						>
-							<Check size={13} strokeWidth={2.25} />
-							{triage.pickLabel ?? 'Use this'}
-						</button>
-					{/if}
-				</div>
+				{#if triage.onRegenerate}
+					<button
+						type="button"
+						onclick={() => triage?.onRegenerate?.(m.id)}
+						disabled={stale || triage.busy || triage.regenerateBlocked}
+						title={triage.regenerateBlocked
+							? 'Too many generating at once — wait for some to finish'
+							: 'Generate another variation with this model'}
+						class="{TRIAGE_BUTTON} text-media-fg"
+					>
+						<RefreshCw size={16} strokeWidth={2.25} />
+						Regenerate
+					</button>
+				{/if}
+				{#if triage.onPick}
+					<button
+						type="button"
+						onclick={() => triage?.onPick?.(m.id)}
+						disabled={stale || triage.busy}
+						aria-label={triage.pickLabel ?? 'Use this'}
+						class="{TRIAGE_BUTTON} text-media-fg"
+					>
+						<Check size={16} strokeWidth={2.25} />
+						<span aria-hidden="true">{triage.pickCaption ?? triage.pickLabel ?? 'Use this'}</span>
+					</button>
+				{/if}
 				<!-- Disabled rather than absent when the grid won't discard this one
 				     (its last column), so the row keeps its shape and says why. -->
 				<button
@@ -1250,9 +1255,10 @@
 					disabled={stale || !onDelete || triage.busy || deletingId === m.id}
 					title={!onDelete ? 'Keep at least one' : deletingId === m.id ? 'Deleting…' : 'Delete'}
 					aria-label="Delete"
-					class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md btn-danger transition disabled:opacity-50"
+					class="{TRIAGE_BUTTON} text-red-400"
 				>
 					<Trash2 size={16} strokeWidth={2.25} />
+					<span aria-hidden="true">Delete</span>
 				</button>
 			</div>
 		{:else if avatarSlot || launchSlots}
@@ -1275,8 +1281,9 @@
 				mid-swipe — same reason as the prompt strip.
 			-->
 			<div
-				class="mx-auto mt-3 flex shrink-0 flex-wrap items-center justify-center gap-2 {showCarousel
-					? 'min-h-9'
+				class="mx-auto mt-3 flex shrink-0 flex-wrap items-center justify-center gap-2 {showCarousel &&
+				triage !== undefined
+					? 'min-h-11'
 					: ''}"
 			>
 				{#if launchSlots && (hasPrompt || showCarousel)}

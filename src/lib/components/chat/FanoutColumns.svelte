@@ -43,6 +43,9 @@
 		 *  an avatar comparison is keep-many AND pick-one, and what its pick does is
 		 *  adopt a face, so it says so. */
 		pickLabel?: string;
+		/** A shorter caption for the pick where a media grid's equal-width buttons
+		 *  have no room for `pickLabel`, which stays its accessible name. */
+		pickCaption?: string;
 		/** Discard (delete) a column. Wired for media fan-out (prune the duds). */
 		onDiscard?: (column: FanoutColumn) => void;
 		/** Re-roll a column: add a fresh variation with the same model/prompt
@@ -69,6 +72,7 @@
 		columns,
 		onPick,
 		pickLabel = 'Continue with this',
+		pickCaption,
 		onDiscard,
 		onRegenerate,
 		canRegenerate = () => true,
@@ -150,6 +154,8 @@
 		return canDiscardColumn(columns, c);
 	}
 	const atActiveCapacity = $derived(atActiveBranchCapacity(columns));
+	const TRIAGE_BUTTON =
+		'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg border border-border px-1 py-1.5 text-[11px] font-medium leading-tight transition hover:bg-surface-sunken disabled:opacity-30';
 	// The image a column's star is about: its only one. A batch branch (one
 	// request that came back with several) has no single image for a footer star
 	// to mean, so it gets none; each of its images can still be starred from the
@@ -246,15 +252,22 @@
 					{/if}
 				</div>
 
-				{#if onPick || onRegenerate || onDiscard || onToggleFavorite}
+				{#if isMedia && (onPick || onRegenerate || onDiscard || onToggleFavorite)}
 					{@const starId = onToggleFavorite ? starredImageOf(c) : null}
 					{@const starred = starId !== null && isFavorite(starId)}
-					<footer class="mt-auto flex items-center gap-2 border-t border-border px-2 py-2">
+					{@const regenerable = !!onRegenerate && canRegenerate(c)}
+					<!--
+						A media grid is triaged — every result gets kept, starred, re-rolled
+						or discarded — so its actions are equals: one width each, icon over
+						caption, none dressed as the one to press. The star and the trash sit
+						at the two ends, so neither is a near-miss for the other, and the
+						trash is told apart by colour rather than by being harder to hit.
+						A slot that doesn't apply to a column (no single image to star, no
+						prompt to re-roll) holds its place, hidden, so the footers line up.
+						The lightbox's triage row is this same set (see MediaLightbox).
+					-->
+					<footer class="mt-auto flex items-stretch gap-1.5 border-t border-border px-2 py-2">
 						{#if onToggleFavorite}
-							<!-- Opposite the trash: the two quick reactions at the two ends,
-							     so one is never a near-miss for the other. Holds its place,
-							     hidden, on a column with no single image to star, so the
-							     footers stay aligned across the grid. -->
 							<button
 								type="button"
 								onclick={() => starId && onToggleFavorite(starId, !starred)}
@@ -263,13 +276,60 @@
 								aria-label={starred ? 'Remove from favorites' : 'Add to favorites'}
 								aria-pressed={starred}
 								title={starred ? 'Remove from favorites' : 'Add to favorites'}
-								class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition hover:bg-surface-sunken disabled:opacity-30 {starred
-									? 'text-favorite'
-									: 'text-fg-muted hover:text-fg-secondary'} {starId === null ? 'invisible' : ''}"
+								class="{TRIAGE_BUTTON} {starred ? 'text-favorite' : 'text-fg-secondary'} {starId ===
+								null
+									? 'invisible'
+									: ''}"
 							>
-								<Star size={14} fill={starred ? 'currentColor' : 'none'} />
+								<Star size={16} strokeWidth={2.25} fill={starred ? 'currentColor' : 'none'} />
+								<span aria-hidden="true">{starred ? 'Favorited' : 'Favorite'}</span>
 							</button>
 						{/if}
+						{#if onRegenerate}
+							<button
+								type="button"
+								onclick={() => onRegenerate(c)}
+								disabled={busy || !regenerable || !isColumnSettled(c) || atActiveCapacity}
+								inert={!regenerable}
+								title={atActiveCapacity
+									? 'Too many generating at once — wait for some to finish'
+									: 'Generate another variation with this model'}
+								class="{TRIAGE_BUTTON} text-fg-secondary {regenerable ? '' : 'invisible'}"
+							>
+								<RefreshCw size={16} strokeWidth={2.25} />
+								Regenerate
+							</button>
+						{/if}
+						{#if onPick}
+							<button
+								type="button"
+								onclick={() => onPick(c)}
+								disabled={busy || !canPick(c)}
+								aria-label={pickLabel}
+								class="{TRIAGE_BUTTON} text-fg-secondary"
+							>
+								<Check size={16} strokeWidth={2.25} />
+								<span aria-hidden="true">{pickCaption ?? pickLabel}</span>
+							</button>
+						{/if}
+						{#if onDiscard}
+							<button
+								type="button"
+								onclick={() => onDiscard(c)}
+								disabled={busy || !canDiscard(c)}
+								aria-label="Discard this response"
+								title={columns.length <= 1 ? 'Keep at least one' : 'Discard'}
+								class="{TRIAGE_BUTTON} text-danger"
+							>
+								<Trash2 size={16} strokeWidth={2.25} />
+								<span aria-hidden="true">Delete</span>
+							</button>
+						{/if}
+					</footer>
+				{:else if onPick || onRegenerate || onDiscard}
+					<!-- A text comparison: pick one to continue the thread, the one
+					     action it has, so it reads as the one to press. -->
+					<footer class="mt-auto flex items-center gap-2 border-t border-border px-2 py-2">
 						{#if onPick}
 							<button
 								type="button"
