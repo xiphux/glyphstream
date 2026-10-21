@@ -382,7 +382,9 @@
 		// missing on arrival. An arrow press's `scrollTarget` is cleared by the
 		// settle instead.
 		const coasting = touchReleased && !touchActive;
-		if (coasting && el.clientWidth > 0) {
+		// Not under an arrow press's smooth scroll, which `touchReleased` can still
+		// read as a coast: the slides it passes aren't where the user is headed.
+		if (coasting && scrollTarget === null && el.clientWidth > 0) {
 			const idx = Math.round(el.scrollLeft / el.clientWidth);
 			const ahead = idx !== displayIndex && siblings[idx] ? idx : null;
 			if (ahead !== coastIndex) coastIndex = ahead;
@@ -475,6 +477,7 @@
 		const next = from + delta;
 		if (next < 0 || next >= siblings.length) return;
 		pendingIndex = next;
+		coastIndex = null;
 		// Scroll immediately for instant feedback rather than waiting for the
 		// metadata fetch (chat) to round-trip through `media` → currentIndex →
 		// the positioning effect. The effect then no-ops (already centered).

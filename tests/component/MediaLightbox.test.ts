@@ -1287,6 +1287,32 @@ describe('MediaLightbox — swipe resolves at the midpoint', () => {
 		);
 	});
 
+	it('lets an arrow press mid-coast take the star where the keys are headed', async () => {
+		const user = userEvent.setup();
+		const { container } = render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'm-1', favorite: false }),
+				onClose: vi.fn(),
+				siblings,
+				onNavigate: vi.fn(),
+				onToggleFavorite: vi.fn(),
+				peekFavorite: (id: string) => id === 'm-2',
+			},
+		});
+		const t = track(container);
+		await fireEvent.touchStart(t.el);
+		t.at(0.3);
+		await fireEvent.touchEnd(t.el);
+		await user.keyboard('{ArrowRight}{ArrowRight}');
+		// The smooth scroll to m-3 passes m-2, whose star is lit.
+		t.at(0.6);
+		await tick();
+		expect(screen.getByRole('button', { name: 'Add to favorites' })).toHaveAttribute(
+			'aria-pressed',
+			'false',
+		);
+	});
+
 	it('still resolves at the midpoint while the finger is down', async () => {
 		const onNavigate = vi.fn();
 		const { container } = render(MediaLightbox, {
