@@ -673,8 +673,9 @@ export class FanoutController {
 			// SSE, which is why everything below this line is shared.
 			const { mode } = opts?.dispatch ?? { mode: this.#mode };
 			const avatar = col.avatarPrompt;
-			// Unreachable through the UI (`canRegenerate` hides the control), but a
-			// turn body posted for an avatar branch would anchor on the description.
+			// Unreachable through the UI (`canRegenerate` keeps the control disabled
+			// or hidden), but a turn body posted for an avatar branch would anchor on
+			// the description.
 			if (mode === 'avatar' && !avatar) throw new Error('Nothing to draw this portrait from');
 			const url =
 				mode === 'avatar'

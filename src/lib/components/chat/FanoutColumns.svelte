@@ -51,10 +51,11 @@
 		/** Re-roll a column: add a fresh variation with the same model/prompt
 		 *  beside it (additive, non-destructive). */
 		onRegenerate?: (column: FanoutColumn) => void;
-		/** Per-column gate on Regenerate. An avatar portrait recovered without its
-		 *  prompt has nothing to re-roll from: hidden for a failed branch, which
-		 *  never gets one, and disabled for one still generating, which gets one
-		 *  when it lands. Defaults to every column. */
+		/** Per-column gate on Regenerate. A "no" hides the button only once the
+		 *  column settles; until then it shows disabled, since landing may change
+		 *  the answer. (An avatar portrait recovered without its prompt has nothing
+		 *  to re-roll from, and gets one if it lands with an image.) Defaults to
+		 *  every column. */
 		canRegenerate?: (column: FanoutColumn) => boolean;
 		onImageClick: (mediaId: string) => void;
 		/** A pick/discard/regenerate request is in flight — disables the controls. */
@@ -161,8 +162,9 @@
 	// request that came back with several) has no single image for a footer star
 	// to mean, so it gets none; each of its images can still be starred from the
 	// lightbox. Nor does a failure, or a branch with nothing to show yet — but
-	// that one's star is only waiting, so the footer shows it disabled rather
-	// than hidden, like Regenerate's.
+	// that one may still land a single image, so the footer shows its star
+	// disabled until it settles, and hides it only if it settles without one,
+	// like Regenerate's.
 	function starredImageOf(c: FanoutColumn): string | null {
 		if (!isColumnSettled(c)) return null;
 		const ids = columnMediaIds(c);
