@@ -4,9 +4,9 @@
 	surfaces per-column actions once settled. Two modes:
 	  - text (chat/embedding): "Continue with this" (onPick) promotes one branch
 	    to the active thread, the rest stay as siblings.
-	  - media keep-many (image/video): prune the duds (onDiscard) + re-roll
-	    (onRegenerate, additively — a new variation beside the original); every
-	    kept image/video stays a sibling.
+	  - media keep-many (image/video): star the keepers (onToggleFavorite),
+	    prune the duds (onDiscard) + re-roll (onRegenerate, additively — a new
+	    variation beside the original); every kept image/video stays a sibling.
 	An avatar comparison is both at once — its columns are images, kept as
 	siblings, but one of them also becomes the conversation's face — so it wires
 	all three callbacks and relabels the pick via `pickLabel`.
