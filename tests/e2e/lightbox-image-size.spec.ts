@@ -51,7 +51,11 @@ test('the chat lightbox loads display copies, never the original', async ({ page
 
 test('the gallery lightbox sizes its slides from the grid', async ({ page }) => {
 	seedMediaPrompts(['a red kite', 'a blue kite', 'a green kite'], { width: 3000, height: 2000 });
-	await page.goto('/gallery');
+	// Filtered to images only for a cache entry of its own. The server memoizes
+	// the gallery's units under a fingerprint of row counts, deletes and stars —
+	// which every `seedMediaPrompts` library of the same size shares — so on the
+	// unfiltered view this read whatever an earlier spec had seeded, unsized.
+	await page.goto('/gallery?kind=image');
 	await page.locator('li[data-tile] img[src*="/api/media/"]').first().click();
 
 	// Three separate prompts are three solo units, so every slide comes from a
