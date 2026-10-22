@@ -35,6 +35,7 @@ import { walkActiveBranch } from '../db/queries/messages';
 import { insertMedia } from '../db/queries/media';
 import type { MediaKind } from '#lib/types/api.js';
 import { getMediaStore } from '../media/disk-store';
+import { probeImageDimensions } from '../media/dimensions';
 import type { RunPythonPreFile, RunPythonPostFile } from './pool';
 import { createLogger } from '../log';
 
@@ -185,6 +186,7 @@ export async function persistGeneratedFiles({
 				: 'file';
 		const buf = Buffer.from(f.bytes);
 		const ref = await store.put({ bytes: buf, contentType, kind });
+		const dimensions = kind === 'image' ? await probeImageDimensions(buf) : undefined;
 		const { id } = insertMedia({
 			userId,
 			storagePath: ref.storagePath,
@@ -196,6 +198,7 @@ export async function persistGeneratedFiles({
 			promptExcerpt: null,
 			origin: 'generated',
 			originalFilename: f.filename,
+			dimensions,
 		});
 		ids.push(id);
 	}

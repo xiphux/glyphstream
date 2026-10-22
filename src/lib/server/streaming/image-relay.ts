@@ -166,7 +166,7 @@ function buildImageRelay(params: ImageRelayParams): [MediaRelayScaffoldParams, M
 			if (!result || (!result.url && !result.b64_json)) {
 				throw new Error('Upstream returned no image data');
 			}
-			const mediaId = await persistGeneratedImage({
+			const { id: mediaId, dimensions } = await persistGeneratedImage({
 				userId: params.userId,
 				endpoint: params.endpoint,
 				sourceModel: params.storedModelId,
@@ -187,6 +187,7 @@ function buildImageRelay(params: ImageRelayParams): [MediaRelayScaffoldParams, M
 					...(result.aspect_ratio && parseRatio(result.aspect_ratio) !== null
 						? { aspectRatio: result.aspect_ratio }
 						: {}),
+					...(dimensions ?? {}),
 				},
 				mediaId,
 				rawResponseJson: rawResponseForStorage(upstream),

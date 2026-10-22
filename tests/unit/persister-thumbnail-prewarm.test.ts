@@ -38,14 +38,14 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('persistGeneratedImage — thumbnail prewarm', () => {
 	it('starts the thumbnail for the stored original', async () => {
-		expect(await persist()).toBe('media-1');
+		expect((await persist()).id).toBe('media-1');
 		expect(mocks.getOrCreateThumbnail).toHaveBeenCalledWith('ab/cd.png', 'image');
 	});
 
 	it('still returns the media id when the prewarm fails', async () => {
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		mocks.getOrCreateThumbnail.mockRejectedValue(new Error('sharp exploded'));
-		expect(await persist()).toBe('media-1');
+		expect((await persist()).id).toBe('media-1');
 		await vi.waitFor(() => expect(warn).toHaveBeenCalled());
 	});
 });

@@ -74,7 +74,7 @@ beforeEach(() => {
 	mocks.testDb = createTestDb();
 	mocks.imageGeneration.mockReset();
 	mocks.imageEdit.mockReset();
-	mocks.persistGeneratedImage.mockReset().mockResolvedValue('media-out');
+	mocks.persistGeneratedImage.mockReset().mockResolvedValue({ id: 'media-out', dimensions: null });
 	mocks.linkMessageMedia.mockReset();
 	mocks.loadMediaBytes.mockReset();
 	mocks.unlinkMediaFiles.mockReset().mockResolvedValue(undefined);
@@ -212,6 +212,21 @@ describe('startImageRelay — avatar generation', () => {
 		const done = events.find((e) => e.type === 'done')!;
 		expect((done as { assistantMessage: ChatMessage }).assistantMessage.parts).toEqual([
 			{ type: 'image', mediaId: 'media-out', aspectRatio: '3:4' },
+		]);
+	});
+
+	it('records the measured pixel size on the part', async () => {
+		mocks.persistGeneratedImage.mockResolvedValue({
+			id: 'media-out',
+			dimensions: { width: 1024, height: 768 },
+		});
+		const { conv, user, userMessage } = seedConvWithUser();
+		const events = await drain(
+			startImageRelay(baseParams({ conversationId: conv.id, userId: user.id, userMessage })),
+		);
+		const done = events.find((e) => e.type === 'done')!;
+		expect((done as { assistantMessage: ChatMessage }).assistantMessage.parts).toEqual([
+			{ type: 'image', mediaId: 'media-out', width: 1024, height: 768 },
 		]);
 	});
 

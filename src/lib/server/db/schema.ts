@@ -837,6 +837,15 @@ export const media = sqliteTable(
 		// uploads, for rows generated before this shipped, and for any upstream
 		// that doesn't deal in ratios — the great majority of them.
 		aspectRatio: text('aspect_ratio'),
+		// An image's intrinsic size in pixels, upright (EXIF orientation applied),
+		// read from the header at insert — so, unlike `aspect_ratio`, it is what
+		// the pixels are, for every image including uploads. It lets a surface
+		// reserve the image's box before it loads, and pick a variant no larger
+		// than the original. NULL = not probed yet (rows from before this, which
+		// `dimensions-backfill.ts` fills, and every non-image); 0 × 0 = probed and
+		// unreadable (see `media/dimensions.ts`), which readers treat as absent.
+		width: integer('width'),
+		height: integer('height'),
 		createdAt: integer('created_at').notNull(),
 		refCount: integer('ref_count').notNull().default(0),
 		// When the user starred this asset in the gallery / lightbox; NULL = not a

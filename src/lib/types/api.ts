@@ -477,6 +477,16 @@ export type MessagePart =
 			 * upstream.
 			 */
 			aspectRatio?: string;
+			/**
+			 * The image's upright pixel size, from its media row. Persisted on a
+			 * part generated since it was recorded; filled in on read for older
+			 * parts and for uploads (`attachImageDimensions`), so a reader can treat
+			 * it as present for any image whose file has a readable size. Preferred
+			 * over `aspectRatio` for reserving the box — it is measured, not the
+			 * upstream's label. Display only, like `aspectRatio`.
+			 */
+			width?: number;
+			height?: number;
 	  }
 	| { type: 'video'; mediaId: string }
 	| {

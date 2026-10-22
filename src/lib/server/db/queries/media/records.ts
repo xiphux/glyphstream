@@ -3,11 +3,12 @@
  * that references it, and reading one back for its owner. Ref counts move here;
  * the purger's side of them is in `maintenance.ts`.
  */
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { generateId } from '../../../util/id';
 import { getDb, type Tx } from '../../client';
 import { media, messageMedia } from '../../schema';
 import type { MediaKind } from '#lib/types/api.js';
+import type { ImageDimensions } from '../../../media/dimensions';
 
 export interface MediaInsertInput {
 	userId: string;
@@ -34,6 +35,9 @@ export interface MediaInsertInput {
 	 *  request — a model may snap to its nearest offered shape). Null for uploads
 	 *  and for upstreams that don't deal in ratios. */
 	aspectRatio?: string | null;
+	/** The image's upright pixel size (`probeImageDimensions`). Omit for
+	 *  non-images, which never carry one. */
+	dimensions?: ImageDimensions;
 	/**
 	 * Defaults to 'generated' (produced by an upstream model). Use 'uploaded'
 	 * for user-supplied chat attachments — those get `unreferenced_since` set
@@ -72,6 +76,8 @@ export function insertMedia(input: MediaInsertInput): { id: string } {
 			promptFull: input.promptFull ?? null,
 			originalPrompt: input.originalPrompt ?? null,
 			aspectRatio: input.aspectRatio ?? null,
+			width: input.dimensions?.width ?? null,
+			height: input.dimensions?.height ?? null,
 			originalFilename: input.originalFilename ?? null,
 			createdAt: now,
 			refCount: 0,
@@ -188,4 +194,33 @@ export function getMediaForUser(
 		.where(and(eq(media.id, mediaId), eq(media.userId, userId)))
 		.get();
 	return row ?? null;
+}
+
+/**
+ * Images whose size was never probed and whose bytes still exist (live or in
+ * the trash), oldest first — the backfill's queue. Across all users: a
+ * background job, not a request path.
+ */
+export function listImagesNeedingDimensions(
+	limit: number,
+): Array<{ id: string; storagePath: string }> {
+	return getDb()
+		.select({ id: media.id, storagePath: media.storagePath })
+		.from(media)
+		.where(and(eq(media.kind, 'image'), isNull(media.width), isNull(media.purgedAt)))
+		.orderBy(asc(media.createdAt), asc(media.id))
+		.limit(limit)
+		.all();
+}
+
+/** Record a probed size. Only fills a row still unprobed, so it can't
+ *  overwrite a size an insert recorded. */
+export function setMediaDimensions(id: string, dims: ImageDimensions): boolean {
+	return (
+		getDb()
+			.update(media)
+			.set({ width: dims.width, height: dims.height })
+			.where(and(eq(media.id, id), isNull(media.width)))
+			.run().changes > 0
+	);
 }

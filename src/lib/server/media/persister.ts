@@ -16,6 +16,7 @@ import type { LoadedEndpoint } from '../endpoints/config';
 import { insertMedia } from '../db/queries/media';
 import { getOrCreateThumbnail, type ThumbnailSourceKind } from './thumbnail';
 import { getOrCreateDisplayVariant } from './display-variant';
+import { probeImageDimensions, storedDimensions, type ImageDimensions } from './dimensions';
 import { getMediaStore } from './disk-store';
 import { makeFaststart } from './faststart';
 import { mediaDir } from '../env';
@@ -59,10 +60,17 @@ interface PersistImageInput {
 	aspectRatio?: string | null;
 }
 
-export async function persistGeneratedImage(input: PersistImageInput): Promise<string> {
+export interface PersistedImage {
+	id: string;
+	/** Its upright pixel size, or null when the bytes had no readable one. */
+	dimensions: ImageDimensions | null;
+}
+
+export async function persistGeneratedImage(input: PersistImageInput): Promise<PersistedImage> {
 	const { bytes, contentType } = await resolveBytes(input.endpoint, input.urlOrB64);
 	const store = getMediaStore();
 	const ref = await store.put({ bytes, contentType, kind: 'image' });
+	const dimensions = await probeImageDimensions(bytes);
 	const { id } = insertMedia({
 		userId: input.userId,
 		storagePath: ref.storagePath,
@@ -74,12 +82,13 @@ export async function persistGeneratedImage(input: PersistImageInput): Promise<s
 		sourceMediaId: input.sourceMediaId ?? null,
 		originalPrompt: input.originalPrompt ?? null,
 		aspectRatio: input.aspectRatio ?? null,
+		dimensions,
 		...promptFields(input.prompt),
 	});
 	prewarmThumbnail(ref.storagePath, 'image');
 	// The chat bubble shows this one as soon as the image arrives.
 	void getOrCreateDisplayVariant(ref.storagePath).catch(() => {});
-	return id;
+	return { id, dimensions: storedDimensions(dimensions.width, dimensions.height) };
 }
 
 interface PersistVideoInput {

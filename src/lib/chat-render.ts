@@ -92,7 +92,14 @@ export type RenderBlock =
 			 *  tool call lives, not in a separate visible bubble. */
 			attachments?: ToolResultAttachment[];
 	  }
-	| { type: 'image'; mediaId: string; alt?: string; aspectRatio?: string }
+	| {
+			type: 'image';
+			mediaId: string;
+			alt?: string;
+			aspectRatio?: string;
+			width?: number;
+			height?: number;
+	  }
 	| { type: 'video'; mediaId: string }
 	/** Non-image, non-video media attachment (xlsx/csv/pdf/json/...) —
 	 *  rendered as a download chip rather than inline. Filename + size
@@ -335,7 +342,14 @@ function partToBlock(
 			};
 		}
 		case 'image':
-			return { type: 'image', mediaId: p.mediaId, alt: p.alt, aspectRatio: p.aspectRatio };
+			return {
+				type: 'image',
+				mediaId: p.mediaId,
+				alt: p.alt,
+				aspectRatio: p.aspectRatio,
+				width: p.width,
+				height: p.height,
+			};
 		case 'video':
 			return { type: 'video', mediaId: p.mediaId };
 		case 'file':

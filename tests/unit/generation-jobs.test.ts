@@ -152,7 +152,7 @@ beforeEach(() => {
 	mocks.testDb = createTestDb();
 	mocks.endpoint = endpoint();
 	mocks.imageGeneration.mockReset().mockResolvedValue({ data: [{ url: 'http://img/out.png' }] });
-	mocks.persistGeneratedImage.mockReset().mockResolvedValue('media-out');
+	mocks.persistGeneratedImage.mockReset().mockResolvedValue({ id: 'media-out', dimensions: null });
 	// A job that is already done when first asked, so no test waits on the poll
 	// loop's real backoff.
 	mocks.videoCreate
@@ -830,16 +830,19 @@ describe('a job whose anchor goes away', () => {
 		const s = seed();
 		// A real media row this time, so its fate is observable.
 		mocks.persistGeneratedImage.mockImplementation(async () => {
-			return insertMedia({
-				userId: s.user.id,
-				storagePath: 'generated/out.png',
-				contentType: 'image/png',
-				byteSize: 16,
-				kind: 'image',
-				sourceEndpointId: 'bridge',
-				sourceModel: 'bridge::sdxl',
-				promptExcerpt: 'a cat',
-			}).id;
+			return {
+				id: insertMedia({
+					userId: s.user.id,
+					storagePath: 'generated/out.png',
+					contentType: 'image/png',
+					byteSize: 16,
+					kind: 'image',
+					sourceEndpointId: 'bridge',
+					sourceModel: 'bridge::sdxl',
+					promptExcerpt: 'a cat',
+				}).id,
+				dimensions: null,
+			};
 		});
 		let release!: () => void;
 		mocks.imageGeneration.mockReturnValue(
@@ -964,16 +967,19 @@ describe('a resumed avatar draw', () => {
 			parts: [{ type: 'text', text: 'a weathered navigator in an orange coat' }],
 		});
 		mocks.persistGeneratedImage.mockImplementation(async () => {
-			return insertMedia({
-				userId: s.user.id,
-				storagePath: 'generated/portrait.png',
-				contentType: 'image/png',
-				byteSize: 16,
-				kind: 'image',
-				sourceEndpointId: 'bridge',
-				sourceModel: 'bridge::sdxl',
-				promptExcerpt: 'a navigator',
-			}).id;
+			return {
+				id: insertMedia({
+					userId: s.user.id,
+					storagePath: 'generated/portrait.png',
+					contentType: 'image/png',
+					byteSize: 16,
+					kind: 'image',
+					sourceEndpointId: 'bridge',
+					sourceModel: 'bridge::sdxl',
+					promptExcerpt: 'a navigator',
+				}).id,
+				dimensions: null,
+			};
 		});
 		return { ...s, description };
 	}

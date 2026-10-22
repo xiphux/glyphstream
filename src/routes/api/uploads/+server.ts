@@ -25,7 +25,7 @@
 import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
@@ -33,6 +33,8 @@ import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { insertMedia } from '#lib/server/db/queries/media.js';
 import { getMediaStore } from '#lib/server/media/disk-store.js';
+import { probeImageDimensions } from '#lib/server/media/dimensions.js';
+import { mediaDir } from '#lib/server/env.js';
 import { normalizeContentType } from '#lib/server/media/content-type.js';
 import { convertHeicToJpeg, HeicConversionError, isHeicUpload } from '#lib/server/media/heic.js';
 import {
@@ -139,6 +141,13 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			? file.name.slice(0, MAX_FILENAME_CHARS)
 			: null;
 
+	// Read back off disk: the upload was streamed, so there is no buffer to read
+	// it from. A disk-store reach-around, like faststart's in the persister.
+	const dimensions =
+		classification.kind === 'image'
+			? await probeImageDimensions(resolve(mediaDir(), ref.storagePath))
+			: undefined;
+
 	const { id } = insertMedia({
 		userId: locals.user.id,
 		storagePath: ref.storagePath,
@@ -150,6 +159,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		promptExcerpt: null,
 		origin: 'uploaded',
 		originalFilename,
+		dimensions,
 	});
 
 	return Response.json({

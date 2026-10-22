@@ -29,6 +29,10 @@ import { startMediaPurger, stopMediaPurger } from '#lib/server/media/purger.js';
 import { startSessionSweeper, stopSessionSweeper } from '#lib/server/auth/session-sweeper.js';
 import { probeMediaDirsWritable } from '#lib/server/media/writable-probe.js';
 import {
+	startDimensionsBackfiller,
+	stopDimensionsBackfiller,
+} from '#lib/server/media/dimensions-backfill.js';
+import {
 	startEmbeddingBackfiller,
 	stopEmbeddingBackfiller,
 } from '#lib/server/memory/embedding-backfill.js';
@@ -132,6 +136,10 @@ startEmbeddingBackfiller();
 // historical backlog is drained.
 startTopicBackfiller();
 
+// Record the pixel size of images stored before `media.width`/`height` existed
+// (every insert measures its own now). Self-stops once that backlog is drained.
+startDimensionsBackfiller();
+
 // Memory consolidation ("dreaming"): during a configured quiet-hours window, a
 // capable memory model merges/rewords/prunes each user's saved memories (with
 // soft-delete reversibility). No-op when no `[memory_model]` block is configured.
@@ -220,6 +228,7 @@ process.on('sveltekit:shutdown', async () => {
 	stopDreamingWorker();
 	stopEmbeddingBackfiller();
 	stopTopicBackfiller();
+	stopDimensionsBackfiller();
 	stopConversationSummaryWorker();
 	// Only the fallback timer. Queued and running generations are deliberately
 	// left alone: their rows are what the next process resumes from.
