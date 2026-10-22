@@ -242,10 +242,10 @@ DERIVED=/srv/glyphstream-fast/derived
 
 mkdir -p "$DERIVED"
 cd "$MEDIA"     # cpio copies the paths it is given, so run it from the root
-find . \( -name '*.thumb.webp' -o -name '*.thumb.jpg' -o -name '*.vision.jpg' -o -name '*.display.webp' \) | cpio -pdm "$DERIVED"
+find . \( -name '*.thumb.webp' -o -name '*.thumb.jpg' -o -name '*.vision.jpg' -o -name '*.display*.webp' \) | cpio -pdm "$DERIVED"
 
 # Only after DERIVED_DIR is set and the app restarted:
-find "$MEDIA" \( -name '*.thumb.webp' -o -name '*.thumb.jpg' -o -name '*.vision.jpg' -o -name '*.display.webp' \) -delete
+find "$MEDIA" \( -name '*.thumb.webp' -o -name '*.thumb.jpg' -o -name '*.vision.jpg' -o -name '*.display*.webp' \) -delete
 ```
 
 Do the second `find` only once you have set `DERIVED_DIR` and restarted.
