@@ -458,8 +458,13 @@ export function seedMediaInBuckets(buckets: Array<{ createdAt: number; count: nu
  * prompt-search specs. The prompt is stored in both `prompt_full` (what search
  * indexes) and `prompt_excerpt` (the tile caption). Like the other seeders,
  * writes no bytes — the grid only needs the heading/<img> DOM nodes.
+ * `dimensions` gives every row that stored pixel size (default: none, as for a
+ * row the backfill hasn't reached).
  */
-export function seedMediaPrompts(prompts: string[]): void {
+export function seedMediaPrompts(
+	prompts: string[],
+	dimensions?: { width: number; height: number },
+): void {
 	const db = new DatabaseSync(DB_PATH);
 	db.exec('PRAGMA busy_timeout = 5000');
 	db.exec('PRAGMA foreign_keys = ON');
@@ -467,13 +472,24 @@ export function seedMediaPrompts(prompts: string[]): void {
 		const stmt = db.prepare(
 			`INSERT INTO media
 			   (id, user_id, storage_path, content_type, byte_size, kind, origin,
-			    prompt_excerpt, prompt_full, created_at, ref_count)
-			 VALUES (?, ?, ?, ?, ?, 'image', 'generated', ?, ?, ?, 1)`,
+			    prompt_excerpt, prompt_full, created_at, ref_count, width, height)
+			 VALUES (?, ?, ?, ?, ?, 'image', 'generated', ?, ?, ?, 1, ?, ?)`,
 		);
 		const base = 1_700_000_000_000;
 		prompts.forEach((p, i) => {
 			const id = `e2e-media-${String(i).padStart(4, '0')}`;
-			stmt.run(id, TEST_USER.id, `e2e/${id}.png`, 'image/png', 1024, p, p, base - i);
+			stmt.run(
+				id,
+				TEST_USER.id,
+				`e2e/${id}.png`,
+				'image/png',
+				1024,
+				p,
+				p,
+				base - i,
+				dimensions?.width ?? null,
+				dimensions?.height ?? null,
+			);
 		});
 	} finally {
 		db.close();
