@@ -16,9 +16,11 @@
  *   lists it.
  *
  * Past the top size the original itself is the next candidate. An original no
- * larger than a size is still served AT that size, re-encoded as WebP at its own
- * resolution — never enlarged — which is how a 1024 px generated PNG reaches a
- * phone as a tenth of the bytes. Download and Share use the original.
+ * larger than a size is still requested at that size, and comes back re-encoded
+ * as WebP at its own resolution — never enlarged — which is how a 1024 px
+ * generated PNG reaches a phone as a tenth of the bytes. Where the WebP wouldn't
+ * be smaller (or can't be made), the server answers with the original instead.
+ * Download and Share use the original.
  */
 import type { MediaKind } from './types/api.js';
 

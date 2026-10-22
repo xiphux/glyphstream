@@ -201,12 +201,12 @@ export class DiskMediaStore implements MediaStore {
 		}
 		// Also remove the lazy-generated derived assets, if there are any:
 		// the gallery thumbnail, the downscaled variant inlined into vision
-		// requests, and the display copies (one per display size). They share the original's relative path but not
-		// necessarily its root. We don't track presence — just try to
-		// unlink each and shrug off ENOENT (most media won't have either
-		// yet; a never-viewed, never-sent image has neither). Without
-		// this, every hard-deleted image would leak its derivatives to
-		// disk indefinitely.
+		// requests, and the display copies (one per display size). They
+		// share the original's relative path but not necessarily its root.
+		// We don't track presence — just try to unlink each and shrug off
+		// ENOENT (most media have only some of them; a never-viewed,
+		// never-sent image has none). Without this, every hard-deleted
+		// image would leak its derivatives to disk indefinitely.
 		for (const derived of [
 			thumbStoragePath(storagePath),
 			// A pre-WebP thumbnail that was never viewed again, so never replaced.
@@ -215,7 +215,7 @@ export class DiskMediaStore implements MediaStore {
 			...displayStoragePaths(storagePath),
 		]) {
 			try {
-				// `derivedDir()`, not `root()`: these two may live on a different
+				// `derivedDir()`, not `root()`: derivatives may live on a different
 				// volume than the originals. Resolved fresh rather than via the
 				// ensured-root cache because deleting never needs the directory to
 				// exist — if it doesn't, there is nothing here to unlink.
