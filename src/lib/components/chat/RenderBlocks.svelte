@@ -113,7 +113,8 @@
 		>
 			<!-- The stored size reserves the box before the image loads, so the
 			     thread doesn't jump; without one it sizes from the pixels. -->
-			<!-- The display-sized copy; the lightbox opens the original. -->
+			<!-- The default display copy. The lightbox chooses its own from a srcset
+			     over the sizes, which on a phone is usually this same file. -->
 			<img
 				src="/api/media/{block.mediaId}/display"
 				alt={block.alt ?? 'Image'}

@@ -7,9 +7,10 @@
  * and a file per image, so an open-ended `?w=` would let one client fill the
  * derived volume and the generation slots. Sizes are the LONG side.
  *
- * - 1280: a phone at full width (~390 CSS px at 3x), and the chat bubble. Every
- *   generated image has it from persist, so a lightbox opened from the thread
- *   usually finds it in the browser cache already.
+ * - 1280: a phone at full width (~390 CSS px at 3x), and the chat bubble. An
+ *   image from the generation relay has it from persist (any other image from
+ *   its first bubble view), so a lightbox opened from the thread usually finds
+ *   it in the browser cache already.
  * - 2048: a tablet, or a desktop's lightbox at 2x, which is bounded by the
  *   window's height. Made on first request; only an original larger than 1280
  *   lists it.

@@ -479,11 +479,13 @@ export type MessagePart =
 			aspectRatio?: string;
 			/**
 			 * The image's upright pixel size, from its media row. Persisted on a
-			 * part generated since it was recorded; filled in on read for older
-			 * parts and for uploads (`attachImageDimensions`), so a reader can treat
-			 * it as present for any image whose file has a readable size. Preferred
-			 * over `aspectRatio` for reserving the box — it is measured, not the
-			 * upstream's label. Display only, like `aspectRatio`.
+			 * part the image relay generated; filled in for other parts (older ones,
+			 * uploads) only by the reads that call `attachImageDimensions` — the
+			 * chat page's branch, its older-messages API and a recovered fan-out
+			 * grid. Anywhere else, including the live part of a just-sent upload,
+			 * treat it as optional. Preferred over `aspectRatio` for reserving the
+			 * box — it is measured, not the upstream's label. Display only, like
+			 * `aspectRatio`.
 			 */
 			width?: number;
 			height?: number;
