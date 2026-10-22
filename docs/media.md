@@ -54,7 +54,11 @@ in a compare, and the original prompt is kept and shown beside the result
 Everything ever generated, in one place.
 
 - **Lightbox** with swipe and arrow-key navigation; jump back to the source
-  conversation, or start a new one from any image.
+  conversation, or start a new one from any image. It loads a copy sized to
+  your screen (a phone gets the same copy the chat already showed), so flicking
+  through a batch on mobile data stays quick; a large monitor gets the original
+  once it can show more pixels than the copies hold. Download and Share always
+  give the original file.
 - **Stacks.** Related media — a whole conversation, or a multi-model batch
   sharing one prompt — stacks into a single card you can expand. Toggle it off
   for the flat view.

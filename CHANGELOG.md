@@ -9,6 +9,12 @@ arrived.
 
 ## Unreleased
 
+### Changed
+
+- The lightbox loads a copy of each image sized to your screen instead of the
+  full original, so swiping through results on a phone is much faster on mobile
+  data. Download and Share still give the original.
+
 ### Fixed
 
 - Uploaded photos and older generated images no longer make a conversation jump

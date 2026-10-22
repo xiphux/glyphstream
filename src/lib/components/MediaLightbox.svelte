@@ -21,7 +21,8 @@
 		UserRound,
 		X,
 	} from '@lucide/svelte';
-	import type { MediaConversationRef, MediaKind, MediaListItem } from '#lib/types/api.js';
+	import type { MediaConversationRef, MediaListItem } from '#lib/types/api.js';
+	import { lightboxImage, type LightboxSlide } from '#lib/media-variants.js';
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '#lib/gallery-launch.js';
 	import { endpointIdOf, friendlyModelName, mediaSourceModelId } from '#lib/model-ids.js';
 
@@ -79,7 +80,7 @@
 		 * are 2+ entries; omit it (or pass a single-entry list) and the
 		 * lightbox renders exactly as the pre-carousel single-item view.
 		 */
-		siblings?: Array<{ id: string; kind: MediaKind }>;
+		siblings?: LightboxSlide[];
 		/**
 		 * Called when the user swipes / clicks an arrow / presses an arrow
 		 * key to move to a different sibling. The caller resolves the id to
@@ -221,6 +222,14 @@
 
 	/** Query suffix for every byte URL this component renders. */
 	const bytesQuery = $derived(trashed ? '?trash=1' : '');
+
+	/** An image slide's display-sized `srcset` (see `#lib/media-variants.ts`):
+	 *  the 1280 copy on a phone — usually cached already, from the thread — and
+	 *  larger copies or the original only where the screen can show them. Null
+	 *  when the size isn't known, which shows the original as before. */
+	function responsive(id: string, width?: number | null, height?: number | null) {
+		return lightboxImage(id, width, height, trashed ? 'trash=1' : '');
+	}
 
 	// --- carousel navigation ---------------------------------------------
 	//
@@ -1158,9 +1167,16 @@
 									and every arrow press waited a full round trip on a blank
 									slide, because the browser only starts the fetch once the
 									element is near the viewport.
+
+									Sized from the slide entry, never from `m`: `m` swaps to the
+									landing slide mid-swipe, and a slide whose srcset appeared then
+									would refetch as it came into view.
 								-->
+								{@const r = responsive(s.id, s.width, s.height)}
 								<img
-									src="/api/media/{s.id}/content{bytesQuery}"
+									src={r?.src ?? `/api/media/${s.id}/content${bytesQuery}`}
+									srcset={r?.srcset}
+									sizes={r?.sizes}
 									alt={s.id === m.id ? (m.promptExcerpt ?? 'Generated image') : ''}
 									loading={i === currentIndex ? 'eager' : 'lazy'}
 									fetchpriority={i === currentIndex ? 'high' : 'low'}
@@ -1196,8 +1212,11 @@
 		{:else}
 			<div class="flex flex-1 items-center justify-center overflow-hidden">
 				{#if m.kind === 'image'}
+					{@const r = responsive(m.id, m.width, m.height)}
 					<img
-						src="/api/media/{m.id}/content{bytesQuery}"
+						src={r?.src ?? `/api/media/${m.id}/content${bytesQuery}`}
+						srcset={r?.srcset}
+						sizes={r?.sizes}
 						alt={m.promptExcerpt ?? 'Generated image'}
 						class="max-h-full max-w-full rounded-lg object-contain"
 					/>

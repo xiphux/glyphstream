@@ -20,6 +20,7 @@ import { getDb } from '../db/client';
 import { conversations, media } from '../db/schema';
 import {
 	assignedConversationId,
+	MEDIA_DIMENSIONS_SELECT,
 	attachConversationTitles,
 	getMediaListItemsByIds,
 	listDistinctSourceModelsForUser,
@@ -55,6 +56,8 @@ type GalleryUnitOpts = {
  *  the thin `GalleryUnit`s. */
 interface UnitSourceRow extends StackableMedia {
 	kind: MediaKind;
+	width: number | null;
+	height: number | null;
 	/** Capped at UNIT_TEXT_CAP; see `capUnitText`. */
 	promptExcerpt: string | null;
 	/** A prompt stack's label (the run's original prompt, else the excerpt),
@@ -99,6 +102,7 @@ function loadGalleryUnitSource(userId: string, opts: GalleryUnitOpts): UnitSourc
 		.select({
 			id: media.id,
 			kind: media.kind,
+			...MEDIA_DIMENSIONS_SELECT,
 			createdAt: media.createdAt,
 			originalPrompt: media.originalPrompt,
 			promptFull: media.promptFull,
@@ -155,6 +159,8 @@ function unitFromRow(r: UnitSourceRow, tz: number): GalleryUnit {
 		groupKind: 'solo',
 		leaderId: r.id,
 		leaderKind: r.kind,
+		leaderWidth: r.width,
+		leaderHeight: r.height,
 		createdAt: r.createdAt,
 		dayKey: localDayKey(r.createdAt, tz),
 		memberCount: 1,
@@ -178,6 +184,8 @@ function unitFromGroup(
 		groupKind: g.kind,
 		leaderId: leader.id,
 		leaderKind: leader.kind,
+		leaderWidth: leader.width,
+		leaderHeight: leader.height,
 		createdAt: leader.createdAt,
 		dayKey: localDayKey(leader.createdAt, tz),
 		memberCount: g.items.length,

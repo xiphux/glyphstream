@@ -50,7 +50,9 @@
 		);
 	});
 	const viewing = $derived(data.items.find((i) => i.id === viewingId) ?? null);
-	const siblings = $derived(data.items.map(({ id, kind }) => ({ id, kind })));
+	const siblings = $derived(
+		data.items.map(({ id, kind, width, height }) => ({ id, kind, width, height })),
+	);
 
 	function toggle(id: string) {
 		const next = new Set(selected);

@@ -22,6 +22,8 @@ import { runDimensionsBackfillSweep } from '#lib/server/media/dimensions-backfil
 import {
 	attachImageDimensions,
 	insertMedia,
+	linkMessageMedia,
+	listConversationMediaRefs,
 	setMediaDimensions,
 } from '#lib/server/db/queries/media.js';
 import { createConversation, getConversationDetail } from '#lib/server/db/queries/conversations.js';
@@ -243,5 +245,37 @@ describe('attachImageDimensions', () => {
 				height: 900,
 			});
 		}
+	});
+});
+
+describe("the lightbox's slide list", () => {
+	it("carries each slide's size, with the unreadable marker as null", () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::chat',
+			modelKind: 'chat',
+		});
+		const sized = seedImage(u.id, 'x/s.png', { dimensions: { width: 640, height: 480 } });
+		const bad = seedImage(u.id, 'x/b.png', { dimensions: { width: 0, height: 0 } });
+		const msg = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'assistant',
+			parts: [
+				{ type: 'image', mediaId: sized },
+				{ type: 'image', mediaId: bad },
+			],
+		});
+		linkMessageMedia(msg.id, sized);
+		linkMessageMedia(msg.id, bad);
+		const refs = listConversationMediaRefs(conv.id, u.id);
+		expect(refs).toEqual(
+			expect.arrayContaining([
+				{ id: sized, kind: 'image', width: 640, height: 480 },
+				{ id: bad, kind: 'image', width: null, height: null },
+			]),
+		);
 	});
 });

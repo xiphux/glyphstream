@@ -17,7 +17,7 @@ import { derivedDir, mediaDir } from '../env';
 import { normalizeContentType } from './content-type';
 import { legacyThumbStoragePath, thumbStoragePath } from './thumbnail';
 import { visionStoragePath } from './vision-variant';
-import { displayStoragePath } from './display-variant';
+import { displayStoragePaths } from './display-variant';
 import type {
 	MediaOpenResult,
 	MediaPutInput,
@@ -212,7 +212,7 @@ export class DiskMediaStore implements MediaStore {
 			// A pre-WebP thumbnail that was never viewed again, so never replaced.
 			legacyThumbStoragePath(storagePath),
 			visionStoragePath(storagePath),
-			displayStoragePath(storagePath),
+			...displayStoragePaths(storagePath),
 		]) {
 			try {
 				// `derivedDir()`, not `root()`: these two may live on a different

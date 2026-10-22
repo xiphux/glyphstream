@@ -1692,6 +1692,10 @@ export type MediaKind = 'image' | 'video' | 'file';
 export interface ConversationMediaRef {
 	id: string;
 	kind: MediaKind;
+	/** Upright pixel size, null when unknown or a video — lets the lightbox
+	 *  build a slide's `srcset` before its full row arrives. */
+	width: number | null;
+	height: number | null;
 }
 
 /** A media row as the gallery grid and lightbox consume it. */
@@ -1764,6 +1768,10 @@ export interface GalleryUnit {
 	/** Newest member — the tile shown for a solo, the card anchor for a stack. */
 	leaderId: string;
 	leaderKind: MediaKind;
+	/** The leader's upright pixel size (null: unknown, or a video), for the
+	 *  lightbox's `srcset` when it opens on this tile. */
+	leaderWidth: number | null;
+	leaderHeight: number | null;
 	/** Leader's createdAt — the unit's position in the newest-first stream. */
 	createdAt: number;
 	/** Local-time day bucket (`YYYY-MM-DD`) of the leader, computed with the

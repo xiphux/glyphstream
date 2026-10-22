@@ -22,6 +22,7 @@ import {
 	GALLERY_ITEM_SELECT,
 	galleryKind,
 	galleryVisibility,
+	MEDIA_DIMENSIONS_SELECT,
 	withFavoriteFlag,
 } from './shape';
 
@@ -72,6 +73,7 @@ export function listConversationMediaRefs(
 		.selectDistinct({
 			id: media.id,
 			kind: media.kind,
+			...MEDIA_DIMENSIONS_SELECT,
 			createdAt: media.createdAt,
 		})
 		.from(messageMedia)
@@ -88,7 +90,7 @@ export function listConversationMediaRefs(
 		)
 		.orderBy(asc(media.createdAt), asc(media.id))
 		.all()
-		.map(({ id, kind }) => ({ id, kind }));
+		.map(({ id, kind, width, height }) => ({ id, kind, width, height }));
 }
 
 // --- Gallery listing -----------------------------------------------------

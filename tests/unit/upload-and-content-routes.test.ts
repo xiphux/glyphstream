@@ -44,14 +44,14 @@ vi.mock('#lib/server/media/heic.js', async (importOriginal) => {
 		},
 	};
 });
-const displayVariant = vi.hoisted(() => ({ calls: [] as string[] }));
+const displayVariant = vi.hoisted(() => ({ calls: [] as Array<[string, number | undefined]> }));
 vi.mock('#lib/server/media/display-variant.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('#lib/server/media/display-variant.js')>();
 	return {
 		...actual,
-		getOrCreateDisplayVariant: (storagePath: string) => {
-			displayVariant.calls.push(storagePath);
-			return actual.getOrCreateDisplayVariant(storagePath);
+		getOrCreateDisplayVariant: (storagePath: string, size?: 1280 | 2048) => {
+			displayVariant.calls.push([storagePath, size]);
+			return actual.getOrCreateDisplayVariant(storagePath, size);
 		},
 	};
 });
@@ -341,6 +341,25 @@ describe('GET /api/media/[id]/content', () => {
 			{ id: png },
 		);
 		expect(displayVariant.calls).toHaveLength(1);
+	});
+
+	it('serves only the listed display sizes', async () => {
+		displayVariant.calls = [];
+		const png = await stored('image/png', 'image');
+		const get = (q: string) =>
+			call(
+				display as Handler,
+				new Request(`https://chat.example.test/api/media/${png}/display${q}`),
+				{ id: png },
+			);
+		expect((await get('')).status).toBe(200);
+		expect((await get('?size=2048')).status).toBe(200);
+		expect(displayVariant.calls.map(([, size]) => size)).toEqual([1280, 2048]);
+		// Anything else would be a decode and a file per value a client invents.
+		for (const q of ['?size=1000', '?size=abc', '?size=']) {
+			expect((await get(q)).status).toBe(400);
+		}
+		expect(displayVariant.calls).toHaveLength(2);
 	});
 
 	it('404s a trashed asset on its live URL, and serves it only to the trash view', async () => {

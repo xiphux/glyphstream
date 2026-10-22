@@ -3,7 +3,11 @@
  * (and the many tests that import `insertMedia`) keep one import path.
  */
 export type { ConversationOrphanCounts, ModelFacet, MonthPeriod } from '#lib/types/api.js';
-export { assignedConversationId, attachConversationTitles } from './media/shape';
+export {
+	assignedConversationId,
+	attachConversationTitles,
+	MEDIA_DIMENSIONS_SELECT,
+} from './media/shape';
 export * from './media/records';
 export * from './media/gallery';
 export * from './media/search';

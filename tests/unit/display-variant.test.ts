@@ -131,10 +131,28 @@ describe('getOrCreateDisplayVariant', () => {
 		expect(toBuffer).toHaveBeenCalledTimes(1);
 	});
 
-	it('is removed with the original', async () => {
+	it('makes each larger size as its own file, never enlarging past the original', async () => {
+		write('ab/cd/huge.png', await photoPng(3000, 2000));
+		const big = await getOrCreateDisplayVariant('ab/cd/huge.png', 2048);
+		expect((await sharp(big!.absolutePath).metadata()).width).toBe(2048);
+		expect(big!.absolutePath).toBe(resolve(mocks.dir, 'ab/cd/huge.png.display-2048.webp'));
+		// The default is untouched by it: same file name as before sizes existed.
+		const small = await getOrCreateDisplayVariant('ab/cd/huge.png');
+		expect((await sharp(small!.absolutePath).metadata()).width).toBe(DISPLAY_MAX_DIM);
+		expect(small!.absolutePath).toBe(resolve(mocks.dir, 'ab/cd/huge.png.display.webp'));
+
+		write('ab/cd/mid.png', await photoPng(1600, 900));
+		const mid = await getOrCreateDisplayVariant('ab/cd/mid.png', 2048);
+		expect((await sharp(mid!.absolutePath).metadata()).width).toBe(1600);
+	});
+
+	it('is removed with the original, at every size', async () => {
 		write('ab/cd/gone.png', await photoPng(2400, 1600));
 		await getOrCreateDisplayVariant('ab/cd/gone.png');
+		await getOrCreateDisplayVariant('ab/cd/gone.png', 2048);
+		expect(existsSync(resolve(mocks.dir, displayStoragePath('ab/cd/gone.png', 2048)))).toBe(true);
 		await new DiskMediaStore().delete('ab/cd/gone.png');
 		expect(existsSync(resolve(mocks.dir, displayStoragePath('ab/cd/gone.png')))).toBe(false);
+		expect(existsSync(resolve(mocks.dir, displayStoragePath('ab/cd/gone.png', 2048)))).toBe(false);
 	});
 });

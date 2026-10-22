@@ -17,6 +17,8 @@ function unit(overrides: Partial<GalleryUnit> = {}): GalleryUnit {
 		groupKind: 'solo',
 		leaderId: 'm-1',
 		leaderKind: 'image',
+		leaderWidth: null,
+		leaderHeight: null,
 		createdAt: 1000,
 		dayKey: '2026-06-15',
 		memberCount: 1,

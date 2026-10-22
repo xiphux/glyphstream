@@ -1,5 +1,6 @@
 import { SvelteMap } from 'svelte/reactivity';
 import type { GalleryLayout, GalleryUnit, GalleryUnitsPage } from '#lib/types/api.js';
+import type { LightboxSlide } from '#lib/media-variants.js';
 
 /**
  * Client-side demand loader for the virtualized gallery grid.
@@ -169,11 +170,11 @@ export class GalleryFeed {
 
 	/** Loaded units' leader {id, kind} in newest-first index order — the sibling
 	 *  set the top-level lightbox carousels over (spans only what's loaded). */
-	loadedLeaders(): Array<{ id: string; kind: GalleryUnit['leaderKind'] }> {
+	loadedLeaders(): LightboxSlide[] {
 		const indices = [...this.#units.keys()].sort((a, b) => a - b);
 		return indices.map((i) => {
 			const u = this.#units.get(i)!;
-			return { id: u.leaderId, kind: u.leaderKind };
+			return { id: u.leaderId, kind: u.leaderKind, width: u.leaderWidth, height: u.leaderHeight };
 		});
 	}
 }

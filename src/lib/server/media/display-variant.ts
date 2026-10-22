@@ -6,8 +6,11 @@
  * serves a WebP at most DISPLAY_MAX_DIM on the long side instead, crisp on a
  * high-density screen at bubble width and typically a tenth of the bytes.
  * WebP rather than the vision variant's JPEG because it keeps transparency: a
- * background-removal result must not turn up on a black or white box. The
- * lightbox, downloads and image-to-image still use the original.
+ * background-removal result must not turn up on a black or white box.
+ *
+ * The lightbox asks for the larger sizes too, through a `srcset` over the
+ * ladder in `#lib/media-variants.ts`; each size is its own file and its own
+ * cache entry. Downloads and image-to-image still use the original.
  *
  * Same shape as vision-variant.ts: generated on first request, cached as a
  * sibling under `derivedDir()`, deleted with the original by `disk-store`,
@@ -26,16 +29,29 @@ import { MAX_DECODE_PIXELS } from './decode-limits';
 import { discardIfOriginalGone } from './derived-orphan';
 import { withGenerationSlot } from './thumbnail';
 import { createLogger } from '../log';
+import { DISPLAY_SIZES, type DisplaySize } from '#lib/media-variants.js';
 
 const log = createLogger('display-variant');
 
-/** Long-side ceiling, in pixels. */
-export const DISPLAY_MAX_DIM = 1280;
+/** The default size's long side, in pixels — the chat bubble's copy. The
+ *  lightbox's `srcset` also asks for the larger ones in `DISPLAY_SIZES`. */
+export const DISPLAY_MAX_DIM = DISPLAY_SIZES[0];
 const DISPLAY_QUALITY = 82;
 
-/** The original's relative path plus `.display.webp`, under `derivedDir()`. */
-export function displayStoragePath(storagePath: string): string {
-	return `${storagePath}.display.webp`;
+/** The original's relative path plus `.display.webp` (the default size, named
+ *  as it always was) or `.display-<size>.webp`, under `derivedDir()`. */
+export function displayStoragePath(
+	storagePath: string,
+	size: DisplaySize = DISPLAY_MAX_DIM,
+): string {
+	return size === DISPLAY_MAX_DIM
+		? `${storagePath}.display.webp`
+		: `${storagePath}.display-${size}.webp`;
+}
+
+/** Every size's path, for deleting them with the original. */
+export function displayStoragePaths(storagePath: string): string[] {
+	return DISPLAY_SIZES.map((size) => displayStoragePath(storagePath, size));
 }
 
 export interface DisplayVariantRef {
@@ -52,18 +68,21 @@ export interface DisplayVariantRef {
 const declined = new Set<string>();
 const DECLINED_MAX = 4096;
 
-function decline(storagePath: string): void {
+/** Keyed by the variant's path, so each size is remembered on its own. */
+function decline(variantPath: string): void {
 	if (declined.size >= DECLINED_MAX) declined.clear();
-	declined.add(storagePath);
+	declined.add(variantPath);
 }
 
 const generating = new Map<string, Promise<DisplayVariantRef | null>>();
 
 export async function getOrCreateDisplayVariant(
 	storagePath: string,
+	size: DisplaySize = DISPLAY_MAX_DIM,
 ): Promise<DisplayVariantRef | null> {
-	if (declined.has(storagePath)) return null;
-	const variantAbs = resolve(derivedDir(), displayStoragePath(storagePath));
+	const variantPath = displayStoragePath(storagePath, size);
+	if (declined.has(variantPath)) return null;
+	const variantAbs = resolve(derivedDir(), variantPath);
 	try {
 		const st = await stat(variantAbs);
 		return { absolutePath: variantAbs, byteSize: st.size, contentType: 'image/webp' };
@@ -72,7 +91,7 @@ export async function getOrCreateDisplayVariant(
 	}
 	const pending = generating.get(variantAbs);
 	if (pending) return pending;
-	const job = generate(storagePath, variantAbs);
+	const job = generate(storagePath, variantPath, variantAbs, size);
 	generating.set(variantAbs, job);
 	try {
 		return await job;
@@ -83,7 +102,9 @@ export async function getOrCreateDisplayVariant(
 
 async function generate(
 	storagePath: string,
+	variantPath: string,
 	variantAbs: string,
+	size: DisplaySize,
 ): Promise<DisplayVariantRef | null> {
 	let job: { encoded: Buffer; originalBytes: number } | null;
 	try {
@@ -106,7 +127,7 @@ async function generate(
 			const encoded = await sharp(original, { limitInputPixels: MAX_DECODE_PIXELS, animated: true })
 				// EXIF orientation first; the re-encode drops metadata.
 				.rotate()
-				.resize(DISPLAY_MAX_DIM, DISPLAY_MAX_DIM, { fit: 'inside', withoutEnlargement: true })
+				.resize(size, size, { fit: 'inside', withoutEnlargement: true })
 				.webp({ quality: DISPLAY_QUALITY })
 				.toBuffer();
 			return { encoded, originalBytes: original.byteLength };
@@ -115,14 +136,14 @@ async function generate(
 		// An image sharp can't make a copy of (undecodable, or an animated one
 		// with a 90° EXIF rotation) fails the same way every time: remember it,
 		// or every view re-reads and re-decodes the whole original.
-		decline(storagePath);
+		decline(variantPath);
 		log.warn(`could not encode ${storagePath}:`, e);
 		return null;
 	}
 	if (job === null) return null;
 	const { encoded, originalBytes } = job;
 	if (encoded.byteLength >= originalBytes) {
-		decline(storagePath);
+		decline(variantPath);
 		return null;
 	}
 	const tmp = `${variantAbs}.${randomUUID()}.tmp`;

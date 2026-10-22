@@ -462,11 +462,12 @@
 	// The carousel spans the drilled stack, the search results, or — at the top
 	// level — the loaded units' leaders (Google-Photos style: one representative
 	// per stack, next swipe moves to the next stack/solo).
+	const toSlide = ({ id, kind, width, height }: MediaListItem) => ({ id, kind, width, height });
 	const lightboxSiblings = $derived(
 		drillItems
-			? drillItems.map((m) => ({ id: m.id, kind: m.kind }))
+			? drillItems.map(toSlide)
 			: searching
-				? searchItems.map((m) => ({ id: m.id, kind: m.kind }))
+				? searchItems.map(toSlide)
 				: feed.loadedLeaders(),
 	);
 

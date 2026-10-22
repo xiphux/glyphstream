@@ -105,6 +105,19 @@ describe('MediaLightbox — media kind', () => {
 		expect(container.querySelector('video')).toBeNull();
 	});
 
+	it('serves a sized image through the display ladder, the original only past it', () => {
+		const { container } = render(MediaLightbox, {
+			props: { media: makeImage({ id: 'abc', width: 3000, height: 2000 }), onClose: vi.fn() },
+		});
+		const img = container.querySelector('img')!;
+		expect(img).toHaveAttribute('src', '/api/media/abc/display');
+		expect(img).toHaveAttribute(
+			'srcset',
+			'/api/media/abc/display 1280w, /api/media/abc/display?size=2048 2048w, /api/media/abc/content 3000w',
+		);
+		expect(img).toHaveAttribute('sizes', 'min(calc(100vw - 32px), calc((100vh - 216px) * 1.5))');
+	});
+
 	it('renders a <video> for video kind', () => {
 		const { container } = render(MediaLightbox, {
 			props: { media: makeVideo({ id: 'vid-1' }), onClose: vi.fn() },
@@ -835,8 +848,34 @@ describe('MediaLightbox — carousel navigation', () => {
 		});
 		// Two image slides + one video slide.
 		expect(container.querySelectorAll('img')).toHaveLength(2);
+		// No sizes in these entries: the slides show the original, as before.
+		for (const img of container.querySelectorAll('img')) {
+			expect(img.getAttribute('src')).toMatch(/\/content$/);
+			expect(img.hasAttribute('srcset')).toBe(false);
+		}
 		const video = container.querySelector('video');
 		expect(video).toHaveAttribute('src', '/api/media/m-3/content');
+	});
+
+	it("sizes each slide from its own entry, not from the open item's row", () => {
+		const { container } = render(MediaLightbox, {
+			props: {
+				// The open row knows nothing of the size; the entries do.
+				media: makeImage({ id: 'm-1' }),
+				onClose: vi.fn(),
+				siblings: [
+					{ id: 'm-1', kind: 'image' as const, width: 1024, height: 1024 },
+					{ id: 'm-2', kind: 'image' as const, width: 1536, height: 1024 },
+				],
+				onNavigate: vi.fn(),
+			},
+		});
+		const [first, second] = container.querySelectorAll('img');
+		expect(first).toHaveAttribute('srcset', '/api/media/m-1/display 1024w');
+		expect(second).toHaveAttribute(
+			'srcset',
+			'/api/media/m-2/display 1280w, /api/media/m-2/display?size=2048 1536w',
+		);
 	});
 
 	it('Next/Previous call onNavigate with the adjacent id', async () => {
