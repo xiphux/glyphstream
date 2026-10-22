@@ -3,7 +3,7 @@
  * that references it, and reading one back for its owner. Ref counts move here;
  * the purger's side of them is in `maintenance.ts`.
  */
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { generateId } from '../../../util/id';
 import { getDb, type Tx } from '../../client';
 import { media, messageMedia } from '../../schema';
@@ -199,15 +199,30 @@ export function getMediaForUser(
 /**
  * Images whose size was never probed and whose bytes still exist (live or in
  * the trash), oldest first — the backfill's queue. Across all users: a
- * background job, not a request path.
+ * background job, not a request path. `after` resumes past a row the caller
+ * has already seen, so a row it had to leave NULL doesn't come back first in
+ * every batch.
  */
 export function listImagesNeedingDimensions(
 	limit: number,
-): Array<{ id: string; storagePath: string }> {
+	after?: { createdAt: number; id: string },
+): Array<{ id: string; storagePath: string; createdAt: number }> {
 	return getDb()
-		.select({ id: media.id, storagePath: media.storagePath })
+		.select({ id: media.id, storagePath: media.storagePath, createdAt: media.createdAt })
 		.from(media)
-		.where(and(eq(media.kind, 'image'), isNull(media.width), isNull(media.purgedAt)))
+		.where(
+			and(
+				eq(media.kind, 'image'),
+				isNull(media.width),
+				isNull(media.purgedAt),
+				after
+					? or(
+							gt(media.createdAt, after.createdAt),
+							and(eq(media.createdAt, after.createdAt), gt(media.id, after.id)),
+						)
+					: undefined,
+			),
+		)
 		.orderBy(asc(media.createdAt), asc(media.id))
 		.limit(limit)
 		.all();

@@ -196,7 +196,7 @@ describe('runDimensionsBackfillSweep', () => {
 	});
 
 	it.skipIf(process.getuid?.() === 0)(
-		'leaves a row it cannot reach unprobed, and stops the sweep',
+		'leaves a row it cannot read unprobed, and carries on past it',
 		async () => {
 			const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 			const u = seedUser();
@@ -204,22 +204,48 @@ describe('runDimensionsBackfillSweep', () => {
 			write('open/two.png', await png(20, 10));
 			const locked = seedImage(u.id, 'locked/one.png');
 			const open = seedImage(u.id, 'open/two.png');
-			// The queue is oldest first: the unreachable row heads it.
+			// The queue is oldest first: the unreadable row heads it.
 			getDb().update(media).set({ createdAt: 1 }).where(eq(media.id, locked)).run();
 			chmodSync(resolve(mocks.dir, 'locked'), 0o000);
 			try {
-				// EACCES is "try again", not "unreadable": nothing is marked.
-				expect(await runDimensionsBackfillSweep()).toEqual({ filled: 0, drained: false });
+				// EACCES is "try again", not "unreadable": that row stays NULL, the one
+				// behind it is filled, and the queue isn't drained.
+				expect(await runDimensionsBackfillSweep()).toEqual({ filled: 1, drained: false });
 				expect(dims(locked)).toEqual({ width: null, height: null });
-				expect(dims(open)).toEqual({ width: null, height: null });
+				expect(dims(open)).toEqual({ width: 20, height: 10 });
 			} finally {
 				chmodSync(resolve(mocks.dir, 'locked'), 0o755);
 			}
-			expect(await runDimensionsBackfillSweep()).toEqual({ filled: 2, drained: true });
+			expect(await runDimensionsBackfillSweep()).toEqual({ filled: 1, drained: true });
 			expect(dims(locked)).toEqual({ width: 10, height: 10 });
 			warn.mockRestore();
 		},
 	);
+
+	it('stops the sweep when a whole batch cannot be read, as an unreachable volume', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const u = seedUser();
+		// Fifty "files" that are directories: each read fails (EISDIR).
+		const unreadable = Array.from({ length: 50 }, (_, i) => {
+			mkdirSync(resolve(mocks.dir, `d/${i}.png`), { recursive: true });
+			const id = seedImage(u.id, `d/${i}.png`);
+			getDb()
+				.update(media)
+				.set({ createdAt: i + 1 })
+				.where(eq(media.id, id))
+				.run();
+			return id;
+		});
+		write('a/last.png', await png(8, 8));
+		const last = seedImage(u.id, 'a/last.png');
+
+		expect(await runDimensionsBackfillSweep()).toEqual({ filled: 0, drained: false });
+		expect(dims(last)).toEqual({ width: null, height: null });
+		expect(dims(unreadable[0])).toEqual({ width: null, height: null });
+		// One summary line, not one per file.
+		expect(warn).toHaveBeenCalledTimes(1);
+		warn.mockRestore();
+	});
 
 	it('skips non-images and rows whose bytes were purged, but fills the trash', async () => {
 		const u = seedUser();
