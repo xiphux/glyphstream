@@ -21,6 +21,7 @@ vi.mock('#lib/server/env.js', () => ({
 import {
 	probeImageDimensions,
 	probeStoredImage,
+	probeWrittenImage,
 	storedDimensions,
 } from '#lib/server/media/dimensions.js';
 import { runDimensionsBackfillSweep } from '#lib/server/media/dimensions-backfill.js';
@@ -123,6 +124,24 @@ describe('probeStoredImage', () => {
 		// A read error (EISDIR here; EIO, EACCES… in practice) is not a verdict on
 		// the file: it must not reach sharp, which would call it undecodable.
 		expect(await probeStoredImage(resolve(mocks.dir, 'a/dir.png'))).toHaveProperty('unavailable');
+	});
+});
+
+describe('probeWrittenImage', () => {
+	it('reads a just-written file, and is null when it is not there', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		write('a/b.png', await png(30, 20));
+		write('a/bad.png', Buffer.from('garbage'));
+		expect(await probeWrittenImage(resolve(mocks.dir, 'a/b.png'))).toEqual({
+			width: 30,
+			height: 20,
+		});
+		expect(await probeWrittenImage(resolve(mocks.dir, 'a/bad.png'))).toEqual({
+			width: 0,
+			height: 0,
+		});
+		expect(await probeWrittenImage(resolve(mocks.dir, 'a/gone.png'))).toBeNull();
+		warn.mockRestore();
 	});
 });
 

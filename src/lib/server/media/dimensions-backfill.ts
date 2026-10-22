@@ -1,9 +1,10 @@
 /**
  * Background worker that fills `media.width` / `media.height` for images stored
  * before those columns existed. Every insert path probes its image now
- * (persister, uploads, code-interpreter outputs), so nothing produces new
- * unprobed rows: a fixed, shrinking queue, and the worker stops itself once
- * it's drained — the topic backfiller's shape.
+ * (persister, uploads, code-interpreter outputs), so the queue only shrinks and
+ * the worker stops itself once it's drained — the topic backfiller's shape. The
+ * one exception is an upload whose file couldn't be reached to probe: it is
+ * stored NULL, and the route starts the worker again to pick it up.
  *
  * A probe reads the file and decodes only its header, not its pixels, so this
  * runs outside the generation slots, one file at a time. A file that is there

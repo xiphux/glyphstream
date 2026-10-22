@@ -44,6 +44,21 @@ vi.mock('#lib/server/media/heic.js', async (importOriginal) => {
 		},
 	};
 });
+const probe = vi.hoisted(() => ({ unreachable: false }));
+vi.mock('#lib/server/media/dimensions.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/server/media/dimensions.js')>();
+	return {
+		...actual,
+		probeWrittenImage: (absPath: string) =>
+			probe.unreachable ? Promise.resolve(null) : actual.probeWrittenImage(absPath),
+	};
+});
+const backfill = vi.hoisted(() => ({ starts: 0 }));
+vi.mock('#lib/server/media/dimensions-backfill.js', () => ({
+	startDimensionsBackfiller: () => {
+		backfill.starts++;
+	},
+}));
 const displayVariant = vi.hoisted(() => ({ calls: [] as Array<[string, number | undefined]> }));
 vi.mock('#lib/server/media/display-variant.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('#lib/server/media/display-variant.js')>();
@@ -127,6 +142,8 @@ const PNG = new Uint8Array([
 beforeEach(() => {
 	mocks.testDb = createTestDb();
 	mocks.root = mkdtempSync(join(tmpdir(), 'gs-upload-route-'));
+	probe.unreachable = false;
+	backfill.starts = 0;
 	user = validateSessionToken(createSession(seedUser().id).token)!.user;
 });
 
@@ -144,6 +161,33 @@ describe('POST /api/uploads', () => {
 		expect(row).toMatchObject({ userId: user.id, origin: 'uploaded', refCount: 0 });
 		expect(row.unreferencedSince).not.toBeNull();
 		expect(new Uint8Array(readFileSync(resolve(mocks.root, row.storagePath)))).toEqual(PNG);
+	});
+
+	it("records an image's size, and a file that won't decode as unknown", async () => {
+		const { default: sharp } = await import('sharp');
+		const real = await sharp({ create: { width: 30, height: 20, channels: 3, background: '#888' } })
+			.png()
+			.toBuffer();
+		const good = await uploaded(new File([new Uint8Array(real)], 'a.png', { type: 'image/png' }));
+		// PNG's signature and nothing after it.
+		const bad = await uploaded(new File([PNG], 'b.png', { type: 'image/png' }));
+		const size = (id: string) =>
+			mocks.testDb
+				.select({ width: media.width, height: media.height })
+				.from(media)
+				.where(eq(media.id, id))
+				.get();
+		expect(size(good.id)).toEqual({ width: 30, height: 20 });
+		expect(size(bad.id)).toEqual({ width: 0, height: 0 });
+		expect(backfill.starts).toBe(0);
+	});
+
+	it('leaves the size NULL when the file cannot be reached, and wakes the backfill', async () => {
+		probe.unreachable = true;
+		const out = await uploaded(new File([PNG], 'p.png', { type: 'image/png' }));
+		const row = mocks.testDb.select().from(media).where(eq(media.id, out.id)).get()!;
+		expect(row).toMatchObject({ width: null, height: null });
+		expect(backfill.starts).toBe(1);
 	});
 
 	it('keeps the original filename for a document', async () => {
