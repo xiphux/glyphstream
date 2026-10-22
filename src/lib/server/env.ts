@@ -45,8 +45,9 @@ export function mediaDir(): string {
 }
 
 /**
- * Where lazily-derived assets live — gallery thumbnails (`*.thumb.webp`) and the
- * downscaled JPEGs inlined into vision requests (`*.vision.jpg`).
+ * Where lazily-derived assets live — gallery thumbnails (`*.thumb.webp`), the
+ * chat thread's display-sized copies (`*.display.webp`), and the downscaled
+ * JPEGs inlined into vision requests (`*.vision.jpg`).
  *
  * Defaults to `mediaDir()`, which is where they have always been written, so an
  * install that sets nothing keeps exactly the layout it has: same sharded

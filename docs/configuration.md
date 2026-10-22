@@ -798,7 +798,8 @@ The annotated [`.env.example`](../.env.example) is canonical. Highlights:
   and the WebAuthn relying-party ID. See the
   [authentication guide](authentication.md) for the footguns.
 - `DB_PATH` / `MEDIA_DIR` / `DERIVED_DIR` — SQLite file, media directory, and
-  where lazily-derived assets (gallery thumbnails, vision variants) are kept.
+  where lazily-derived assets (gallery thumbnails, the chat's display-sized
+  copies, vision variants) are kept.
   `DERIVED_DIR` defaults to `MEDIA_DIR`; splitting them is worth it when the
   media volume is large and slow, since the derived assets are small, hot and
   rebuildable — see

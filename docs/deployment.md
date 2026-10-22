@@ -194,11 +194,11 @@ volumes:
   - /srv/fast/glyphstream-derived:/app/derived # DERIVED_DIR=/app/derived
 ```
 
-|               | What it is                          | Wants                                                              |
-| ------------- | ----------------------------------- | ------------------------------------------------------------------ |
-| `DB_PATH`     | SQLite database + WAL               | Fast **local** disk. Never a network share.                        |
-| `MEDIA_DIR`   | Original images, video, uploads     | Space. Grows without bound — generated media is kept indefinitely. |
-| `DERIVED_DIR` | Gallery thumbnails, vision variants | Fast disk. Small, hot, and rebuildable.                            |
+|               | What it is                                        | Wants                                                              |
+| ------------- | ------------------------------------------------- | ------------------------------------------------------------------ |
+| `DB_PATH`     | SQLite database + WAL                             | Fast **local** disk. Never a network share.                        |
+| `MEDIA_DIR`   | Original images, video, uploads                   | Space. Grows without bound — generated media is kept indefinitely. |
+| `DERIVED_DIR` | Thumbnails, display-sized copies, vision variants | Fast disk. Small, hot, and rebuildable.                            |
 
 The case for splitting them is a generation-heavy install on a box whose fast
 disk is the small one. Media is the part that grows: the purger only reaps
