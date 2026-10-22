@@ -1173,13 +1173,19 @@
 									would refetch as it came into view.
 								-->
 								{@const r = responsive(s.id, s.width, s.height)}
+								<!-- Attribute order is load-bearing: Svelte sets them in source
+								     order, and `src` must come last, after everything that
+								     decides what (and whether) to fetch. Set first, a browser
+								     that starts loading on `src` (Safari is reported to) fetches
+								     the 1280 copy before it has seen the srcset, and an eager
+								     fetch before `loading="lazy"`. -->
 								<img
-									src={r?.src ?? `/api/media/${s.id}/content${bytesQuery}`}
-									srcset={r?.srcset}
-									sizes={r?.sizes}
-									alt={s.id === m.id ? (m.promptExcerpt ?? 'Generated image') : ''}
 									loading={i === currentIndex ? 'eager' : 'lazy'}
 									fetchpriority={i === currentIndex ? 'high' : 'low'}
+									sizes={r?.sizes}
+									srcset={r?.srcset}
+									src={r?.src ?? `/api/media/${s.id}/content${bytesQuery}`}
+									alt={s.id === m.id ? (m.promptExcerpt ?? 'Generated image') : ''}
 									class="max-h-full max-w-full rounded-lg object-contain"
 								/>
 							{/if}
@@ -1213,10 +1219,11 @@
 			<div class="flex flex-1 items-center justify-center overflow-hidden">
 				{#if m.kind === 'image'}
 					{@const r = responsive(m.id, m.width, m.height)}
+					<!-- `src` last; see the carousel slide's img. -->
 					<img
-						src={r?.src ?? `/api/media/${m.id}/content${bytesQuery}`}
-						srcset={r?.srcset}
 						sizes={r?.sizes}
+						srcset={r?.srcset}
+						src={r?.src ?? `/api/media/${m.id}/content${bytesQuery}`}
 						alt={m.promptExcerpt ?? 'Generated image'}
 						class="max-h-full max-w-full rounded-lg object-contain"
 					/>
