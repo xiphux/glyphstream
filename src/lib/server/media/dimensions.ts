@@ -13,7 +13,7 @@
  * file on every sweep. Readers map it to "no dimensions" (`storedDimensions`).
  */
 import sharp from 'sharp';
-import { stat } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { createLogger } from '../log';
 
 const log = createLogger('dimensions');
@@ -25,15 +25,16 @@ export interface ImageDimensions {
 
 export const UNKNOWN_DIMENSIONS: ImageDimensions = { width: 0, height: 0 };
 
-/** The upright size of an image, from its bytes or a file path. Never throws. */
-export async function probeImageDimensions(input: Buffer | string): Promise<ImageDimensions> {
+/** The upright size of an image from its bytes; 0 × 0 when they don't decode.
+ *  Never throws. A stored file goes through `probeStoredImage`. */
+export async function probeImageDimensions(input: Buffer): Promise<ImageDimensions> {
 	try {
 		const { autoOrient } = await sharp(input).metadata();
 		if (autoOrient.width > 0 && autoOrient.height > 0) {
 			return { width: autoOrient.width, height: autoOrient.height };
 		}
 	} catch (e) {
-		log.warn(`could not read dimensions of ${typeof input === 'string' ? input : 'an image'}:`, e);
+		log.warn('could not read dimensions of an image:', e);
 	}
 	return UNKNOWN_DIMENSIONS;
 }
@@ -50,17 +51,22 @@ export async function probeImageDimensions(input: Buffer | string): Promise<Imag
  *   reads as missing); the caller decides.
  * - `unavailable`: any other filesystem error (EIO, EACCES, EMFILE…). Try again
  *   later.
+ *
+ * It reads the whole file rather than letting sharp open the path, so every
+ * filesystem error surfaces here and only a decode failure becomes 0 × 0: sharp
+ * reports a failed read and a corrupt file the same way.
  */
 export type StoredProbe = { dims: ImageDimensions } | { missing: true } | { unavailable: unknown };
 
 export async function probeStoredImage(absPath: string): Promise<StoredProbe> {
+	let bytes: Buffer;
 	try {
-		await stat(absPath);
+		bytes = await readFile(absPath);
 	} catch (e) {
 		const code = (e as NodeJS.ErrnoException).code;
 		return code === 'ENOENT' || code === 'ENOTDIR' ? { missing: true } : { unavailable: e };
 	}
-	return { dims: await probeImageDimensions(absPath) };
+	return { dims: await probeImageDimensions(bytes) };
 }
 
 /** A row's stored pair as something a client can use: null when it was never

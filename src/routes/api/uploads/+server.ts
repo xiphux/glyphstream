@@ -33,7 +33,7 @@ import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { insertMedia } from '#lib/server/db/queries/media.js';
 import { getMediaStore } from '#lib/server/media/disk-store.js';
-import { probeImageDimensions } from '#lib/server/media/dimensions.js';
+import { probeStoredImage } from '#lib/server/media/dimensions.js';
 import { mediaDir } from '#lib/server/env.js';
 import { normalizeContentType } from '#lib/server/media/content-type.js';
 import { convertHeicToJpeg, HeicConversionError, isHeicUpload } from '#lib/server/media/heic.js';
@@ -142,11 +142,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			: null;
 
 	// Read back off disk: the upload was streamed, so there is no buffer to read
-	// it from. A disk-store reach-around, like faststart's in the persister.
-	const dimensions =
+	// it from. A disk-store reach-around, like faststart's in the persister. A
+	// read that fails leaves the size NULL for the backfill to retry; only bytes
+	// that don't decode are recorded as unknown.
+	const probe =
 		classification.kind === 'image'
-			? await probeImageDimensions(resolve(mediaDir(), ref.storagePath))
-			: undefined;
+			? await probeStoredImage(resolve(mediaDir(), ref.storagePath))
+			: null;
+	const dimensions = probe && 'dims' in probe ? probe.dims : undefined;
 
 	const { id } = insertMedia({
 		userId: locals.user.id,

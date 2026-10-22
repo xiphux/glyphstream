@@ -18,7 +18,11 @@ vi.mock('#lib/server/env.js', () => ({
 	configPath: () => './config.toml',
 }));
 
-import { probeImageDimensions, storedDimensions } from '#lib/server/media/dimensions.js';
+import {
+	probeImageDimensions,
+	probeStoredImage,
+	storedDimensions,
+} from '#lib/server/media/dimensions.js';
 import { runDimensionsBackfillSweep } from '#lib/server/media/dimensions-backfill.js';
 import {
 	attachImageDimensions,
@@ -81,14 +85,8 @@ afterEach(() => {
 });
 
 describe('probeImageDimensions', () => {
-	it('reads the size from bytes and from a path', async () => {
-		const bytes = await png(300, 200);
-		expect(await probeImageDimensions(bytes)).toEqual({ width: 300, height: 200 });
-		write('a/b.png', bytes);
-		expect(await probeImageDimensions(resolve(mocks.dir, 'a/b.png'))).toEqual({
-			width: 300,
-			height: 200,
-		});
+	it('reads the size from bytes', async () => {
+		expect(await probeImageDimensions(await png(300, 200))).toEqual({ width: 300, height: 200 });
 	});
 
 	it('reports the upright size of an EXIF-rotated photo', async () => {
@@ -102,15 +100,29 @@ describe('probeImageDimensions', () => {
 		expect(await probeImageDimensions(jpeg)).toEqual({ width: 200, height: 300 });
 	});
 
-	it('answers 0 × 0 for something that is not an image, or not there', async () => {
+	it('answers 0 × 0 for something that is not an image', async () => {
 		expect(await probeImageDimensions(Buffer.from('not an image'))).toEqual({
 			width: 0,
 			height: 0,
 		});
-		expect(await probeImageDimensions(resolve(mocks.dir, 'missing.png'))).toEqual({
-			width: 0,
-			height: 0,
+	});
+});
+
+describe('probeStoredImage', () => {
+	it('tells a bad file from a missing one from one it cannot read', async () => {
+		write('a/b.png', await png(300, 200));
+		write('a/bad.png', Buffer.from('garbage'));
+		mkdirSync(resolve(mocks.dir, 'a/dir.png'));
+		expect(await probeStoredImage(resolve(mocks.dir, 'a/b.png'))).toEqual({
+			dims: { width: 300, height: 200 },
 		});
+		expect(await probeStoredImage(resolve(mocks.dir, 'a/bad.png'))).toEqual({
+			dims: { width: 0, height: 0 },
+		});
+		expect(await probeStoredImage(resolve(mocks.dir, 'a/gone.png'))).toEqual({ missing: true });
+		// A read error (EISDIR here; EIO, EACCES… in practice) is not a verdict on
+		// the file: it must not reach sharp, which would call it undecodable.
+		expect(await probeStoredImage(resolve(mocks.dir, 'a/dir.png'))).toHaveProperty('unavailable');
 	});
 });
 
