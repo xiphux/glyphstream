@@ -3,12 +3,12 @@
  * that references it, and reading one back for its owner. Ref counts move here;
  * the purger's side of them is in `maintenance.ts`.
  */
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { generateId } from '../../../util/id';
 import { getDb, type Tx } from '../../client';
 import { media, messageMedia } from '../../schema';
-import type { MediaKind } from '#lib/types/api.js';
-import type { ImageDimensions } from '../../../media/dimensions';
+import type { MediaKind, MessagePart } from '#lib/types/api.js';
+import { storedDimensions, type ImageDimensions } from '../../../media/dimensions';
 
 export interface MediaInsertInput {
 	userId: string;
@@ -223,4 +223,41 @@ export function setMediaDimensions(id: string, dims: ImageDimensions): boolean {
 			.where(and(eq(media.id, id), isNull(media.width)))
 			.run().changes > 0
 	);
+}
+
+/**
+ * Fill `width` / `height` on image parts that lack them, from their media rows,
+ * in one batched lookup. A part generated since the columns existed carries its
+ * size already; this covers older parts and uploads, whose part is written
+ * before anything measured the file. Mutates in place.
+ *
+ * For client-bound reads only — the upstream serializer maps parts field by
+ * field and would pay for a query it then ignores. Callers have already scoped
+ * the messages to their owner (see CLAUDE.md on `messages`), and a part only
+ * names media its own conversation produced or attached.
+ */
+export function attachImageDimensions(msgs: ReadonlyArray<{ parts: MessagePart[] }>): void {
+	const missing = new Set<string>();
+	for (const m of msgs) {
+		for (const p of m.parts) {
+			if (p.type === 'image' && p.width === undefined) missing.add(p.mediaId);
+		}
+	}
+	if (missing.size === 0) return;
+	const rows = getDb()
+		.select({ id: media.id, width: media.width, height: media.height })
+		.from(media)
+		.where(inArray(media.id, [...missing]))
+		.all();
+	const byId = new Map(rows.map((r) => [r.id, storedDimensions(r.width, r.height)]));
+	for (const m of msgs) {
+		for (const p of m.parts) {
+			if (p.type !== 'image' || p.width !== undefined) continue;
+			const dims = byId.get(p.mediaId);
+			if (dims) {
+				p.width = dims.width;
+				p.height = dims.height;
+			}
+		}
+	}
 }

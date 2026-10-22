@@ -15,6 +15,7 @@ import { parseDisabledFeatures, parseMessageParts, parseModelParameters } from '
 import { walkActiveBranch, walkActiveBranchWindow } from './messages';
 import { recordMediaEvent } from '#lib/server/stats/model-stats.js';
 import {
+	attachImageDimensions,
 	decrementMediaForMessages,
 	trashOrphanGeneratedMediaForMessages,
 	linkAvatarMedia,
@@ -280,12 +281,17 @@ function branchFor(
 	id: string,
 	messageWindow: number | undefined,
 ): Pick<ConversationDetail, 'messages' | 'hasEarlierMessages'> {
-	if (messageWindow === undefined) return { messages: walkActiveBranch(id) };
+	if (messageWindow === undefined) {
+		const messages = walkActiveBranch(id);
+		attachImageDimensions(messages);
+		return { messages };
+	}
 	// Null only for a cursor off the branch, and this passes none.
 	const slice = walkActiveBranchWindow(id, { limit: messageWindow }) ?? {
 		messages: [],
 		hasEarlier: false,
 	};
+	attachImageDimensions(slice.messages);
 	return { messages: slice.messages, hasEarlierMessages: slice.hasEarlier };
 }
 

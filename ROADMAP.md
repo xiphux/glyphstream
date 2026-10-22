@@ -732,14 +732,14 @@ read before anyone re-optimizes from an estimate.
   existing prompt-enhancement plumbing and a decision about latency, not a bigger
   regex.
 
-- **Stored media dimensions (kill layout shift).** Image/video parts carry only
-  `{ mediaId, alt }` — no intrinsic size — so the browser can't reserve space
-  and media pops the layout when it loads (CLS on first render and in the
-  lightbox, plus a jump-to-top when switching to a tall image branch, currently
-  patched with a re-center-on-image-load in `selectSibling`). Capture
-  width/height at generation / upload time, store on the media row, thread it
-  into the image part, set `aspect-ratio` on the `<img>`. Retires the re-center
-  workaround.
+- **Stored dimensions for videos and tool-output images.** Images record their
+  pixel size on the media row (`media.width` / `height`), and thread image parts
+  reserve their box from it. Two kinds still render unsized and shift the layout
+  as they load: videos, which need an ffprobe at persist/upload (the thumbnail
+  pass only sees a scaled frame), and code-interpreter images, whose
+  `ToolBlockShell` attachments carry a bare `mediaId`. They're also why
+  `selectSibling`'s re-center-on-image-load can't be retired yet — it now skips
+  sized images, and does its job only for these.
 
 - **Favorites as a protected tier.** Favoriting itself shipped (star in both
   lightboxes, `media.favorited_at`, a Favorites facet) — but on the

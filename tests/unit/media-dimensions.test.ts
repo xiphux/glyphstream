@@ -19,7 +19,14 @@ vi.mock('#lib/server/env.js', () => ({
 
 import { probeImageDimensions, storedDimensions } from '#lib/server/media/dimensions.js';
 import { runDimensionsBackfillSweep } from '#lib/server/media/dimensions-backfill.js';
-import { insertMedia, setMediaDimensions } from '#lib/server/db/queries/media.js';
+import {
+	attachImageDimensions,
+	insertMedia,
+	setMediaDimensions,
+} from '#lib/server/db/queries/media.js';
+import { createConversation, getConversationDetail } from '#lib/server/db/queries/conversations.js';
+import { appendMessage } from '#lib/server/db/queries/messages.js';
+import type { MessagePart } from '#lib/types/api.js';
 import { getDb } from '#lib/server/db/client.js';
 import { media } from '#lib/server/db/schema.js';
 
@@ -180,5 +187,61 @@ describe('runDimensionsBackfillSweep', () => {
 		expect(dims(trashed)).toEqual({ width: 20, height: 10 });
 		expect(dims(video)).toEqual({ width: null, height: null });
 		expect(dims(purged)).toEqual({ width: null, height: null });
+	});
+});
+
+describe('attachImageDimensions', () => {
+	it('fills unsized image parts from their rows, leaving sized and unknown ones alone', () => {
+		const u = seedUser();
+		const known = seedImage(u.id, 'x/known.png', { dimensions: { width: 640, height: 480 } });
+		const unreadable = seedImage(u.id, 'x/bad.png', { dimensions: { width: 0, height: 0 } });
+		const unprobed = seedImage(u.id, 'x/new.png');
+		const msgs: Array<{ parts: MessagePart[] }> = [
+			{
+				parts: [
+					{ type: 'text', text: 'hi' },
+					{ type: 'image', mediaId: known },
+					{ type: 'image', mediaId: unreadable },
+				],
+			},
+			{
+				parts: [
+					{ type: 'image', mediaId: unprobed },
+					// Already carries a size (a part persisted since): kept as-is.
+					{ type: 'image', mediaId: known, width: 10, height: 20 },
+				],
+			},
+		];
+		attachImageDimensions(msgs);
+		expect(msgs[0].parts[1]).toEqual({ type: 'image', mediaId: known, width: 640, height: 480 });
+		expect(msgs[0].parts[2]).toEqual({ type: 'image', mediaId: unreadable });
+		expect(msgs[1].parts[0]).toEqual({ type: 'image', mediaId: unprobed });
+		expect(msgs[1].parts[1]).toEqual({ type: 'image', mediaId: known, width: 10, height: 20 });
+	});
+
+	it("is applied to the chat page's branch, windowed or not", () => {
+		const u = seedUser();
+		const id = seedImage(u.id, 'x/photo.png', { dimensions: { width: 300, height: 900 } });
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::chat',
+			modelKind: 'chat',
+		});
+		appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'image', mediaId: id }],
+		});
+		for (const options of [undefined, { messageWindow: 20 }]) {
+			const detail = getConversationDetail(conv.id, u.id, options)!;
+			expect(detail.messages[0].parts[0]).toEqual({
+				type: 'image',
+				mediaId: id,
+				width: 300,
+				height: 900,
+			});
+		}
 	});
 });

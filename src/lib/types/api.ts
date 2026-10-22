@@ -1723,6 +1723,10 @@ export interface MediaListItem {
 	 * upstream that doesn't deal in ratios — so treat it as ordinarily absent.
 	 */
 	aspectRatio: string | null;
+	/** The image's upright pixel size. Null for a video, and for an image whose
+	 *  size is unknown (not yet backfilled, or unreadable). */
+	width: number | null;
+	height: number | null;
 	createdAt: number;
 	/** 'generated' = produced by an upstream model, 'uploaded' = a user
 	 *  attachment. The gallery only ever lists 'generated', so this is what lets

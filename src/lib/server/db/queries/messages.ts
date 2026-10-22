@@ -6,7 +6,11 @@ import { isReactionTool } from '#lib/chat-render.js';
 import { parseDispatchedModels, parseMessageParts } from './json-columns';
 import { getDb, type DB, type Tx } from '../client';
 import { conversations, media, messages } from '../schema';
-import { decrementMediaForMessages, trashOrphanGeneratedMediaForMessages } from './media';
+import {
+	attachImageDimensions,
+	decrementMediaForMessages,
+	trashOrphanGeneratedMediaForMessages,
+} from './media';
 import { bestEffort, recordMediaEvent, recordModelEvent } from '#lib/server/stats/model-stats.js';
 
 interface AppendInput {
@@ -869,6 +873,8 @@ export function getSiblingAssistants(
 			}
 		}
 	}
+	// A recovered grid draws these as its columns.
+	attachImageDimensions(msgs);
 	return msgs;
 }
 

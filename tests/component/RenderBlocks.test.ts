@@ -77,6 +77,15 @@ describe('RenderBlocks — image', () => {
 		expect(container.querySelector('img')!.style.aspectRatio).toBe('16 / 9');
 	});
 
+	it('prefers the measured size over the upstream label', () => {
+		// A ratio label is approximate — SDXL's "16:9" bucket is 1344 × 768, which
+		// is 7:4 — and the box has to match the pixels, not the label.
+		const { container } = renderBlocks([
+			{ type: 'image', mediaId: 'img-1', aspectRatio: '16:9', width: 1344, height: 768 },
+		]);
+		expect(container.querySelector('img')!.style.aspectRatio).toBe('1344 / 768');
+	});
+
 	it('reserves nothing without a valid ratio', () => {
 		const { container } = renderBlocks([
 			{ type: 'image', mediaId: 'img-1' },

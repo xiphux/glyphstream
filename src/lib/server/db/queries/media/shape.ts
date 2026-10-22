@@ -32,6 +32,16 @@ export const assignedConversationId = sql<
 >`(SELECT m2.conversation_id FROM message_media mm JOIN messages m2 ON m2.id = mm.message_id JOIN conversations c2 ON c2.id = m2.conversation_id AND c2.user_id = media.user_id WHERE mm.media_id = media.id ORDER BY m2.created_at ASC, m2.id ASC LIMIT 1)`;
 
 /**
+ * `media.width` / `media.height` as the wire carries them: NULL both for "never
+ * probed" and for the 0 × 0 "probed, unreadable" marker (see
+ * `media/dimensions.ts`), so a client never sizes a box to nothing.
+ */
+export const MEDIA_DIMENSIONS_SELECT = {
+	width: sql<number | null>`NULLIF(${media.width}, 0)`,
+	height: sql<number | null>`NULLIF(${media.height}, 0)`,
+};
+
+/**
  * The columns a gallery item is built from (`MediaListItem`, before the favorite
  * flag and conversation title are attached). Shared by every query that
  * returns gallery items, so they can't disagree on what an item carries.
@@ -47,6 +57,7 @@ export const GALLERY_ITEM_SELECT = {
 	promptFull: media.promptFull,
 	originalPrompt: media.originalPrompt,
 	aspectRatio: media.aspectRatio,
+	...MEDIA_DIMENSIONS_SELECT,
 	createdAt: media.createdAt,
 	origin: media.origin,
 	favoritedAt: media.favoritedAt,

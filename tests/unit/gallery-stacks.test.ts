@@ -25,6 +25,8 @@ function item(
 		promptFull: opts.promptFull ?? null,
 		originalPrompt: opts.originalPrompt ?? null,
 		aspectRatio: null,
+		width: null,
+		height: null,
 		createdAt: -((opts.minutesAgo ?? 0) * 60_000),
 		origin: 'generated',
 		favorite: false,

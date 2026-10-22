@@ -53,8 +53,11 @@
 		return b.type + ':' + i;
 	}
 
-	/** `W:H` as a CSS aspect-ratio, or undefined (no reservation) if it isn't one. */
-	function cssRatio(ratio: string | undefined): string | undefined {
+	/** The image's CSS aspect-ratio: its measured size when the part has one,
+	 *  else the upstream's `W:H` label, else undefined (no reservation). */
+	function cssRatio(block: { width?: number; height?: number; aspectRatio?: string }) {
+		if (block.width && block.height) return `${block.width} / ${block.height}`;
+		const ratio = block.aspectRatio;
 		if (!ratio || parseRatio(ratio) === null) return undefined;
 		const [w, h] = ratio.split(':');
 		return `${w} / ${h}`;
@@ -108,14 +111,14 @@
 			class="mt-2 block w-full overflow-hidden rounded-lg p-0 text-left transition disabled:opacity-60"
 			disabled={openingLightboxFor === mediaId}
 		>
-			<!-- The stored ratio reserves the box before the image loads, so the
+			<!-- The stored size reserves the box before the image loads, so the
 			     thread doesn't jump; without one it sizes from the pixels. -->
 			<!-- The display-sized copy; the lightbox opens the original. -->
 			<img
 				src="/api/media/{block.mediaId}/display"
 				alt={block.alt ?? 'Image'}
 				loading="lazy"
-				style:aspect-ratio={cssRatio(block.aspectRatio)}
+				style:aspect-ratio={cssRatio(block)}
 				class="block h-auto w-full max-h-[80vh] rounded-lg object-contain"
 			/>
 		</button>

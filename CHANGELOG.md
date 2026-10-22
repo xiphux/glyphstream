@@ -9,6 +9,11 @@ arrived.
 
 ## Unreleased
 
+### Fixed
+
+- Uploaded photos and older generated images no longer make a conversation jump
+  as they load: the thread reserves each image's space from its real size.
+
 ## v0.47.1
 
 ### Changed

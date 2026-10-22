@@ -7,7 +7,7 @@ import { and, desc, eq, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
 import { getDb } from '../../client';
 import { media, messageMedia } from '../../schema';
 import type { TrashedMediaItem } from '#lib/types/api.js';
-import { withFavoriteFlag } from './shape';
+import { MEDIA_DIMENSIONS_SELECT, withFavoriteFlag } from './shape';
 import { recordMediaEvent } from '#lib/server/stats/model-stats.js';
 
 /**
@@ -83,6 +83,7 @@ export function listTrashForUser(userId: string, limit = 1000): TrashedMediaRow[
 			promptExcerpt: media.promptExcerpt,
 			originalPrompt: media.originalPrompt,
 			aspectRatio: media.aspectRatio,
+			...MEDIA_DIMENSIONS_SELECT,
 			createdAt: media.createdAt,
 			origin: media.origin,
 			favoritedAt: media.favoritedAt,

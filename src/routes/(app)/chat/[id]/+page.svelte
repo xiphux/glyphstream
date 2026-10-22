@@ -2328,16 +2328,18 @@
 			await ensureMessageLoaded(targetMessageId);
 			const target = document.getElementById(`msg-${targetMessageId}`);
 			target?.scrollIntoView({ block: 'center', behavior: 'auto' });
-			// Image parts carry no stored dimensions and render lazily, so a
-			// freshly-switched-to image branch is ~0px tall at this point — the
+			// An image with no reserved box renders lazily at ~0px tall, so the
 			// centering above lands wrong (often at the very top) and the image
 			// then loads and grows below the viewport, stranding the user. Re-
-			// center once each not-yet-loaded image in the new branch finishes,
-			// so a tall result settles where the user is looking. Re-resolving
-			// the node by id (rather than closing over `target`) makes a stale
-			// load from a since-abandoned rapid switch a safe no-op.
+			// center once each such image in the new branch finishes, so a tall
+			// result settles where the user is looking. Image parts with a known
+			// size reserve their box (RenderBlocks sets `aspect-ratio`) and are
+			// skipped; what's left is mostly tool-output images, which carry no
+			// size yet. Re-resolving the node by id (rather than closing over
+			// `target`) makes a stale load from a since-abandoned rapid switch a
+			// safe no-op.
 			target?.querySelectorAll('img').forEach((img) => {
-				if (img.complete) return;
+				if (img.complete || img.style.aspectRatio) return;
 				img.addEventListener(
 					'load',
 					() =>

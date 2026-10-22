@@ -16,6 +16,7 @@ import {
 	walkActiveBranchWindow,
 } from '#lib/server/db/queries/messages.js';
 import { createUserMessage } from '#lib/server/messages/create-user-message.js';
+import { attachImageDimensions } from '#lib/server/db/queries/media.js';
 import type { ChatCompletionRequest } from '#lib/server/endpoints/client.js';
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
 import { generateId } from '#lib/server/util/id.js';
@@ -76,6 +77,7 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 	// The branch changed under the client (a switch or edit elsewhere): its
 	// cursor is gone, and the answer is to reload the page's window.
 	if (!slice) error(409, 'That message is no longer on this branch');
+	attachImageDimensions(slice.messages);
 	return Response.json({
 		messages: slice.messages,
 		hasEarlier: slice.hasEarlier,

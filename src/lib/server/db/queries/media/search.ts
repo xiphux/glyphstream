@@ -73,6 +73,8 @@ export function ftsRankMedia(
 		prompt_full: string | null;
 		original_prompt: string | null;
 		aspect_ratio: string | null;
+		width: number | null;
+		height: number | null;
 		created_at: number;
 		origin: 'generated' | 'uploaded';
 		favorited_at: number | null;
@@ -89,6 +91,8 @@ export function ftsRankMedia(
 			media.prompt_full AS prompt_full,
 			media.original_prompt AS original_prompt,
 			media.aspect_ratio AS aspect_ratio,
+			NULLIF(media.width, 0) AS width,
+			NULLIF(media.height, 0) AS height,
 			media.created_at AS created_at,
 			media.origin AS origin,
 			media.favorited_at AS favorited_at,
@@ -119,6 +123,8 @@ export function ftsRankMedia(
 			promptFull: r.prompt_full,
 			originalPrompt: r.original_prompt,
 			aspectRatio: r.aspect_ratio,
+			width: r.width,
+			height: r.height,
 			createdAt: r.created_at,
 			origin: r.origin,
 			favorite: r.favorited_at != null,
