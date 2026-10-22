@@ -1113,8 +1113,10 @@
 							swipe coasts for ~a second before settling, which reads
 							as sluggish. One swipe = one image, Instagram-style.
 						-->
+						<!-- A size container: the slide's img draws itself in its units
+						     (`drawWidth`). -->
 						<div
-							class="flex w-full shrink-0 snap-center snap-always items-center justify-center px-1"
+							class="flex w-full shrink-0 snap-center snap-always items-center justify-center px-1 [container-type:size]"
 						>
 							{#if !slideMounted(i)}
 								<!--
@@ -1185,6 +1187,7 @@
 									sizes={r?.sizes}
 									srcset={r?.srcset}
 									src={r?.src ?? `/api/media/${s.id}/content${bytesQuery}`}
+									style:width={r?.drawWidth}
 									alt={s.id === m.id ? (m.promptExcerpt ?? 'Generated image') : ''}
 									class="max-h-full max-w-full rounded-lg object-contain"
 								/>
@@ -1216,7 +1219,7 @@
 				{/if}
 			</div>
 		{:else}
-			<div class="flex flex-1 items-center justify-center overflow-hidden">
+			<div class="flex flex-1 items-center justify-center overflow-hidden [container-type:size]">
 				{#if m.kind === 'image'}
 					{@const r = responsive(m.id, m.width, m.height)}
 					<!-- `src` last; see the carousel slide's img. -->
@@ -1224,6 +1227,7 @@
 						sizes={r?.sizes}
 						srcset={r?.srcset}
 						src={r?.src ?? `/api/media/${m.id}/content${bytesQuery}`}
+						style:width={r?.drawWidth}
 						alt={m.promptExcerpt ?? 'Generated image'}
 						class="max-h-full max-w-full rounded-lg object-contain"
 					/>

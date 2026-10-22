@@ -50,6 +50,16 @@ export interface ResponsiveImage {
 	src: string;
 	srcset: string;
 	sizes: string;
+	/**
+	 * The CSS width to draw it at, in its container's query units: its own pixel
+	 * width, or the container's space if that's smaller — what a plain `src` drew
+	 * under `max-width`/`max-height`. Needed because a `w`-descriptor srcset makes
+	 * the image's intrinsic size the `sizes` length, not its pixels: left to that,
+	 * a 512 px image fills a desktop's lightbox (2.4x, blurry), and a large one
+	 * draws at `sizes`' estimate of the space rather than the space. The caller's
+	 * container must set `container-type: size`.
+	 */
+	drawWidth: string;
 }
 
 /**
@@ -69,6 +79,7 @@ export function lightboxImage(
 	query = '',
 ): ResponsiveImage | null {
 	if (!width || !height) return null;
+	const ratio = +(width / height).toFixed(3);
 	const long = Math.max(width, height);
 	const candidates: string[] = [];
 	for (const size of DISPLAY_SIZES) {
@@ -85,19 +96,22 @@ export function lightboxImage(
 		// Fitted (object-contain in the space the lightbox leaves): the shown
 		// width is that space's, or its height's share of it for an image shaped
 		// taller than the space.
-		sizes: `min(calc(100vw - ${LIGHTBOX_CHROME_X}px), calc((100vh - ${LIGHTBOX_CHROME_Y}px) * ${+(width / height).toFixed(3)}))`,
+		sizes: `min(calc(100vw - ${LIGHTBOX_CHROME_X}px), calc((100vh - ${LIGHTBOX_CHROME_Y}px) * ${ratio}))`,
+		drawWidth: `min(${width}px, 100cqw, calc(100cqh * ${ratio}))`,
 	};
 }
 
 /**
  * What the lightbox's own furniture takes from the viewport around the image:
  * side padding, and the header plus the caption strip. Measured (32 and 216 on a
- * phone, an iPad and a desktop; a wrapped caption takes more), and used only to
- * tell the browser how big the image will be drawn. Assuming the full viewport
- * height instead overstated a desktop's image by a third, enough to pick the
- * original over the 2048 copy. If the layout changes these drift, and the cost
- * is only which copy is fetched: too small picks a larger copy than needed,
- * never a blurrier one.
+ * phone, an iPad and a desktop with the caption strip; a wrapped caption or the
+ * action rows take more, a lightbox with no caption strip less — 76). Used only
+ * in `sizes`, to choose a copy: the drawn size comes from `drawWidth`. Assuming
+ * the full viewport height instead overstated a desktop's image by a third,
+ * enough to pick the original over the 2048 copy. The cost of these being off
+ * is only which copy is fetched — a larger one than needed where the furniture
+ * is bigger, and where it's smaller (no caption strip) a copy picked for a box
+ * up to 140 px shorter than the one it's drawn in.
  */
 const LIGHTBOX_CHROME_X = 32;
 const LIGHTBOX_CHROME_Y = 216;

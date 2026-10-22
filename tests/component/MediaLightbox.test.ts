@@ -106,6 +106,9 @@ describe('MediaLightbox — media kind', () => {
 	});
 
 	it('serves a sized image through the display ladder, the original only past it', () => {
+		// happy-dom's CSSOM rejects container-query units, so the width never lands
+		// in `style`; what the component asked for is the claim under test.
+		const setCssText = vi.spyOn(CSSStyleDeclaration.prototype, 'cssText', 'set');
 		const { container } = render(MediaLightbox, {
 			props: { media: makeImage({ id: 'abc', width: 3000, height: 2000 }), onClose: vi.fn() },
 		});
@@ -116,6 +119,10 @@ describe('MediaLightbox — media kind', () => {
 			'/api/media/abc/display 1280w, /api/media/abc/display?size=2048 2048w, /api/media/abc/content 3000w',
 		);
 		expect(img).toHaveAttribute('sizes', 'min(calc(100vw - 32px), calc((100vh - 216px) * 1.5))');
+		// Drawn at its own size or its box's, never at `sizes`, in the box's units.
+		expect(setCssText).toHaveBeenCalledWith('width: min(3000px, 100cqw, calc(100cqh * 1.5));');
+		setCssText.mockRestore();
+		expect(img.parentElement!.className).toContain('[container-type:size]');
 	});
 
 	it('renders a <video> for video kind', () => {

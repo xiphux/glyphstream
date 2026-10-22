@@ -31,6 +31,7 @@ describe('lightboxImage', () => {
 			src: '/api/media/m/display',
 			srcset: '/api/media/m/display 1024w',
 			sizes: 'min(calc(100vw - 32px), calc((100vh - 216px) * 1))',
+			drawWidth: 'min(1024px, 100cqw, calc(100cqh * 1))',
 		});
 	});
 
@@ -48,6 +49,9 @@ describe('lightboxImage', () => {
 			'/api/media/m/display 427w, /api/media/m/display?size=2048 683w, /api/media/m/content 1000w',
 		);
 		expect(r.sizes).toBe('min(calc(100vw - 32px), calc((100vh - 216px) * 0.333))');
+		// Drawn no larger than its own pixels, however big the space: a w-descriptor
+		// srcset would otherwise size it to `sizes` and stretch a small image.
+		expect(r.drawWidth).toBe('min(1000px, 100cqw, calc(100cqh * 0.333))');
 	});
 
 	it('carries the trash query on every candidate', () => {
