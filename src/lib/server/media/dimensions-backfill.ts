@@ -6,18 +6,27 @@
  * it's drained — the topic backfiller's shape.
  *
  * A probe reads the file's header, not its pixels, so this runs outside the
- * generation slots. An unreadable file is recorded as 0 × 0 rather than left
- * NULL, or it would head the queue forever (see `media/dimensions.ts`).
+ * generation slots. A file that is there and won't decode is recorded as 0 × 0
+ * rather than left NULL, or it would head the queue forever (see
+ * `media/dimensions.ts`). The marker is permanent, so it is only written for a
+ * file that is bad, never one that can't be reached right now: a filesystem
+ * error ends the sweep with the row still NULL, and so does a missing file
+ * while the media directory is empty — an unmounted volume at boot, which would
+ * otherwise read as every image gone and mark the whole library unreadable.
  *
  * Reads across all users — a background job, not a request path. Disk-store
  * only, like the thumbnail and display variants: it resolves the original's
  * path under `mediaDir()` instead of going through `MediaStore`.
  */
+import { readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { listImagesNeedingDimensions, setMediaDimensions } from '../db/queries/media';
 import { mediaDir } from '../env';
 import { createSweeper } from '../util/sweeper';
-import { probeImageDimensions } from './dimensions';
+import { probeStoredImage, UNKNOWN_DIMENSIONS } from './dimensions';
+import { createLogger } from '../log';
+
+const log = createLogger('dimensions-backfill');
 
 const BATCH_SIZE = 50;
 const MAX_BATCHES_PER_SWEEP = 20;
@@ -38,12 +47,26 @@ export async function runDimensionsBackfillSweep(): Promise<{ filled: number; dr
 	running = true;
 	try {
 		let filled = 0;
+		// Asked once, at the first missing file: whether the volume is there.
+		let mounted: boolean | undefined;
 		for (let batch = 0; batch < MAX_BATCHES_PER_SWEEP; batch++) {
 			const rows = listImagesNeedingDimensions(BATCH_SIZE);
 			if (rows.length === 0) return { filled, drained: true };
 			let progressed = 0;
 			for (const row of rows) {
-				const dims = await probeImageDimensions(resolve(mediaDir(), row.storagePath));
+				const probe = await probeStoredImage(resolve(mediaDir(), row.storagePath));
+				if ('unavailable' in probe) {
+					log.warn(`media unreachable, retrying next sweep:`, probe.unavailable);
+					return { filled, drained: false };
+				}
+				if ('missing' in probe) {
+					mounted ??= await hasEntries(mediaDir());
+					if (!mounted) {
+						log.warn(`media directory is empty — not mounted? Retrying next sweep.`);
+						return { filled, drained: false };
+					}
+				}
+				const dims = 'dims' in probe ? probe.dims : UNKNOWN_DIMENSIONS;
 				if (setMediaDimensions(row.id, dims)) {
 					filled++;
 					progressed++;
@@ -56,6 +79,14 @@ export async function runDimensionsBackfillSweep(): Promise<{ filled: number; dr
 		return { filled, drained: false };
 	} finally {
 		running = false;
+	}
+}
+
+async function hasEntries(dir: string): Promise<boolean> {
+	try {
+		return (await readdir(dir)).length > 0;
+	} catch {
+		return false;
 	}
 }
 

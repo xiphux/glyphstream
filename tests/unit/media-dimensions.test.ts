@@ -1,7 +1,8 @@
 /** `media.width` / `media.height`: the probe, and the backfill for rows from
  *  before the columns. Real sharp, real files, in-memory DB. */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import process from 'node:process';
 import { dirname, join, resolve } from 'node:path';
 import sharp from 'sharp';
 import { eq } from 'drizzle-orm';
@@ -165,6 +166,48 @@ describe('runDimensionsBackfillSweep', () => {
 		// Nothing left: a second sweep finds the queue empty.
 		expect(await runDimensionsBackfillSweep()).toEqual({ filled: 0, drained: true });
 	});
+
+	it('leaves rows unprobed while the media directory is empty, as an unmounted volume is', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const u = seedUser();
+		// Nothing on disk at all: every file reads as missing, which must not be
+		// taken as the whole library gone.
+		const id = seedImage(u.id, 'a/one.png');
+		expect(await runDimensionsBackfillSweep()).toEqual({ filled: 0, drained: false });
+		expect(dims(id)).toEqual({ width: null, height: null });
+
+		// Once the volume is back, the same row is measured.
+		write('a/one.png', await png(64, 32));
+		expect(await runDimensionsBackfillSweep()).toEqual({ filled: 1, drained: true });
+		expect(dims(id)).toEqual({ width: 64, height: 32 });
+		warn.mockRestore();
+	});
+
+	it.skipIf(process.getuid?.() === 0)(
+		'leaves a row it cannot reach unprobed, and stops the sweep',
+		async () => {
+			const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+			const u = seedUser();
+			write('locked/one.png', await png(10, 10));
+			write('open/two.png', await png(20, 10));
+			const locked = seedImage(u.id, 'locked/one.png');
+			const open = seedImage(u.id, 'open/two.png');
+			// The queue is oldest first: the unreachable row heads it.
+			getDb().update(media).set({ createdAt: 1 }).where(eq(media.id, locked)).run();
+			chmodSync(resolve(mocks.dir, 'locked'), 0o000);
+			try {
+				// EACCES is "try again", not "unreadable": nothing is marked.
+				expect(await runDimensionsBackfillSweep()).toEqual({ filled: 0, drained: false });
+				expect(dims(locked)).toEqual({ width: null, height: null });
+				expect(dims(open)).toEqual({ width: null, height: null });
+			} finally {
+				chmodSync(resolve(mocks.dir, 'locked'), 0o755);
+			}
+			expect(await runDimensionsBackfillSweep()).toEqual({ filled: 2, drained: true });
+			expect(dims(locked)).toEqual({ width: 10, height: 10 });
+			warn.mockRestore();
+		},
+	);
 
 	it('skips non-images and rows whose bytes were purged, but fills the trash', async () => {
 		const u = seedUser();

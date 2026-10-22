@@ -13,6 +13,7 @@
  * file on every sweep. Readers map it to "no dimensions" (`storedDimensions`).
  */
 import sharp from 'sharp';
+import { stat } from 'node:fs/promises';
 import { createLogger } from '../log';
 
 const log = createLogger('dimensions');
@@ -35,6 +36,31 @@ export async function probeImageDimensions(input: Buffer | string): Promise<Imag
 		log.warn(`could not read dimensions of ${typeof input === 'string' ? input : 'an image'}:`, e);
 	}
 	return UNKNOWN_DIMENSIONS;
+}
+
+/**
+ * What probing a STORED original found. Unlike `probeImageDimensions`, which
+ * runs on bytes just written, this one tells "the file is bad" from "the file
+ * can't be reached right now", so a caller recording the 0 × 0 marker — which
+ * is permanent — only does so for the first:
+ *
+ * - `dims`: its size, or 0 × 0 when it is there and doesn't decode.
+ * - `missing`: no file at the path. Permanent only if the volume is really
+ *   there (an unmounted mountpoint is an empty directory, so every file in it
+ *   reads as missing); the caller decides.
+ * - `unavailable`: any other filesystem error (EIO, EACCES, EMFILE…). Try again
+ *   later.
+ */
+export type StoredProbe = { dims: ImageDimensions } | { missing: true } | { unavailable: unknown };
+
+export async function probeStoredImage(absPath: string): Promise<StoredProbe> {
+	try {
+		await stat(absPath);
+	} catch (e) {
+		const code = (e as NodeJS.ErrnoException).code;
+		return code === 'ENOENT' || code === 'ENOTDIR' ? { missing: true } : { unavailable: e };
+	}
+	return { dims: await probeImageDimensions(absPath) };
 }
 
 /** A row's stored pair as something a client can use: null when it was never
