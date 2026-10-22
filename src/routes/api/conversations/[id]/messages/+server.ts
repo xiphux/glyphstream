@@ -77,7 +77,7 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 	// The branch changed under the client (a switch or edit elsewhere): its
 	// cursor is gone, and the answer is to reload the page's window.
 	if (!slice) error(409, 'That message is no longer on this branch');
-	attachImageDimensions(slice.messages);
+	attachImageDimensions(slice.messages, locals.user.id);
 	return Response.json({
 		messages: slice.messages,
 		hasEarlier: slice.hasEarlier,

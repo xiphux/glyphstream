@@ -232,11 +232,15 @@ export function setMediaDimensions(id: string, dims: ImageDimensions): boolean {
  * before anything measured the file. Mutates in place.
  *
  * For client-bound reads only — the upstream serializer maps parts field by
- * field and would pay for a query it then ignores. Callers have already scoped
- * the messages to their owner (see CLAUDE.md on `messages`), and a part only
- * names media its own conversation produced or attached.
+ * field and would pay for a query it then ignores. `userId` is the messages'
+ * owner, and scopes the media read: a part only ever names its own owner's
+ * media today, but this is a read of a user-owned table, so it says so itself
+ * rather than leaning on that.
  */
-export function attachImageDimensions(msgs: ReadonlyArray<{ parts: MessagePart[] }>): void {
+export function attachImageDimensions(
+	msgs: ReadonlyArray<{ parts: MessagePart[] }>,
+	userId: string,
+): void {
 	const missing = new Set<string>();
 	for (const m of msgs) {
 		for (const p of m.parts) {
@@ -247,7 +251,7 @@ export function attachImageDimensions(msgs: ReadonlyArray<{ parts: MessagePart[]
 	const rows = getDb()
 		.select({ id: media.id, width: media.width, height: media.height })
 		.from(media)
-		.where(inArray(media.id, [...missing]))
+		.where(and(inArray(media.id, [...missing]), eq(media.userId, userId)))
 		.all();
 	const byId = new Map(rows.map((r) => [r.id, storedDimensions(r.width, r.height)]));
 	for (const m of msgs) {

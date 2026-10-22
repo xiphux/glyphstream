@@ -257,11 +257,22 @@ describe('attachImageDimensions', () => {
 				],
 			},
 		];
-		attachImageDimensions(msgs);
+		attachImageDimensions(msgs, u.id);
 		expect(msgs[0].parts[1]).toEqual({ type: 'image', mediaId: known, width: 640, height: 480 });
 		expect(msgs[0].parts[2]).toEqual({ type: 'image', mediaId: unreadable });
 		expect(msgs[1].parts[0]).toEqual({ type: 'image', mediaId: unprobed });
 		expect(msgs[1].parts[1]).toEqual({ type: 'image', mediaId: known, width: 10, height: 20 });
+	});
+
+	it("never reads another user's media, whatever a part names", () => {
+		const owner = seedUser();
+		const other = seedUser();
+		const theirs = seedImage(other.id, 'x/theirs.png', { dimensions: { width: 800, height: 600 } });
+		const msgs: Array<{ parts: MessagePart[] }> = [{ parts: [{ type: 'image', mediaId: theirs }] }];
+		attachImageDimensions(msgs, owner.id);
+		expect(msgs[0].parts[0]).toEqual({ type: 'image', mediaId: theirs });
+		attachImageDimensions(msgs, other.id);
+		expect(msgs[0].parts[0]).toEqual({ type: 'image', mediaId: theirs, width: 800, height: 600 });
 	});
 
 	it("is applied to the chat page's branch, windowed or not", () => {

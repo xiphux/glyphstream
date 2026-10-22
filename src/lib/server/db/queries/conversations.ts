@@ -279,11 +279,12 @@ export function getFanoutParent(conversationId: string, userId: string): string 
 /** The whole active branch, or only its newest window when `messageWindow` is set. */
 function branchFor(
 	id: string,
+	userId: string,
 	messageWindow: number | undefined,
 ): Pick<ConversationDetail, 'messages' | 'hasEarlierMessages'> {
 	if (messageWindow === undefined) {
 		const messages = walkActiveBranch(id);
-		attachImageDimensions(messages);
+		attachImageDimensions(messages, userId);
 		return { messages };
 	}
 	// Null only for a cursor off the branch, and this passes none.
@@ -291,7 +292,7 @@ function branchFor(
 		messages: [],
 		hasEarlier: false,
 	};
-	attachImageDimensions(slice.messages);
+	attachImageDimensions(slice.messages, userId);
 	return { messages: slice.messages, hasEarlierMessages: slice.hasEarlier };
 }
 
@@ -342,7 +343,7 @@ export function getConversationDetail(
 		activeLeafMessageId: row.activeLeafMessageId,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
-		...branchFor(id, options?.messageWindow),
+		...branchFor(id, userId, options?.messageWindow),
 		disabledFeatures: parseDisabledFeatures(row.disabledFeaturesJson),
 		private: row.private,
 	};

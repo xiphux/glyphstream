@@ -873,8 +873,14 @@ export function getSiblingAssistants(
 			}
 		}
 	}
-	// A recovered grid draws these as its columns.
-	attachImageDimensions(msgs);
+	// A recovered grid draws these as its columns. Takes no user, so the owner
+	// comes from the conversation.
+	const owner = db
+		.select({ userId: conversations.userId })
+		.from(conversations)
+		.where(eq(conversations.id, conversationId))
+		.get();
+	if (owner) attachImageDimensions(msgs, owner.userId);
 	return msgs;
 }
 
