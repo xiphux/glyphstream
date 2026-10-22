@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.47.1
+
 ### Changed
 
 - Flicking through the lightbox now updates the favorite star while the image is
