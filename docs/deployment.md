@@ -404,11 +404,12 @@ stream through as it arrives. Synology's built-in proxy, nginx with
 `X-Accel-Buffering` honoured (the default) and Caddy all do. Things on the
 _user's_ side sometimes don't — antivirus web shields, corporate TLS inspection,
 some mobile carriers — and would make replies arrive all at once instead of
-streaming. So each browser checks for itself: on launch the app makes a small
-background request that sends two compressed events apart, and if they arrive
-together, that browser is sent its streams uncompressed from then on (a
-`gs-stream-gzip` cookie). A later launch that passes turns compression back on,
-so moving off the network that buffered restores it. Nothing needs configuring.
+streaming. So each browser checks for itself: the app makes a small background
+request that sends two compressed events apart, and if they arrive together,
+that browser is sent its streams uncompressed (a `gs-stream-gzip` cookie). The
+answer is remembered, and checked again after each deploy and at least weekly,
+so a fixed proxy or removed scanner turns compression back on. Nothing needs
+configuring.
 
 To turn stream compression off for everyone instead:
 

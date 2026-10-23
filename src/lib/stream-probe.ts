@@ -8,15 +8,23 @@
  * the whole response to do it. Replies would then arrive all at once at the
  * end. No server setting can see that, and the operator would never hear of it.
  *
- * So the app checks, in the background, once per launch: `STREAM_PROBE_PATH`
- * sends two gzipped events 300ms apart, and if the first doesn't arrive before
- * the second, something buffered it. The answer is kept in a cookie the server
- * reads before compressing a stream; a launch that passes clears it again, so
- * moving off the network that buffered restores compression.
+ * So the app checks, in the background: `STREAM_PROBE_PATH` sends two gzipped
+ * events 300ms apart, and if the first doesn't arrive before the second,
+ * something buffered it. The answer is kept in a cookie the server reads before
+ * compressing a stream.
+ *
+ * And remembered, so a launch doesn't re-ask (`checkStreamCompression`). Over
+ * HTTPS the networks a device moves between can't see into the stream, so they
+ * can't buffer it either; what can is the deployment (its proxy) and software
+ * on the device, and neither changes with the network. So the answer is kept
+ * per build — a deploy, which is when a proxy changes, asks again — and for a
+ * week at most, for the changes that don't come with one.
  *
  * Every doubt resolves to "don't compress": that only costs the bytes it would
  * have saved, where a wrong "compress" costs streaming itself.
  */
+
+import { version } from '$app/env';
 
 export const STREAM_PROBE_PATH = '/api/stream-probe';
 
@@ -86,4 +94,58 @@ export function applyStreamProbeResult(result: StreamProbeResult): void {
 	} else if (result === 'streams') {
 		document.cookie = `${STREAM_GZIP_COOKIE}=; path=/; max-age=0; samesite=lax`;
 	}
+}
+
+const CACHE_KEY = 'glyphstream:streamProbe';
+const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+interface CachedProbe {
+	version: string;
+	at: number;
+	result: 'streams' | 'buffered';
+}
+
+function readCached(now: number): CachedProbe['result'] | null {
+	try {
+		const raw = localStorage.getItem(CACHE_KEY);
+		if (!raw) return null;
+		const c = JSON.parse(raw) as Partial<CachedProbe>;
+		if (c.version !== version || typeof c.at !== 'number' || now - c.at > CACHE_MAX_AGE_MS) {
+			return null;
+		}
+		return c.result === 'streams' || c.result === 'buffered' ? c.result : null;
+	} catch {
+		return null;
+	}
+}
+
+function writeCached(result: CachedProbe['result'], now: number): void {
+	try {
+		const c: CachedProbe = { version, at: now, result };
+		localStorage.setItem(CACHE_KEY, JSON.stringify(c));
+	} catch {
+		// Storage full or blocked: the next launch just probes again.
+	}
+}
+
+/**
+ * The launch-time entry point: the remembered answer if this build has one
+ * from the last week, else a probe. A remembered answer is re-applied to the
+ * cookie rather than trusted to still be there — cookies cleared without
+ * storage would otherwise leave a client that buffers compressed streams
+ * without its opt-out, and nothing would re-ask for a week. An `unknown` is
+ * never remembered.
+ */
+export async function checkStreamCompression(
+	fetchImpl: typeof fetch = fetch,
+	now = Date.now(),
+): Promise<void> {
+	const cached = readCached(now);
+	if (cached) {
+		applyStreamProbeResult(cached);
+		return;
+	}
+	const result = await probeStreamCompression(fetchImpl);
+	applyStreamProbeResult(result);
+	if (result !== 'unknown') writeCached(result, now);
 }
