@@ -9,6 +9,12 @@ arrived.
 
 ## Unreleased
 
+### Added
+
+- Model stats: a softer **Mixed reception** flag for models whose outputs are
+  deleted (or replies retried) noticeably often, short of **Often deleted** /
+  **Often retried**.
+
 ### Fixed
 
 - Swiping through images in the lightbox on iOS no longer lands on a black

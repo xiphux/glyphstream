@@ -80,6 +80,19 @@ describe('flags', () => {
 		const disliked = model({ kind: 'image', counts: { generated: 100, trashed: 70, restored: 5 } });
 		expect(flagsFor(disliked).map((f) => f.label)).toEqual(['Often deleted']);
 	});
+
+	it('marks a middling rejection rate as mixed, below the "often" flags', () => {
+		const media = (trashed: number) => model({ kind: 'image', counts: { generated: 50, trashed } });
+		expect(flagsFor(media(5))).toEqual([]);
+		const mixed = flagsFor(media(15));
+		expect(mixed.map((f) => [f.label, f.tone])).toEqual([['Mixed reception', 'mixed']]);
+		expect(flagsFor(media(35)).map((f) => f.label)).toEqual(['Often deleted']);
+
+		const chat = (retry: number) => model({ counts: { turn: 100, retry } });
+		expect(flagsFor(chat(5))).toEqual([]);
+		expect(flagsFor(chat(20)).map((f) => f.label)).toEqual(['Mixed reception']);
+		expect(flagsFor(chat(50)).map((f) => f.label)).toEqual(['Often retried']);
+	});
 });
 
 describe('signals', () => {

@@ -180,7 +180,9 @@ export function mediaSignals(m: ModelStatsModel): MediaSignals {
 
 export interface Flag {
 	label: string;
-	tone: 'good' | 'bad';
+	/** `mixed` is the softer warning: a share of rejections worth knowing
+	 *  about (a workflow to tweak, a replacement to try), not yet "bad". */
+	tone: 'good' | 'mixed' | 'bad';
 	/** Why, for a tooltip. */
 	detail: string;
 }
@@ -194,7 +196,9 @@ export interface Flag {
 const THRESHOLDS = {
 	unreliable: 0.1,
 	oftenRetried: 0.25,
+	mixedRetried: 0.1,
 	oftenRejected: 0.4,
+	mixedRejected: 0.15,
 	wellLikedFavorites: 0.15,
 	oftenPicked: 0.5,
 } as const;
@@ -217,6 +221,12 @@ export function flagsFor(m: ModelStatsModel): Flag[] {
 			flags.push({
 				label: 'Often deleted',
 				tone: 'bad',
+				detail: `At least ${pct(rej)} of outputs deleted`,
+			});
+		} else if (rej > THRESHOLDS.mixedRejected) {
+			flags.push({
+				label: 'Mixed reception',
+				tone: 'mixed',
 				detail: `At least ${pct(rej)} of outputs deleted`,
 			});
 		}
@@ -253,6 +263,12 @@ export function flagsFor(m: ModelStatsModel): Flag[] {
 			flags.push({
 				label: 'Often retried',
 				tone: 'bad',
+				detail: `At least ${pct(retry)} of replies regenerated`,
+			});
+		} else if (retry > THRESHOLDS.mixedRetried) {
+			flags.push({
+				label: 'Mixed reception',
+				tone: 'mixed',
 				detail: `At least ${pct(retry)} of replies regenerated`,
 			});
 		}

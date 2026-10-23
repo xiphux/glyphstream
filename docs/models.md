@@ -87,7 +87,9 @@ of three is noise.
 Losing a comparison is never held against a model. The others may have been
 fine, just not the best fit. What counts against a model is an output someone
 deleted. Flags such as **Often retried** or **Well liked** only appear once
-there's enough evidence. A model with three replies, all retried, isn't
+there's enough evidence. **Mixed reception** is the softer warning below
+**Often deleted** / **Often retried**: a noticeable share of rejections, worth
+a look (a workflow to tweak, a replacement to try) rather than a verdict. A model with three replies, all retried, isn't
 flagged. A model first used in the last two weeks is marked **New**, with
 how many days of data it has. Its numbers rest on a short history and may still
 move, and "barely used" may only mean "only just installed". A flag on a new

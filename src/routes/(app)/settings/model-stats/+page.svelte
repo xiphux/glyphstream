@@ -334,7 +334,13 @@
 				</span>
 			{/if}
 			{#each flagsFor(m) as flag (flag.label)}
-				<span class="badge {flag.tone === 'good' ? 'badge-good' : 'badge-bad'}" title={flag.detail}>
+				<span
+					class="badge"
+					class:badge-good={flag.tone === 'good'}
+					class:badge-mixed={flag.tone === 'mixed'}
+					class:badge-bad={flag.tone === 'bad'}
+					title={flag.detail}
+				>
 					{flag.label}
 				</span>
 			{/each}
@@ -379,6 +385,10 @@
 	.badge-good {
 		border-color: var(--color-success);
 		color: var(--color-success);
+	}
+	.badge-mixed {
+		border-color: var(--color-warning);
+		color: var(--color-warning);
 	}
 	.badge-bad {
 		border-color: var(--color-danger);
