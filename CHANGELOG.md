@@ -14,17 +14,12 @@ arrived.
 - The lightbox loads a copy of each image sized to your screen instead of the
   full original, so swiping through results on a phone is much faster on mobile
   data. Download and Share still give the original.
-- Streaming replies use much less mobile data: they're compressed and sent a few
-  words at a time instead of a token per message. A browser whose network would
-  hold compressed streams back notices on launch and skips the compression;
-  `COMPRESS_STREAMS=0` turns it off for everyone.
-- Pages and their data are now compressed by GlyphStream itself by default
-  (`COMPRESS_DYNAMIC`), so a proxy that can't compress no longer leaves them
-  uncompressed. A proxy that does compress passes them through untouched; set
-  `COMPRESS_DYNAMIC=0` to leave it to the proxy instead.
-- Less mobile data elsewhere too: the composer's preview of an auto-attached
-  image, code-interpreter charts, the model list on each launch, and a
-  multi-model comparison waiting on its last results.
+- Streaming replies are compressed and batched, using much less mobile data;
+  `COMPRESS_STREAMS=0` turns the compression off.
+- Pages and API data are now compressed by GlyphStream by default; set
+  `COMPRESS_DYNAMIC=0` to leave it to your proxy.
+- Less mobile data for auto-attached image previews, code-interpreter charts,
+  the model list, and multi-model comparisons waiting on results.
 
 ### Fixed
 

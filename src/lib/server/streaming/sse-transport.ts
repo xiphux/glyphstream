@@ -89,9 +89,9 @@ export interface SseWriter {
  * How long consecutive deltas are gathered into one frame. One frame per
  * upstream token cost ~45 bytes of SSE framing (plus the transport's own
  * per-write overhead) around a 3-5 character chunk, uncompressed, on every
- * turn — most of what a phone downloaded while a reply streamed. 50 ms is under
- * a frame of the client's own render pump at 20 fps, so the text still arrives
- * as a smooth stream; it just arrives a few tokens at a time.
+ * turn — most of what a phone downloaded while a reply streamed. 50 ms is about
+ * three of the client's 60 Hz render frames, short enough that the text still
+ * reads as a smooth stream; it just arrives a few tokens at a time.
  */
 export const DELTA_COALESCE_MS = 50;
 
