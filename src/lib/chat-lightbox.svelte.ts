@@ -331,6 +331,11 @@ export class ChatLightbox {
 			// The user switched conversations during the round trips: the lightbox
 			// was reset, and this set belongs to the chat they left.
 			if (this.#deps.conversationId() !== forConversation) return;
+			// A swipe onto a leaving image whose row is still loading (the deletes
+			// above sent it to the network) would land after this and put `media`
+			// back on an image `siblings` no longer has. Drop it, as `close` drops an
+			// open in flight; an open of a surviving image is left to land.
+			if (this.openingFor !== null && removed.has(this.openingFor)) this.openingFor = null;
 			// The user may have closed the lightbox or swiped elsewhere during the
 			// round trips. Update the set either way, but only move `media` if it
 			// still shows what `next` was picked for. If a swipe moved it onto

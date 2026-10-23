@@ -391,6 +391,33 @@ describe('discarding from a fan-out grid', () => {
 		expect(lb.media).toBeNull();
 	});
 
+	it('drops a leaving image’s open still in flight when the discard lands', async () => {
+		const cols = [column('b1', ['g1']), column('b2', ['g2', 'g3']), column('b3', ['g4'])];
+		const { lb } = setup(cols);
+		let release!: () => void;
+		let swipe!: Promise<void>;
+		stubFetch(['g1', 'g2', 'g3', 'g4'], {
+			// The swipe onto g3 goes out while g2's slot is being fetched, and its
+			// answer comes back only after the discard has finished.
+			'GET /api/media/g4': () => {
+				swipe = lb.open('g3');
+				return Promise.resolve(Response.json(item('g4')));
+			},
+			'GET /api/media/g3': () =>
+				new Promise<Response>((r) => (release = () => r(Response.json(item('g3'))))),
+		});
+		await lb.open('g2');
+		await settle();
+		await lb.discard('g2');
+		expect(lb.media?.id).toBe('g4');
+		release();
+		await swipe;
+		expect(lb.media?.id).toBe('g4');
+		expect(lb.siblings.map((m) => m.id)).toEqual(['g1', 'g4']);
+		expect(lb.openingFor).toBeNull();
+		expect(toastError).not.toHaveBeenCalled();
+	});
+
 	it('leaves alone an image outside the branch swiped to mid-discard', async () => {
 		stubFetch(['g1', 'g2', 'g3']);
 		const cols = [column('b1', ['g1']), column('b2', ['g2']), column('b3', ['g3'])];
