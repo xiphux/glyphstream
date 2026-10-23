@@ -2,8 +2,13 @@
  *  capable reverse proxy is in front. */
 
 import { describe, expect, it } from 'vitest';
-import { brotliDecompressSync, gunzipSync, zstdDecompressSync } from 'node:zlib';
-import { maybeCompressResponse } from '#lib/server/compression.js';
+import {
+	brotliDecompressSync,
+	constants as zlibConstants,
+	gunzipSync,
+	zstdDecompressSync,
+} from 'node:zlib';
+import { maybeCompressResponse, maybeCompressStream } from '#lib/server/compression.js';
 
 // Common Accept-Encoding header carried by modern browsers — Chrome 123+,
 // Firefox 126+, Safari 17.4+. Used by skip-rule tests where the specific
@@ -246,5 +251,91 @@ describe('compression does not block the event loop', () => {
 
 		expect(out.headers.get('Content-Encoding')).toBe('br');
 		expect(ticks, 'event loop was blocked for the whole compression').toBeGreaterThan(0);
+	});
+});
+
+describe('maybeCompressStream', () => {
+	/** An SSE response whose frames the test writes one at a time. */
+	function sse() {
+		let controller!: ReadableStreamDefaultController<Uint8Array>;
+		let cancelled = false;
+		const body = new ReadableStream<Uint8Array>({
+			start: (c) => {
+				controller = c;
+			},
+			cancel: () => {
+				cancelled = true;
+			},
+		});
+		const response = new Response(body, {
+			headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-transform' },
+		});
+		const enc = new TextEncoder();
+		return {
+			response,
+			write: (frame: string) => controller.enqueue(enc.encode(frame)),
+			end: () => controller.close(),
+			cancelled: () => cancelled,
+		};
+	}
+
+	const req = (headers: Record<string, string> = ACCEPT_ALL) =>
+		new Request('http://x/api/conversations/c/messages', { headers });
+
+	it('delivers each frame decodable as soon as it is written, not at the end', async () => {
+		const s = sse();
+		const out = maybeCompressStream(s.response, req());
+		expect(out.headers.get('Content-Encoding')).toBe('gzip');
+		expect(out.headers.get('Vary')).toBe('Accept-Encoding');
+
+		// Decode what has arrived so far, the way a browser does as bytes land:
+		// a sync-flushed gzip prefix decodes on its own, trailer or not.
+		const reader = out.body!.getReader();
+		const received: Uint8Array[] = [];
+		const decoded = () =>
+			gunzipSync(Buffer.concat(received), {
+				finishFlush: zlibConstants.Z_SYNC_FLUSH,
+			}).toString();
+		const readUntil = async (expected: string) => {
+			while (!decoded().includes(expected)) {
+				const { value, done } = await reader.read();
+				if (done) throw new Error(`stream ended before ${expected}`);
+				received.push(value);
+			}
+		};
+
+		s.write('event: text\ndata: {"type":"text","chunk":"one"}\n\n');
+		await readUntil('"one"');
+		// The second frame isn't written yet: the first arrived on its own.
+		expect(decoded()).not.toContain('"two"');
+		s.write('event: text\ndata: {"type":"text","chunk":"two"}\n\n');
+		await readUntil('"two"');
+		s.end();
+		for (;;) {
+			const { value, done } = await reader.read();
+			if (done) break;
+			received.push(value);
+		}
+		// And the finished stream is a complete, valid gzip body.
+		expect(gunzipSync(Buffer.concat(received)).toString()).toBe(
+			'event: text\ndata: {"type":"text","chunk":"one"}\n\n' +
+				'event: text\ndata: {"type":"text","chunk":"two"}\n\n',
+		);
+	});
+
+	it('cancels the source stream when the client goes away', async () => {
+		const s = sse();
+		const out = maybeCompressStream(s.response, req());
+		s.write('event: text\ndata: {}\n\n');
+		await out.body!.cancel();
+		await new Promise((r) => setTimeout(r, 10));
+		expect(s.cancelled()).toBe(true);
+	});
+
+	it('leaves alone a client without gzip, and anything that is not a stream', () => {
+		const a = sse();
+		expect(maybeCompressStream(a.response, req({ 'accept-encoding': 'br' }))).toBe(a.response);
+		const json = makeResponse(BIG_BODY, { headers: { 'Content-Type': 'application/json' } });
+		expect(maybeCompressStream(json, req())).toBe(json);
 	});
 });

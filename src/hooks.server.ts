@@ -13,13 +13,14 @@ import {
 	type AppLockState,
 } from '#lib/server/auth/app-lock.js';
 import { APP_LOCK_KEEPALIVE_PATH } from '#lib/app-lock.js';
-import { maybeCompressResponse } from '#lib/server/compression.js';
+import { maybeCompressResponse, maybeCompressStream } from '#lib/server/compression.js';
 import { applySecurityHeaders } from '#lib/server/security-headers.js';
 import { consumeRateLimitToken } from '#lib/server/rate-limit.js';
 import { routedPathname } from '#lib/server/util/request-path.js';
 import { chainHandles } from '#lib/server/util/handle-chain.js';
 import {
 	compressDynamicResponses,
+	compressStreamingResponses,
 	passkeyLoginEnabled,
 	validateAuthMethodsEnabled,
 	validateSecrets,
@@ -94,6 +95,7 @@ let adminBootstrapChecked = false;
 // reason to re-read on every request, and a deploy that flips it
 // restarts the process anyway.
 const SHOULD_COMPRESS_DYNAMIC = compressDynamicResponses();
+const SHOULD_COMPRESS_STREAMS = compressStreamingResponses();
 
 // Endpoint pauses live in the database so they survive a restart; point the
 // concurrency gate at them before anything can acquire a slot. Opens nothing
@@ -539,9 +541,13 @@ const compression: Handle = async ({ event, resolve }) => {
 	// inside maybeCompressResponse — the chat-stream UI depends on
 	// unbuffered delivery.
 	const zipStart = performance.now();
-	const out = SHOULD_COMPRESS_DYNAMIC
+	let out = SHOULD_COMPRESS_DYNAMIC
 		? await maybeCompressResponse(response, event.request)
 		: response;
+	// Streams are compressed separately, on by default (COMPRESS_STREAMS): gzip
+	// flushed per event, so nothing is buffered. Only wraps the body here; the
+	// compressing happens as frames are written, so `zip` doesn't include it.
+	if (SHOULD_COMPRESS_STREAMS) out = maybeCompressStream(out, event.request);
 	const timing = timings.get(event.locals);
 	if (timing) timing.zipMs = performance.now() - zipStart;
 	return out;

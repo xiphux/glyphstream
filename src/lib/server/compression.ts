@@ -16,10 +16,18 @@
  * Critical exclusion: text/event-stream MUST NOT be gzip-buffered. The
  * chat page relies on each SSE event reaching the browser at flush
  * time; gzip's default buffering coalesces events and turns the
- * streaming UI into a single end-of-stream delivery.
+ * streaming UI into a single end-of-stream delivery. Streams get their own
+ * per-event-flushed path instead, `maybeCompressStream` below.
  */
 
-import { brotliCompress, constants as zlibConstants, gzip, zstdCompress } from 'node:zlib';
+import {
+	brotliCompress,
+	constants as zlibConstants,
+	createGzip,
+	gzip,
+	zstdCompress,
+} from 'node:zlib';
+import { pipeline, Readable } from 'node:stream';
 import { promisify } from 'node:util';
 
 // The async variants run the codec on libuv's threadpool. The sync ones block
@@ -193,6 +201,51 @@ export async function maybeCompressResponse(
 
 	return new Response(toArrayBuffer(compressed), {
 		status: response.status,
+		headers,
+	});
+}
+
+/**
+ * Gzip a streaming (SSE) response as it goes, flushing after every frame so
+ * each event still reaches the browser the moment it's written. This is the
+ * counterpart `maybeCompressResponse` can't be: that one buffers the whole
+ * body, which a stream must never be.
+ *
+ * A chat reply is hundreds of small frames, each mostly the same framing
+ * (`event: text\ndata: {"type":"text","chunk":…}`) around a few words. Gzip
+ * with a sync flush per frame costs ~18 bytes each against ~58 raw, measured on
+ * prose, and the per-frame compression context means the repeated framing is
+ * nearly free. Gzip rather than zstd or brotli: per-frame flushing is where
+ * gzip wins (zstd ~23-25 B/frame, brotli ~22) — their edge is throughput on
+ * large bodies, and these are 50-100 bytes.
+ *
+ * Proxies don't do this for us. `sseResponse` sets `no-transform` (so none
+ * buffers or rewrites the stream), and nginx's default `gzip_types` leaves
+ * `text/event-stream` out anyway. Verified end to end through Synology's nginx
+ * over HTTP/2 to Chromium and iOS Safari: each event arrives on time.
+ *
+ * A client that goes away still looks the same to the relay: `pipeline`
+ * destroys the chain, which cancels the original stream, so the relay's next
+ * `enqueue` throws (and is swallowed, as before).
+ */
+export function maybeCompressStream(response: Response, request: Request): Response {
+	if (!response.body || response.headers.get('Content-Encoding')) return response;
+	const type = response.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase();
+	if (type !== 'text/event-stream') return response;
+	if (!/\bgzip\b/i.test(request.headers.get('accept-encoding') ?? '')) return response;
+
+	const gzipStream = createGzip({ level: GZIP_LEVEL, flush: zlibConstants.Z_SYNC_FLUSH });
+	pipeline(Readable.fromWeb(response.body as never), gzipStream, () => {
+		// Errors and early closes are the client going away; nothing to do.
+	});
+	const headers = new Headers(response.headers);
+	headers.set('Content-Encoding', 'gzip');
+	headers.delete('Content-Length');
+	const vary = headers.get('Vary');
+	headers.set('Vary', vary ? `${vary}, Accept-Encoding` : 'Accept-Encoding');
+	return new Response(Readable.toWeb(gzipStream) as unknown as ReadableStream<Uint8Array>, {
+		status: response.status,
+		statusText: response.statusText,
 		headers,
 	});
 }

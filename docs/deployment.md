@@ -355,8 +355,7 @@ COMPRESS_DYNAMIC=1
 When enabled, GlyphStream picks the best codec the client advertises:
 **zstd > brotli > gzip**. zstd at default level is the fastest of the three
 on modern CPUs; the fallbacks cover older browsers. SSE
-(`text/event-stream`) is always skipped so the chat-stream UI keeps flushing
-events as they arrive. Static `/_app/immutable/*` assets are already
+(`text/event-stream`) is skipped here — it has its own setting, below. Static `/_app/immutable/*` assets are already
 precompressed at build time and aren't affected by this flag.
 
 The iOS launch-image block in `app.html` raises the stakes here. It adds ~21 KB
@@ -385,6 +384,26 @@ that client latency rather than blocking in-flight SSE streams for everyone.
 concurrent huge responses can still queue behind each other.) The chat page
 now loads only a conversation's newest ~40 messages and fetches older ones as
 you scroll up, so opening a long thread no longer means one huge response.
+
+## Streaming-response compression (`COMPRESS_STREAMS`)
+
+On by default. A streaming reply is hundreds of small events, each mostly the
+same framing around a few words, and no proxy compresses it for you: the stream
+is sent `Cache-Control: no-transform` so nothing in between buffers it, and
+nginx's default `gzip_types` leaves `text/event-stream` out anyway. So
+GlyphStream gzips it itself, flushed after every event, which keeps each one
+arriving the moment it's written while cutting a reply's size by about two
+thirds. (Gzip rather than zstd or brotli: flushed per event, gzip comes out
+smallest.)
+
+It needs whatever sits in front to pass a compressed stream through as it
+arrives. Synology's built-in proxy, nginx with `X-Accel-Buffering` honoured (the
+default) and Caddy all do. If yours doesn't, replies arrive all at once at the
+end instead of streaming; turn it off:
+
+```
+COMPRESS_STREAMS=0
+```
 
 ## Diagnosing a slow load (the debug panel)
 

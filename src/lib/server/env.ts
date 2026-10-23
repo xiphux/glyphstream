@@ -340,12 +340,27 @@ export function validateAuthMethodsEnabled(): void {
  *
  * Set COMPRESS_DYNAMIC=1 when the proxy in front *can't* compress —
  * Synology's built-in reverse proxy is the canonical case. See
- * src/lib/server/compression.ts for the skip rules (SSE is always
- * skipped to keep streaming responses unbuffered).
+ * src/lib/server/compression.ts for the skip rules (SSE is skipped here; it
+ * has its own per-event-flushed path, COMPRESS_STREAMS).
  */
 export function compressDynamicResponses(): boolean {
 	const v = readString('COMPRESS_DYNAMIC', '').toLowerCase();
 	return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+}
+
+/**
+ * Gzip streaming (SSE) responses in-process, flushed per event — see
+ * `maybeCompressStream` in src/lib/server/compression.ts. Default ON, unlike
+ * COMPRESS_DYNAMIC: a proxy compressing dynamic responses still leaves the
+ * streams alone (`no-transform`, and nginx's default `gzip_types` excludes
+ * them), so this is the only thing that ever compresses them. Set
+ * COMPRESS_STREAMS=0 if something between here and the browser buffers a
+ * compressed stream — replies would then arrive all at once instead of
+ * streaming.
+ */
+export function compressStreamingResponses(): boolean {
+	const v = readString('COMPRESS_STREAMS', '').toLowerCase();
+	return !(v === '0' || v === 'false' || v === 'no' || v === 'off');
 }
 
 /**

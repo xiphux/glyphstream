@@ -824,6 +824,9 @@ The annotated [`.env.example`](../.env.example) is canonical. Highlights:
   only to rotate that encryption independently ([MCP guide](mcp.md#authentication)).
 - `COMPRESS_DYNAMIC` — compress SSR HTML + API JSON in-process when the
   reverse proxy can't ([deployment guide](deployment.md)).
+- `COMPRESS_STREAMS` — gzip streaming replies in-process, flushed per event. On
+  by default; `0` turns it off for a proxy that buffers compressed streams
+  ([deployment guide](deployment.md#streaming-response-compression-compress_streams)).
 
 Config or env changes only need a restart (`docker compose restart`) — no
 rebuild.

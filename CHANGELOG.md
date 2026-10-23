@@ -14,14 +14,12 @@ arrived.
 - The lightbox loads a copy of each image sized to your screen instead of the
   full original, so swiping through results on a phone is much faster on mobile
   data. Download and Share still give the original.
-- Less mobile data: a streaming reply arrives a few words per update instead of
-  one per token, which cuts most of the streaming overhead; the image an
-  image-model chat attaches to the composer no
-  longer downloads the full original just to show its preview, charts and other
-  images from the code interpreter load a smaller copy, the model picker
-  doesn't re-download the model list on each launch when it hasn't changed, and
-  a multi-model comparison waiting on its last results downloads each finished
-  one only once, and stops checking while the app is in the background.
+- Streaming replies use much less mobile data: they're compressed and sent a few
+  words at a time instead of a token per message. Operators whose proxy buffers
+  compressed streams can turn the compression off with `COMPRESS_STREAMS=0`.
+- Less mobile data elsewhere too: the composer's preview of an auto-attached
+  image, code-interpreter charts, the model list on each launch, and a
+  multi-model comparison waiting on its last results.
 
 ### Fixed
 
