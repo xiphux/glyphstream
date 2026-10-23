@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.48.0
+
 ### Changed
 
 - The lightbox loads a copy of each image sized to your screen instead of the
