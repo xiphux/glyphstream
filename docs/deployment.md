@@ -288,8 +288,10 @@ unchanged. Tested with:
 - **Nginx** — `proxy_pass http://127.0.0.1:3000;` + `listen 443 ssl http2;`.
   Don't enable `gzip on` for the static `/_app/immutable/*` location or
   you'll double-compress; do enable it for the dynamic paths (or set
-  `COMPRESS_DYNAMIC=1` and skip nginx-side gzip entirely). Either way,
-  exclude `text/event-stream` so chat streaming isn't buffered.
+  `COMPRESS_DYNAMIC=1` and skip nginx-side gzip entirely). `gzip on` alone
+  compresses only `text/html`: add `gzip_types application/json;`, or every
+  page-data and API response still goes out uncompressed. Don't add
+  `text/event-stream` to it, so chat streaming isn't buffered.
 - **Cloudflare Tunnel** — works as a transparent passthrough. Cloudflare
   compresses dynamic responses at the edge automatically.
 
