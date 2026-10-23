@@ -14,7 +14,9 @@ arrived.
 - The lightbox loads a copy of each image sized to your screen instead of the
   full original, so swiping through results on a phone is much faster on mobile
   data. Download and Share still give the original.
-- Less mobile data: the image an image-model chat attaches to the composer no
+- Less mobile data: a streaming reply arrives a few words per update instead of
+  one per token, which cuts most of the streaming overhead; the image an
+  image-model chat attaches to the composer no
   longer downloads the full original just to show its preview, charts and other
   images from the code interpreter load a smaller copy, the model picker
   doesn't re-download the model list on each launch when it hasn't changed, and

@@ -86,22 +86,107 @@ export interface SseWriter {
 }
 
 /**
+ * How long consecutive deltas are gathered into one frame. One frame per
+ * upstream token cost ~45 bytes of SSE framing (plus the transport's own
+ * per-write overhead) around a 3-5 character chunk, uncompressed, on every
+ * turn — most of what a phone downloaded while a reply streamed. 50 ms is under
+ * a frame of the client's own render pump at 20 fps, so the text still arrives
+ * as a smooth stream; it just arrives a few tokens at a time.
+ */
+export const DELTA_COALESCE_MS = 50;
+
+/** `next` folded into `pending` when both are deltas of the same stream, else
+ *  null. Text and reasoning are separate streams, as is each tool call's
+ *  arguments: merging across them would reorder what the client renders. */
+function mergeDelta(pending: StreamEvent, next: StreamEvent): StreamEvent | null {
+	if (
+		(next.type === 'text' || next.type === 'reasoning' || next.type === 'compaction_text') &&
+		pending.type === next.type
+	) {
+		return { ...next, chunk: pending.chunk + next.chunk };
+	}
+	if (
+		next.type === 'tool_call_args_delta' &&
+		pending.type === 'tool_call_args_delta' &&
+		pending.toolCallId === next.toolCallId
+	) {
+		return { ...next, argumentsDelta: pending.argumentsDelta + next.argumentsDelta };
+	}
+	return null;
+}
+
+function isDelta(event: StreamEvent): boolean {
+	return (
+		event.type === 'text' ||
+		event.type === 'reasoning' ||
+		event.type === 'compaction_text' ||
+		event.type === 'tool_call_args_delta'
+	);
+}
+
+/**
  * Bind SSE write/close helpers to a stream controller. The swallowing is
  * deliberate: once the browser disconnects, enqueue/close throw — but the
  * recorder branch must keep running to persist the message, so a dead
  * client is a no-op here, never an exception.
+ *
+ * Deltas are coalesced (see `DELTA_COALESCE_MS`): the first after a quiet spell
+ * goes out at once, so the first token isn't delayed, and the ones that follow
+ * inside the window are merged into a single frame. Any other event — a tool
+ * call starting, `done`, an error — sends the pending delta first, so the
+ * client sees exactly the sequence it would have, in fewer frames.
  */
-export function sseWriter(controller: ReadableStreamDefaultController<Uint8Array>): SseWriter {
+export function sseWriter(
+	controller: ReadableStreamDefaultController<Uint8Array>,
+	coalesceMs = DELTA_COALESCE_MS,
+): SseWriter {
 	const enc = new TextEncoder();
+	let pending: StreamEvent | null = null;
+	let timer: ReturnType<typeof setTimeout> | null = null;
+	let lastSentAt = -Infinity;
+
+	function send(event: StreamEvent) {
+		try {
+			controller.enqueue(enc.encode(formatSSE(event)));
+		} catch {
+			// client disconnected mid-write — recorder branch unaffected
+		}
+	}
+
+	function flush() {
+		if (timer) clearTimeout(timer);
+		timer = null;
+		if (!pending) return;
+		const event = pending;
+		pending = null;
+		lastSentAt = Date.now();
+		send(event);
+	}
+
 	return {
 		write(event: StreamEvent) {
-			try {
-				controller.enqueue(enc.encode(formatSSE(event)));
-			} catch {
-				// client disconnected mid-write — recorder branch unaffected
+			if (!isDelta(event)) {
+				flush();
+				send(event);
+				return;
 			}
+			const merged = pending && mergeDelta(pending, event);
+			if (merged) {
+				pending = merged;
+				return;
+			}
+			flush();
+			const wait = lastSentAt + coalesceMs - Date.now();
+			if (wait <= 0) {
+				lastSentAt = Date.now();
+				send(event);
+				return;
+			}
+			pending = event;
+			timer = setTimeout(flush, wait);
 		},
 		close() {
+			flush();
 			try {
 				controller.close();
 			} catch {

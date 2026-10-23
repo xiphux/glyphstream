@@ -1,6 +1,6 @@
 /** Tests for the shared SSE transport used by the streaming relays. */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	errorMessage,
 	formatSSE,
@@ -82,5 +82,77 @@ describe('sseWriter', () => {
 		} as unknown as ReadableStreamDefaultController<Uint8Array>);
 		expect(() => w.write({ type: 'text', chunk: 'x' })).not.toThrow();
 		expect(() => w.close()).not.toThrow();
+	});
+});
+
+describe('sseWriter — delta coalescing', () => {
+	/** The events the client would parse, in order. */
+	function capture() {
+		const frames: Array<Record<string, unknown>> = [];
+		let closed = false;
+		const dec = new TextDecoder();
+		const w = sseWriter({
+			enqueue: (c: Uint8Array) => {
+				const data = /^data: (.*)$/m.exec(dec.decode(c))![1];
+				frames.push(JSON.parse(data) as Record<string, unknown>);
+			},
+			close: () => (closed = true),
+		} as unknown as ReadableStreamDefaultController<Uint8Array>);
+		return { w, frames, closed: () => closed };
+	}
+
+	beforeEach(() => vi.useFakeTimers());
+	afterEach(() => vi.useRealTimers());
+
+	it('sends the first token at once, and merges the ones that follow into a frame', () => {
+		const { w, frames } = capture();
+		w.write({ type: 'text', chunk: 'Hel' });
+		// No delay on the first token: it's the one the user is waiting for.
+		expect(frames).toEqual([{ type: 'text', chunk: 'Hel' }]);
+		w.write({ type: 'text', chunk: 'lo' });
+		w.write({ type: 'text', chunk: ', wor' });
+		w.write({ type: 'text', chunk: 'ld' });
+		expect(frames).toHaveLength(1);
+		vi.advanceTimersByTime(50);
+		expect(frames).toEqual([
+			{ type: 'text', chunk: 'Hel' },
+			{ type: 'text', chunk: 'lo, world' },
+		]);
+	});
+
+	it('never merges across streams, and keeps their order', () => {
+		const { w, frames } = capture();
+		w.write({ type: 'reasoning', chunk: 'a' });
+		w.write({ type: 'reasoning', chunk: 'b' });
+		w.write({ type: 'text', chunk: 'c' });
+		w.write({ type: 'tool_call_args_delta', toolCallId: 't1', argumentsDelta: '{"q"' });
+		w.write({ type: 'tool_call_args_delta', toolCallId: 't1', argumentsDelta: ':1}' });
+		w.write({ type: 'tool_call_args_delta', toolCallId: 't2', argumentsDelta: '{}' });
+		vi.advanceTimersByTime(50);
+		expect(frames).toEqual([
+			{ type: 'reasoning', chunk: 'a' },
+			{ type: 'reasoning', chunk: 'b' },
+			{ type: 'text', chunk: 'c' },
+			{ type: 'tool_call_args_delta', toolCallId: 't1', argumentsDelta: '{"q":1}' },
+			{ type: 'tool_call_args_delta', toolCallId: 't2', argumentsDelta: '{}' },
+		]);
+	});
+
+	it('sends a pending delta before any other event, and before closing', () => {
+		const { w, frames, closed } = capture();
+		w.write({ type: 'text', chunk: 'a' });
+		w.write({ type: 'text', chunk: 'b' });
+		w.write({ type: 'title', title: 'T' });
+		w.write({ type: 'text', chunk: 'c' });
+		w.close();
+		expect(frames).toEqual([
+			{ type: 'text', chunk: 'a' },
+			{ type: 'text', chunk: 'b' },
+			{ type: 'title', title: 'T' },
+			{ type: 'text', chunk: 'c' },
+		]);
+		expect(closed()).toBe(true);
+		// Nothing left armed to fire after the stream is gone.
+		expect(vi.getTimerCount()).toBe(0);
 	});
 });
