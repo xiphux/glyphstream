@@ -213,8 +213,16 @@
 	}
 
 	// Keep search results in sync with SSR navigation (each keystroke re-runs load).
+	// Only when the load really re-ran, i.e. handed over a new array. Kit gives the
+	// page a new `data` on every commit, including the layout-only reload on each
+	// return to the app, which this load doesn't re-run for — its `searchItems` is
+	// then the same array as before, and copying it again would undo every star
+	// and removal made on this page since.
+	let syncedSearchItems: MediaListItem[] | undefined;
 	$effect(() => {
-		if (data.mode === 'search') searchItems = [...(data.searchItems ?? [])];
+		if (data.mode !== 'search' || data.searchItems === syncedSearchItems) return;
+		syncedSearchItems = data.searchItems;
+		searchItems = [...(data.searchItems ?? [])];
 	});
 
 	// Load / reload the browse layout+units client-side whenever the filters or
@@ -679,8 +687,7 @@
 	 * Re-reads through `invalidate('app:conversations')` rather than patching
 	 * `data.customModels` locally: the layout owns that list, and a local edit
 	 * would drift from what every other surface (chat bubbles, /settings/models)
-	 * reads. This page `await parent()`s, so its own load re-runs either way —
-	 * there's nothing cheaper to reach for here. */
+	 * reads. Only the layout re-runs: this page's load doesn't `await parent()`. */
 	async function setAvatar(
 		target: { kind: 'preset' | 'conversation'; id: string },
 		mediaId: string,

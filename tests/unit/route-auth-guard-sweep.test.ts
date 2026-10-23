@@ -57,6 +57,7 @@ const PUBLIC: Record<string, string> = {
  */
 const NO_PARENT: Record<string, string> = {
 	'/(app)/chat/[id]': 'ships the whole active branch with content_html',
+	'/(app)/gallery': 'a ranked search re-runs, with a query embedding, on every app resume',
 };
 
 /** (app) server loads that legitimately need neither parent() nor requireUserPage. */

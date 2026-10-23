@@ -1,6 +1,7 @@
 import { searchMediaForUser } from '#lib/server/media/gallery-search.js';
 import { cachedModelFacets } from '#lib/server/gallery/layout.js';
 import { friendlyModelName } from '#lib/model-ids.js';
+import { requireUserPage } from '#lib/server/auth/guard.js';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -16,9 +17,12 @@ import type { PageServerLoad } from './$types';
  *     server's, not a client re-sort, because the result set is capped: the
  *     newest 150 matches aren't the best-scoring 150 put in date order.
  */
-export const load: PageServerLoad = async ({ locals, parent, url }) => {
-	// Wait for the (app) layout's auth check before deref'ing locals.user.
-	await parent();
+export const load: PageServerLoad = async ({ locals, url }) => {
+	// `requireUserPage`, not `await parent()`: parent() would re-run this load —
+	// a ranked search of up to 150 items with their prompts, plus a query
+	// embedding sent to the upstream — every time the layout reloads, which is
+	// every return to the app. See CLAUDE.md on `requireUserPage`.
+	requireUserPage(locals, url);
 	const kindParam = url.searchParams.get('kind');
 	const kind = kindParam === 'image' || kindParam === 'video' ? kindParam : null;
 	const model = url.searchParams.get('model') ?? null;
@@ -26,7 +30,7 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 	const favorite = url.searchParams.get('fav') === '1';
 	const sort =
 		url.searchParams.get('sort') === 'new' ? ('newest' as const) : ('relevance' as const);
-	const userId = locals.user!.id;
+	const userId = locals.user.id;
 
 	// Facet options for the Model dropdown. Labels via the pure `friendlyModelName`
 	// (no upstream fetch); the raw `value` is what `?model=` filters on.
