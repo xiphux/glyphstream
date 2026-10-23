@@ -97,13 +97,13 @@ interface PendingBranch {
 	sourceMediaId: string | null;
 }
 
-/** Per-pending-branch descriptors (aligned with `pendingModelIds`/`pending`):
- *  each branch is QUEUED (no start time yet, waiting on the gate) or
- *  generating-with-a-timer (start time set). */
 /** Longer than any healthy recovery poll; past it the tick is abandoned and
  *  the next one retries. */
 const RECOVERY_POLL_TIMEOUT_MS = 10_000;
 
+/** Per-pending-branch descriptors (aligned with `pendingModelIds`/`pending`):
+ *  each branch is QUEUED (no start time yet, waiting on the gate) or
+ *  generating-with-a-timer (start time set). */
 function pendingBranches(f: FanoutRecoveryState): PendingBranch[] {
 	return f.pendingModelIds.map((modelId, i) => {
 		const startedAt = f.pendingStartedAt[i] ?? null;
