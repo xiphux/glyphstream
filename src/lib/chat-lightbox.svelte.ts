@@ -332,7 +332,8 @@ export class ChatLightbox {
 			// was reset, and this set belongs to the chat they left.
 			if (this.#deps.conversationId() !== forConversation) return;
 			// A swipe onto a leaving image whose row is still loading (the deletes
-			// above sent it to the network) would land after this and put `media`
+			// above evicted it, so it fetches, or joins a prefetch already in
+			// flight) would land after this and put `media`
 			// back on an image `siblings` no longer has. Drop it, as `close` drops an
 			// open in flight; an open of a surviving image is left to land.
 			if (this.openingFor !== null && removed.has(this.openingFor)) this.openingFor = null;
