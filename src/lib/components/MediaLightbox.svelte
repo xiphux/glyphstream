@@ -1127,9 +1127,9 @@
 
 									`siblings` is every unit demand-loaded this gallery session,
 									so after a deep scroll this each-block was mounting thousands
-									of full-resolution <img> at once. `loading="lazy"` keeps them
-									from all being fetched, but they're still elements the browser
-									must create, style and lay out on open.
+									of full-resolution <img> at once — each one a fetch (mounted
+									slides load eagerly; see the img below) and an element the
+									browser must create, style and lay out on open.
 								-->
 							{:else if s.kind === 'video'}
 								<!-- svelte-ignore a11y_media_has_caption -->
