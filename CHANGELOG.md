@@ -13,6 +13,8 @@ arrived.
 
 - Swiping through images in the lightbox on iOS no longer lands on a black
   slide while the next image loads: the images either side now load ahead.
+- Swiping during a fan-out discard in the lightbox can no longer leave it
+  stuck on a deleted image with swiping disabled until it's reopened.
 
 ## v0.48.0
 

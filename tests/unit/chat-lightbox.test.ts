@@ -352,6 +352,61 @@ describe('discarding from a fan-out grid', () => {
 		expect(favorites.isFavorite('g3', false)).toBe(true);
 	});
 
+	/**
+	 * Swiping isn't blocked while a discard is in flight. A swipe onto another
+	 * image of the same (batch) branch left `media` on an image the discard then
+	 * took out of `siblings` — and a `media` missing from the set renders the
+	 * lightbox's single-item view, with no track to swipe, until it is reopened.
+	 */
+	it('moves off a batch sibling swiped to while its branch was being discarded', async () => {
+		stubFetch(['g1', 'g2', 'g3', 'g4']);
+		const cols = [column('b1', ['g1']), column('b2', ['g2', 'g3']), column('b3', ['g4'])];
+		const { lb, fanout } = setup(cols);
+		let finish!: (ok: boolean) => void;
+		fanout.discard.mockImplementationOnce(() => new Promise<boolean>((r) => (finish = r)));
+		await lb.open('g2');
+		await settle();
+		const discarding = lb.discard('g2');
+		await lb.open('g3');
+		finish(true);
+		await discarding;
+		expect(lb.siblings.map((m) => m.id)).toEqual(['g1', 'g4']);
+		expect(lb.media?.id).toBe('g4');
+	});
+
+	it('closes rather than strand a leaving image swiped to while fetching the next', async () => {
+		const cols = [column('b1', ['g1']), column('b2', ['g2', 'g3']), column('b3', ['g4'])];
+		const { lb } = setup(cols);
+		stubFetch(['g1', 'g2', 'g3', 'g4'], {
+			// The row for g2's slot is still loading when the swipe lands on g3.
+			'GET /api/media/g4': async () => {
+				await lb.open('g3');
+				return Response.json(item('g4'));
+			},
+		});
+		await lb.open('g2');
+		await settle();
+		await lb.discard('g2');
+		expect(lb.siblings.map((m) => m.id)).toEqual(['g1', 'g4']);
+		expect(lb.media).toBeNull();
+	});
+
+	it('leaves alone an image outside the branch swiped to mid-discard', async () => {
+		stubFetch(['g1', 'g2', 'g3']);
+		const cols = [column('b1', ['g1']), column('b2', ['g2']), column('b3', ['g3'])];
+		const { lb, fanout } = setup(cols);
+		let finish!: (ok: boolean) => void;
+		fanout.discard.mockImplementationOnce(() => new Promise<boolean>((r) => (finish = r)));
+		await lb.open('g2');
+		await settle();
+		const discarding = lb.discard('g2');
+		await lb.open('g1');
+		finish(true);
+		await discarding;
+		expect(lb.siblings.map((m) => m.id)).toEqual(['g1', 'g3']);
+		expect(lb.media?.id).toBe('g1');
+	});
+
 	it('toasts the controller’s reason when the discard is refused', async () => {
 		stubFetch(['g1', 'g2']);
 		const { lb, fanout, page } = setup([column('b1', ['g1']), column('b2', ['g2'])]);

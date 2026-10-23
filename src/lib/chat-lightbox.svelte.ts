@@ -311,7 +311,13 @@ export class ChatLightbox {
 				if (error) toast.error(`Couldn't delete: ${error}`);
 				return;
 			}
-			const next = survivorInSlot(this.siblings, mediaId, removed);
+			// What's on screen NOW, which a swipe during the discard may have moved
+			// off `mediaId` — onto another image of the same batch branch, which is
+			// leaving too. Left there, `media` would be missing from `siblings`,
+			// which drops the lightbox to its single-item view: no track to swipe.
+			const shownId = this.media?.id;
+			const leaving = shownId !== undefined && removed.has(shownId);
+			const next = leaving ? survivorInSlot(this.siblings, shownId, removed) : null;
 			const survivors = this.siblings.filter((m) => !removed.has(m.id));
 			let nextItem: MediaListItem | null = null;
 			for (const id of removed) this.#items.delete(id);
@@ -327,13 +333,19 @@ export class ChatLightbox {
 			if (this.#deps.conversationId() !== forConversation) return;
 			// The user may have closed the lightbox or swiped elsewhere during the
 			// round trips. Update the set either way, but only move `media` if it
-			// still shows what was deleted.
+			// still shows what `next` was picked for. If a swipe moved it onto
+			// another leaving image during the fetch, there's no row in hand for
+			// that one's slot: close, as when there's nothing to move to, rather
+			// than strand it.
 			this.siblings = survivors;
-			if (this.media?.id === mediaId) {
+			if (leaving && this.media?.id === shownId) {
 				// Through `#withStar` like every other row the lightbox shows, so the
 				// page's stars hear about it too.
 				this.media = nextItem && this.#withStar(nextItem);
 				if (!nextItem) this.#items.clear();
+			} else if (this.media && removed.has(this.media.id)) {
+				this.media = null;
+				this.#items.clear();
 			}
 		} finally {
 			this.deletingId = null;
