@@ -704,9 +704,13 @@ export class ChatTurnController {
 		this.approvalSubmitting = true;
 		this.#deps.setApprovalError(null);
 		try {
-			await this.#runApprovalStream(this.#deps.convId(), decisions);
+			const refreshed = await this.#runApprovalStream(this.#deps.convId(), decisions);
 			this.#deps.clearApprovalDecisions();
-			await refreshAll();
+			// The resume already reloaded the page when it was still on screen; a
+			// second reload re-sent the whole message window for nothing. Only a
+			// resume that settled after a switch to another conversation skipped it,
+			// and the sidebar still wants that turn's new state.
+			if (!refreshed) await refreshAll();
 		} catch (e) {
 			// AbortError from clicking Stop mid-resume is expected and shouldn't
 			// surface as a red banner — same convention as the initial-send path.
@@ -729,7 +733,9 @@ export class ChatTurnController {
 		}
 	}
 
-	async #runApprovalStream(convId: string, decisions: ApprovalDecision[]): Promise<void> {
+	/** Resolves true when it reloaded the page itself (the turn's conversation
+	 *  was still the one on screen). */
+	async #runApprovalStream(convId: string, decisions: ApprovalDecision[]): Promise<boolean> {
 		const turnConvId = convId;
 		// Open the in-flight bubble so the user sees text + tool calls streaming in
 		// live instead of staring at "Resuming…" for the duration of the response.
@@ -762,7 +768,9 @@ export class ChatTurnController {
 					this.inFlightProgress = null;
 					this.inFlightStatus = null;
 				}
+				return true;
 			}
+			return false;
 		} finally {
 			if (this.activeAbort === abort) this.activeAbort = null;
 		}

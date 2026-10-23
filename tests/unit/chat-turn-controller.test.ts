@@ -423,9 +423,10 @@ describe('ChatTurnController — approval resume', () => {
 		expect(state.messages.map((m) => m.id)).toEqual(['a-resume']);
 		expect(state.approvalCleared).toBe(1);
 		expect(turn.approvalSubmitting).toBe(false);
-		// Guard held (still on c1): the resume's inner post-stream invalidate ran,
-		// plus submitApproval's outer one — two invalidations.
-		expect(refreshAll).toHaveBeenCalledTimes(2);
+		// Guard held (still on c1): the resume's post-stream reload ran, and
+		// submitApproval doesn't reload a second time — each reload re-sends the
+		// whole message window.
+		expect(refreshAll).toHaveBeenCalledTimes(1);
 		vi.unstubAllGlobals();
 	});
 
@@ -451,8 +452,8 @@ describe('ChatTurnController — approval resume', () => {
 		// single-invalidate assertion below genuinely exercises the guard.
 		expect(state.approvalCleared).toBe(1);
 		// The in-turn guard (deps.convId() === turnConvId) is now false, so the
-		// inner post-stream invalidate is skipped — only submitApproval's outer
-		// invalidate runs. Regression guard: the old inline runApprovalStream took a
+		// inner post-stream invalidate is skipped — and submitApproval's outer one
+		// runs in its place, for the sidebar. Regression guard: the old inline runApprovalStream took a
 		// `convId` param that shadowed the reactive one, making this check
 		// permanently true (dead abandon-on-switch guard); it would invalidate twice.
 		expect(refreshAll).toHaveBeenCalledTimes(1);
