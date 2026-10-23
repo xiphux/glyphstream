@@ -1256,6 +1256,26 @@ export interface FanoutRecoveryState {
 	pendingSourceMediaIds: Array<string | null>;
 }
 
+/**
+ * `GET /api/conversations/:id?fanout=1` — the recovery polls' light read, with
+ * no message walk. Each poller reads its own field: the turn poll
+ * `inFlightSince` / `inFlightGeneratingSince`, the avatar draw `avatarDrawSince`,
+ * the fan-out grid `fanout`.
+ *
+ * `siblingKeys` names every persisted branch, in order, as `<message id>.<hash
+ * of its content>`. `fanout.siblings` leaves out any branch whose key was sent
+ * back in `&have=` (comma-separated): the fan-out poll already holds exactly
+ * that copy, and rebuilds the full list from its copies plus what came back. A
+ * branch that changed has a new key, so it is sent again.
+ */
+export interface ConversationRecoveryPoll {
+	inFlightSince: number | null;
+	inFlightGeneratingSince: number | null;
+	avatarDrawSince: number | null;
+	fanout: FanoutRecoveryState;
+	siblingKeys: string[];
+}
+
 // --- streaming event protocol (server → client SSE) ----------------------
 //
 // Server normalizes upstream SSE per provider quirk and emits these events.

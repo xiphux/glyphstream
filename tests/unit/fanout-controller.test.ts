@@ -1846,3 +1846,93 @@ describe('pick / dismiss after the user switched conversations', () => {
 		expect(state.error).toBeNull();
 	});
 });
+
+describe('FanoutController — recovery poll', () => {
+	/** A stand-in for `?fanout=1` that honours `have=` the way the route does:
+	 *  siblings are keyed `<id>.<version>`, and a held key isn't sent again. */
+	function pollServer(state: {
+		siblings: ChatMessage[];
+		versions: Record<string, number>;
+		pending: number;
+	}) {
+		const urls: string[] = [];
+		const fetchMock = vi.fn(async (url: string) => {
+			urls.push(url);
+			const have = new Set(new URL(url, 'http://x').searchParams.get('have')?.split(',') ?? []);
+			const keyed = state.siblings.map((m) => ({ m, key: `${m.id}.${state.versions[m.id] ?? 0}` }));
+			return Response.json({
+				inFlightSince: null,
+				inFlightGeneratingSince: null,
+				avatarDrawSince: null,
+				fanout: {
+					parentMessageId: 'u1',
+					avatar: false,
+					kind: 'image',
+					siblings: keyed.filter((k) => !have.has(k.key)).map((k) => k.m),
+					pending: state.pending,
+					pendingModelIds: Array(state.pending).fill('bridge::sdxl'),
+					pendingStartedAt: Array(state.pending).fill(1000),
+					pendingSourceMediaIds: Array(state.pending).fill(null),
+				},
+				siblingKeys: keyed.map((k) => k.key),
+			});
+		});
+		vi.stubGlobal('fetch', fetchMock);
+		return urls;
+	}
+
+	beforeEach(() => vi.useFakeTimers());
+
+	it('downloads each finished branch once, and again only when it changes', async () => {
+		const server = {
+			siblings: [imageSibling('a', 'bridge::sdxl', null)],
+			versions: {} as Record<string, number>,
+			pending: 2,
+		};
+		const urls = pollServer(server);
+		const fc = new FanoutController(makeDeps().deps);
+		const stop = fc.startRecoveryPoll();
+		try {
+			await vi.advanceTimersByTimeAsync(4000);
+			expect(urls.at(-1)).toBe('/api/conversations/c1?fanout=1');
+			expect(fc.columns.map((c) => c.persisted?.id ?? null)).toEqual(['a', null, null]);
+
+			// A second branch lands: only it is sent, and the grid still has both.
+			server.siblings.push(imageSibling('b', 'bridge::sdxl', null));
+			server.pending = 1;
+			await vi.advanceTimersByTimeAsync(4000);
+			expect(urls.at(-1)).toBe('/api/conversations/c1?fanout=1&have=a.0');
+			expect(fc.columns.map((c) => c.persisted?.id ?? null)).toEqual(['a', 'b', null]);
+
+			// `a` changes after landing (an image discarded from it): its new copy is
+			// what the grid shows, not the one held.
+			server.siblings[0] = mediaSibling('a', 'bridge::sdxl', null, []);
+			server.versions.a = 1;
+			await vi.advanceTimersByTimeAsync(4000);
+			expect(urls.at(-1)).toBe('/api/conversations/c1?fanout=1&have=a.0,b.0');
+			expect(fc.columns[0].persisted?.parts).toEqual([]);
+		} finally {
+			stop();
+			vi.unstubAllGlobals();
+			vi.useRealTimers();
+		}
+	});
+
+	it('does not poll while the page is hidden', async () => {
+		const urls = pollServer({ siblings: [], versions: {}, pending: 1 });
+		vi.stubGlobal('document', { visibilityState: 'hidden' });
+		const fc = new FanoutController(makeDeps().deps);
+		const stop = fc.startRecoveryPoll();
+		try {
+			await vi.advanceTimersByTimeAsync(12000);
+			expect(urls).toEqual([]);
+			vi.stubGlobal('document', { visibilityState: 'visible' });
+			await vi.advanceTimersByTimeAsync(4000);
+			expect(urls).toHaveLength(1);
+		} finally {
+			stop();
+			vi.unstubAllGlobals();
+			vi.useRealTimers();
+		}
+	});
+});

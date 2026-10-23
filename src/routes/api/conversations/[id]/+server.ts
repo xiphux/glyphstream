@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { error } from '@sveltejs/kit';
 import { requireFound, requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
@@ -19,10 +20,15 @@ import {
 } from '#lib/server/streaming/in-flight.js';
 import { cancelInFlightGenerations } from '#lib/server/streaming/cancel.js';
 import { validateDisabledFeaturesOrThrow400 } from '#lib/server/util/validate-features.js';
+import type { ChatMessage, ConversationRecoveryPoll } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
 import { createLogger } from '#lib/server/log.js';
 
 const log = createLogger('conversations.delete');
+
+function siblingKey(m: ChatMessage): string {
+	return `${m.id}.${createHash('sha256').update(JSON.stringify(m)).digest('base64url').slice(0, 16)}`;
+}
 
 export const GET: RequestHandler = ({ locals, params, url }) => {
 	requireUser(locals);
@@ -48,12 +54,23 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 			getConversationMeta(params.id, locals.user.id),
 			'Conversation not found',
 		);
-		return Response.json({
+		const fanout = getFanoutRecoveryState(params.id, locals.user.id, meta.activeLeafMessageId);
+		// `have`: the finished branches the fan-out poll already holds. The poll runs
+		// every 4s for as long as one is still generating — minutes behind a GPU
+		// queue — and sending each finished one's rendered HTML again on every tick
+		// was most of what it downloaded. A branch is named by its id AND a hash of
+		// its content, so one that changes after landing (an image discarded from
+		// it) is sent again rather than rebuilt from the poller's stale copy.
+		const have = new Set(url.searchParams.get('have')?.split(',') ?? []);
+		const keyed = fanout.siblings.map((m) => ({ m, key: siblingKey(m) }));
+		const body: ConversationRecoveryPoll = {
 			inFlightSince: getInFlightSince(params.id),
 			inFlightGeneratingSince: getInFlightGeneratingSince(params.id),
 			avatarDrawSince: getAvatarDrawSince(params.id),
-			fanout: getFanoutRecoveryState(params.id, locals.user.id, meta.activeLeafMessageId),
-		});
+			fanout: { ...fanout, siblings: keyed.filter((k) => !have.has(k.key)).map((k) => k.m) },
+			siblingKeys: keyed.map((k) => k.key),
+		};
+		return Response.json(body);
 	}
 
 	const conv = requireFound(

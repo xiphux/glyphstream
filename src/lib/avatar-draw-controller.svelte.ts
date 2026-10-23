@@ -368,7 +368,11 @@ export class AvatarDrawController {
 	 */
 	startRecoveryPoll(): () => void {
 		const cid = this.#convId();
-		const interval = setInterval(() => void this.reconcile(cid), POLL_MS);
+		// Skipped while hidden — nothing is drawn; the next tick catches up.
+		const interval = setInterval(() => {
+			if (globalThis.document?.visibilityState === 'hidden') return;
+			void this.reconcile(cid);
+		}, POLL_MS);
 		return () => clearInterval(interval);
 	}
 

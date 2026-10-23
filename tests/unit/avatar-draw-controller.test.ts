@@ -472,6 +472,27 @@ describe('the probe URL', () => {
 	});
 });
 
+describe('the recovery poll', () => {
+	it('does not probe while the page is hidden', async () => {
+		vi.useFakeTimers();
+		const { c } = setup('A');
+		const fetchMock = stubProbe({ running: 7000 });
+		vi.stubGlobal('document', { visibilityState: 'hidden' });
+		const stop = c.startRecoveryPoll();
+		try {
+			await vi.advanceTimersByTimeAsync(30_000);
+			expect(fetchMock).not.toHaveBeenCalled();
+			vi.stubGlobal('document', { visibilityState: 'visible' });
+			await vi.advanceTimersByTimeAsync(30_000);
+			expect(fetchMock).toHaveBeenCalled();
+		} finally {
+			stop();
+			vi.unstubAllGlobals();
+			vi.useRealTimers();
+		}
+	});
+});
+
 describe('two draws at once', () => {
 	// The configuration the conversation-scoped flags exist for, and the only one
 	// in which their ownership guards differ from unguarded clears. Without a test

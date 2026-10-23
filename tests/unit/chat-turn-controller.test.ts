@@ -648,6 +648,29 @@ describe('ChatTurnController — stop / recovery / teardown', () => {
 		}
 	});
 
+	it('recovery poll skips its ticks while the page is hidden', async () => {
+		vi.useFakeTimers();
+		const fetchMock = vi.fn(
+			async () =>
+				({ ok: true, json: async () => ({ inFlightSince: 5000 }) }) as unknown as Response,
+		);
+		vi.stubGlobal('fetch', fetchMock);
+		vi.stubGlobal('document', { visibilityState: 'hidden' });
+		const turn = new ChatTurnController(makeDeps().deps);
+		const stop = turn.startRecoveryPoll();
+		try {
+			await vi.advanceTimersByTimeAsync(12000);
+			expect(fetchMock).not.toHaveBeenCalled();
+			vi.stubGlobal('document', { visibilityState: 'visible' });
+			await vi.advanceTimersByTimeAsync(4000);
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+		} finally {
+			stop();
+			vi.unstubAllGlobals();
+			vi.useRealTimers();
+		}
+	});
+
 	it('a recovered turn with no slot yet reads as queued, and stops once it has one', () => {
 		// The iOS-suspension case on a max_concurrent=1 endpoint: the page reloads
 		// onto a turn that is registered but still waiting behind the gate. It

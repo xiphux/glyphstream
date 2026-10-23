@@ -16,8 +16,10 @@ arrived.
   data. Download and Share still give the original.
 - Less mobile data: the image an image-model chat attaches to the composer no
   longer downloads the full original just to show its preview, charts and other
-  images from the code interpreter load a smaller copy, and the model picker
-  doesn't re-download the model list on each launch when it hasn't changed.
+  images from the code interpreter load a smaller copy, the model picker
+  doesn't re-download the model list on each launch when it hasn't changed, and
+  a multi-model comparison waiting on its last results downloads each finished
+  one only once, and stops checking while the app is in the background.
 
 ### Fixed
 

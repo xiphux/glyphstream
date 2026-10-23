@@ -35,6 +35,7 @@ import { errorMessageFromResponse } from './fetch-error';
 import { clearTitlePending, markTitlePending } from './title-pending.svelte';
 import type {
 	ChatMessage,
+	ConversationRecoveryPoll,
 	FanoutRecoveryState,
 	MessagePart,
 	ModelEntry,
@@ -1161,19 +1162,32 @@ export class FanoutController {
 
 	/** Poll the lightweight GET for fresh recovery state and rebuild the grid as
 	 *  branches land, stopping once none are pending. Returns a cleanup fn for the
-	 *  caller's $effect. */
+	 *  caller's $effect.
+	 *
+	 *  Skips its ticks while the page is hidden: nothing is drawn, and the next
+	 *  tick after a return catches the grid up. And it
+	 *  downloads each finished branch once — `held` keeps the copies it has, by
+	 *  the key the server names them with, and `have=` tells the server not to
+	 *  send those again (see `ConversationRecoveryPoll`). */
 	startRecoveryPoll(): () => void {
 		const id = this.#deps.convId();
 		let stopped = false;
+		const held = new Map<string, ChatMessage>();
+		// One request at a time: behind a slow connection a tick can outlast the
+		// interval, and a second one would only fetch the same answer.
+		let polling = false;
 		const interval = setInterval(async () => {
+			if (polling || globalThis.document?.visibilityState === 'hidden') return;
+			polling = true;
 			try {
 				// `?fanout=1` skips the conversation's message walk this poll has no
 				// use for. It carries a few small fields for its several callers
 				// (`fanout`, `inFlightSince`, `avatarDrawSince`); only `fanout` is
 				// read here.
-				const res = await fetch(`/api/conversations/${id}?fanout=1`);
+				const have = held.size > 0 ? `&have=${[...held.keys()].join(',')}` : '';
+				const res = await fetch(`/api/conversations/${id}?fanout=1${have}`);
 				if (stopped || !res.ok || this.#deps.convId() !== id) return;
-				const body = (await res.json()) as { fanout?: FanoutRecoveryState };
+				const body = (await res.json()) as ConversationRecoveryPoll;
 				const f = body.fanout;
 				if (!f?.parentMessageId) {
 					// Resolved/gone server-side — one full reload to reconcile.
@@ -1182,15 +1196,34 @@ export class FanoutController {
 					await refreshAll();
 					return;
 				}
+				// The server sent only the siblings it wasn't told were held; the keys
+				// list them all, in order, as `<id>.<hash>`. A key matching neither
+				// (`held` lost a copy it named) skips this tick, and the emptied
+				// `held` makes the next one ask for everything.
+				const sent = new Map(f.siblings.map((m) => [m.id, m]));
+				const next = new Map<string, ChatMessage>();
+				for (const key of body.siblingKeys) {
+					const m = held.get(key) ?? sent.get(key.slice(0, key.lastIndexOf('.')));
+					if (!m) {
+						held.clear();
+						return;
+					}
+					next.set(key, m);
+				}
+				held.clear();
+				for (const [key, m] of next) held.set(key, m);
+				const siblings = [...next.values()];
 				// Rebuild from fresh server truth (more done, fewer pending) — unless
 				// a live interaction (regenerate) has since taken over.
-				if (this.#canRebuildFromServer()) this.#rebuildFrom(f);
+				if (this.#canRebuildFromServer()) this.#rebuildFrom({ ...f, siblings });
 				if (f.pending === 0) {
 					stopped = true;
 					clearInterval(interval);
 				}
 			} catch {
 				// Transient — the next tick retries.
+			} finally {
+				polling = false;
 			}
 		}, 4000);
 		return () => {

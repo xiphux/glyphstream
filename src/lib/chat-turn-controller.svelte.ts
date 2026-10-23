@@ -816,6 +816,8 @@ export class ChatTurnController {
 		const id = this.#deps.convId();
 		let stopped = false;
 		const interval = setInterval(async () => {
+			// Skipped while hidden — nothing is drawn; the next tick catches up.
+			if (globalThis.document?.visibilityState === 'hidden') return;
 			try {
 				const res = await fetch(`/api/conversations/${id}?fanout=1`);
 				if (stopped || !res.ok) return;
