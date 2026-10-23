@@ -14,6 +14,7 @@ import {
 } from '#lib/server/auth/app-lock.js';
 import { APP_LOCK_KEEPALIVE_PATH } from '#lib/app-lock.js';
 import { maybeCompressResponse, maybeCompressStream } from '#lib/server/compression.js';
+import { STREAM_GZIP_COOKIE, STREAM_PROBE_PATH } from '#lib/stream-probe.js';
 import { applySecurityHeaders } from '#lib/server/security-headers.js';
 import { consumeRateLimitToken } from '#lib/server/rate-limit.js';
 import { routedPathname } from '#lib/server/util/request-path.js';
@@ -547,7 +548,14 @@ const compression: Handle = async ({ event, resolve }) => {
 	// Streams are compressed separately, on by default (COMPRESS_STREAMS): gzip
 	// flushed per event, so nothing is buffered. Only wraps the body here; the
 	// compressing happens as frames are written, so `zip` doesn't include it.
-	if (SHOULD_COMPRESS_STREAMS) out = maybeCompressStream(out, event.request);
+	// Skipped for a client whose own probe found compressed streams held back
+	// on its network (`#lib/stream-probe.ts`) — except on the probe itself,
+	// which has to keep testing.
+	const clientOptedOut =
+		event.cookies.get(STREAM_GZIP_COOKIE) === '0' && event.url.pathname !== STREAM_PROBE_PATH;
+	if (SHOULD_COMPRESS_STREAMS && !clientOptedOut) {
+		out = maybeCompressStream(out, event.request);
+	}
 	const timing = timings.get(event.locals);
 	if (timing) timing.zipMs = performance.now() - zipStart;
 	return out;

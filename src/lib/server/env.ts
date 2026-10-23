@@ -353,10 +353,9 @@ export function compressDynamicResponses(): boolean {
  * `maybeCompressStream` in src/lib/server/compression.ts. Default ON, unlike
  * COMPRESS_DYNAMIC: a proxy compressing dynamic responses still leaves the
  * streams alone (`no-transform`, and nginx's default `gzip_types` excludes
- * them), so this is the only thing that ever compresses them. Set
- * COMPRESS_STREAMS=0 if something between here and the browser buffers a
- * compressed stream — replies would then arrive all at once instead of
- * streaming.
+ * them), so this is the only thing that ever compresses them. A browser whose
+ * network buffers compressed streams opts itself out on launch
+ * (`#lib/stream-probe.ts`); COMPRESS_STREAMS=0 turns it off for everyone.
  */
 export function compressStreamingResponses(): boolean {
 	const v = readString('COMPRESS_STREAMS', '').toLowerCase();

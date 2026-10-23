@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { applyStreamProbeResult, probeStreamCompression } from '#lib/stream-probe.js';
 	import { stripModelOwner } from '#lib/model-ids.js';
 	import type { LayoutData } from './$types';
 	import { browser } from '$app/env';
@@ -72,6 +73,10 @@
 		// the model is told the SERVER's date, which can be the wrong day. No-ops
 		// unless the browser's zone actually differs from what's stored.
 		void syncTimeZone(data.prefs);
+		// Whether gzipped streams reach this client as they're written; turns
+		// their compression off for this browser if something on its network
+		// holds them back. Background, once per launch — see `#lib/stream-probe.ts`.
+		void probeStreamCompression().then(applyStreamProbeResult);
 	});
 
 	// Pull the deferred half of the layout payload. The initial document ships

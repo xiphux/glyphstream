@@ -15,8 +15,9 @@ arrived.
   full original, so swiping through results on a phone is much faster on mobile
   data. Download and Share still give the original.
 - Streaming replies use much less mobile data: they're compressed and sent a few
-  words at a time instead of a token per message. Operators whose proxy buffers
-  compressed streams can turn the compression off with `COMPRESS_STREAMS=0`.
+  words at a time instead of a token per message. A browser whose network would
+  hold compressed streams back notices on launch and skips the compression;
+  `COMPRESS_STREAMS=0` turns it off for everyone.
 - Less mobile data elsewhere too: the composer's preview of an auto-attached
   image, code-interpreter charts, the model list on each launch, and a
   multi-model comparison waiting on its last results.
