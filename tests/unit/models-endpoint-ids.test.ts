@@ -37,13 +37,18 @@ function model(id: string) {
 	return { id, endpointId, upstreamId, displayName: upstreamId, kind: 'chat' };
 }
 
-async function get(ids: string | null, role: 'admin' | 'user' = 'user') {
+function call(ids: string | null, role: 'admin' | 'user' = 'user', headers: HeadersInit = {}) {
 	const url = new URL(`http://x/api/models${ids === null ? '' : `?ids=${ids}`}`);
-	const res = await GET({
+	return GET({
 		locals: { user: { id: 'u1', role } },
 		url,
-	} as unknown as Parameters<typeof GET>[0]);
-	return (await (res as Response).json()) as {
+		request: new Request(url, { headers }),
+	} as unknown as Parameters<typeof GET>[0]) as Promise<Response>;
+}
+
+async function get(ids: string | null, role: 'admin' | 'user' = 'user') {
+	const res = await call(ids, role);
+	return (await res.json()) as {
 		data: Array<{ id: string }>;
 		endpoint_errors: Array<{ endpointId: string; error: string }>;
 	};
@@ -130,5 +135,32 @@ describe('GET /api/models — error detail is for admins', () => {
 			status: 500,
 			body: { message: `Endpoint configuration is invalid: ${detail}` },
 		});
+	});
+});
+
+describe('GET /api/models — the full listing revalidates', () => {
+	it('answers 304 with no body when the client holds the same catalogue', async () => {
+		// Hundreds of KB on an aggregator endpoint, fetched on every page load's
+		// first picker open: a repeat costs a header, not the catalogue.
+		mocks.results.mockReturnValue([{ endpointId: 'ep', models: [model('ep::a')] }]);
+		const first = await call(null);
+		const etag = first.headers.get('ETag')!;
+		expect(etag).toMatch(/^"[\w-]+"$/);
+		expect(first.headers.get('Cache-Control')).toBe('private, no-cache');
+
+		// As the browser sends it back once compression has weakened it.
+		const again = await call(null, 'user', { 'If-None-Match': `W/${etag}` });
+		expect(again.status).toBe(304);
+		expect(await again.text()).toBe('');
+	});
+
+	it('sends the new catalogue when a model has been added', async () => {
+		mocks.results.mockReturnValue([{ endpointId: 'ep', models: [model('ep::a')] }]);
+		const etag = (await call(null)).headers.get('ETag')!;
+		mocks.results.mockReturnValue([{ endpointId: 'ep', models: [model('ep::a'), model('ep::b')] }]);
+		const res = await call(null, 'user', { 'If-None-Match': etag });
+		expect(res.status).toBe(200);
+		expect(res.headers.get('ETag')).not.toBe(etag);
+		expect(((await res.json()) as { data: unknown[] }).data).toHaveLength(2);
 	});
 });

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { error } from '@sveltejs/kit';
 
 /**
@@ -50,4 +51,25 @@ export function requireMaxLength<T extends string | undefined>(
 export function requireMaxItems<T>(list: T[], field: string, max: number): T[] {
 	if (list.length > max) error(400, `'${field}' may hold at most ${max} entries`);
 	return list;
+}
+
+/**
+ * `Response.json`, revalidated by content: an ETag over the body, and a 304
+ * with no body when the client already holds exactly that. For a response that
+ * is large and rarely changes but must never be served stale — the browser
+ * still asks every time (`no-cache`), it just doesn't download the same bytes
+ * again.
+ *
+ * `If-None-Match` is compared weakly: `compression.ts` marks the ETag weak once
+ * it compresses the body, so that is the form the browser sends back.
+ */
+export function jsonRevalidated(request: Request, body: unknown): Response {
+	const json = JSON.stringify(body);
+	const etag = `"${createHash('sha256').update(json).digest('base64url')}"`;
+	const headers = { ETag: etag, 'Cache-Control': 'private, no-cache' };
+	const sent = request.headers.get('if-none-match');
+	if (sent && sent.split(',').some((t) => t.trim().replace(/^W\//, '') === etag)) {
+		return new Response(null, { status: 304, headers });
+	}
+	return new Response(json, { headers: { ...headers, 'Content-Type': 'application/json' } });
 }

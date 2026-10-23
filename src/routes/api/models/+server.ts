@@ -8,9 +8,10 @@ import {
 	endpointErrorForViewer,
 	listAllModelsWithErrors,
 } from '#lib/server/endpoints/list-models.js';
+import { jsonRevalidated } from '#lib/server/http.js';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = async ({ locals, url }) => {
+export const GET: RequestHandler = async ({ locals, url, request }) => {
 	requireUser(locals);
 
 	// Surface a ConfigError as a 500 here (rather than degrading to []
@@ -92,7 +93,11 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		.filter((r) => r.error)
 		.map((r) => ({ endpointId: r.endpointId, error: viewerError(r.error!) }));
 
-	return Response.json({
+	// Revalidated rather than cached for a time: the full catalogue is hundreds of
+	// KB on an aggregator endpoint, re-fetched on the first picker open of every
+	// page load (every cold PWA launch), and almost always unchanged — but a model
+	// added upstream must show up on the next open, not after an expiry.
+	return jsonRevalidated(request, {
 		object: 'list',
 		data: allModels,
 		// Per-endpoint errors surface here so a single broken upstream

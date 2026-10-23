@@ -15,8 +15,9 @@ arrived.
   full original, so swiping through results on a phone is much faster on mobile
   data. Download and Share still give the original.
 - Less mobile data: the image an image-model chat attaches to the composer no
-  longer downloads the full original just to show its preview, and charts and
-  other images from the code interpreter load a smaller copy.
+  longer downloads the full original just to show its preview, charts and other
+  images from the code interpreter load a smaller copy, and the model picker
+  doesn't re-download the model list on each launch when it hasn't changed.
 
 ### Fixed
 
