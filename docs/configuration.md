@@ -822,8 +822,8 @@ The annotated [`.env.example`](../.env.example) is canonical. Highlights:
 - `MCP_SECRET_KEY` — optional; encrypts per-user MCP credentials at rest.
   Defaults to `AUTH_SECRET`, so per-user MCP needs no extra setup — set it
   only to rotate that encryption independently ([MCP guide](mcp.md#authentication)).
-- `COMPRESS_DYNAMIC` — compress SSR HTML + API JSON in-process when the
-  reverse proxy can't ([deployment guide](deployment.md)).
+- `COMPRESS_DYNAMIC` — compress SSR HTML + API JSON in-process. On by default;
+  `0` turns it off ([deployment guide](deployment.md)).
 - `COMPRESS_STREAMS` — gzip streaming replies in-process, flushed per event. On
   by default, and each browser opts itself out if its network buffers them;
   `0` turns it off for everyone ([deployment guide](deployment.md#streaming-response-compression-compress_streams)).

@@ -536,9 +536,8 @@ const serverTiming: Handle = async ({ event, resolve }) => {
  */
 const compression: Handle = async ({ event, resolve }) => {
 	const response = await resolve(event);
-	// Optional on-the-fly gzip for SSR + JSON, off by default. Use only
-	// when no compression-capable proxy is in front (Synology). See the
-	// COMPRESS_DYNAMIC docstring in env.ts. SSE responses are excluded
+	// On-the-fly compression for SSR + JSON, on by default (COMPRESS_DYNAMIC=0
+	// turns it off; see its docstring in env.ts). SSE responses are excluded
 	// inside maybeCompressResponse — the chat-stream UI depends on
 	// unbuffered delivery.
 	const zipStart = performance.now();

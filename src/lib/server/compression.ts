@@ -7,11 +7,9 @@
  * at build time by adapter-node, so this only fires on SSR pages and
  * API responses.
  *
- * Gated by the COMPRESS_DYNAMIC env var; default off. When a proxy IS
- * doing dynamic compression, leaving this off avoids the proxy
- * re-compressing what we already encoded (proxies typically skip
- * already-encoded responses, but the round trip still costs CPU on the
- * app side for no net gain).
+ * Gated by the COMPRESS_DYNAMIC env var; default on (see its docstring in
+ * env.ts — a proxy in front skips a response that is already encoded, so
+ * nothing is compressed twice).
  *
  * Critical exclusion: text/event-stream MUST NOT be gzip-buffered. The
  * chat page relies on each SSE event reaching the browser at flush

@@ -18,6 +18,10 @@ arrived.
   words at a time instead of a token per message. A browser whose network would
   hold compressed streams back notices on launch and skips the compression;
   `COMPRESS_STREAMS=0` turns it off for everyone.
+- Pages and their data are now compressed by GlyphStream itself by default
+  (`COMPRESS_DYNAMIC`), so a proxy that can't compress no longer leaves them
+  uncompressed. A proxy that does compress passes them through untouched; set
+  `COMPRESS_DYNAMIC=0` to leave it to the proxy instead.
 - Less mobile data elsewhere too: the composer's preview of an auto-attached
   image, code-interpreter charts, the model list on each launch, and a
   multi-model comparison waiting on its last results.

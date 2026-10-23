@@ -279,19 +279,21 @@ unchanged. Tested with:
   Source: `https://glyphstream.{your}.synology.me:443` → Destination:
   `localhost:3000`. Tick "Enable HTTP/2". Synology manages the cert via
   Let's Encrypt for `*.synology.me`. Synology does NOT expose a
-  dynamic-compression option — set `COMPRESS_DYNAMIC=1` in `.env` (see
-  below) to compress SSR HTML + API JSON inside GlyphStream instead.
+  dynamic-compression option; GlyphStream compresses SSR HTML + API JSON
+  itself by default (`COMPRESS_DYNAMIC`, below).
 - **Caddy** — `glyphstream.example.com { reverse_proxy 127.0.0.1:3000 }`.
   Auto-TLS, HTTP/2 + HTTP/3 on by default. Caddy compresses dynamic
-  responses automatically and skips already-encoded static ones — no need to
-  set `COMPRESS_DYNAMIC`.
+  responses automatically and skips already-encoded ones, so it and
+  `COMPRESS_DYNAMIC` never both compress the same response.
 - **Nginx** — `proxy_pass http://127.0.0.1:3000;` + `listen 443 ssl http2;`.
   Don't enable `gzip on` for the static `/_app/immutable/*` location or
-  you'll double-compress; do enable it for the dynamic paths (or set
-  `COMPRESS_DYNAMIC=1` and skip nginx-side gzip entirely). `gzip on` alone
-  compresses only `text/html`: add `gzip_types application/json;`, or every
-  page-data and API response still goes out uncompressed. Don't add
-  `text/event-stream` to it, so chat streaming isn't buffered.
+  you'll double-compress. Dynamic responses need nothing: GlyphStream
+  compresses them itself by default (`COMPRESS_DYNAMIC`), and nginx leaves an
+  already-encoded response alone. If you set `COMPRESS_DYNAMIC=0` to compress
+  in nginx instead, note `gzip on` alone compresses only `text/html`: add
+  `gzip_types application/json;`, or every page-data and API response goes out
+  uncompressed. Don't add `text/event-stream` to it, so chat streaming isn't
+  buffered.
 - **Cloudflare Tunnel** — works as a transparent passthrough. Cloudflare
   compresses dynamic responses at the edge automatically.
 
@@ -343,16 +345,17 @@ falls back to the shared bucket rather than erroring.
 
 ## Dynamic-response compression (`COMPRESS_DYNAMIC`)
 
-Off by default — most reverse proxies (Caddy, nginx with proper config,
-Cloudflare) compress dynamic responses themselves, and doing it in both
-places is wasted CPU. Turn it on when the proxy in front _can't_ compress
-(Synology's built-in proxy is the canonical case):
+On by default. A reverse proxy that compresses dynamic responses itself (Caddy,
+nginx, Cloudflare) passes one that is already compressed straight through, so
+nothing is compressed twice — the work just happens here instead of there. One
+that _can't_ compress (Synology's built-in proxy) needs nothing set. To leave it
+to the proxy instead:
 
 ```
-COMPRESS_DYNAMIC=1
+COMPRESS_DYNAMIC=0
 ```
 
-When enabled, GlyphStream picks the best codec the client advertises:
+GlyphStream picks the best codec the client advertises:
 **zstd > brotli > gzip**. zstd at default level is the fastest of the three
 on modern CPUs; the fallbacks cover older browsers. SSE
 (`text/event-stream`) is skipped here — it has its own setting, below. Static `/_app/immutable/*` assets are already
@@ -362,7 +365,7 @@ The iOS launch-image block in `app.html` raises the stakes here. It adds ~21 KB
 of `<link>` markup to **every** HTML document — that's most of a short page, and
 it can push the response from two slow-start flights to four on a cold mobile
 connection. Compressed it collapses to ~750 bytes brotli / ~1.3 KB gzip, so it's
-effectively free the moment either the proxy or `COMPRESS_DYNAMIC=1` is
+effectively free the moment either the proxy or `COMPRESS_DYNAMIC` is
 compressing. Uncompressed, it's a per-document floor you pay forever.
 
 **Checking whether anything is compressing at all.** Open a long conversation,
@@ -430,7 +433,7 @@ When `Server (SSR)` is the large number, several readings narrow it down:
 - The breakdown under it splits that total into `auth` (the session lookup,
   which on a process's first request also carries the lazy SQLite open and
   migration), `render` (load functions plus the SSR render), and `zip`
-  (`COMPRESS_DYNAMIC`, omitted when it isn't on).
+  (`COMPRESS_DYNAMIC`, omitted when it took under a millisecond or is off).
 - **Server uptime**, in the Environment section, is how long the Node process
   had been running when it served that page. A slow render on a process that is
   seconds old is a cold start — the first request after a restart pays for the

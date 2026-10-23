@@ -224,9 +224,9 @@ describe('buildDebugSections — server phase breakdown', () => {
 	});
 
 	it('omits compression when it did no work', () => {
-		// COMPRESS_DYNAMIC is off by default, so `zip` is a sub-millisecond
-		// passthrough on most deployments. A permanent "zip 0 ms" reads as a
-		// measured cost rather than a feature that isn't switched on.
+		// With COMPRESS_DYNAMIC off, or a response under the size floor, `zip` is
+		// a sub-millisecond passthrough. A permanent "zip 0 ms" reads as a
+		// measured cost rather than work that wasn't done.
 		const rows = rowsOf(
 			timed([
 				{ name: 'auth', duration: 4 },

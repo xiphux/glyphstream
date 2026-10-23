@@ -455,9 +455,11 @@ exact-match `apple-touch-startup-image` media query.
   double-compresses. **This does not extend to dynamic responses** — SSR HTML
   and `__data.json` are generated per request and are never precompressed, and
   they're the big ones (a long chat's payload dwarfs the JS bundle). Something
-  must compress them: either the proxy, or `COMPRESS_DYNAMIC=1` (see
-  `server/compression.ts`), which is off by default on the assumption the proxy
-  is doing it. Read as blanket advice, this bullet used to leave both sides off.
+  must compress them: `COMPRESS_DYNAMIC` (see `server/compression.ts`) does by
+  default, and a proxy in front passes an already-encoded response through, so
+  nothing is compressed twice. It used to default off on the assumption the
+  proxy was doing it; read as blanket advice, this bullet once left both sides
+  off.
 - **Allowlist by numeric GitHub user ID, not username.** Usernames can be
   deleted and re-registered by someone else.
 - **Anything `scripts/` reaches must load under plain `node`** — `schema.ts`

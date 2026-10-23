@@ -269,8 +269,9 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 		// Load functions + SSR render — where a load blocking on something
 		// off-box shows up.
 		if (render !== null) breakdown.push(`render ${ms(render)}`);
-		// Omitted below a millisecond: COMPRESS_DYNAMIC is off by default, and
-		// a permanent "zip 0 ms" reads as a measurement rather than an opt-out.
+		// Omitted below a millisecond: with COMPRESS_DYNAMIC off, or a response
+		// too small to compress, a permanent "zip 0 ms" reads as a measurement
+		// rather than a skip.
 		if (zip !== null && zip >= 1) breakdown.push(`zip ${ms(zip)}`);
 
 		// CPU the server actually burned, against the wall clock `ssr` reports.

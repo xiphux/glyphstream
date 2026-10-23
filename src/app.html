@@ -127,8 +127,9 @@
 			 render-blocking reference on the page, and the generated block below
 			 is ~21 KB of markup. Below it, the preload scanner couldn't reach the
 			 CSS until byte ~27,000 instead of ~6,300 — and with COMPRESS_DYNAMIC
-			 off and no compressing proxy (the default, and a state this project
-			 has shipped in) that pushes it out of the initial congestion window,
+			 off and no compressing proxy (the default until it was flipped on, and
+			 a state this project has shipped in) that pushes it out of the
+			 initial congestion window,
 			 costing a round trip on exactly the cold launch the splash exists to
 			 improve. It must still come AFTER the favicon link above, though:
 			 the root layout emits its own hashed `rel="icon"` inside this

@@ -334,25 +334,28 @@ export function validateAuthMethodsEnabled(): void {
 
 /**
  * On-the-fly compression for dynamic responses (SSR HTML, JSON API).
- * Default off: most deploys put a reverse proxy in front (Caddy / nginx)
- * which compresses dynamic responses there, and leaving this off avoids
- * the round-trip cost of compressing twice.
+ * Default ON. It used to default off, on the theory that a proxy in front
+ * compresses and doing it twice is waste — but it never happens twice:
+ * nginx, Caddy, Traefik and Cloudflare all pass a response that already has
+ * a Content-Encoding untouched. So on, the work just moves from the proxy to
+ * here (usually the same box), with a better codec than a proxy's default
+ * gzip; and the deploy whose proxy CAN'T compress (Synology's built-in one)
+ * no longer ships every page and payload raw until someone finds this flag.
  *
- * Set COMPRESS_DYNAMIC=1 when the proxy in front *can't* compress —
- * Synology's built-in reverse proxy is the canonical case. See
- * src/lib/server/compression.ts for the skip rules (SSE is skipped here; it
- * has its own per-event-flushed path, COMPRESS_STREAMS).
+ * COMPRESS_DYNAMIC=0 turns it off, for a proxy you'd rather spend the CPU.
+ * See src/lib/server/compression.ts for the skip rules (SSE is skipped here;
+ * it has its own per-event-flushed path, COMPRESS_STREAMS).
  */
 export function compressDynamicResponses(): boolean {
 	const v = readString('COMPRESS_DYNAMIC', '').toLowerCase();
-	return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+	return !(v === '0' || v === 'false' || v === 'no' || v === 'off');
 }
 
 /**
  * Gzip streaming (SSE) responses in-process, flushed per event — see
- * `maybeCompressStream` in src/lib/server/compression.ts. Default ON, unlike
- * COMPRESS_DYNAMIC: a proxy compressing dynamic responses still leaves the
- * streams alone (`no-transform`, and nginx's default `gzip_types` excludes
+ * `maybeCompressStream` in src/lib/server/compression.ts. Default ON, and
+ * separate from COMPRESS_DYNAMIC: a proxy compressing dynamic responses still
+ * leaves the streams alone (`no-transform`, and nginx's default `gzip_types` excludes
  * them), so this is the only thing that ever compresses them. A browser whose
  * network buffers compressed streams opts itself out on launch
  * (`#lib/stream-probe.ts`); COMPRESS_STREAMS=0 turns it off for everyone.
