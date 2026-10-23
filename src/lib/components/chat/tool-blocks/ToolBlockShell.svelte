@@ -99,8 +99,14 @@
 	<div class="mt-2 flex flex-wrap gap-2">
 		{#each attachments as att (att.mediaId)}
 			{#if att.type === 'image'}
+				<!--
+					The display copy: a WebP no larger than 1280px, or the original where
+					that wouldn't be smaller, and an SVG as itself. A chart from a
+					high-dpi savefig is several times smaller this way, with its text
+					indistinguishable at q82.
+				-->
 				<img
-					src="/api/media/{att.mediaId}/content"
+					src="/api/media/{att.mediaId}/display"
 					alt=""
 					loading="lazy"
 					class="block h-auto max-h-[60vh] w-auto max-w-full rounded-md"

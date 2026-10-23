@@ -140,3 +140,13 @@ describe('ToolBlockShell — user toggles vs. status sync', () => {
 		expect(isOpen(container)).toBe(false);
 	});
 });
+
+describe('ToolBlockShell — generated attachments', () => {
+	it('shows an image output from its display copy, not the original', () => {
+		// A high-dpi chart is several times smaller as the display WebP.
+		const { container } = render(ToolCallBlock, {
+			props: { ...base, status: 'done', attachments: [{ type: 'image', mediaId: 'c1' }] },
+		});
+		expect(container.querySelector('img')?.getAttribute('src')).toBe('/api/media/c1/display');
+	});
+});
