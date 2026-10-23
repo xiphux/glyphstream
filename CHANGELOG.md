@@ -9,6 +9,11 @@ arrived.
 
 ## Unreleased
 
+### Fixed
+
+- Swiping through images in the lightbox on iOS no longer lands on a black
+  slide while the next image loads: the images either side now load ahead.
+
 ## v0.48.0
 
 ### Changed

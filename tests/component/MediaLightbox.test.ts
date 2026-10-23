@@ -1470,8 +1470,8 @@ describe('MediaLightbox — slide windowing', () => {
 	/**
 	 * `siblings` is every unit demand-loaded this gallery session, so after a deep
 	 * scroll the carousel track was mounting thousands of full-resolution <img>
-	 * elements at once. `loading="lazy"` stops them all being fetched, but they're
-	 * still elements the browser must create, style and lay out on open.
+	 * elements at once — elements the browser must create, style, lay out and
+	 * (now that mounted slides load eagerly) fetch on open.
 	 *
 	 * The slot divs have to stay — the track is scroll-snap and `onTrackScroll`
 	 * maps scroll offset back to an index, so slicing the array would shift every
@@ -1497,7 +1497,14 @@ describe('MediaLightbox — slide windowing', () => {
 		expect(slots.length).toBe(400);
 	});
 
-	it('loads the current slide eagerly and its neighbours lazily', () => {
+	/**
+	 * The neighbours must preload so a swipe lands on a decoded image. They sit
+	 * in the track's horizontal overflow, which iOS WebKit's lazy-load threshold
+	 * doesn't reach into — `loading="lazy"` there deferred each fetch until the
+	 * slide was already on screen, showing black for a beat. The window bounds
+	 * the fetches; priority keeps the current slide first.
+	 */
+	it('preloads the mounted neighbours, with the current slide first', () => {
 		const { container } = render(MediaLightbox, {
 			props: {
 				media: makeImage({ id: 'w-200' }),
@@ -1506,10 +1513,12 @@ describe('MediaLightbox — slide windowing', () => {
 				onNavigate: vi.fn(),
 			},
 		});
-		const eager = container.querySelectorAll('img[loading="eager"]');
-		expect(eager.length, 'exactly one slide should load eagerly').toBe(1);
-		expect(eager[0].getAttribute('src')).toContain('w-200');
-		expect(eager[0].getAttribute('fetchpriority')).toBe('high');
+		const imgs = [...container.querySelectorAll('img[src*="/api/media/"]')];
+		expect(imgs.length).toBeGreaterThan(1);
+		expect(imgs.filter((img) => img.getAttribute('loading') === 'lazy')).toHaveLength(0);
+		const high = imgs.filter((img) => img.getAttribute('fetchpriority') === 'high');
+		expect(high, 'exactly one slide should fetch at high priority').toHaveLength(1);
+		expect(high[0].getAttribute('src')).toContain('w-200');
 	});
 });
 

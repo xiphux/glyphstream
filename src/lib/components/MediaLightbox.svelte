@@ -1085,9 +1085,9 @@
 				Carousel mode. A horizontal scroll-snap track is the whole
 				gesture engine: native momentum swiping on touch, two-finger
 				swipe on a trackpad, zero drag-tracking JS. Each slide is
-				full-width and snap-centered; off-screen slides keep their
-				<img loading="lazy"> so a long set doesn't fetch every
-				original up front. `onTrackScroll` reports the slide a swipe
+				full-width and snap-centered; only slides within SLIDE_WINDOW
+				of the current one mount their media, so a long set doesn't
+				fetch every image up front. `onTrackScroll` reports the slide a swipe
 				is heading for back to the caller, which swaps `media`. Videos
 				render with controls but NOT autoplay here (unlike the
 				single-item view) — autoplaying the centered one as you swipe
@@ -1163,12 +1163,16 @@
 								></video>
 							{:else}
 								<!--
-									The slide being LOOKED AT loads eagerly at high priority; its
-									neighbours stay lazy so they're ready on a swipe without
-									competing. Marking the current one `lazy` too meant every open
-									and every arrow press waited a full round trip on a blank
-									slide, because the browser only starts the fetch once the
-									element is near the viewport.
+									Every MOUNTED slide loads eagerly — the SLIDE_WINDOW is what
+									bounds the fetches, not `loading`. The slide being looked at
+									gets high priority so its neighbours don't compete with it.
+									`loading="lazy"` on the neighbours meant they never preloaded:
+									they sit in the track's horizontal overflow, and iOS WebKit's
+									lazy threshold doesn't reach into a clipped scroller, so the
+									fetch only started once a swipe brought the slide on screen —
+									a black slide for a beat, on any image the chat or gallery
+									hadn't already put in cache. (Lazy on the current slide had
+									the same effect on every open and arrow press.)
 
 									Sized from the slide entry, never from `m`: `m` swaps to the
 									landing slide mid-swipe, and a slide whose srcset appeared then
@@ -1180,9 +1184,8 @@
 								     decides what (and whether) to fetch. Set first, a browser
 								     that starts loading on `src` (Safari is reported to) fetches
 								     the 1280 copy before it has seen the srcset, and an eager
-								     fetch before `loading="lazy"`. -->
+								     fetch before `fetchpriority`. -->
 								<img
-									loading={i === currentIndex ? 'eager' : 'lazy'}
 									fetchpriority={i === currentIndex ? 'high' : 'low'}
 									sizes={r?.sizes}
 									srcset={r?.srcset}
