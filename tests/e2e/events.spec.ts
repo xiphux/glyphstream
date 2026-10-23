@@ -227,7 +227,7 @@ test.describe('event: autoattach state machine on branch switches', () => {
 		const composerThumb = page.locator('form img[src*="/api/media/"]').first();
 		const attachedMediaId = async () => {
 			const src = await composerThumb.getAttribute('src');
-			const m = src?.match(/\/api\/media\/([^/]+)\/content/);
+			const m = src?.match(/\/api\/media\/([^/]+)\/display/);
 			return m ? m[1] : null;
 		};
 
