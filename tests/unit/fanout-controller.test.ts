@@ -1918,6 +1918,43 @@ describe('FanoutController — recovery poll', () => {
 		}
 	});
 
+	it('abandons a request that hangs, so the next tick can poll again', async () => {
+		// A half-open request (a network switch) must not hold the one-at-a-time
+		// guard until the browser gives up. AbortSignal.timeout runs on timers the
+		// fake clock doesn't drive, so the test fires it by hand.
+		const timeout = new AbortController();
+		const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeout.signal);
+		const urls: string[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn((url: string, init?: RequestInit) => {
+				urls.push(url);
+				return new Promise<Response>((_, reject) =>
+					init?.signal?.addEventListener('abort', () => reject(new Error('aborted'))),
+				);
+			}),
+		);
+		const fc = new FanoutController(makeDeps().deps);
+		const stop = fc.startRecoveryPoll();
+		try {
+			await vi.advanceTimersByTimeAsync(4000);
+			expect(urls).toHaveLength(1);
+			expect(timeoutSpy).toHaveBeenCalledWith(10_000);
+			// Still hanging: the ticks in between are skipped.
+			await vi.advanceTimersByTimeAsync(8000);
+			expect(urls).toHaveLength(1);
+			// The timeout drops it, and the next tick polls again.
+			timeout.abort(new DOMException('timed out', 'TimeoutError'));
+			await vi.advanceTimersByTimeAsync(4000);
+			expect(urls).toHaveLength(2);
+		} finally {
+			stop();
+			timeoutSpy.mockRestore();
+			vi.unstubAllGlobals();
+			vi.useRealTimers();
+		}
+	});
+
 	it('does not poll while the page is hidden', async () => {
 		const urls = pollServer({ siblings: [], versions: {}, pending: 1 });
 		vi.stubGlobal('document', { visibilityState: 'hidden' });

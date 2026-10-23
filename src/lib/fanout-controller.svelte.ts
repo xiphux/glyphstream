@@ -100,6 +100,10 @@ interface PendingBranch {
 /** Per-pending-branch descriptors (aligned with `pendingModelIds`/`pending`):
  *  each branch is QUEUED (no start time yet, waiting on the gate) or
  *  generating-with-a-timer (start time set). */
+/** Longer than any healthy recovery poll; past it the tick is abandoned and
+ *  the next one retries. */
+const RECOVERY_POLL_TIMEOUT_MS = 10_000;
+
 function pendingBranches(f: FanoutRecoveryState): PendingBranch[] {
 	return f.pendingModelIds.map((modelId, i) => {
 		const startedAt = f.pendingStartedAt[i] ?? null;
@@ -1174,7 +1178,9 @@ export class FanoutController {
 		let stopped = false;
 		const held = new Map<string, ChatMessage>();
 		// One request at a time: behind a slow connection a tick can outlast the
-		// interval, and a second one would only fetch the same answer.
+		// interval, and a second one would only fetch the same answer. Bounded by
+		// a timeout, or a request left half-open by a network switch would hold
+		// the flag — and every tick after it — until the browser gave up.
 		let polling = false;
 		const interval = setInterval(async () => {
 			if (polling || globalThis.document?.visibilityState === 'hidden') return;
@@ -1185,7 +1191,9 @@ export class FanoutController {
 				// (`fanout`, `inFlightSince`, `avatarDrawSince`); only `fanout` is
 				// read here.
 				const have = held.size > 0 ? `&have=${[...held.keys()].join(',')}` : '';
-				const res = await fetch(`/api/conversations/${id}?fanout=1${have}`);
+				const res = await fetch(`/api/conversations/${id}?fanout=1${have}`, {
+					signal: AbortSignal.timeout(RECOVERY_POLL_TIMEOUT_MS),
+				});
 				if (stopped || !res.ok || this.#deps.convId() !== id) return;
 				const body = (await res.json()) as ConversationRecoveryPoll;
 				const f = body.fanout;
