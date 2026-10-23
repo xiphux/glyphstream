@@ -10,7 +10,16 @@ import { getAllFeatureCategoryLabels } from '#lib/server/feature-catalog.js';
 import { isMcpReady } from '#lib/server/mcp/bootstrap.js';
 import { filterFullyQueued, filterInFlight } from '#lib/server/streaming/in-flight.js';
 import { timeDb } from '#lib/server/util/db-timing.js';
+import type { LayoutPreferences, UserPreferences } from '#lib/types/api.js';
 import type { LayoutServerLoad } from './$types';
+
+function withoutFreeText({
+	aboutYou: _a,
+	customInstructions: _c,
+	...rest
+}: UserPreferences): LayoutPreferences {
+	return rest;
+}
 
 export const load: LayoutServerLoad = async ({ locals, url, depends, isDataRequest }) => {
 	if (!locals.user) redirectUnauthenticatedPage(locals, url);
@@ -152,7 +161,8 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 		// reload from repainting a whole queued backlog as actively running — on a
 		// one-model-at-a-time endpoint that's every row but one.
 		queuedGeneratingIds: filterFullyQueued(generatingIds),
-		prefs,
+		// Not `aboutYou` / `customInstructions`: see `LayoutPreferences`.
+		prefs: prefs && withoutFreeText(prefs),
 		defaultModelId,
 		// The entries first paint can render — the starting selection and the
 		// sidebar's favourites — and NOT the catalogue, on any load.
@@ -187,7 +197,8 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 		// the asymmetry that silently drops a favourited preset's system prompt on
 		// the PWA's cold launch. It is also the cheapest query here — a handful of
 		// rows per user — so it buys almost none of the win it would cost.
-		customModels,
+		// Without their system prompts: see `CustomModelSummary`.
+		customModels: customModels.map(({ systemPrompt: _, ...summary }) => summary),
 		// Hide per-user MCP servers the user hasn't connected — an inert toggle
 		// is confusing; they connect in Settings → MCP servers. Global servers
 		// always show.

@@ -17,7 +17,7 @@
 	import { mergeModelSet } from '#lib/model-sets.js';
 	import { capabilityPill, acceptsImageInput } from '#lib/model-capabilities.js';
 	import type { ImageAttachment } from '#lib/model-capabilities.js';
-	import type { CustomModel, ModelEntry, ModelKind, SavedModelSet } from '#lib/types/api.js';
+	import type { CustomModelSummary, ModelEntry, ModelKind, SavedModelSet } from '#lib/types/api.js';
 
 	interface Props {
 		models: ModelEntry[];
@@ -26,7 +26,7 @@
 		 * at the top of the unfiltered view. Each preset's selected value is
 		 * `custom::{customModelId}` so the consumer can branch on the prefix.
 		 */
-		customModels?: CustomModel[];
+		customModels?: CustomModelSummary[];
 		filterKinds?: readonly ModelKind[];
 		value?: string;
 		onChange?: (id: string) => void;

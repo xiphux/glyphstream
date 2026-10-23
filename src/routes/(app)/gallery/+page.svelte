@@ -25,7 +25,7 @@
 	import { MediaItemCache } from '#lib/media-item-cache.js';
 	import { computeSectionWindows, type WindowConstants } from '#lib/gallery-window.js';
 	import type {
-		CustomModel,
+		CustomModelSummary,
 		GalleryLayout,
 		GalleryUnit,
 		GalleryUnitsPage,
@@ -49,7 +49,7 @@
 			sort: 'relevance' | 'newest';
 			/** From the (app) layout — the presets an image can be made the
 			 *  avatar of. */
-			customModels: CustomModel[];
+			customModels: CustomModelSummary[];
 		};
 	} = $props();
 
@@ -699,7 +699,7 @@
 				body: JSON.stringify({ mediaId }),
 			});
 			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
-			const name = data.customModels.find((c: CustomModel) => c.id === target.id)?.name;
+			const name = data.customModels.find((c: CustomModelSummary) => c.id === target.id)?.name;
 			await invalidate('app:conversations');
 			toast.success(name ? `Avatar set for ${name}` : 'Avatar set');
 		} catch (e) {
@@ -1578,7 +1578,7 @@
 	onNavigate={openLightboxById}
 	onPrefetch={prefetchLightboxItem}
 	peekFavorite={(id: string) => (localLightboxItem(id) ?? lightboxItems.peek(id))?.favorite}
-	avatarTargets={data.customModels.map((c: CustomModel) => ({
+	avatarTargets={data.customModels.map((c: CustomModelSummary) => ({
 		kind: 'preset' as const,
 		id: c.id,
 		name: c.name,

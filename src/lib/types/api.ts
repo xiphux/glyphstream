@@ -904,6 +904,15 @@ export interface UserPreferences {
 	defaultDisabledFeatures: FeatureCategory[];
 }
 
+/**
+ * Preferences as the `(app)` layout ships them, to every page: without the two
+ * free-text personalization fields, which can run long and are read only by
+ * `/settings/preferences` (which loads them itself). Like the presets' prompts,
+ * they're composed into the system prompt server-side; the layout reloads on
+ * every turn and every app resume, so each byte here is paid again each time.
+ */
+export type LayoutPreferences = Omit<UserPreferences, 'aboutYou' | 'customInstructions'>;
+
 export interface ConversationSummary {
 	id: string;
 	title: string | null;
@@ -1016,6 +1025,15 @@ export interface CustomModel {
 	createdAt: number;
 	updatedAt: number;
 }
+
+/**
+ * A preset as the `(app)` layout ships it, to every page: everything but the
+ * system prompt. The layout reloads on every completed turn and every return to
+ * the app, and a character-card prompt runs to several KB per preset — re-sent
+ * each time for the one page that edits it (`/settings/models`, which loads
+ * full presets itself). The prompt is applied server-side at send time.
+ */
+export type CustomModelSummary = Omit<CustomModel, 'systemPrompt'>;
 
 export interface CreateCustomModelRequest {
 	name: string;

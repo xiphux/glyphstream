@@ -12,7 +12,7 @@
  * state is zero requests: this runs on every (app) page mount, and a PATCH per
  * navigation would be a silly price for a string that changes a few times a year.
  */
-import type { UserPreferences } from '#lib/types/api.js';
+import type { LayoutPreferences } from '#lib/types/api.js';
 
 /** The browser's zone, or null where `Intl` can't resolve one. */
 export function detectTimeZone(): string | null {
@@ -30,7 +30,7 @@ export function detectTimeZone(): string | null {
  * Failures are swallowed: this is a background nicety, and a user whose network
  * blipped should not see an error toast about their timezone.
  */
-export async function syncTimeZone(prefs: UserPreferences | null): Promise<string | null> {
+export async function syncTimeZone(prefs: LayoutPreferences | null): Promise<string | null> {
 	const detected = detectTimeZone();
 	if (!detected || detected === prefs?.timezone) return null;
 
