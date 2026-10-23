@@ -54,6 +54,18 @@ describe('probeStreamCompression', () => {
 		).toBe('unknown');
 	});
 
+	it('treats any other failure mid-read as a failed probe, not as buffering', async () => {
+		// A dropped connection or a suspended PWA says nothing about a buffer.
+		const dropped: typeof fetch = () =>
+			Promise.resolve(
+				new Response(
+					new ReadableStream({ pull: () => Promise.reject(new TypeError('network error')) }),
+					{ headers: { 'content-encoding': 'gzip' } },
+				),
+			);
+		expect(await probeStreamCompression(dropped)).toBe('unknown');
+	});
+
 	it('counts a stream that stalls before the first event as held back', async () => {
 		const stalled: typeof fetch = () =>
 			Promise.resolve(
@@ -95,36 +107,54 @@ describe('checkStreamCompression — the remembered answer', () => {
 	});
 
 	it('probes once, then reuses the answer for the rest of the week', async () => {
+		// A "buffered" is asked twice before it is believed: two requests.
 		const fetchImpl = vi.fn(respond([ONE + TWO]));
-		await checkStreamCompression(fetchImpl, 0);
-		expect(fetchImpl).toHaveBeenCalledTimes(1);
+		await checkStreamCompression(fetchImpl, 0, 0);
+		expect(fetchImpl).toHaveBeenCalledTimes(2);
 		expect(optedOut()).toBe(true);
 
-		await checkStreamCompression(fetchImpl, 6 * DAY);
-		expect(fetchImpl).toHaveBeenCalledTimes(1);
-
-		await checkStreamCompression(fetchImpl, 8 * DAY);
+		await checkStreamCompression(fetchImpl, 6 * DAY, 0);
 		expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+		await checkStreamCompression(fetchImpl, 8 * DAY, 0);
+		expect(fetchImpl).toHaveBeenCalledTimes(4);
+	});
+
+	it('believes the second probe when the first said buffered and it streams', async () => {
+		// Launch is when the page is busiest: a main thread held past the gap
+		// gets both events in one read. Once settled, the same network streams.
+		const fetchImpl = vi
+			.fn<typeof fetch>()
+			.mockImplementationOnce(respond([ONE + TWO]))
+			.mockImplementationOnce(respond([ONE, TWO]));
+		await checkStreamCompression(fetchImpl, 0, 0);
+		expect(fetchImpl).toHaveBeenCalledTimes(2);
+		expect(optedOut()).toBe(false);
+		// And it's the pass that's remembered.
+		const later = vi.fn(respond([ONE + TWO]));
+		await checkStreamCompression(later, DAY, 0);
+		expect(later).not.toHaveBeenCalled();
+		expect(optedOut()).toBe(false);
 	});
 
 	it('puts a remembered opt-out back if the cookie was cleared', async () => {
-		await checkStreamCompression(respond([ONE + TWO]), 0);
+		await checkStreamCompression(respond([ONE + TWO]), 0, 0);
 		document.cookie = `${STREAM_GZIP_COOKIE}=; path=/; max-age=0`;
 		const fetchImpl = vi.fn(respond([ONE, TWO]));
-		await checkStreamCompression(fetchImpl, DAY);
+		await checkStreamCompression(fetchImpl, DAY, 0);
 		expect(fetchImpl).not.toHaveBeenCalled();
 		expect(optedOut()).toBe(true);
 	});
 
 	it('asks again for another build', async () => {
-		await checkStreamCompression(respond([ONE + TWO]), 0);
+		await checkStreamCompression(respond([ONE + TWO]), 0, 0);
 		const stored = JSON.parse(localStorage.getItem('glyphstream:streamProbe')!) as object;
 		localStorage.setItem(
 			'glyphstream:streamProbe',
 			JSON.stringify({ ...stored, version: 'an older build' }),
 		);
 		const fetchImpl = vi.fn(respond([ONE, TWO]));
-		await checkStreamCompression(fetchImpl, DAY);
+		await checkStreamCompression(fetchImpl, DAY, 0);
 		expect(fetchImpl).toHaveBeenCalledTimes(1);
 		expect(optedOut()).toBe(false);
 	});

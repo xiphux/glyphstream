@@ -20,8 +20,11 @@
  * per build — a deploy, which is when a proxy changes, asks again — and for a
  * week at most, for the changes that don't come with one.
  *
- * Every doubt resolves to "don't compress": that only costs the bytes it would
- * have saved, where a wrong "compress" costs streaming itself.
+ * Compression is only ever switched (back) on by a probe that watched an event
+ * arrive on its own; a failed probe changes nothing. A wrong "don't compress"
+ * only costs the bytes it would have saved, where a wrong "compress" costs
+ * streaming itself — but it costs them for a week, so "buffered" is confirmed
+ * before it's believed.
  */
 
 import { version } from '$app/env';
@@ -80,9 +83,12 @@ export async function probeStreamCompression(
 				return text.includes('"probe":2') ? 'buffered' : 'streams';
 			}
 		}
-	} catch {
-		// Timed out mid-stream: far past the gap, so the stream was held.
-		return 'buffered';
+	} catch (e) {
+		// Only our own timeout says anything about buffering: headers came, and
+		// then nothing for seconds — far past the gap. Any other failure mid-read
+		// (the connection dropped, the PWA suspended, a network switch) is just a
+		// failed probe.
+		return e instanceof DOMException && e.name === 'TimeoutError' ? 'buffered' : 'unknown';
 	}
 	return 'unknown';
 }
@@ -98,6 +104,8 @@ export function applyStreamProbeResult(result: StreamProbeResult): void {
 
 const CACHE_KEY = 'glyphstream:streamProbe';
 const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+/** Before re-asking a "buffered", so the page has finished starting up. */
+const CONFIRM_DELAY_MS = 1_500;
 
 interface CachedProbe {
 	version: string;
@@ -139,13 +147,25 @@ function writeCached(result: CachedProbe['result'], now: number): void {
 export async function checkStreamCompression(
 	fetchImpl: typeof fetch = fetch,
 	now = Date.now(),
+	confirmDelayMs = CONFIRM_DELAY_MS,
 ): Promise<void> {
 	const cached = readCached(now);
 	if (cached) {
 		applyStreamProbeResult(cached);
 		return;
 	}
-	const result = await probeStreamCompression(fetchImpl);
+	let result = await probeStreamCompression(fetchImpl);
+	// A "buffered" is asked twice before it's believed. Launch is when the page
+	// is busiest, and a main thread held for 300ms between the response
+	// arriving and the first read gets both events in one read — as does a
+	// momentary stall on a mobile link. Either reads as buffering, and the
+	// answer is kept for a week, so it costs that device the compression all
+	// week. A second probe once the page has settled tells the two apart, and
+	// costs a request only when the first one said "buffered".
+	if (result === 'buffered') {
+		await new Promise((r) => setTimeout(r, confirmDelayMs));
+		result = await probeStreamCompression(fetchImpl);
+	}
 	applyStreamProbeResult(result);
 	if (result !== 'unknown') writeCached(result, now);
 }
