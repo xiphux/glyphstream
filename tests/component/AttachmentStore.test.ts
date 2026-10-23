@@ -87,4 +87,13 @@ describe('AttachmentStore', () => {
 		await store.addFiles([png()]);
 		expect(store.items[0].objectUrl).toBe('blob:x');
 	});
+
+	it('previews an already-stored image with its display copy, never the original', () => {
+		// The bubble or lightbox the user picked it from loaded /display, so the
+		// preview usually costs nothing; /content was the full original.
+		const store = new AttachmentStore();
+		store.attachExisting('g1');
+		expect(store.items[0]).toMatchObject({ mediaId: 'g1', objectUrl: '/api/media/g1/display' });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
 });

@@ -254,8 +254,11 @@ export class AttachmentStore {
 	/**
 	 * Attach a media row that already exists on the server — used for the
 	 * auto-attach-last-generated-image flow on I2I follow-ups. Skips the
-	 * upload entirely; the thumbnail is served straight from
-	 * /api/media/{id}/content.
+	 * upload entirely. The preview is the display copy, not the original: every
+	 * caller attaches an image the user has just seen as a chat bubble or in
+	 * the lightbox, both of which loaded that URL, so it is usually already in
+	 * the browser cache — where /content was the full original (megabytes for a
+	 * generated PNG) for a 64px tile, on every image-model chat open.
 	 */
 	attachExisting(mediaId: string, opts: { contentType?: string; byteSize?: number } = {}): void {
 		this.items = [
@@ -263,7 +266,7 @@ export class AttachmentStore {
 			{
 				clientId: crypto.randomUUID(),
 				mediaId,
-				objectUrl: `/api/media/${mediaId}/content`,
+				objectUrl: `/api/media/${mediaId}/display`,
 				contentType: opts.contentType ?? 'image/*',
 				byteSize: opts.byteSize ?? 0,
 				kind: 'image',
