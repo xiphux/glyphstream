@@ -69,6 +69,3 @@ engineStrict: true
 # immediately: for an urgent one, add the package to minimumReleaseAgeExclude
 # with a note, and take it back out once that version is three days old.
 minimumReleaseAge: 4320
-minimumReleaseAgeExclude:
-  # Renovate security update: happy-dom@21.0.4
-  - happy-dom@21.0.4
