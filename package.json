@@ -76,7 +76,7 @@
 		"eslint-plugin-n": "^18.3.0",
 		"eslint-plugin-svelte": "^3.23.0",
 		"eventsource-parser": "^4.1.0",
-		"happy-dom": "^20.14.0",
+		"happy-dom": "^21.0.0",
 		"husky": "^9.1.7",
 		"linkedom": "^0.18.13",
 		"lint-staged": "^17.5.0",
