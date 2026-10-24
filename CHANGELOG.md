@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.48.1
+
 ### Added
 
 - Model stats: a softer **Mixed reception** flag for models whose outputs are
