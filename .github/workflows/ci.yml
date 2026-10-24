@@ -23,7 +23,7 @@
 # request just checked, and the `vX.Y.Z` tag that later points at that same
 # commit checks it a third time. The dependency audit is the exception, and
 # runs every time: its answer changes while the content stands still (see
-# its job).
+# the `checks` job, which carries it).
 name: CI
 
 on:
@@ -43,9 +43,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Nothing here writes to the repo or a registry. `gate` and `audit` ask for
+# Nothing here writes to the repo or a registry. `gate` and `checks` ask for
 # `actions: read` on their own, to look up earlier runs: `gate` for a pass to
-# inherit, `audit` for the dependency audit's baseline. Under
+# inherit, `checks` for the dependency audit's baseline. Under
 # `workflow_call` this also caps what docker.yml's grant can reach in here.
 permissions:
   contents: read
@@ -299,26 +299,38 @@ jobs:
             exit 1
           fi
 
-  # The dependency audit, on its own and on every run: unlike every other
-  # check it does not defer to `gate`. An inherited pass vouches for content,
-  # and the audit's answer changes while the content stands still, as
-  # advisories are published — a merge, or a tag, inheriting an earlier pass
-  # would ship one published since against what the change added, which no
-  # earlier audit could have seen, and become the audit's next baseline
-  # (scripts/audit-baseline.sh) without ever having been audited itself. A
-  # pull request's run also audited GitHub's merge with main as it was then,
-  # which need not be the tree that merged. (One published against something
-  # locked before that only warns, on a tag as on main: a release is held to
-  # the same standard as the branch.) It needs no install, so it is cheap to
-  # run every time.
+  # The checks that need no pnpm install, in one job: the dependency audit,
+  # workflow + Dockerfile lint, the changelog's structure and the secret scan.
+  # They were three jobs (`audit`, `infra`, `secrets`), and each finished in
+  # seconds while GitHub bills every job rounded up to a whole minute, so
+  # three jobs billed three minutes for under one of work. This repository is
+  # public and pays nothing for its minutes; it is folded the same way as the
+  # private repos for consistency, so the workflows stay one shape.
   #
-  # It must be a required status check, by its name, "Dependency audit", for
-  # a red audit to block a merge: as a job of its own, no other required
-  # check covers it. Renaming it means updating the required checks with it,
-  # since a required check that never reports blocks every merge until they
-  # are.
-  audit:
-    name: Dependency audit
+  # The job keeps the audit's properties, because the audit is the one check
+  # here that must never skip: unlike every other check it does not defer to
+  # `gate`. An inherited pass vouches for content, and the audit's answer
+  # changes while the content stands still, as advisories are published — a
+  # merge, or a tag, inheriting an earlier pass would ship one published since
+  # against what the change added, which no earlier audit could have seen, and
+  # become the audit's next baseline (scripts/audit-baseline.sh) without ever
+  # having been audited itself. A pull request's run also audited GitHub's
+  # merge with main as it was then, which need not be the tree that merged.
+  # (One published against something locked before that only warns, on a tag
+  # as on main: a release is held to the same standard as the branch.) So no
+  # `needs`, no `if`, and the linters and the secret scan now run on every run
+  # too, which costs nothing extra inside a job that runs anyway.
+  #
+  # The audit steps carry no `if`. Every step after them runs under
+  # `!cancelled()`, so a red audit, or one red linter, hides no other tool's
+  # findings — one run reports them all.
+  #
+  # It must be a required status check, by its name, "Checks", for a red one
+  # to block a merge: as a job of its own, no other required check covers it.
+  # Renaming it means updating the required checks with it, since a required
+  # check that never reports blocks every merge until they are.
+  checks:
+    name: Checks
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -329,11 +341,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # Full history: the audit compares against the last commit CI passed
-          # on this branch, which can be any number of commits back.
+          # Full history, for two steps: the audit compares against the last
+          # commit CI passed on this branch, which can be any number of
+          # commits back, and gitleaks scans the tested commit's history.
           fetch-depth: 0
 
-      # pnpm audit reads the lockfile, not node_modules: no install.
+      # pnpm audit reads the lockfile, not node_modules: no install. Node also
+      # runs scripts/changelog.mjs below, which imports only node: builtins.
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -374,29 +388,19 @@ jobs:
           AUDIT_BASE: ${{ steps.audit-baseline.outputs.sha }}
         run: node scripts/audit-new-advisories.mjs
 
-  # Its own job rather than steps in `static`: it needs no pnpm install, so it
-  # finishes in seconds and doesn't wait behind one. actionlint catches
-  # workflow mistakes (bad expressions, `needs` typos, shellcheck in `run:`);
-  # zizmor catches security ones (unpinned actions, injection, permissions);
-  # hadolint catches Dockerfile ones. Each tool's intentional exceptions live
-  # in its config (.github/zizmor.yml, .hadolint.yaml), with reasons.
-  infra:
-    name: Workflow + Dockerfile lint
-    needs: gate
-    if: ${{ !cancelled() && needs.gate.outputs.passed != 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
+      # actionlint catches workflow mistakes (bad expressions, `needs` typos,
+      # shellcheck in `run:`); zizmor catches security ones (unpinned actions,
+      # injection, permissions); hadolint catches Dockerfile ones. Each tool's
+      # intentional exceptions live in its config (.github/zizmor.yml,
+      # .hadolint.yaml), with reasons.
+      #
       # The release binary from GitHub, checksum-pinned, not the Docker Hub
       # image: this job gates merges and releases, and anonymous Docker Hub pulls
       # are rate-limited per IP on runners shared with everyone else. It checks
       # `run:` scripts with the runner image's preinstalled shellcheck. Bump
       # the version and checksum together (from the release's checksums.txt).
       - name: actionlint
+        if: ${{ !cancelled() }}
         env:
           ACTIONLINT_VERSION: 1.7.12
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
@@ -441,13 +445,27 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/changelog.mjs validate
 
-  # Backstop for the pre-commit hook, which only runs where gitleaks is
-  # installed and is skipped by `--no-verify`. Scans the full history of the
-  # commit under test, not just the new commits: at this repo's size the scan
-  # takes about a second, and it needs no base-ref logic that differs between
-  # push, PR and workflow_call.
-  # Reviewed false positives: .gitleaksignore (history) and inline
-  # `gitleaks:allow` (current tree).
+      # Backstop for the pre-commit hook, which only runs where gitleaks is
+      # installed and is skipped by `--no-verify`. Scans the full history of
+      # the commit under test, not just the new commits: at this repo's size
+      # the scan takes about a second, and it needs no base-ref logic that
+      # differs between push, PR and workflow_call. Reviewed false positives:
+      # .gitleaksignore (history) and inline `gitleaks:allow` (current tree).
+      #
+      # Pinned by digest; bump the tag and digest together. --redact keeps a
+      # real hit out of the (public) job log. --log-opts=HEAD scans the history
+      # of the commit under test only: gitleaks defaults to `git log --all`,
+      # and fetch-depth 0 fetches every remote branch, so a finding on some
+      # stale, unrelated branch would otherwise fail every PR and block main
+      # publishes over a commit that doesn't contain it. (GitHub's own secret
+      # scanning still covers the whole repo.)
+      - name: gitleaks
+        if: ${{ !cancelled() }}
+        run: >-
+          docker run --rm -v "$PWD:/repo" -w /repo
+          ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+          git . --redact --no-banner --verbose --log-opts=HEAD
+
   # Build the runtime image and boot it. Everything else in CI runs a full dev
   # install on glibc; the image installs `--prod --ignore-scripts` on
   # Alpine/musl. An import the server bundle left external to a package the
@@ -501,31 +519,6 @@ jobs:
 
       - name: Boot and smoke-test the image
         run: tests/image-smoke/run.sh glyphstream:ci-smoke
-
-  secrets:
-    name: Secret scan
-    needs: gate
-    if: ${{ !cancelled() && needs.gate.outputs.passed != 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      # Pinned by digest; bump the tag and digest together. --redact keeps a
-      # real hit out of the (public) job log. --log-opts=HEAD scans the history
-      # of the commit under test only: gitleaks defaults to `git log --all`,
-      # and fetch-depth 0 fetches every remote branch, so a finding on some
-      # stale, unrelated branch would otherwise fail every PR and block main
-      # publishes over a commit that doesn't contain it. (GitHub's own secret
-      # scanning still covers the whole repo.)
-      - name: gitleaks
-        run: >-
-          docker run --rm -v "$PWD:/repo" -w /repo
-          ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
-          git . --redact --no-banner --verbose --log-opts=HEAD
 
   unit:
     name: Unit tests

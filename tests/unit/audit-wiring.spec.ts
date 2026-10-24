@@ -15,7 +15,7 @@ import { parse } from 'yaml';
  * green without auditing makes every commit it passes a baseline, and a
  * renamed step id hands the audit an empty baseline. So they are pinned here.
  *
- * So is the audit job's independence from `gate`. The other checks may skip
+ * So is the `checks` job's independence from `gate`. The other checks may skip
  * when the content already passed; the audit may not, since advisories are
  * published while content stands still, and a merge that inherited a pull
  * request's pass would become a baseline nothing audited.
@@ -28,9 +28,9 @@ import { parse } from 'yaml';
 
 const WORKFLOWS = path.join(process.cwd(), '.github', 'workflows');
 const CI = 'ci.yml';
-const JOB = 'audit';
+const JOB = 'checks';
 /** The check name branch protection requires; undefined for the job id. */
-const JOB_NAME: string | undefined = 'Dependency audit';
+const JOB_NAME: string | undefined = 'Checks';
 /** Each audit step, by name, and exactly what it runs. */
 const AUDIT_STEPS: Array<{ name: string; run: string }> = [
 	{ name: 'Dependency audit', run: 'node scripts/audit-new-advisories.mjs' },

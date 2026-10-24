@@ -18,8 +18,8 @@
  * changelog is also the only source that can tell a shipped change from one
  * that was fixed again before any release carried it.
  *
- * Plain .mjs importing nothing outside node: builtins, so the release and infra
- * jobs run it straight from a checkout with no pnpm install. It is still
+ * Plain .mjs importing nothing outside node: builtins, so the release and
+ * checks jobs run it straight from a checkout with no pnpm install. It is still
  * type-checked: tsconfig sets `allowJs` + `checkJs`, and the unit test that
  * imports it is inside the program.
  */
