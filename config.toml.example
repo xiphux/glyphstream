@@ -85,7 +85,7 @@
 #   max_per_user             — schedules one NON-ADMIN may keep. Unset = no cap.
 #   min_interval_hours       — the floor on an "every N hours" schedule (default 1).
 #   default_deadline_minutes — a new schedule's deadline: how late a run may still
-#                              start before it's skipped (default 120).
+#                              start before it fails as too late (default 120).
 #   keep_runs                — run conversations kept per schedule (default 30).
 #   disable_after_failures   — failures in a row before a schedule turns itself
 #                              off (default 3).

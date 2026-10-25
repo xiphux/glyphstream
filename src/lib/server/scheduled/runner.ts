@@ -8,7 +8,8 @@
  *
  *  - its endpoint slot is `background` priority, so it waits behind anyone
  *    actually waiting on a reply (and never interrupts one), bounded by the
- *    schedule's deadline — a run still queued at the deadline is skipped;
+ *    schedule's deadline — a run still queued at the deadline fails (as
+ *    `deadline`, which counts toward the auto-disable streak);
  *  - its tools are the schedule's policy, not the conversation's defaults, and
  *    the MCP servers that policy relies on are checked before it starts;
  *  - it notifies on every ending — finished, waiting for approval, failed —
@@ -296,7 +297,7 @@ async function executeRun(task: DueTask, runId: string, slotAt: number): Promise
 
 	if (deadlineHit && outcome.kind === 'stopped') {
 		const detail = `The endpoint was busy until the deadline (${task.deadlineMinutes} min)`;
-		failInConversation(conversation.id, userMessage.id, task.modelId, `Skipped: ${detail}`);
+		failInConversation(conversation.id, userMessage.id, task.modelId, `Didn't run: ${detail}`);
 		settleRun(task, runId, conversation.id, { kind: 'failed', failureKind: 'deadline', detail });
 		return;
 	}

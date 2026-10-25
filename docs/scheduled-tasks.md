@@ -103,9 +103,11 @@ including people who arrive after it — but once it has started, it finishes; i
 is never interrupted to make room.
 
 On a busy box a run could wait a long time, so each schedule has a **deadline**:
-a run that hasn't started that many minutes after its time is skipped and you're
-notified. (A morning brief that finally runs at 3pm is worth less than knowing it
-didn't.) On the admin **Endpoints** page, a run shows up as **Scheduled task**.
+a run that hasn't started that many minutes after its time doesn't run, and
+you're notified. (A morning brief that finally runs at 3pm is worth less than
+knowing it didn't.) It counts as a failed run, so a schedule that keeps missing
+its deadline [turns itself off](#when-runs-fail) like any other — a sign it
+wants a quieter time. On the admin **Endpoints** page, a run shows up as **Scheduled task**.
 
 Everyone in a household tends to pick 07:00, so each schedule fires at its own
 fixed offset of up to three minutes after its time, rather than all at once.

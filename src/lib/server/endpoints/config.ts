@@ -1203,7 +1203,7 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
  * - `min_interval_hours` (default 1): the floor on an "every N hours"
  *   schedule, so nobody points a shared GPU at a once-a-minute task.
  * - `default_deadline_minutes` (default 120): a new schedule's deadline — how
- *   long after its slot a run may still start before it's skipped.
+ *   long after its slot a run may still start before it fails as too late.
  * - `keep_runs` (default 30): how many of each schedule's run conversations
  *   to keep; older ones are deleted (the run history keeps their rows).
  * - `disable_after_failures` (default 3): a schedule that fails this many

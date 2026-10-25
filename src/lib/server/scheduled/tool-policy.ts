@@ -24,8 +24,8 @@ function names(input: unknown): string[] {
 /**
  * Coerce an untrusted policy (a request body, a stored row) into a valid one.
  * Lenient by design — junk entries are dropped rather than rejected — because
- * every outcome is safe: a tool that falls out of both lists is simply not
- * offered. A name in both lists is `ask`, the more cautious reading.
+ * every outcome is safe: an MCP tool that falls out of both lists is simply
+ * not offered. A name in both lists is `ask`, the more cautious reading.
  */
 export function coerceToolPolicy(input: unknown): ScheduledToolPolicy {
 	if (!input || typeof input !== 'object') return EMPTY_TOOL_POLICY;

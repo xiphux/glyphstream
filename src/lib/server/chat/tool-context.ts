@@ -75,9 +75,9 @@ export interface ChatToolContextInput {
 	timeZone: string | null;
 	/**
 	 * A scheduled task's tool policy, for its runs. Narrows the tool surface to
-	 * the MCP tools it names and REPLACES the trust list as the approval gate:
-	 * the schedule's own `ask` list decides what pauses. Absent for every turn a
-	 * person is present for.
+	 * the MCP tools it names (and the memory writes, if it allows them) and
+	 * REPLACES the trust list as the approval gate: the schedule's own `ask` list
+	 * decides what pauses. Absent for every turn a person is present for.
 	 */
 	toolPolicy?: ScheduledToolPolicy;
 }

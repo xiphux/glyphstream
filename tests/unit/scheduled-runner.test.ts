@@ -411,7 +411,7 @@ describe('how a run can end', () => {
 		expect(run).toMatchObject({ state: 'failed', failureKind: 'deadline' });
 		expect(walkActiveBranch(run.conversationId!).at(-1)?.parts[0]).toMatchObject({
 			type: 'error',
-			message: expect.stringMatching(/^Skipped: The endpoint was busy/) as unknown,
+			message: expect.stringMatching(/^Didn't run: The endpoint was busy/) as unknown,
 		});
 		expect(mocks.upstreamBodies).toHaveLength(0);
 	});
