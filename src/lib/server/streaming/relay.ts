@@ -219,6 +219,9 @@ export interface RelayParams {
 	 * resume endpoint takes over once the user posts decisions.
 	 */
 	needsApproval?: (toolName: string, tool: Tool | undefined) => boolean;
+	/** A scheduled run's per-tool allowlist, enforced when a tool is called —
+	 *  see `ToolContext.isToolPermitted`. Undefined permits every tool. */
+	isToolPermitted?: (toolName: string) => boolean;
 	/**
 	 * Per-conversation feature-category opt-outs. Forwarded through
 	 * `executeToolCalls` into each tool's `ToolContext`, so tools whose
@@ -574,6 +577,7 @@ async function runChatTurn(
 				disabledFeatures: params.disabledFeatures,
 				emit: write,
 				needsApproval: params.needsApproval,
+				isToolPermitted: params.isToolPermitted,
 				reactionTargetMessageId: params.userMessage.id,
 			});
 			for (const name of activatedToolNames) activatedTools.add(name);

@@ -40,6 +40,13 @@ export interface ToolContext {
 	 * (possibly empty), never undefined.
 	 */
 	disabledFeatures: ReadonlyArray<import('#lib/types/api.js').FeatureCategory>;
+	/**
+	 * A per-tool allowlist on top of the categories — set for a scheduled task's
+	 * run, whose policy names the MCP tools it may use. Undefined permits every
+	 * tool. Read by tools that surface OTHER tools (`search_tools`), so a tool the
+	 * run may not use can't be found and loaded either.
+	 */
+	isToolPermitted?: (toolName: string) => boolean;
 }
 
 /**

@@ -127,6 +127,16 @@ describe('search_tools execute', () => {
 		expect(res.content).toContain('No tools matched');
 	});
 
+	it("finds only the tools a scheduled run's policy permits", async () => {
+		registerDeferred('mcp__gh__create_issue', 'Create an issue', 'mcp:gh');
+		registerDeferred('mcp__gh__view_issue', 'View an issue', 'mcp:gh');
+		const res = await searchToolsTool.execute(
+			{ query: 'issue' },
+			{ ...ctx(), isToolPermitted: (n) => n === 'mcp__gh__view_issue' },
+		);
+		expect(res.activatedToolNames).toEqual(['mcp__gh__view_issue']);
+	});
+
 	it('honors the per-conversation category opt-out at execute time', async () => {
 		registerDeferred('mcp__gh__create_issue', 'Create an issue', 'mcp:gh');
 		const res = await searchToolsTool.execute({ query: 'issue' }, ctx(['mcp:gh']));
@@ -168,6 +178,12 @@ describe('buildToolSearchRequestContext', () => {
 	it('omits a deferred server whose category is disabled for the conversation', async () => {
 		registerDeferred('mcp__github__create_issue', 'Create an issue', 'mcp:github', 'create_issue');
 		const r = await buildToolSearchRequestContext('u1', ['mcp:github']);
+		expect(r.def).toBeNull();
+	});
+
+	it("leaves out deferred tools a scheduled run's policy doesn't permit", async () => {
+		registerDeferred('mcp__github__create_issue', 'Create an issue', 'mcp:github', 'create_issue');
+		const r = await buildToolSearchRequestContext('u1', [], undefined, () => false);
 		expect(r.def).toBeNull();
 	});
 

@@ -69,6 +69,8 @@ export interface ExecuteToolCallsParams {
 	 * execute inline (built-in tools today).
 	 */
 	needsApproval?: (toolName: string, tool: Tool | undefined) => boolean;
+	/** Refuses any tool it returns false for — see `ToolContext.isToolPermitted`. */
+	isToolPermitted?: (toolName: string) => boolean;
 	/**
 	 * The USER message a `react_to_message` call in this batch reacts to — the
 	 * relay passes its `userMessage.id`. Carried explicitly rather than derived
@@ -142,7 +144,11 @@ export async function executeToolCalls(
 			// A tool whose category is turned off is refused when it runs (see
 			// executeOneToolCall), so asking the user to approve it would be a
 			// prompt whose Allow does nothing.
-			if (!isTurnedOff(tool, params.disabledFeatures) && needsApproval(part.toolName, tool)) {
+			if (
+				!isTurnedOff(tool, params.disabledFeatures) &&
+				params.isToolPermitted?.(part.toolName) !== false &&
+				needsApproval(part.toolName, tool)
+			) {
 				params.emit({
 					type: 'tool_pending_approval',
 					toolCallId: part.toolCallId,
@@ -278,6 +284,7 @@ export async function executeOneToolCall(
 	conversationId: string,
 	signal: AbortSignal,
 	disabledFeatures: ReadonlyArray<import('#lib/types/api.js').FeatureCategory>,
+	isToolPermitted?: (toolName: string) => boolean,
 ): Promise<ExecuteOneToolCallResult> {
 	let tool = getTool(part.toolName);
 	if (!tool && part.toolName.startsWith('mcp__')) {
@@ -304,6 +311,17 @@ export async function executeOneToolCall(
 			execution: {
 				content: JSON.stringify({
 					error: `Tool "${part.toolName}" is turned off for this conversation.`,
+				}),
+				isError: true,
+			},
+			mediaParts: [],
+		};
+	}
+	if (isToolPermitted?.(part.toolName) === false) {
+		return {
+			execution: {
+				content: JSON.stringify({
+					error: `Tool "${part.toolName}" isn't enabled for this scheduled task.`,
 				}),
 				isError: true,
 			},
@@ -340,6 +358,7 @@ export async function executeOneToolCall(
 				conversationId,
 				signal: combinedSignal,
 				disabledFeatures,
+				isToolPermitted,
 			}),
 		);
 	} catch (e) {
@@ -424,6 +443,7 @@ async function runOneTool(
 		params.conversationId,
 		signal,
 		params.disabledFeatures ?? [],
+		params.isToolPermitted,
 	);
 
 	if (!silent) {

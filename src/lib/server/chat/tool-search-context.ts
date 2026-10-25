@@ -53,6 +53,7 @@ export async function buildToolSearchRequestContext(
 	userId: string,
 	disabledFeatures: readonly FeatureCategory[],
 	states?: UserServerState[],
+	isToolPermitted?: (toolName: string) => boolean,
 ): Promise<ToolSearchRequestContext> {
 	const catalog: DeferredToolEntry[] = [
 		...deferredToolCatalog({ excludeCategories: disabledFeatures }),
@@ -60,7 +61,7 @@ export async function buildToolSearchRequestContext(
 			excludeCategories: disabledFeatures,
 			states,
 		})),
-	];
+	].filter((entry) => isToolPermitted?.(entry.name) !== false);
 	if (catalog.length === 0) return EMPTY;
 	return { def: searchToolsDefinition(), hint: composeHint(groupByServer(catalog)) };
 }

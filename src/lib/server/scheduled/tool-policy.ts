@@ -47,3 +47,32 @@ export function parseToolPolicy(raw: string | null): ScheduledToolPolicy {
 		return EMPTY_TOOL_POLICY;
 	}
 }
+
+/** The built-in tools that write the user's memory store. Reading it
+ *  (`recall_memory`, and the memories in the persona prompt) is unaffected. */
+export const MEMORY_WRITE_TOOLS: ReadonlySet<string> = new Set([
+	'save_memory',
+	'update_memory',
+	'forget_memory',
+]);
+
+/**
+ * Which tools a run under `policy` may use at all. MCP tools must be named in
+ * the policy; memory writes need `memoryWrites`; every other built-in is left
+ * to the run's disabled categories, as in a chat.
+ */
+export function toolPermitter(policy: ScheduledToolPolicy): (toolName: string) => boolean {
+	const offered = new Set([...policy.allowed, ...policy.ask]);
+	return (toolName) => {
+		if (toolName.startsWith('mcp__')) return offered.has(toolName);
+		if (MEMORY_WRITE_TOOLS.has(toolName)) return policy.memoryWrites;
+		return true;
+	};
+}
+
+/** The approval gate for a run: the policy's `ask` list, nothing else. The
+ *  user's global trust list doesn't apply — the schedule says what it trusts. */
+export function policyNeedsApproval(policy: ScheduledToolPolicy): (toolName: string) => boolean {
+	const ask = new Set(policy.ask);
+	return (toolName) => ask.has(toolName);
+}

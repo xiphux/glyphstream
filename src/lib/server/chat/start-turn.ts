@@ -15,7 +15,7 @@
  */
 import { error } from '@sveltejs/kit';
 import { upstreamBranch } from '#lib/chat-compaction.js';
-import type { ChatMessage, FeatureCategory } from '#lib/types/api.js';
+import type { ChatMessage, FeatureCategory, ScheduledToolPolicy } from '#lib/types/api.js';
 import type { ChatCompletionRequest } from '../endpoints/client';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { getMaxToolLoopIterations } from '../endpoints/config';
@@ -71,6 +71,8 @@ export interface StartChatTurnInput extends RelayPassthrough {
 	requireTools?: boolean;
 	/** `/skill-name` activations to synthesize before the model generates. */
 	activatedSkillNames?: string[];
+	/** A scheduled task's tool policy, for its runs (see `ChatToolContextInput`). */
+	toolPolicy?: ScheduledToolPolicy;
 }
 
 export async function startChatTurn(
@@ -141,6 +143,7 @@ export async function startChatTurn(
 		branch,
 		trustedMcpTools: prefs?.trustedMcpTools ?? [],
 		timeZone: prefs?.timezone ?? null,
+		toolPolicy: input.toolPolicy,
 	});
 
 	// Per-turn data-URL cache. Image bytes are immutable for the life of the
@@ -226,6 +229,7 @@ export async function startChatTurn(
 		// Built-in and user-trusted MCP tools execute inline; untrusted MCP tools
 		// halt the turn with an inline approval prompt.
 		needsApproval: toolCtx.needsApproval,
+		isToolPermitted: toolCtx.isToolPermitted,
 		// Per-user MCP servers enabled here but down, for the inline "tools
 		// skipped" notice.
 		...(toolCtx.unavailableMcpServers.length

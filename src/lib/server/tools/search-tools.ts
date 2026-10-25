@@ -136,12 +136,13 @@ export const searchToolsTool: Tool = {
 		// threaded down to tool execution) — deliberate: a turn can run for many
 		// seconds and iterations before/between search_tools calls, during which a
 		// per-user server may connect, so the freshest catalog is the correct one.
+		// A scheduled run's per-tool policy narrows it further.
 		const catalog: DeferredToolEntry[] = [
 			...deferredToolCatalog({ excludeCategories: ctx.disabledFeatures }),
 			...(await buildUserDeferredToolCatalog(ctx.userId, {
 				excludeCategories: ctx.disabledFeatures,
 			})),
-		];
+		].filter((entry) => ctx.isToolPermitted?.(entry.name) !== false);
 		if (catalog.length === 0) {
 			return { content: 'No additional tools are available to load.', activatedToolNames: [] };
 		}

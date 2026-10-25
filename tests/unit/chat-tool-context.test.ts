@@ -165,7 +165,8 @@ describe('buildChatToolContext — single per-user-state resolution', () => {
 		mocks.getUserServerStates.mockResolvedValue(states);
 		await buildChatToolContext(baseInput);
 		expect(mocks.getUserServerStates).toHaveBeenCalledTimes(1);
-		expect(mocks.buildToolSearchRequestContext).toHaveBeenCalledWith('u1', [], states);
+		// The fourth argument is a scheduled run's allowlist; none here.
+		expect(mocks.buildToolSearchRequestContext).toHaveBeenCalledWith('u1', [], states, undefined);
 		expect(mocks.buildUserMcpToolDefinitions).toHaveBeenCalledWith('u1', {
 			excludeCategories: [],
 			states,
@@ -235,5 +236,67 @@ describe('buildChatToolContext — needsApproval gate', () => {
 		expect(ctx.needsApproval('mcp__x__untrusted')).toBe(true);
 		expect(ctx.needsApproval('mcp__y__trusted')).toBe(false);
 		expect(ctx.needsApproval('web_search')).toBe(false);
+	});
+});
+
+describe('buildChatToolContext — a scheduled task’s tool policy', () => {
+	const policy = { allowed: ['mcp__mail__search'], ask: ['mcp__mail__send'], memoryWrites: false };
+
+	beforeEach(() => {
+		mocks.openaiToolDefinitions.mockReturnValue([
+			def('web_search'),
+			def('save_memory'),
+			def('recall_memory'),
+		]);
+		mocks.buildUserMcpToolDefinitions.mockResolvedValue([
+			def('mcp__mail__search'),
+			def('mcp__mail__send'),
+			def('mcp__mail__delete'),
+		]);
+	});
+
+	it('offers only the MCP tools the policy names, and no memory writes', async () => {
+		const ctx = await buildChatToolContext({ ...noReactions, toolPolicy: policy });
+		expect(ctx.toolDefs.map((d) => d.function.name)).toEqual([
+			'web_search',
+			'recall_memory',
+			'mcp__mail__search',
+			'mcp__mail__send',
+		]);
+		expect(ctx.isToolPermitted?.('mcp__mail__delete')).toBe(false);
+		expect(ctx.isToolPermitted?.('save_memory')).toBe(false);
+	});
+
+	it('offers memory writes when the policy allows them', async () => {
+		const ctx = await buildChatToolContext({
+			...noReactions,
+			toolPolicy: { ...policy, memoryWrites: true },
+		});
+		expect(ctx.toolDefs.map((d) => d.function.name)).toContain('save_memory');
+	});
+
+	it("asks about the policy's ask list — not the user's trust list", async () => {
+		const ctx = await buildChatToolContext({
+			...noReactions,
+			// Trusted globally, but the schedule says to ask: ask.
+			trustedMcpTools: ['mcp__mail__send'],
+			toolPolicy: policy,
+		});
+		expect(ctx.needsApproval('mcp__mail__send')).toBe(true);
+		expect(ctx.needsApproval('mcp__mail__search')).toBe(false);
+	});
+
+	it('narrows the deferred-tool catalog with the same allowlist', async () => {
+		await buildChatToolContext({ ...noReactions, toolPolicy: policy });
+		const permit = mocks.buildToolSearchRequestContext.mock.calls[0]?.at(3) as
+			((n: string) => boolean) | undefined;
+		expect(permit?.('mcp__mail__delete')).toBe(false);
+		expect(permit?.('mcp__mail__search')).toBe(true);
+	});
+
+	it('leaves a turn with no policy unfiltered', async () => {
+		const ctx = await buildChatToolContext(noReactions);
+		expect(ctx.isToolPermitted).toBeUndefined();
+		expect(ctx.toolDefs).toHaveLength(6);
 	});
 });

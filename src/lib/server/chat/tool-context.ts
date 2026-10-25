@@ -13,7 +13,13 @@
  * narrower `tool-search-context.ts` / `skills-context.ts` helpers — it owns the
  * orchestration that calls them in the right order with the right gating.
  */
-import type { ChatMessage, FeatureCategory, McpUnavailableServer } from '#lib/types/api.js';
+import type {
+	ChatMessage,
+	FeatureCategory,
+	McpUnavailableServer,
+	ScheduledToolPolicy,
+} from '#lib/types/api.js';
+import { policyNeedsApproval, toolPermitter } from '../scheduled/tool-policy';
 import type { OpenAIToolDefinition } from '../tools/types';
 import type { ChatCompletionRequest } from '../endpoints/client';
 import { openaiToolDefinitions, resolveActivatedToolDefs } from '../tools';
@@ -67,6 +73,13 @@ export interface ChatToolContextInput {
 	/** The user's IANA timezone (`prefs.timezone`), so the date the model is given
 	 *  is the user's today, not the server's. Null falls back to the server's zone. */
 	timeZone: string | null;
+	/**
+	 * A scheduled task's tool policy, for its runs. Narrows the tool surface to
+	 * the MCP tools it names and REPLACES the trust list as the approval gate:
+	 * the schedule's own `ask` list decides what pauses. Absent for every turn a
+	 * person is present for.
+	 */
+	toolPolicy?: ScheduledToolPolicy;
 }
 
 export interface ChatToolContext {
@@ -93,6 +106,9 @@ export interface ChatToolContext {
 	toolDefs: OpenAIToolDefinition[];
 	/** Approval gate: MCP tools not on the user's trust list halt for approval. */
 	needsApproval: (toolName: string) => boolean;
+	/** The scheduled-task policy's allowlist, when there is one — enforced at
+	 *  execution as well, since a model can name a tool it wasn't offered. */
+	isToolPermitted: ((toolName: string) => boolean) | undefined;
 	/** Per-user MCP servers enabled for this conversation but currently down
 	 *  (circuit-broken `failed` state). Surfaced to the client as an inline
 	 *  "unavailable" notice. Empty when every enabled server is usable. */
@@ -107,6 +123,7 @@ export interface ChatToolContext {
  */
 export async function buildChatToolContext(input: ChatToolContextInput): Promise<ChatToolContext> {
 	const { userId, disabledFeatures, supportsTools, baseSystemPrompt, branch } = input;
+	const isToolPermitted = input.toolPolicy ? toolPermitter(input.toolPolicy) : undefined;
 
 	// The environment preamble (currently: today's date) leads the prompt, and is
 	// NOT gated on anything — a conversation with no persona, no memories, and no
@@ -149,7 +166,12 @@ export async function buildChatToolContext(input: ChatToolContextInput): Promise
 	// Deferred tool loading: advertise `search_tools` + inject the Tier-1 hint
 	// when this user/conversation has deferred tools.
 	const toolSearchCtx = supportsTools
-		? await buildToolSearchRequestContext(userId, disabledFeatures, userServerStates)
+		? await buildToolSearchRequestContext(
+				userId,
+				disabledFeatures,
+				userServerStates,
+				isToolPermitted,
+			)
 		: { def: null, hint: null };
 	systemPrompt = appendToolSearchHint(systemPrompt, toolSearchCtx.hint);
 
@@ -188,10 +210,12 @@ export async function buildChatToolContext(input: ChatToolContextInput): Promise
 	}
 
 	// Built-in tools and user-trusted MCP tools execute inline; untrusted MCP
-	// tools halt the turn with an inline approval prompt.
+	// tools halt the turn with an inline approval prompt. A scheduled run asks
+	// about exactly the tools its policy says to.
 	const trustedSet = new Set(input.trustedMcpTools);
-	const needsApproval = (toolName: string) =>
-		toolName.startsWith('mcp__') && !trustedSet.has(toolName);
+	const needsApproval = input.toolPolicy
+		? policyNeedsApproval(input.toolPolicy)
+		: (toolName: string) => toolName.startsWith('mcp__') && !trustedSet.has(toolName);
 
 	// Per-user MCP servers ENABLED for this conversation but currently `failed`
 	// — surfaced so a circuit-broken server doesn't silently drop its tools with
@@ -214,8 +238,9 @@ export async function buildChatToolContext(input: ChatToolContextInput): Promise
 		skillsCatalog: skillsCtx.catalog,
 		toolSearchHint: toolSearchCtx.hint,
 		reactionsHint,
-		toolDefs,
+		toolDefs: isToolPermitted ? toolDefs.filter((d) => isToolPermitted(d.function.name)) : toolDefs,
 		needsApproval,
+		isToolPermitted,
 		unavailableMcpServers,
 	};
 }

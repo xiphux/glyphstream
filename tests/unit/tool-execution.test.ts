@@ -528,3 +528,59 @@ describe('tools in a disabled category', () => {
 		expect(ran.count).toBe(1);
 	});
 });
+
+describe("a scheduled run's tool allowlist", () => {
+	it('refuses a tool the policy leaves out, without asking', async () => {
+		let ran = 0;
+		register(
+			mkTool('mcp__mail__delete', () => {
+				ran++;
+				return { content: 'deleted' };
+			}),
+		);
+		const { userId, conversationId, assistantMessage } = seedConversationWithAssistantToolCalls([
+			{ type: 'tool_call', toolCallId: 'c1', toolName: 'mcp__mail__delete', arguments: '{}' },
+		]);
+		const events: StreamEvent[] = [];
+
+		const { toolMessages, pendingCount } = await executeToolCalls({
+			assistantMessage,
+			conversationId,
+			userId,
+			emit: (e) => events.push(e),
+			needsApproval: () => true,
+			isToolPermitted: (n) => n !== 'mcp__mail__delete',
+		});
+
+		expect(ran).toBe(0);
+		expect(pendingCount).toBe(0);
+		expect(events.some((e) => e.type === 'tool_pending_approval')).toBe(false);
+		expect(toolMessages[0].parts[0]).toMatchObject({
+			isError: true,
+			result: expect.stringContaining("isn't enabled for this scheduled task") as unknown,
+		});
+	});
+
+	it('hands the allowlist to the tool, so a tool that finds tools can honor it', async () => {
+		let seen: ((n: string) => boolean) | undefined;
+		register(
+			mkTool('search_tools', (_args, ctx) => {
+				seen = ctx.isToolPermitted;
+				return { content: 'ok' };
+			}),
+		);
+		const { userId, conversationId } = seedConversationWithAssistantToolCalls([]);
+		const permit = (n: string) => n === 'search_tools';
+
+		await executeOneToolCall(
+			{ type: 'tool_call', toolCallId: 'c1', toolName: 'search_tools', arguments: '{}' },
+			userId,
+			conversationId,
+			new AbortController().signal,
+			[],
+			permit,
+		);
+
+		expect(seen).toBe(permit);
+	});
+});
