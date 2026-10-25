@@ -36,7 +36,12 @@ import type {
 	StreamToolCallStartEvent,
 } from '#lib/types/api.js';
 import type { LoadedEndpoint, ProviderQuirk } from '../endpoints/config';
-import { acquireEndpointSlot, type EndpointSlot } from '../endpoints/concurrency';
+import {
+	acquireEndpointSlot,
+	type EndpointSlot,
+	type SlotPriority,
+	type SlotPurpose,
+} from '../endpoints/concurrency';
 import type { InFlightEntry } from './in-flight';
 import { chatCompletionStream, type ChatCompletionRequest } from '../endpoints/client';
 import { appendMessage } from '../db/queries/messages';
@@ -303,6 +308,12 @@ export interface RelayParams {
 	 * every error path that reports to the client reports here too.
 	 */
 	onOutcome?: (outcome: TurnOutcome) => void;
+	/** What the turn's endpoint slot is for: `chat` unless a scheduled task runs
+	 *  it, so the admin endpoint view can tell the two apart. */
+	slotPurpose?: Extract<SlotPurpose, 'chat' | 'scheduled'>;
+	/** The slot's place in line — `background` yields to people waiting on a
+	 *  reply. See `AcquireOptions.priority`. */
+	slotPriority?: SlotPriority;
 }
 
 export type TurnOutcome =
@@ -368,7 +379,8 @@ export async function startStreamingRelay(
 				// when the endpoint is at capacity; the await resolves once a
 				// slot frees. Released in the finally alongside onComplete.
 				slot = await acquireEndpointSlot(params.endpoint, {
-					work: { purpose: 'chat', modelId: params.storedModelId },
+					work: { purpose: params.slotPurpose ?? 'chat', modelId: params.storedModelId },
+					priority: params.slotPriority,
 					signal: params.abortSignal,
 					onQueued: (info) => write({ type: 'queued', ...info }),
 					// Not queued — the slot is ours; we're waiting on the endpoint that

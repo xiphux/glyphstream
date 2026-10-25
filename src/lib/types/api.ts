@@ -1930,7 +1930,16 @@ export interface GeneratingConversationsResponse {
  * deploys.
  */
 export type EndpointSlotPurpose =
-	'chat' | 'image' | 'video' | 'enhance' | 'title' | 'compaction' | 'memory' | 'dream' | 'other';
+	| 'chat'
+	| 'scheduled'
+	| 'image'
+	| 'video'
+	| 'enhance'
+	| 'title'
+	| 'compaction'
+	| 'memory'
+	| 'dream'
+	| 'other';
 
 /**
  * A slot's phase. `releasing` is occupied-but-not-started: the slot is held

@@ -4,7 +4,9 @@
  * A generation against an endpoint must `acquireEndpointSlot` before it
  * touches the upstream, and `release` when it fully settles. While `active`
  * slots are below the resource group's cap, acquisition is immediate;
- * once at capacity, callers queue FIFO and are granted as slots free.
+ * once at capacity, callers queue FIFO and are granted as slots free —
+ * except that `background` work (see `AcquireOptions.priority`) lines up
+ * behind every interactive waiter.
  *
  * The slot is held for the WHOLE generation (acquire before dispatch,
  * release in the relay's onComplete / the sync path's finally), not just the
@@ -124,6 +126,7 @@ interface Waiter {
 	 *  client's "N ahead" counts down (not just at enqueue). Same channel as the
 	 *  initial onQueued. */
 	notifyAhead?: (info: QueuedInfo) => void;
+	priority: SlotPriority;
 }
 
 /** What a queued caller is told about its place in line. */
@@ -442,6 +445,28 @@ export interface AcquireOptions {
 	 * the work in neither list and report a draining batch as smaller than it is.
 	 */
 	supersedes?: PendingWork;
+	/**
+	 * Where this request joins the line. `interactive` (the default) is someone
+	 * waiting on the answer; `background` is work nobody is watching — a
+	 * scheduled task — and queues behind every interactive waiter, including
+	 * ones that arrive after it. First-come among each class.
+	 *
+	 * Ordering only: it never preempts a held slot (aborting a generation halfway
+	 * wastes the GPU time already spent on it), and an idle gate grants anyone
+	 * straight away. A background request can therefore wait indefinitely under
+	 * steady interactive load; a caller that cares bounds the wait with `signal`.
+	 */
+	priority?: SlotPriority;
+}
+
+export type SlotPriority = 'interactive' | 'background';
+
+/** Where a new waiter of `priority` goes: after everyone of its own class
+ *  already waiting, and — when interactive — ahead of every background one. */
+function insertionIndex(waiters: readonly Waiter[], priority: SlotPriority): number {
+	if (priority === 'background') return waiters.length;
+	const firstBackground = waiters.findIndex((w) => w.priority === 'background');
+	return firstBackground === -1 ? waiters.length : firstBackground;
 }
 
 /**
@@ -584,8 +609,8 @@ function pump(gate: Gate): void {
  *  ahead of it). Called whenever the line shifts — a grant pumps the front off,
  *  or an abort splices one out — so a waiting caller's "N ahead" stays live, and
  *  on a pause or resume, which changes what the line means without moving it. */
-function notifyWaiterPositions(gate: Gate): void {
-	for (let i = 0; i < gate.waiters.length; i++) {
+function notifyWaiterPositions(gate: Gate, from = 0): void {
+	for (let i = from; i < gate.waiters.length; i++) {
 		try {
 			gate.waiters[i].notifyAhead?.({ ahead: i, paused: gate.paused });
 		} catch {
@@ -606,7 +631,8 @@ function abortError(): Error {
 /**
  * Acquire a slot on the endpoint's resource group, capped at that group's
  * concurrency. Resolves immediately when under capacity, otherwise queues FIFO
- * and resolves once a slot frees. The cap is `endpoint.resourceGroupMaxConcurrent`
+ * within its `priority` class (interactive ahead of background) and resolves
+ * once a slot frees. The cap is `endpoint.resourceGroupMaxConcurrent`
  * — resolved at config load, and NOT `endpoint.maxConcurrent`, which is this
  * endpoint's own limit and diverges from it as soon as a group has members.
  *
@@ -665,6 +691,7 @@ function recordTaskWork(endpoint: LoadedEndpoint, work: AcquireOptions['work']):
 
 function acquire(endpoint: LoadedEndpoint, opts: AcquireOptions): Promise<EndpointSlot> {
 	const { signal, onQueued, onReleasing, work } = opts;
+	const priority = opts.priority ?? 'interactive';
 	// Keyed by RESOURCE GROUP, not endpoint id — which for an endpoint that
 	// didn't opt into a group are the same string, so this is the previous
 	// behaviour exactly. Taking the endpoint rather than `(id, max)` is
@@ -686,8 +713,10 @@ function acquire(endpoint: LoadedEndpoint, opts: AcquireOptions): Promise<Endpoi
 		return takeSlot(gate, endpoint, work, signal, onReleasing);
 	}
 
-	// Slow path: enqueue. Report how many are already waiting before pushing.
-	const ahead = gate.waiters.length;
+	// Slow path: enqueue. Report how many will be ahead before inserting. The
+	// line stays in grant order, so `ahead` is the index, here and in every
+	// later position report.
+	const ahead = insertionIndex(gate.waiters, priority);
 	onQueued?.({ ahead, paused: gate.paused });
 
 	return new Promise<EndpointSlot>((resolve, reject) => {
@@ -704,6 +733,7 @@ function acquire(endpoint: LoadedEndpoint, opts: AcquireOptions): Promise<Endpoi
 			// Re-emit position as the line drains so the client's "N ahead" counts
 			// down. Routes through the same onQueued → `queued` SSE channel.
 			notifyAhead: onQueued,
+			priority,
 		};
 		if (signal) {
 			const onAbort = () => {
@@ -718,7 +748,9 @@ function acquire(endpoint: LoadedEndpoint, opts: AcquireOptions): Promise<Endpoi
 			waiter.onAbort = onAbort;
 			signal.addEventListener('abort', onAbort);
 		}
-		gate.waiters.push(waiter);
+		gate.waiters.splice(ahead, 0, waiter);
+		// Jumping the line moved every background waiter behind it back one.
+		if (ahead < gate.waiters.length - 1) notifyWaiterPositions(gate, ahead + 1);
 	});
 }
 

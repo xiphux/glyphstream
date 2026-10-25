@@ -323,6 +323,8 @@
 		switch (p) {
 			case 'chat':
 				return 'Chat';
+			case 'scheduled':
+				return 'Scheduled task';
 			case 'image':
 				return 'Image';
 			case 'video':

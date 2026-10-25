@@ -48,6 +48,8 @@ type RelayPassthrough = Pick<
 	| 'onComplete'
 	| 'onOutcome'
 	| 'initialParentMessageId'
+	| 'slotPurpose'
+	| 'slotPriority'
 >;
 
 export interface StartChatTurnInput extends RelayPassthrough {
@@ -214,6 +216,8 @@ export async function startChatTurn(
 		onGenerationSettled: input.onGenerationSettled,
 		onComplete: input.onComplete,
 		onOutcome: input.onOutcome,
+		slotPurpose: input.slotPurpose,
+		slotPriority: input.slotPriority,
 		// A synthesized skill activation parents the model's first response off
 		// the synthetic tool result (the same seam a resume uses), and is replayed
 		// as live SSE so its block renders in-flight.

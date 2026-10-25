@@ -44,6 +44,7 @@ import { _resetForTests, register, resolveActivatedToolDefs } from '#lib/server/
 import { startStreamingRelay, type TurnOutcome } from '#lib/server/streaming/relay.js';
 import {
 	acquireEndpointSlot,
+	getResourceGroupSnapshot,
 	getResourceQueueDepth,
 	resetEndpointGatesForTests,
 } from '#lib/server/endpoints/concurrency.js';
@@ -937,6 +938,48 @@ describe('per-endpoint concurrency gate', () => {
 		expect(outcomes).toEqual([{ kind: 'stopped' }]);
 
 		held.release();
+	});
+
+	it('queues a scheduled turn as background work, behind a later chat turn', async () => {
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		const gated: LoadedEndpoint = {
+			...endpoint,
+			id: 'gated',
+			resourceGroup: 'gated',
+			maxConcurrent: 1,
+			resourceGroupMaxConcurrent: 1,
+		};
+		const held = await acquireEndpointSlot(gated, { work: { purpose: 'other' } });
+		mocks.upstreamResponses.push(() => sseResponse([textChunk('brief'), finishChunk('stop')]));
+
+		const scheduled = drainEvents(
+			await startStreamingRelay({
+				conversationId: conv.id,
+				userId,
+				conversationTitle: 'test',
+				modelKind: 'chat',
+				endpoint: gated,
+				providerQuirk: 'passthrough',
+				requestBody: { model: 'bridge::test', messages: [] },
+				userMessage: user,
+				storedModelId: 'bridge::test',
+				inFlight: inFlightEntryStub(gated),
+				onComplete: () => {},
+				slotPurpose: 'scheduled',
+				slotPriority: 'background',
+			}),
+		);
+		await new Promise((r) => setTimeout(r, 10));
+		const chat = acquireEndpointSlot(gated, { work: { purpose: 'chat' } });
+
+		expect(getResourceGroupSnapshot('gated')?.queued.map((r) => r.purpose)).toEqual([
+			'chat',
+			'scheduled',
+		]);
+		held.release();
+		(await chat).release();
+		await scheduled;
+		expect(walkActiveBranch(conv.id).map((m) => m.role)).toEqual(['user', 'assistant']);
 	});
 
 	it('persists a durable error sibling when a fan-out branch fails (non-abort)', async () => {

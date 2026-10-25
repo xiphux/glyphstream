@@ -17,6 +17,7 @@ import {
 	acquireEndpointSlot,
 	type AcquireOptions,
 	drainEndpointGates,
+	getResourceGroupSnapshot,
 	getResourceQueueDepth,
 	resetEndpointGatesForTests,
 } from '#lib/server/endpoints/concurrency.js';
@@ -754,5 +755,113 @@ describe('a group whose cap is above 1', () => {
 		// llama's model is still resident, so the next image must still evict it.
 		(await acquire(bridge)).release();
 		expect(releaseMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'llama' }), undefined);
+	});
+});
+
+describe('priority', () => {
+	/** Acquire, recording the grant order under `label`. */
+	function queue(
+		order: string[],
+		label: string,
+		opts: Omit<AcquireOptions, 'work'> = {},
+	): Promise<{ release(): void }> {
+		return acquire(ep('ep', 1), opts).then((s) => {
+			order.push(label);
+			return s;
+		});
+	}
+
+	async function drain(slots: Array<Promise<{ release(): void }>>) {
+		for (const p of slots) (await p).release();
+	}
+
+	it('grants interactive waiters ahead of background ones that queued first', async () => {
+		const held = await acquire(ep('ep', 1));
+		const order: string[] = [];
+		const bg1 = queue(order, 'bg1', { priority: 'background' });
+		const bg2 = queue(order, 'bg2', { priority: 'background' });
+		const chat = queue(order, 'chat');
+
+		held.release();
+		await drain([chat, bg1, bg2]);
+		expect(order).toEqual(['chat', 'bg1', 'bg2']);
+	});
+
+	it('keeps first-come order within each class', async () => {
+		const held = await acquire(ep('ep', 1));
+		const order: string[] = [];
+		const bg1 = queue(order, 'bg1', { priority: 'background' });
+		const chat1 = queue(order, 'chat1');
+		const bg2 = queue(order, 'bg2', { priority: 'background' });
+		const chat2 = queue(order, 'chat2', { priority: 'interactive' });
+
+		held.release();
+		await drain([chat1, chat2, bg1, bg2]);
+		expect(order).toEqual(['chat1', 'chat2', 'bg1', 'bg2']);
+	});
+
+	it('never preempts: a background holder keeps its slot', async () => {
+		const bg = await acquire(ep('ep', 1), { priority: 'background' });
+		const order: string[] = [];
+		const chat = queue(order, 'chat');
+
+		await flush();
+		expect(order).toEqual([]);
+		expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 1 });
+		bg.release();
+		await drain([chat]);
+		expect(order).toEqual(['chat']);
+	});
+
+	it('grants a background request at once when the gate is idle', async () => {
+		const onQueued = vi.fn();
+		const bg = await acquire(ep('ep', 1), { priority: 'background', onQueued });
+		expect(onQueued).not.toHaveBeenCalled();
+		bg.release();
+	});
+
+	it('reports a jumped background waiter its new place in line', async () => {
+		const held = await acquire(ep('ep', 1));
+		const bgQueued = vi.fn();
+		const chatQueued = vi.fn();
+		const bg = acquire(ep('ep', 1), { priority: 'background', onQueued: bgQueued });
+		expect(bgQueued).toHaveBeenLastCalledWith({ ahead: 0, paused: false });
+
+		const chat = acquire(ep('ep', 1), { onQueued: chatQueued });
+		// The interactive arrival is told it's first; the background one moved back.
+		expect(chatQueued).toHaveBeenLastCalledWith({ ahead: 0, paused: false });
+		expect(bgQueued).toHaveBeenLastCalledWith({ ahead: 1, paused: false });
+
+		held.release();
+		await drain([chat, bg]);
+	});
+
+	it('lists the line in grant order, background last', async () => {
+		const held = await acquire(ep('ep', 1));
+		const bg = acquireEndpointSlot(ep('ep', 1), {
+			work: { purpose: 'other' },
+			priority: 'background',
+		});
+		const chat = acquireEndpointSlot(ep('ep', 1), { work: { purpose: 'chat' } });
+
+		expect(getResourceGroupSnapshot('ep')?.queued.map((r) => r.purpose)).toEqual(['chat', 'other']);
+		held.release();
+		await drain([chat, bg]);
+	});
+
+	it('drops an aborted background waiter without disturbing the line', async () => {
+		const held = await acquire(ep('ep', 1));
+		const order: string[] = [];
+		const abort = new AbortController();
+		const chat = queue(order, 'chat');
+		const bg = queue(order, 'bg', { priority: 'background', signal: abort.signal });
+		const chat2 = queue(order, 'chat2');
+
+		abort.abort();
+		await expect(bg).rejects.toThrow(/aborted/);
+		held.release();
+		await drain([chat, chat2]);
+		expect(order).toEqual(['chat', 'chat2']);
+		expect(getResourceQueueDepth('ep')).toEqual({ active: 0, waiting: 0 });
 	});
 });
