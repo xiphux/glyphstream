@@ -9,6 +9,13 @@ arrived.
 
 ## Unreleased
 
+### Security
+
+- Turning off a feature for a conversation (web access, an MCP server — or a
+  Private chat, which turns them off for you) now also stops the model calling
+  its tools by name. Before, a tool it had seen used earlier in the chat could
+  still run.
+
 ## v0.48.1
 
 ### Added

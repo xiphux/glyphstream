@@ -435,3 +435,96 @@ describe('executeToolCalls', () => {
 		expect(execution.content).toContain('exceeded its 200ms timeout');
 	}, 10_000);
 });
+
+describe('tools in a disabled category', () => {
+	function categorized(name: string, category: string, ran: { count: number }): Tool {
+		return {
+			...mkTool(name, () => {
+				ran.count++;
+				return { content: 'ran' };
+			}),
+			metadata: { category },
+		};
+	}
+
+	it('refuses a call by name to a tool the conversation switched off', async () => {
+		// The model saw web_search in the history from before the user turned web
+		// access off, and calls it again. Not advertised is not enough.
+		const ran = { count: 0 };
+		register(categorized('web_search', 'web', ran));
+		const { userId, conversationId, assistantMessage } = seedConversationWithAssistantToolCalls([
+			{ type: 'tool_call', toolCallId: 'c1', toolName: 'web_search', arguments: '{}' },
+		]);
+
+		const { toolMessages } = await executeToolCalls({
+			assistantMessage,
+			conversationId,
+			userId,
+			disabledFeatures: ['web'],
+			emit: () => {},
+		});
+
+		expect(ran.count).toBe(0);
+		expect(toolMessages[0].parts[0]).toMatchObject({
+			type: 'tool_result',
+			isError: true,
+			result: expect.stringContaining('turned off for this conversation') as unknown,
+		});
+	});
+
+	it("doesn't ask approval for a tool it would refuse", async () => {
+		const ran = { count: 0 };
+		register(categorized('mcp__mail__send', 'mcp:mail', ran));
+		const { userId, conversationId, assistantMessage } = seedConversationWithAssistantToolCalls([
+			{ type: 'tool_call', toolCallId: 'c1', toolName: 'mcp__mail__send', arguments: '{}' },
+		]);
+		const events: StreamEvent[] = [];
+
+		const { pendingCount } = await executeToolCalls({
+			assistantMessage,
+			conversationId,
+			userId,
+			disabledFeatures: ['mcp:mail'],
+			emit: (e) => events.push(e),
+			needsApproval: () => true,
+		});
+
+		expect(pendingCount).toBe(0);
+		expect(events.some((e) => e.type === 'tool_pending_approval')).toBe(false);
+		expect(ran.count).toBe(0);
+	});
+
+	it('refuses on the approval-resume path too', async () => {
+		const ran = { count: 0 };
+		register(categorized('mcp__mail__send', 'mcp:mail', ran));
+		const { userId, conversationId } = seedConversationWithAssistantToolCalls([]);
+
+		const r = await executeOneToolCall(
+			{ type: 'tool_call', toolCallId: 'c1', toolName: 'mcp__mail__send', arguments: '{}' },
+			userId,
+			conversationId,
+			new AbortController().signal,
+			['mcp:mail'],
+		);
+
+		expect(r.execution.isError).toBe(true);
+		expect(ran.count).toBe(0);
+	});
+
+	it('still runs tools whose category is enabled', async () => {
+		const ran = { count: 0 };
+		register(categorized('web_search', 'web', ran));
+		const { userId, conversationId } = seedConversationWithAssistantToolCalls([]);
+
+		const r = await executeOneToolCall(
+			{ type: 'tool_call', toolCallId: 'c1', toolName: 'web_search', arguments: '{}' },
+			userId,
+			conversationId,
+			new AbortController().signal,
+			['canvas'],
+		);
+
+		expect(r.execution).toEqual({ content: 'ran' });
+		expect(ran.count).toBe(1);
+	});
+});

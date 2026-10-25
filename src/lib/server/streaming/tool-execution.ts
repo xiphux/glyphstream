@@ -139,7 +139,10 @@ export async function executeToolCalls(
 	const settled = await Promise.all(
 		toolCallParts.map(async (part) => {
 			const tool = getTool(part.toolName);
-			if (needsApproval(part.toolName, tool)) {
+			// A tool whose category is turned off is refused when it runs (see
+			// executeOneToolCall), so asking the user to approve it would be a
+			// prompt whose Allow does nothing.
+			if (!isTurnedOff(tool, params.disabledFeatures) && needsApproval(part.toolName, tool)) {
 				params.emit({
 					type: 'tool_pending_approval',
 					toolCallId: part.toolCallId,
@@ -242,6 +245,25 @@ export async function executeToolCalls(
 }
 
 /**
+ * Whether `tool`'s feature category is disabled for this turn.
+ *
+ * The registry's `excludeCategories` filter decides what a turn ADVERTISES,
+ * but a call is looked up by the name the model emits — and a model that sees
+ * an earlier call in the history (made before the user switched web access or
+ * an MCP server off) will happily make it again. Checked here, at the one
+ * place every call runs through, so a disabled category is a boundary rather
+ * than a suggestion. The private-chat seal is a set of disabled categories,
+ * so it gets the same guarantee.
+ */
+function isTurnedOff(
+	tool: Tool | undefined,
+	disabledFeatures: ReadonlyArray<import('#lib/types/api.js').FeatureCategory> | undefined,
+): boolean {
+	const category = tool?.metadata?.category;
+	return !!category && !!disabledFeatures?.includes(category);
+}
+
+/**
  * Execute a single tool call, encapsulating registry lookup,
  * JSON argument parsing, timeout wrapping, execution, error
  * shaping (timeout-vs-throw), and media-part construction.
@@ -272,6 +294,17 @@ export async function executeOneToolCall(
 		return {
 			execution: {
 				content: JSON.stringify({ error: `Unknown tool: ${part.toolName}` }),
+				isError: true,
+			},
+			mediaParts: [],
+		};
+	}
+	if (isTurnedOff(tool, disabledFeatures)) {
+		return {
+			execution: {
+				content: JSON.stringify({
+					error: `Tool "${part.toolName}" is turned off for this conversation.`,
+				}),
 				isError: true,
 			},
 			mediaParts: [],
