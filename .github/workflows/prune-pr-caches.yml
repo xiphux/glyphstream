@@ -25,7 +25,7 @@ jobs:
     # A fork's pull request runs with a read-only token and could not delete
     # anything, so it would only ever produce a failed run.
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       # Deleting a cache needs write on Actions. Nothing is checked out.

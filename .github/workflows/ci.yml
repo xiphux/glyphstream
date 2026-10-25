@@ -105,7 +105,7 @@ jobs:
   # deleting the cache entry by hand.
   #
   # Staleness: an inherited pass asserts "identical content", not "identical
-  # toolchain". `ubuntu-latest` and `node-version: '26'` drift, so a pass
+  # toolchain". The runner image and `node-version: '26'` drift, so a pass
   # earned long ago vouches for an environment that has moved. The window is
   # normally minutes for a merge; for a tag it is however long sits between
   # the merge and the release.
@@ -125,7 +125,7 @@ jobs:
     if: >-
       github.ref == 'refs/heads/main' ||
       startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     continue-on-error: true
     timeout-minutes: 5
     permissions:
@@ -246,7 +246,7 @@ jobs:
     name: Lint + type-check + format + migrations
     needs: gate
     if: ${{ !cancelled() && needs.gate.outputs.passed != 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -331,7 +331,7 @@ jobs:
   # check that never reports blocks every merge until they are.
   checks:
     name: Checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -494,7 +494,7 @@ jobs:
     name: Docker image smoke
     needs: gate
     if: ${{ !cancelled() && needs.gate.outputs.passed != 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -524,7 +524,7 @@ jobs:
     name: Unit tests
     needs: gate
     if: ${{ !cancelled() && needs.gate.outputs.passed != 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -574,7 +574,7 @@ jobs:
     name: E2E shard ${{ matrix.shard }}/3
     needs: gate
     if: ${{ !cancelled() && needs.gate.outputs.passed != 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       # Every shard reports, so a failure says whether it is one spec or all.
@@ -649,7 +649,7 @@ jobs:
     name: E2E (Playwright)
     needs: [gate, e2e-shard]
     if: ${{ !cancelled() && needs.gate.outputs.passed != 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Every shard passed, or the gate stood them down
