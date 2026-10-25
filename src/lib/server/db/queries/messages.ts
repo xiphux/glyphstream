@@ -1,4 +1,4 @@
-import { eq, and, inArray, isNotNull, getTableColumns } from 'drizzle-orm';
+import { eq, and, asc, inArray, isNotNull, isNull, getTableColumns } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import type { CompareSelection } from '#lib/fanout.js';
 import type { ChatMessage, MessagePart, MessageRole } from '#lib/types/api.js';
@@ -652,6 +652,21 @@ export function getMessage(
 	const msg = rowToChatMessage(row);
 	msg.parentMessageId = row.parentMessageId;
 	return msg;
+}
+
+/** The conversation's first root message — its opening prompt, which an edit
+ *  of it can't displace (the edit is a later sibling). Caller scopes the
+ *  conversation first, as for every messages read. */
+export function getFirstRootMessageId(conversationId: string): string | null {
+	return (
+		getDb()
+			.select({ id: messages.id })
+			.from(messages)
+			.where(and(eq(messages.conversationId, conversationId), isNull(messages.parentMessageId)))
+			.orderBy(asc(messages.createdAt), asc(messages.id))
+			.limit(1)
+			.get()?.id ?? null
+	);
 }
 
 /**

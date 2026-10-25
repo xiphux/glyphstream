@@ -272,12 +272,12 @@
 	let messages = $state.raw<ChatMessage[]>(data.conversation.messages);
 	// A scheduled run paused on its own turn: its approval prompts offer "for
 	// this schedule". The load decides; the latest-user check re-reads it live,
-	// so a follow-up typed in the meantime (an ordinary turn) gets the ordinary
-	// choices — the same rule as the server's `scheduledPolicyForResume`.
+	// so a follow-up or edit typed in the meantime (an ordinary turn) gets the
+	// ordinary choices — the same rule as the server's `scheduledPolicyForResume`.
 	setScheduledRunContext(
 		() =>
-			data.scheduledRunWaiting &&
-			[...messages].reverse().find((m) => m.role === 'user')?.parentMessageId === null,
+			data.scheduledRunPromptId !== null &&
+			[...messages].reverse().find((m) => m.role === 'user')?.id === data.scheduledRunPromptId,
 	);
 	// The page loads only the branch's newest window (see +page.server.ts);
 	// whether older messages exist above it, fetched by `loadEarlier` as the

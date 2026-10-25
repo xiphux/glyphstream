@@ -193,21 +193,21 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	// A scheduled run paused on its own turn: its approval prompts offer "for
 	// this schedule". Not merely `scheduleId` — a finished run's conversation is
 	// an ordinary chat, whose prompts are answered with the account's trust list.
-	const scheduledRunWaiting =
-		conversation.scheduleId !== null &&
-		timeDb(
-			locals,
-			() =>
-				scheduledPolicyForResume(
-					conversation.id,
-					locals.user.id,
-					conversation.scheduleId,
-					getScheduledTask(conversation.scheduleId!, locals.user.id),
-					conversation.messages,
-				) !== null,
-		);
+	// The run's prompt message, so the page can tell its turn from one typed since.
+	const scheduledRunPromptId =
+		conversation.scheduleId === null
+			? null
+			: (timeDb(locals, () =>
+					scheduledPolicyForResume(
+						conversation.id,
+						locals.user.id,
+						conversation.scheduleId,
+						getScheduledTask(conversation.scheduleId!, locals.user.id),
+						conversation.messages,
+					),
+				)?.promptMessageId ?? null);
 	return {
-		scheduledRunWaiting,
+		scheduledRunPromptId,
 		conversation,
 		referencedModels,
 		answeredModelIds,

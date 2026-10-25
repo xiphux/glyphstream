@@ -31,7 +31,7 @@ import {
 	deleteConversation,
 	getConversationMeta,
 } from '../db/queries/conversations';
-import { getMessage } from '../db/queries/messages';
+import { getFirstRootMessageId, getMessage } from '../db/queries/messages';
 import {
 	conversationsBeyondRetention,
 	expireWaitingScheduledRuns,
@@ -529,23 +529,28 @@ function pruneRuns(scheduleId: string, userId: string, keep: number): void {
  * scheduled run's own turn still waiting on approval — the one case where
  * someone resumes a run rather than chatting in its conversation. Anything
  * typed into the conversation is an ordinary chat turn with the person present,
- * even while the run waits: so the paused turn must answer the run's prompt,
- * the root of the conversation (`branch` is the active branch, or its newest
- * window — the latest user message on it decides).
+ * even while the run waits — a follow-up, or an edit of the prompt: so the
+ * paused turn must answer the run's own prompt message, the conversation's
+ * first (`branch` is the active branch, or its newest window — the latest user
+ * message on it decides). `promptMessageId` is that message, for the client to
+ * apply the same rule live.
  */
 export function scheduledPolicyForResume(
 	conversationId: string,
 	userId: string,
 	scheduleId: string | null,
 	task: ScheduledTask | null,
-	branch: ReadonlyArray<Pick<ChatMessage, 'role' | 'parentMessageId'>>,
-): { runId: string; policy: ScheduledToolPolicy } | null {
+	branch: ReadonlyArray<Pick<ChatMessage, 'id' | 'role'>>,
+): { runId: string; policy: ScheduledToolPolicy; promptMessageId: string } | null {
 	if (!scheduleId || !task) return null;
 	const lastUser = [...branch].reverse().find((m) => m.role === 'user');
-	if (!lastUser || lastUser.parentMessageId) return null;
+	if (!lastUser) return null;
+	// Scopes the conversation to the user before the messages read below.
 	const run = getScheduledRunForConversation(conversationId, userId);
 	if (!run || run.state !== 'needs_input') return null;
-	return { runId: run.id, policy: task.toolPolicy };
+	const promptMessageId = getFirstRootMessageId(conversationId);
+	if (lastUser.id !== promptMessageId) return null;
+	return { runId: run.id, policy: task.toolPolicy, promptMessageId };
 }
 
 /** Settle a run the user just resumed by approving. No notification: they're

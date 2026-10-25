@@ -98,8 +98,12 @@ function toolDef(name: string, description = name): OpenAIToolDefinition {
 
 /** user → assistant(tool_call) → tool(pending_approval). */
 /** A conversation paused on an approval. `afterEarlierTurn`: the paused turn
- *  is a follow-up, below an earlier exchange, rather than the first one. */
-function seedPendingApproval(opts: { afterEarlierTurn?: boolean } = {}): {
+ *  is a follow-up, below an earlier exchange, rather than the first one.
+ *  `afterEditedPrompt`: its prompt is an edit of an earlier opening prompt (a
+ *  later root sibling). */
+function seedPendingApproval(
+	opts: { afterEarlierTurn?: boolean; afterEditedPrompt?: boolean } = {},
+): {
 	conversationId: string;
 	userId: string;
 } {
@@ -130,9 +134,12 @@ function seedPendingApproval(opts: { afterEarlierTurn?: boolean } = {}): {
 		parent = m.id;
 		return m;
 	};
-	if (opts.afterEarlierTurn) {
-		add('user', [{ type: 'text', text: 'brief' }]);
+	if (opts.afterEarlierTurn || opts.afterEditedPrompt) {
+		const original = add('user', [{ type: 'text', text: 'brief' }]);
 		add('assistant', [{ type: 'text', text: 'the brief' }]);
+		// Strictly older than anything below, whatever the clock's resolution.
+		mocks.testDb.run(`update messages set created_at = 0 where id = '${original.id}'`);
+		if (opts.afterEditedPrompt) parent = null;
 	}
 	add('user', [{ type: 'text', text: 'look it up' }]);
 	add('assistant', [
@@ -259,7 +266,7 @@ describe('POST /tool-approval — the resumed turn is registered like a sent one
 describe('POST /tool-approval — resuming a scheduled run', () => {
 	async function seedScheduledPending(
 		runState: 'needs_input' | 'done',
-		opts: { afterEarlierTurn?: boolean } = {},
+		opts: { afterEarlierTurn?: boolean; afterEditedPrompt?: boolean } = {},
 	) {
 		const { createScheduledTask, insertScheduledRun, updateScheduledRun } =
 			await import('#lib/server/db/queries/scheduled-tasks.js');
@@ -350,14 +357,21 @@ describe('POST /tool-approval — resuming a scheduled run', () => {
 	});
 
 	it.each([
-		['the run has finished', 'done', false],
-		['the paused turn is a follow-up, not the run’s own', 'needs_input', true],
+		['the run has finished', 'done', {}],
+		[
+			'the paused turn is a follow-up, not the run’s own',
+			'needs_input',
+			{ afterEarlierTurn: true },
+		],
+		[
+			'the paused turn answers an edit of the run’s prompt',
+			'needs_input',
+			{ afterEditedPrompt: true },
+		],
 	] as const)(
 		'reads the schedule actions as plain allow when %s, leaving the schedule alone',
-		async (_label, runState, afterEarlierTurn) => {
-			const { conversationId, userId, task, runId } = await seedScheduledPending(runState, {
-				afterEarlierTurn,
-			});
+		async (_label, runState, seed) => {
+			const { conversationId, userId, task, runId } = await seedScheduledPending(runState, seed);
 
 			await approve(conversationId, userId, [{ toolCallId: 'call_1', action: 'allow_schedule' }]);
 
