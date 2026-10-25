@@ -56,6 +56,7 @@ import { startChatTurn } from '../chat/start-turn';
 import { createLogger } from '../log';
 import { createSweeper } from '../util/sweeper';
 import { errorMessage } from '../streaming/sse-transport';
+import { processBootedAt } from './boot';
 import { jitterFor, nextSlotAfter } from './cadence';
 import { preflightMcp } from './preflight';
 
@@ -544,11 +545,7 @@ export function settleResumedRun(
 // --- restart -------------------------------------------------------------------
 
 const SWEPT = Symbol.for('glyphstream.scheduledRunsSwept');
-const BOOTED = Symbol.for('glyphstream.scheduledRunnerBootedAt');
-type GlobalWithFlag = typeof globalThis & { [SWEPT]?: boolean; [BOOTED]?: number };
-// On globalThis for the same reason as the flag: an HMR re-evaluation is not a
-// new process, and must not move the line between "ours" and "a dead one's".
-(globalThis as GlobalWithFlag)[BOOTED] ??= Date.now();
+type GlobalWithFlag = typeof globalThis & { [SWEPT]?: boolean };
 
 /**
  * Fail every run a restart cut off. A run's turn lives only in this process,
@@ -558,9 +555,7 @@ type GlobalWithFlag = typeof globalThis & { [SWEPT]?: boolean; [BOOTED]?: number
  * dev HMR reload re-evaluates this module, and running it again then would
  * fail runs that are very much alive.
  */
-export function failInterruptedRuns(
-	bootedAt = (globalThis as GlobalWithFlag)[BOOTED] ?? Date.now(),
-): number {
+export function failInterruptedRuns(bootedAt = processBootedAt()): number {
 	const g = globalThis as GlobalWithFlag;
 	if (g[SWEPT]) return 0;
 	g[SWEPT] = true;

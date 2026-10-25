@@ -46,6 +46,7 @@ import * as runNow from '../../src/routes/api/user/schedules/[id]/run/+server';
 import * as runs from '../../src/routes/api/user/schedules/[id]/runs/+server';
 import { createCustomModel } from '#lib/server/db/queries/custom-models.js';
 import { insertScheduledRun } from '#lib/server/db/queries/scheduled-tasks.js';
+import { processBootedAt } from '#lib/server/scheduled/boot.js';
 import type { ScheduledTask, ScheduledTasksResponse } from '#lib/types/api.js';
 
 type User = { id: string; role: 'admin' | 'user' };
@@ -212,6 +213,19 @@ describe('one schedule', () => {
 		});
 		expect(await status(() => runNow.POST(event(user, undefined, { id: s.id })))).toBe(409);
 		expect(mocks.started).toEqual([]);
+	});
+
+	it("Run now isn't held up by a run a previous process left unsettled", async () => {
+		const s = await create();
+		insertScheduledRun({
+			scheduleId: s.id,
+			userId: user.id,
+			slotAt: 1,
+			trigger: 'schedule',
+			state: 'running',
+			now: processBootedAt() - 1,
+		});
+		expect((await runNow.POST(event(user, undefined, { id: s.id }))).status).toBe(202);
 	});
 
 	it('deletes', async () => {

@@ -3,7 +3,7 @@
  * `user_id`; the runner's cross-user reads (`listDueScheduledTasks`,
  * `listUnsettledScheduledRuns`) are the background sweep's, never a request's.
  */
-import { and, asc, desc, eq, inArray, isNull, lt, lte, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, gte, isNull, lt, lte, notInArray, sql } from 'drizzle-orm';
 import type {
 	CustomModelParameters,
 	FeatureCategory,
@@ -437,8 +437,14 @@ export function expireWaitingScheduledRuns(cutoff: number, now = Date.now()): nu
 		.all().length;
 }
 
-/** Whether one of the schedule's runs is queued or running right now. */
-export function hasActiveScheduledRun(scheduleId: string, userId: string): boolean {
+/** Whether one of the schedule's runs filed since `filedSince` (this process's
+ *  start — an older one still reading queued or running is a dead process's)
+ *  is queued or running. */
+export function hasActiveScheduledRun(
+	scheduleId: string,
+	userId: string,
+	filedSince: number,
+): boolean {
 	return (
 		getDb()
 			.select({ id: scheduledRuns.id })
@@ -448,6 +454,7 @@ export function hasActiveScheduledRun(scheduleId: string, userId: string): boole
 					eq(scheduledRuns.scheduleId, scheduleId),
 					eq(scheduledRuns.userId, userId),
 					inArray(scheduledRuns.state, ['queued', 'running']),
+					gte(scheduledRuns.createdAt, filedSince),
 				),
 			)
 			.limit(1)

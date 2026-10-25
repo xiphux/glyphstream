@@ -12,6 +12,7 @@
 import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { getScheduledTask, hasActiveScheduledRun } from '#lib/server/db/queries/scheduled-tasks.js';
+import { processBootedAt } from '#lib/server/scheduled/boot.js';
 import { requireScheduledTasksEnabled } from '#lib/server/scheduled/http.js';
 import { startScheduledRun } from '#lib/server/scheduled/runner.js';
 import type { RequestHandler } from './$types';
@@ -21,7 +22,7 @@ export const POST: RequestHandler = ({ locals, params }) => {
 	requireScheduledTasksEnabled();
 	const task = getScheduledTask(params.id, locals.user.id);
 	if (!task) error(404, 'Scheduled task not found');
-	if (hasActiveScheduledRun(task.id, locals.user.id)) {
+	if (hasActiveScheduledRun(task.id, locals.user.id, processBootedAt())) {
 		error(409, 'This schedule already has a run in progress');
 	}
 	const runId = startScheduledRun({ ...task, userId: locals.user.id }, Date.now(), 'manual');
