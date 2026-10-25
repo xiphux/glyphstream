@@ -176,8 +176,15 @@ export function startScheduledRun(
 		state: 'queued',
 	});
 	if (!run) return null;
-	const progress: RunProgress = { conversationId: null, userMessageId: null };
+	const progress: RunProgress = { conversationId: null, userMessageId: null, settled: false };
 	void executeRun(task, run.id, slotAt, progress).catch((e: unknown) => {
+		// Settling itself threw (its bookkeeping, retention, the notification):
+		// the run already ended, and a second ending would bury its reply under
+		// an error and count it twice.
+		if (progress.settled) {
+			log.warn(`run ${run.id} of schedule ${task.id} failed while settling:`, e);
+			return;
+		}
 		log.warn(`run ${run.id} of schedule ${task.id} failed to start:`, e);
 		const detail = errorMessage(e);
 		// Say so in the conversation, if it got that far: that's what the
@@ -195,7 +202,12 @@ export function startScheduledRun(
 }
 
 /** How far `executeRun` got, for a failure it throws to report against. */
-type RunProgress = { conversationId: string | null; userMessageId: string | null };
+type RunProgress = {
+	conversationId: string | null;
+	userMessageId: string | null;
+	/** Set as `executeRun` settles the run — from then on, it has ended. */
+	settled: boolean;
+};
 
 /** How a run ended, from the runner's side. */
 type RunEnding =
@@ -210,12 +222,20 @@ async function executeRun(
 	slotAt: number,
 	progress: RunProgress,
 ): Promise<void> {
+	const settle = (
+		conversationId: string | null,
+		ending: RunEnding,
+		startedAt: number | null = null,
+	) => {
+		progress.settled = true;
+		settleRun(task, runId, conversationId, ending, startedAt);
+	};
 	const parsed = parseModelId(task.modelId);
 	const unavailable = `The model "${task.modelId}" is no longer configured`;
 	if (!parsed) {
 		// Validated at save, so not reachable short of a hand-edited row; with no
 		// endpoint to file a conversation under, the run history is all there is.
-		settleRun(task, runId, null, {
+		settle(null, {
 			kind: 'failed',
 			failureKind: 'model_unavailable',
 			detail: unavailable,
@@ -257,7 +277,7 @@ async function executeRun(
 	// silence would only ever be noticed in Settings.
 	if (!endpoint) {
 		failInConversation(conversation.id, userMessage.id, task.modelId, unavailable);
-		settleRun(task, runId, conversation.id, {
+		settle(conversation.id, {
 			kind: 'failed',
 			failureKind: 'model_unavailable',
 			detail: unavailable,
@@ -268,7 +288,7 @@ async function executeRun(
 	const preflight = await preflightMcp(task.userId, task.toolPolicy, task.disabledFeatures);
 	if (!preflight.ok) {
 		failInConversation(conversation.id, userMessage.id, task.modelId, preflight.detail);
-		settleRun(task, runId, conversation.id, {
+		settle(conversation.id, {
 			kind: 'failed',
 			failureKind: preflight.kind,
 			detail: preflight.detail,
@@ -278,7 +298,7 @@ async function executeRun(
 
 	const meta = getConversationMeta(conversation.id, task.userId);
 	if (!meta) {
-		settleRun(task, runId, conversation.id, { kind: 'stopped' });
+		settle(conversation.id, { kind: 'stopped' });
 		return;
 	}
 	const inFlight = registerInFlight(conversation.id, endpoint, undefined, 'chat', task.modelId);
@@ -332,10 +352,10 @@ async function executeRun(
 	if (deadlineHit && outcome.kind === 'stopped') {
 		const detail = `The endpoint was busy until the deadline (${task.deadlineMinutes} min)`;
 		failInConversation(conversation.id, userMessage.id, task.modelId, `Didn't run: ${detail}`);
-		settleRun(task, runId, conversation.id, { kind: 'failed', failureKind: 'deadline', detail });
+		settle(conversation.id, { kind: 'failed', failureKind: 'deadline', detail });
 		return;
 	}
-	settleRun(task, runId, conversation.id, endingFor(outcome), inFlight.generationStartedAt);
+	settle(conversation.id, endingFor(outcome), inFlight.generationStartedAt);
 }
 
 function endingFor(outcome: TurnOutcome): RunEnding {

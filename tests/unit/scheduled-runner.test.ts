@@ -367,6 +367,26 @@ describe('how a run can end', () => {
 		expect(notify).toHaveBeenCalledTimes(1);
 	});
 
+	it('ends a run once, even when settling it throws', async () => {
+		const { userId, task } = schedule();
+		mocks.upstream.push(reply('Here is your brief.'));
+		notify.mockImplementationOnce(() => {
+			throw new Error('push broke');
+		});
+
+		startScheduledRun({ ...task, userId }, NOW, 'manual');
+		const run = await settled(task, userId);
+		// Let the failed settle's rejection reach the runner's catch.
+		await new Promise((r) => setTimeout(r, 20));
+
+		expect(listScheduledRuns(task.id, userId, 1)[0]).toMatchObject({ id: run.id, state: 'done' });
+		expect(walkActiveBranch(run.conversationId!).at(-1)?.parts[0]).toMatchObject({
+			type: 'text',
+			text: 'Here is your brief.',
+		});
+		expect(notify).toHaveBeenCalledTimes(1);
+	});
+
 	it('pauses for an `ask` tool, and notifies that it needs an OK', async () => {
 		register({
 			definition: {
