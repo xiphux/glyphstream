@@ -175,16 +175,26 @@ export function startScheduledRun(
 		state: 'queued',
 	});
 	if (!run) return null;
-	void executeRun(task, run.id, slotAt).catch((e: unknown) => {
+	const progress: RunProgress = { conversationId: null, userMessageId: null };
+	void executeRun(task, run.id, slotAt, progress).catch((e: unknown) => {
 		log.warn(`run ${run.id} of schedule ${task.id} failed to start:`, e);
-		settleRun(task, run.id, null, {
+		const detail = errorMessage(e);
+		// Say so in the conversation, if it got that far: that's what the
+		// notification opens, and a bare prompt with no reply explains nothing.
+		if (progress.conversationId && progress.userMessageId) {
+			failInConversation(progress.conversationId, progress.userMessageId, task.modelId, detail);
+		}
+		settleRun(task, run.id, progress.conversationId, {
 			kind: 'failed',
 			failureKind: 'internal',
-			detail: errorMessage(e),
+			detail,
 		});
 	});
 	return run.id;
 }
+
+/** How far `executeRun` got, for a failure it throws to report against. */
+type RunProgress = { conversationId: string | null; userMessageId: string | null };
 
 /** How a run ended, from the runner's side. */
 type RunEnding =
@@ -193,17 +203,25 @@ type RunEnding =
 	| { kind: 'failed'; failureKind: ScheduledRunFailureKind; detail: string }
 	| { kind: 'stopped' };
 
-async function executeRun(task: DueTask, runId: string, slotAt: number): Promise<void> {
+async function executeRun(
+	task: DueTask,
+	runId: string,
+	slotAt: number,
+	progress: RunProgress,
+): Promise<void> {
 	const parsed = parseModelId(task.modelId);
-	const endpoint = parsed ? getEndpoint(parsed.endpointId) : undefined;
-	if (!parsed || !endpoint) {
+	const unavailable = `The model "${task.modelId}" is no longer configured`;
+	if (!parsed) {
+		// Validated at save, so not reachable short of a hand-edited row; with no
+		// endpoint to file a conversation under, the run history is all there is.
 		settleRun(task, runId, null, {
 			kind: 'failed',
 			failureKind: 'model_unavailable',
-			detail: `The model "${task.modelId}" is no longer configured`,
+			detail: unavailable,
 		});
 		return;
 	}
+	const endpoint = getEndpoint(parsed.endpointId);
 
 	const title = runTitle(task, slotAt);
 	const conversation = createConversation({
@@ -220,6 +238,7 @@ async function executeRun(task: DueTask, runId: string, slotAt: number): Promise
 		titleSource: 'user',
 		scheduleId: task.id,
 	});
+	progress.conversationId = conversation.id;
 	updateScheduledRun(runId, { conversationId: conversation.id, state: 'running' });
 	const userMessage = createUserMessage({
 		conversationId: conversation.id,
@@ -230,6 +249,20 @@ async function executeRun(task: DueTask, runId: string, slotAt: number): Promise
 		existingTitle: title,
 		dispatchedModels: [{ modelId: task.modelId, count: 1 }],
 	});
+	progress.userMessageId = userMessage.id;
+
+	// A removed model still gets its conversation, so the failure has somewhere
+	// to be shown and a notification to open — a schedule failing daily in
+	// silence would only ever be noticed in Settings.
+	if (!endpoint) {
+		failInConversation(conversation.id, userMessage.id, task.modelId, unavailable);
+		settleRun(task, runId, conversation.id, {
+			kind: 'failed',
+			failureKind: 'model_unavailable',
+			detail: unavailable,
+		});
+		return;
+	}
 
 	const preflight = await preflightMcp(task.userId, task.toolPolicy, task.disabledFeatures);
 	if (!preflight.ok) {
@@ -343,8 +376,9 @@ function failInConversation(
 
 /**
  * Record how a run ended: its row, the schedule's failure streak, the
- * notification, and retention. `conversationId` is null when the run failed
- * before it had one.
+ * notification, and retention. `conversationId` is null only when the run
+ * failed before it could have one, and then nothing is notified: a push opens a
+ * conversation.
  */
 function settleRun(
 	task: DueTask,

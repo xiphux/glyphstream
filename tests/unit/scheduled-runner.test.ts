@@ -32,7 +32,9 @@ const mocks = vi.hoisted(() => ({
 	upstream: [] as Array<() => Response>,
 	upstreamBodies: [] as Array<{ tools?: Array<{ function: { name: string } }> }>,
 	preflight: { ok: true } as
-		{ ok: true } | { ok: false; kind: 'mcp_unavailable' | 'mcp_credentials'; detail: string },
+		| { ok: true }
+		| { ok: false; kind: 'mcp_unavailable' | 'mcp_credentials'; detail: string }
+		| Error,
 	config: {
 		enabled: true,
 		maxPerUser: null as number | null,
@@ -79,7 +81,10 @@ vi.mock('#lib/server/mcp/tool-bridge.js', () => ({
 	registerUserMcpTools: async () => {},
 }));
 vi.mock('#lib/server/scheduled/preflight.js', () => ({
-	preflightMcp: async () => mocks.preflight,
+	preflightMcp: async () => {
+		if (mocks.preflight instanceof Error) throw mocks.preflight;
+		return mocks.preflight;
+	},
 }));
 vi.mock('#lib/server/push/notify.js', async (orig) => ({
 	...(await orig<typeof import('#lib/server/push/notify.js')>()),
@@ -332,17 +337,34 @@ describe('how a run can end', () => {
 		expect(mocks.upstreamBodies).toHaveLength(0);
 	});
 
-	it("fails without a conversation when the schedule's model is gone", async () => {
+	it("fails in a conversation, and notifies, when the schedule's model is gone", async () => {
 		const { userId, task } = schedule({ modelId: 'removed::m' });
 
 		startScheduledRun({ ...task, userId }, NOW, 'manual');
 		const run = await settled(task, userId);
 
-		expect(run).toMatchObject({
-			state: 'failed',
-			failureKind: 'model_unavailable',
-			conversationId: null,
+		expect(run).toMatchObject({ state: 'failed', failureKind: 'model_unavailable' });
+		expect(walkActiveBranch(run.conversationId!).at(-1)?.parts[0]).toMatchObject({
+			type: 'error',
+			message: 'The model "removed::m" is no longer configured',
 		});
+		expect(notify.mock.calls[0][0].summary).toMatch(/^Didn't finish: The model/);
+		expect(mocks.upstreamBodies).toHaveLength(0);
+	});
+
+	it('reports a run that throws partway in its conversation, and notifies', async () => {
+		const { userId, task } = schedule();
+		mocks.preflight = new Error('boom');
+
+		startScheduledRun({ ...task, userId }, NOW, 'manual');
+		const run = await settled(task, userId);
+
+		expect(run).toMatchObject({ state: 'failed', failureKind: 'internal', failureDetail: 'boom' });
+		expect(walkActiveBranch(run.conversationId!).at(-1)?.parts[0]).toMatchObject({
+			type: 'error',
+			message: 'boom',
+		});
+		expect(notify).toHaveBeenCalledTimes(1);
 	});
 
 	it('pauses for an `ask` tool, and notifies that it needs an OK', async () => {
