@@ -160,7 +160,7 @@ startConversationSummaryWorker();
 
 // Scheduled tasks: fires each user's saved prompts on their cadence, as
 // background-priority chat turns (see server/scheduled/runner.ts). Fails any run
-// a restart cut off first. No-op when `[scheduled_tasks] enabled = false`.
+// a restart cut off, on its first tick. No-op when `[scheduled_tasks] enabled = false`.
 startScheduledTaskRunner();
 
 // Sample event-loop stalls from boot, so a request that was queued behind a

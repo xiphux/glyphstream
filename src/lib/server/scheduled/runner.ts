@@ -562,16 +562,21 @@ const sweeper = createSweeper({
 	intervalMs: TICK_MS,
 	initialDelayMs: INITIAL_DELAY_MS,
 	enabled: () => getScheduledTasksConfig().enabled,
-	sweep: () => runScheduledTaskSweep(),
+	// The restart sweep rides the first tick rather than `start()`: nothing may
+	// touch the database at boot (the e2e harness reseeds it after the server is
+	// up, and a handle opened before that reads a deleted file). It's
+	// once-per-process, so later ticks skip it.
+	sweep: () => {
+		try {
+			failInterruptedRuns();
+		} catch (e) {
+			log.warn('could not sweep interrupted runs:', errorMessage(e));
+		}
+		return runScheduledTaskSweep();
+	},
 });
 
 export function startScheduledTaskRunner(): void {
-	if (!getScheduledTasksConfig().enabled) return;
-	try {
-		failInterruptedRuns();
-	} catch (e) {
-		log.warn('could not sweep interrupted runs:', errorMessage(e));
-	}
 	sweeper.start();
 }
 
