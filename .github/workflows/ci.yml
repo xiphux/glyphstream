@@ -602,19 +602,24 @@ jobs:
       # Cache Playwright browser binaries across runs. Keyed on the
       # version string from the installed @playwright/test so the
       # cache invalidates when the package bumps; rehydrates for free
-      # otherwise.
+      # otherwise. And on the runner image: runner.os is only "Linux",
+      # and browsers downloaded on one Ubuntu link against its libraries,
+      # so a cache from ubuntu-24.04 restored on 26.04 skips the install
+      # and fails to launch. ImageOS (ubuntu24, ubuntu26) is the runner's
+      # own variable, which the env context cannot see.
       - name: Resolve Playwright version
         id: pw
         run: |
           version=$(node -p "require('./node_modules/@playwright/test/package.json').version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "image=$ImageOS" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
         id: pw-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.image }}-${{ steps.pw.outputs.version }}
 
       - name: Install Playwright browsers
         if: steps.pw-cache.outputs.cache-hit != 'true'
