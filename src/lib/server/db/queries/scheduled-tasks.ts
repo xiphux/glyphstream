@@ -437,7 +437,6 @@ export function expireWaitingScheduledRuns(cutoff: number, now = Date.now()): nu
 		.all().length;
 }
 
-/** Runs still queued or running — at startup, the ones a restart cut off. */
 /** Whether one of the schedule's runs is queued or running right now. */
 export function hasActiveScheduledRun(scheduleId: string, userId: string): boolean {
 	return (
@@ -456,6 +455,8 @@ export function hasActiveScheduledRun(scheduleId: string, userId: string): boole
 	);
 }
 
+/** Runs still queued or running that were filed before `createdBefore` — at
+ *  startup, the ones a restart cut off. */
 export function listUnsettledScheduledRuns(
 	createdBefore: number,
 ): Array<ScheduledRun & { userId: string }> {
