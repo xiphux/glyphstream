@@ -28,6 +28,7 @@ import type {
 	MessagePart,
 	ModelKind,
 	StreamErrorEvent,
+	StreamEvent,
 	StreamReasoningEvent,
 	StreamStartEvent,
 	StreamTextEvent,
@@ -293,6 +294,53 @@ export interface RelayParams {
 	 * normal case (every enabled server usable, or no per-user MCP at all).
 	 */
 	unavailableMcpServers?: McpUnavailableServer[];
+	/**
+	 * How the turn ended, reported once after everything else has run (just
+	 * before the stream closes). For a caller with nobody reading the stream —
+	 * the scheduled-task runner — this is the only way to learn whether the turn
+	 * finished, paused for approval or failed: the relay's other signals are SSE
+	 * frames and database rows. Derived from the frames the relay writes, so
+	 * every error path that reports to the client reports here too.
+	 */
+	onOutcome?: (outcome: TurnOutcome) => void;
+}
+
+export type TurnOutcome =
+	| { kind: 'done'; assistantMessageId: string }
+	| { kind: 'halted_for_approval'; assistantMessageId: string; pendingToolNames: string[] }
+	| { kind: 'error'; message: string }
+	/** Stopped by the abort signal, or ended with nothing to report (the
+	 *  conversation was deleted mid-turn). */
+	| { kind: 'stopped' };
+
+/**
+ * Watches the frames a turn writes and turns them into its outcome. The first
+ * error wins: a turn can write `done` after one (the tool-loop safety bound
+ * persists what it has), and a turn that errored didn't finish.
+ */
+export function createOutcomeTracker() {
+	let error: string | null = null;
+	let done: ChatMessage | null = null;
+	const pending: string[] = [];
+	return {
+		observe(event: StreamEvent) {
+			if (event.type === 'error') error ??= event.message;
+			else if (event.type === 'done') done = event.assistantMessage;
+			else if (event.type === 'tool_pending_approval') pending.push(event.toolName);
+		},
+		result(aborted: boolean): TurnOutcome {
+			if (error !== null) return { kind: 'error', message: error };
+			if (aborted || !done || done.finishReason === 'cancelled') return { kind: 'stopped' };
+			if (pending.length > 0) {
+				return {
+					kind: 'halted_for_approval',
+					assistantMessageId: done.id,
+					pendingToolNames: [...pending],
+				};
+			}
+			return { kind: 'done', assistantMessageId: done.id };
+		},
+	};
 }
 
 interface IterationResult {
@@ -306,7 +354,12 @@ export async function startStreamingRelay(
 ): Promise<ReadableStream<Uint8Array>> {
 	return new ReadableStream({
 		async start(controller) {
-			const { write, close } = sseWriter(controller);
+			const sse = sseWriter(controller);
+			const outcome = createOutcomeTracker();
+			const write: SseWriter['write'] = (event) => {
+				outcome.observe(event);
+				sse.write(event);
+			};
 			let slot: EndpointSlot | null = null;
 			try {
 				// Hold a per-endpoint concurrency slot for the WHOLE turn (all
@@ -365,7 +418,14 @@ export async function startStreamingRelay(
 			} finally {
 				slot?.release();
 				params.onComplete();
-				close();
+				if (params.onOutcome) {
+					try {
+						params.onOutcome(outcome.result(params.abortSignal?.aborted ?? false));
+					} catch (e) {
+						log.warn('onOutcome threw:', errorMessage(e));
+					}
+				}
+				sse.close();
 			}
 		},
 	});

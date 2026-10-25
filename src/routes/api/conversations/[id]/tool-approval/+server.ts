@@ -22,21 +22,14 @@ import { getConversationMeta } from '#lib/server/db/queries/conversations.js';
 import { walkActiveBranch, updateMessageParts } from '#lib/server/db/queries/messages.js';
 import { linkMessageMedia } from '#lib/server/db/queries/media.js';
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
-import { listAllModels } from '#lib/server/endpoints/list-models.js';
 import { parseModelId } from '#lib/server/endpoints/model-id.js';
-import { getMaxToolLoopIterations } from '#lib/server/endpoints/config.js';
 import { awaitMcpReady } from '#lib/server/mcp/bootstrap.js';
-import { buildChatToolContext } from '#lib/server/chat/tool-context.js';
-import { buildUpstreamRequest, cachedMediaResolver } from '#lib/server/chat/upstream-request.js';
 import { resolveDisabledFeatures } from '#lib/server/chat/private-seal.js';
+import { startChatTurn } from '#lib/server/chat/start-turn.js';
 import { getUserPreferences, setUserPreferences } from '#lib/server/db/queries/user-preferences.js';
-import { composePersonaPrompt } from '#lib/server/chat/persona-context.js';
 import { executeOneToolCall } from '#lib/server/streaming/tool-execution.js';
 import { clearInFlight, registerInFlight } from '#lib/server/streaming/in-flight.js';
 import { sseResponse } from '#lib/server/streaming/sse-transport.js';
-import { startStreamingRelay } from '#lib/server/streaming/relay.js';
-import { mediaIdToDataUrl } from '#lib/server/media/data-url.js';
-import type { ChatCompletionRequest } from '#lib/server/endpoints/client.js';
 import type { ChatMessage, MessagePart } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
 
@@ -168,74 +161,8 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		setUserPreferences(userId, { trustedMcpTools: merged });
 	}
 
-	const prefs = getUserPreferences(userId);
-	let baseSystemPrompt: string | null = meta.systemPrompt;
-	if (baseSystemPrompt === null) {
-		baseSystemPrompt = composePersonaPrompt(prefs, userId, disabledFeatures);
-	}
-
 	const parsed = parseModelId(meta.modelId);
 	if (!parsed) error(500, `Conversation modelId "${meta.modelId}" is malformed`);
-
-	const allModels = await listAllModels();
-	const modelEntry = allModels.find(
-		(m) => m.endpointId === parsed.endpointId && m.upstreamId === parsed.upstreamId,
-	);
-	const supportsTools = modelEntry?.supportsTools ?? endpoint.supportsTools ?? false;
-	if (!supportsTools) {
-		// Should be impossible — we only got here because a turn earlier
-		// reached pending_approval, which means tools were enabled. Defend
-		// loudly.
-		error(500, 'Tools no longer enabled for this conversation; cannot resume.');
-	}
-
-	// Assemble the system prompt + tool list + approval gate exactly as the
-	// message-send handler does (shared buildChatToolContext) so a turn that
-	// activated a skill / searched up a deferred tool / called a per-user MCP tool
-	// before pausing keeps all of them on resume — without this the resumed turn
-	// would silently lose them. Seeded from the post-decision branch (the
-	// just-completed tool results are now part of history).
-	const toolCtx = await buildChatToolContext({
-		userId,
-		disabledFeatures,
-		supportsTools,
-		baseSystemPrompt,
-		branch: walkActiveBranch(params.id, { columns: 'serialization' }),
-		trustedMcpTools: prefs?.trustedMcpTools ?? [],
-		timeZone: prefs?.timezone ?? null,
-	});
-	const needsApproval = toolCtx.needsApproval;
-
-	// The same request builder as the send path (chat/upstream-request.ts), so a
-	// resumed turn sends what the send path would have: same system prompt, same
-	// tools[] (with this turn's searched-up tools promoted), same parameters and
-	// canvas tail. Re-walks the branch each call to pick up new tool results.
-	const resolveMediaDataUrl = cachedMediaResolver((mediaId) => mediaIdToDataUrl(mediaId, userId));
-	const requestFor = (
-		activatedToolNames: string[],
-		turnStartTools?: ChatCompletionRequest['tools'],
-	): Promise<ChatCompletionRequest> =>
-		buildUpstreamRequest({
-			conversationId: params.id,
-			userId,
-			upstreamModelId: parsed.upstreamId,
-			branch: walkActiveBranch(params.id, { columns: 'serialization' }),
-			systemPrompt: toolCtx.systemPrompt,
-			baseToolDefs: toolCtx.toolDefs,
-			activatedToolNames,
-			turnStartTools,
-			parameters: meta.parameters,
-			disabledFeatures,
-			supportsTools,
-			resolveMediaDataUrl,
-		});
-
-	const initialRequestBody = await requestFor([]);
-	// Later iterations append to the first request's tools[] (see turnStartTools).
-	const buildRequestBody = ({
-		activatedToolNames = [],
-	}: { activatedToolNames?: string[] } = {}): Promise<ChatCompletionRequest> =>
-		requestFor(activatedToolNames, initialRequestBody.tools ?? []);
 
 	// The relay's StreamStartEvent carries a user-message snapshot. The
 	// resume isn't producing a new user message — the chat page already
@@ -259,36 +186,35 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	// resumed turn by them, and an entry without them read as an unknown model.
 	const inFlight = registerInFlight(params.id, endpoint, undefined, meta.modelKind, meta.modelId);
 
-	const stream = await startStreamingRelay({
-		conversationId: params.id,
-		userId,
-		conversationTitle: meta.title,
-		modelKind: meta.modelKind,
-		endpoint,
-		providerQuirk: endpoint.providerQuirk,
-		requestBody: initialRequestBody,
-		userMessage: lastUserMessage,
-		storedModelId: meta.modelId,
-		abortSignal: inFlight.controller.signal,
-		inFlight,
-		// Free the registry entry when the generation settles, ahead of the
-		// relay's post-`done` title race — same reasoning as the send path, and
-		// the resumed turn is just as likely to be one the user walked away from.
-		// Identity-guarded, so onComplete's later call is a no-op.
-		onGenerationSettled: () => clearInFlight(params.id, inFlight),
-		onComplete: () => clearInFlight(params.id, inFlight),
-		needsApproval,
-		// Carry the same enabled-but-down MCP notice the send path emits — the
-		// condition persists across an approval resume, so the resumed turn's
-		// bubble must re-show it (the client cleared it at the turn boundary).
-		...(toolCtx.unavailableMcpServers.length
-			? { unavailableMcpServers: toolCtx.unavailableMcpServers }
-			: {}),
-		disabledFeatures,
-		maxToolLoopIterations: getMaxToolLoopIterations(),
-		rebuildRequestBody: buildRequestBody,
-		initialParentMessageId,
-	});
+	// Assembled exactly as the send path does (shared startChatTurn), seeded from
+	// the post-decision branch, so a turn that activated a skill / searched up a
+	// deferred tool / called a per-user MCP tool before pausing keeps all of them
+	// on resume — without this the resumed turn would silently lose them.
+	let stream: ReadableStream<Uint8Array>;
+	try {
+		stream = await startChatTurn({
+			conversationId: params.id,
+			userId,
+			meta,
+			endpoint,
+			model: parsed,
+			disabledFeatures,
+			inFlight,
+			userMessage: lastUserMessage,
+			allowTools: true,
+			requireTools: true,
+			initialParentMessageId,
+			// Free the registry entry when the generation settles, ahead of the
+			// relay's post-`done` title race — same reasoning as the send path, and
+			// the resumed turn is just as likely to be one the user walked away
+			// from. Identity-guarded, so onComplete's later call is a no-op.
+			onGenerationSettled: () => clearInFlight(params.id, inFlight),
+			onComplete: () => clearInFlight(params.id, inFlight),
+		});
+	} catch (e) {
+		clearInFlight(params.id, inFlight);
+		throw e;
+	}
 
 	return sseResponse(stream);
 };

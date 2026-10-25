@@ -12,37 +12,23 @@ import {
 	getMessage,
 	restoreActiveLeafIfUnchanged,
 	setActiveLeafMessageId,
-	walkActiveBranch,
 	walkActiveBranchWindow,
 } from '#lib/server/db/queries/messages.js';
 import { createUserMessage } from '#lib/server/messages/create-user-message.js';
 import { attachImageDimensions } from '#lib/server/db/queries/media.js';
-import type { ChatCompletionRequest } from '#lib/server/endpoints/client.js';
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
 import { generateId } from '#lib/server/util/id.js';
 import { listAllModels } from '#lib/server/endpoints/list-models.js';
-import { isModelVisiblePart } from '#lib/server/endpoints/serialize-upstream.js';
-import { upstreamBranch } from '#lib/chat-compaction.js';
 import { parseModelId } from '#lib/server/endpoints/model-id.js';
 import { resolveBranchIndex, resolveModelOverride } from '#lib/server/messages/fanout-dispatch.js';
 import { notifyFanoutCompleteIfLast } from '#lib/server/messages/fanout-notify.js';
-import { getMaxToolLoopIterations } from '#lib/server/endpoints/config.js';
-import { buildChatToolContext } from '#lib/server/chat/tool-context.js';
-import { buildUpstreamRequest, cachedMediaResolver } from '#lib/server/chat/upstream-request.js';
 import { resolveDisabledFeatures } from '#lib/server/chat/private-seal.js';
-import { getUserPreferences } from '#lib/server/db/queries/user-preferences.js';
-import { composePersonaPrompt } from '#lib/server/chat/persona-context.js';
-import {
-	synthesizeSkillActivations,
-	type SyntheticActivationEvent,
-} from '#lib/server/chat/synthesize-skill-activation.js';
-import { mediaIdToDataUrl } from '#lib/server/media/data-url.js';
+import { startChatTurn } from '#lib/server/chat/start-turn.js';
 import {
 	clearInFlight,
 	conversationFanoutAtCapacity,
 	registerInFlight,
 } from '#lib/server/streaming/in-flight.js';
-import { startStreamingRelay } from '#lib/server/streaming/relay.js';
 import { submitGenerationJob } from '#lib/server/generation/jobs.js';
 import { sseResponse } from '#lib/server/streaming/sse-transport.js';
 
@@ -452,185 +438,23 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	try {
 		if (isRetry) setActiveLeafMessageId(params.id, userMessage.id);
 
-		// Resolve the system prompt sent upstream. Precedence:
-		//   1. The conversation's snapshotted prompt (set when a custom-model
-		//      preset or an explicit body.systemPrompt was used at create time).
-		//   2. The prefs-derived persona + saved memories, composed from current
-		//      prefs/memories and gated by the `personalization` opt-out. Both
-		//      re-derived per request so edits propagate to existing chats and
-		//      flipping the toggle takes effect on the next send.
-		// Hoisted outside the personalization gate because trustedMcpTools is
-		// independent of the persona-prompt branch — every turn needs to know
-		// which MCP tools to bypass the approval prompt for.
-		const prefs = getUserPreferences(locals.user.id);
-		let baseSystemPrompt: string | null = meta.systemPrompt;
-		if (baseSystemPrompt === null) {
-			baseSystemPrompt = composePersonaPrompt(prefs, locals.user.id, disabledFeatures);
-		}
-
-		// Resolve tool support up front — before assembling the tool context — because
-		// agent skills inject BOTH a Tier-1 catalog into the prompt and activation
-		// tools, and the catalog tells the model to call activate_skill. Advertising
-		// the catalog with no activation tool (fan-out, or a non-tool model) would be
-		// misleading, so both are gated on supportsTools. Resolution prefers the
-		// per-model upstream signal (ModelEntry.supportsTools) and falls back to the
-		// endpoint config.
-		const allModels = await listAllModels();
-		const modelEntry = allModels.find(
-			(m) => m.endpointId === parsed.endpointId && m.upstreamId === parsed.upstreamId,
-		);
-		// Fan-out branches run single-iteration (no tool loop — a tool_call with no
-		// follow-up iteration would leave the model unable to respond to the
-		// result), so tools are disabled for them. Fan-out is for comparing model
-		// *responses*; tool-using comparison is a deliberate follow-up.
-		const supportsTools =
-			(modelEntry?.supportsTools ?? endpoint.supportsTools ?? false) && !isFanout;
-
-		// Explicit skill activation (the /skill-name composer command). Synthesize a
-		// real activate_skill tool exchange BEFORE the model generates, so the model
-		// receives the skill body exactly as a model-driven activation would. The
-		// appends advance the active leaf, so the walkActiveBranch below already
-		// includes the exchange; `synthLeafId` becomes the relay's parent so the
-		// model's response continues off the tool result instead of forking off the
-		// user message. Server-authoritative: only a plain text send, with tool
-		// support, `skills` enabled, and only names that resolve to enabled skills.
-		let synthLeafId: string | undefined;
-		let preActivatedToolEvents: SyntheticActivationEvent[] = [];
-		if (
-			!isFanout &&
-			!isRetry &&
-			supportsTools &&
-			!disabledFeatures.includes('skills') &&
-			Array.isArray(body.activatedSkillNames) &&
-			body.activatedSkillNames.length > 0
-		) {
-			const synth = await synthesizeSkillActivations({
-				conversationId: params.id,
-				userId: locals.user.id,
-				parentMessageId: userMessage.id,
-				names: body.activatedSkillNames,
-				disabledFeatures,
-				signal: inFlight.controller.signal,
-			});
-			synthLeafId = synth?.leafMessageId;
-			preActivatedToolEvents = synth?.events ?? [];
-		}
-
-		// Build the upstream request from the active branch (now incl. new user msg).
-		// Messages with no image parts forward as plain-string content (best
-		// compat with non-vision upstreams). Messages WITH image parts forward
-		// as the OpenAI vision-spec structured content array — text parts plus
-		// data-url image_url parts. We inline image bytes as data URLs because
-		// the upstream's ability to fetch one of our /api/media/:id/content
-		// URLs depends on the deployment's reverse-proxy / network topology
-		// and we don't want to assume it's reachable. tool_call / tool_result
-		// parts serialize to OpenAI's tool-calling shape.
-		const branch = walkActiveBranch(params.id, { columns: 'serialization' });
-
-		// Assemble the system prompt + tool list + approval gate from this branch —
-		// shared verbatim with the tool-approval resume handler (buildChatToolContext)
-		// so the per-request tool surface can't drift between the two paths. The skills
-		// catalog + deferred-tool hint fold into the prompt here, so both the initial
-		// serialize and the per-iteration rebuildRequestBody closure carry them.
-		const toolCtx = await buildChatToolContext({
-			userId: locals.user.id,
-			disabledFeatures,
-			supportsTools,
-			baseSystemPrompt,
-			branch,
-			trustedMcpTools: prefs?.trustedMcpTools ?? [],
-			timeZone: prefs?.timezone ?? null,
-		});
-
-		// Per-turn data-URL cache. Image bytes are immutable for the life of the
-		// conversation, so resolve each media id at most once per turn — instead of
-		// re-reading the file off disk and re-base64-encoding it on every tool-loop
-		// iteration (up to maxToolLoopIterations rebuilds). Shared across the initial
-		// serialize and every rebuildRequestBody call below.
-		const resolveMediaDataUrl = cachedMediaResolver((mediaId) =>
-			mediaIdToDataUrl(mediaId, locals.user.id),
-		);
-
-		// Warm the cache concurrently: kick off every image read up front so the
-		// (order-preserving, sequential) serialize below awaits reads already in
-		// flight rather than resolving them one at a time ahead of the first
-		// upstream byte. Walk `upstreamBranch(branch)` — the SAME post-compaction
-		// wire set the serializer sends — so we don't read+pin images in the
-		// summarized-away prefix that never reach the model. The `.catch` here is
-		// only on the fire-and-forget reference — the cached promise keeps its
-		// rejection for the real await.
-		for (const m of upstreamBranch(branch)) {
-			for (const p of m.parts) {
-				// `isModelVisiblePart` for the same reason this walks `upstreamBranch`:
-				// don't read+pin images the serializer won't send. A display-only
-				// avatar portrait sits on the branch permanently, so without this it
-				// would be re-read and re-encoded every turn for a part that never
-				// ships.
-				if (p.type === 'image' && isModelVisiblePart(p)) {
-					void resolveMediaDataUrl(p.mediaId).catch(() => {});
-				}
-			}
-		}
-
-		// The request itself, built by the same function the approval resume uses,
-		// so the two can't drift (see chat/upstream-request.ts). The closure below
-		// rebuilds it between tool-loop iterations: the conversation's active leaf
-		// has advanced to the latest tool result, so re-walking the branch picks up
-		// the assistant's tool_calls and the tool messages, and tools the model
-		// searched up this turn are promoted into tools[] for the next call.
-		const requestFor = (
-			branchNow: typeof branch,
-			activatedToolNames: string[] = [],
-			turnStartTools?: ChatCompletionRequest['tools'],
-		): Promise<ChatCompletionRequest> =>
-			buildUpstreamRequest({
-				conversationId: params.id,
-				userId: locals.user.id,
-				upstreamModelId: parsed.upstreamId,
-				branch: branchNow,
-				systemPrompt: toolCtx.systemPrompt,
-				baseToolDefs: toolCtx.toolDefs,
-				activatedToolNames,
-				turnStartTools,
-				parameters: meta.parameters,
-				disabledFeatures,
-				supportsTools,
-				resolveMediaDataUrl,
-			});
-		const requestBody = await requestFor(branch);
-		const rebuildRequestBody = ({
-			activatedToolNames,
-		}: {
-			activatedToolNames: string[];
-		}): Promise<ChatCompletionRequest> =>
-			requestFor(
-				walkActiveBranch(params.id, { columns: 'serialization' }),
-				activatedToolNames,
-				requestBody.tools ?? [],
-			);
-
-		// MCP approval gate from the shared assembly: built-in tools and
-		// user-trusted MCP tools execute inline; untrusted MCP tools halt the
-		// turn with an inline approval prompt.
-		const needsApproval = toolCtx.needsApproval;
-
-		const stream = await startStreamingRelay({
+		// The prompt, tools and request are assembled by startChatTurn, shared with
+		// the approval resume and the scheduled-task runner so the three can't drift.
+		const stream = await startChatTurn({
 			conversationId: params.id,
 			userId: locals.user.id,
-			conversationTitle: meta.title,
-			modelKind: meta.modelKind,
+			meta,
 			endpoint,
-			providerQuirk: endpoint.providerQuirk,
-			requestBody,
+			model: parsed,
+			disabledFeatures,
+			inFlight,
 			userMessage,
-			storedModelId: meta.modelId,
-			abortSignal: inFlight.controller.signal,
-			// When the turn opened with an explicit skill activation, the model's
-			// first response continues off the synthetic tool result (not a sibling
-			// of the user message) — same seam the approval-resume flow uses — and
-			// the activation is replayed as live SSE so its block renders in-flight.
-			...(synthLeafId ? { initialParentMessageId: synthLeafId } : {}),
-			...(preActivatedToolEvents.length ? { preActivatedToolEvents } : {}),
+			// Fan-out branches run single-iteration (no tool loop — a tool_call with
+			// no follow-up iteration would leave the model unable to respond to the
+			// result), so tools are disabled for them. Fan-out is for comparing model
+			// *responses*; tool-using comparison is a deliberate follow-up.
+			allowTools: !isFanout,
+			activatedSkillNames: isFanout || isRetry ? undefined : body.activatedSkillNames,
 			// Fan-out branch: persist the assistant as a sibling without
 			// advancing the leaf (stays pinned at the shared user message),
 			// and don't start a per-branch title task (/prepare owns it once).
@@ -638,31 +462,12 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			fanoutIndex,
 			suppressTitleTask: isFanout,
 			suppressNotify: isFanout,
-			inFlight,
 			onGenerationSettled,
 			// Clear the registry slot once the whole turn settles (all
 			// loop iterations + tool executions done), not per recorder.
 			// The recorder branches survive client disconnect, so the
 			// recovery indicator stays accurate after an iOS PWA suspend.
 			onComplete: onBranchComplete,
-			needsApproval,
-			// Surface any conversation-enabled per-user MCP server that's down so
-			// the client can show an inline "tools skipped" notice for this turn.
-			...(toolCtx.unavailableMcpServers.length
-				? { unavailableMcpServers: toolCtx.unavailableMcpServers }
-				: {}),
-			// Threaded into each tool's ToolContext so behavior-only
-			// consumers (e.g. run_python's Python network shim, which
-			// blocks egress when 'web' is off even though run_python is
-			// in 'code_interpreter') can honor the conversation's
-			// disabled-features without a registry-level filter.
-			disabledFeatures,
-			maxToolLoopIterations: getMaxToolLoopIterations(),
-			// Only enable the multi-iteration loop for endpoints whose
-			// models actually support tools. Endpoints without tools
-			// won't emit tool_calls anyway, but skipping the closure
-			// makes the single-iteration path explicit.
-			...(toolCtx.toolDefs.length > 0 ? { rebuildRequestBody } : {}),
 		});
 		return sseResponse(stream);
 	} catch (e) {

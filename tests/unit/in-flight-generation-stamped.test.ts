@@ -41,8 +41,15 @@ import { join, relative, resolve } from 'node:path';
 const ROUTES = resolve(__dirname, '../../src/routes');
 
 /** Calling one of these forces the entry to be passed — the param is required,
- *  and the relay does the stamping. */
-const RELAYS = ['startStreamingRelay(', 'startMediaRelay(', 'startImageRelay(', 'startVideoRelay('];
+ *  and the relay does the stamping. `startChatTurn` requires it too and hands it
+ *  straight to `startStreamingRelay`. */
+const RELAYS = [
+	'startStreamingRelay(',
+	'startChatTurn(',
+	'startMediaRelay(',
+	'startImageRelay(',
+	'startVideoRelay(',
+];
 
 function serverFiles(dir: string): string[] {
 	const out: string[] = [];

@@ -41,14 +41,14 @@ import {
 	walkActiveBranch,
 } from '#lib/server/db/queries/messages.js';
 import { _resetForTests, register, resolveActivatedToolDefs } from '#lib/server/tools/registry.js';
-import { startStreamingRelay } from '#lib/server/streaming/relay.js';
+import { startStreamingRelay, type TurnOutcome } from '#lib/server/streaming/relay.js';
 import {
 	acquireEndpointSlot,
 	getResourceQueueDepth,
 	resetEndpointGatesForTests,
 } from '#lib/server/endpoints/concurrency.js';
 import { startTitleTaskIfFirstExchange } from '#lib/server/tasks/title-task-runner.js';
-import type { ChatCompletionRequest } from '#lib/server/endpoints/client.js';
+import { UpstreamError, type ChatCompletionRequest } from '#lib/server/endpoints/client.js';
 import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 import type { ChatMessage } from '#lib/types/api.js';
 import { modelStatsDaily } from '#lib/server/db/schema.js';
@@ -682,6 +682,7 @@ describe('multi-iteration tool loop with needsApproval', () => {
 		);
 
 		let rebuildCalls = 0;
+		const outcomes: TurnOutcome[] = [];
 		const stream = await startStreamingRelay({
 			conversationId: conv.id,
 			userId,
@@ -697,6 +698,7 @@ describe('multi-iteration tool loop with needsApproval', () => {
 			storedModelId: 'bridge::test',
 			inFlight: inFlightEntryStub(endpoint),
 			onComplete: () => {},
+			onOutcome: (o) => outcomes.push(o),
 			needsApproval: () => true,
 			rebuildRequestBody: async () => {
 				rebuildCalls++;
@@ -729,6 +731,14 @@ describe('multi-iteration tool loop with needsApproval', () => {
 
 		// Not a turn yet for the model stats: the resume settles and counts it.
 		expect(mocks.testDb.select().from(modelStatsDaily).all()).toEqual([]);
+
+		expect(outcomes).toEqual([
+			{
+				kind: 'halted_for_approval',
+				assistantMessageId: branch[1].id,
+				pendingToolNames: ['mcp__fs__read_file'],
+			},
+		]);
 	});
 
 	it('initialParentMessageId parents iteration 0 to the active_leaf, not userMessage.id', async () => {
@@ -892,6 +902,7 @@ describe('per-endpoint concurrency gate', () => {
 		const abort = new AbortController();
 
 		let completed = false;
+		const outcomes: TurnOutcome[] = [];
 		const stream = await startStreamingRelay({
 			conversationId: conv.id,
 			userId,
@@ -907,6 +918,7 @@ describe('per-endpoint concurrency gate', () => {
 			onComplete: () => {
 				completed = true;
 			},
+			onOutcome: (o) => outcomes.push(o),
 		});
 
 		const drained = drainEvents(stream);
@@ -922,6 +934,7 @@ describe('per-endpoint concurrency gate', () => {
 		expect(walkActiveBranch(conv.id).map((m) => m.role)).toEqual(['user']);
 		// The aborted waiter left the queue without taking the held slot.
 		expect(getResourceQueueDepth(gated.id)).toEqual({ active: 1, waiting: 0 });
+		expect(outcomes).toEqual([{ kind: 'stopped' }]);
 
 		held.release();
 	});
@@ -1086,5 +1099,99 @@ describe('in-flight registry release boundary', () => {
 		expect(onGenerationSettled.mock.invocationCallOrder[0]).toBeLessThan(
 			onComplete.mock.invocationCallOrder[0],
 		);
+	});
+});
+
+describe('turn outcome', () => {
+	function relayParams(conv: { id: string }, user: ChatMessage, userId: string) {
+		return {
+			conversationId: conv.id,
+			userId,
+			conversationTitle: 'test',
+			modelKind: 'chat' as const,
+			endpoint,
+			providerQuirk: 'passthrough' as const,
+			requestBody: { model: 'bridge::test', messages: [] },
+			userMessage: user,
+			storedModelId: 'bridge::test',
+			inFlight: inFlightEntryStub(endpoint),
+			onComplete: () => {},
+		};
+	}
+
+	it('reports done with the final assistant message, even with nobody reading', async () => {
+		// The scheduled-task runner's shape: it cancels the stream straight away
+		// and learns how the turn went from onOutcome alone. Recording runs on its
+		// own tee branch, so the reply is still persisted.
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		mocks.upstreamResponses.push(() => sseResponse([textChunk('noon'), finishChunk('stop')]));
+
+		const outcome = await new Promise<TurnOutcome>((resolve) => {
+			void startStreamingRelay({ ...relayParams(conv, user, userId), onOutcome: resolve }).then(
+				(stream) => stream.cancel(),
+			);
+		});
+
+		const branch = walkActiveBranch(conv.id);
+		expect(branch.map((m) => m.role)).toEqual(['user', 'assistant']);
+		expect(outcome).toEqual({ kind: 'done', assistantMessageId: branch[1].id });
+	});
+
+	it('reports an upstream failure as an error', async () => {
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		mocks.upstreamResponses.push(() => {
+			throw new UpstreamError('model not loaded', 503, null);
+		});
+
+		const outcomes: TurnOutcome[] = [];
+		await drainEvents(
+			await startStreamingRelay({
+				...relayParams(conv, user, userId),
+				onOutcome: (o) => outcomes.push(o),
+			}),
+		);
+
+		expect(outcomes).toHaveLength(1);
+		expect(outcomes[0].kind).toBe('error');
+	});
+
+	it('reports hitting the tool-loop bound as an error, though `done` follows it', async () => {
+		register({
+			definition: {
+				type: 'function',
+				function: {
+					name: 'get_current_time',
+					description: 'time',
+					parameters: { type: 'object', properties: {} },
+				},
+			},
+			metadata: { category: 'clock' },
+			execute: () => ({ content: '"noon"' }),
+		});
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		const looping = () =>
+			sseResponse([
+				toolCallStartChunk({
+					index: 0,
+					id: `call_${mocks.upstreamCalls.length}`,
+					name: 'get_current_time',
+				}),
+				finishChunk('tool_calls'),
+			]);
+		mocks.upstreamResponses.push(looping, looping);
+
+		const outcomes: TurnOutcome[] = [];
+		await drainEvents(
+			await startStreamingRelay({
+				...relayParams(conv, user, userId),
+				maxToolLoopIterations: 2,
+				rebuildRequestBody: async () => ({ model: 'bridge::test', messages: [] }),
+				onOutcome: (o) => outcomes.push(o),
+			}),
+		);
+
+		expect(outcomes).toHaveLength(1);
+		expect(outcomes[0]).toMatchObject({ kind: 'error' });
+		expect((outcomes[0] as { message: string }).message).toMatch(/safety bound/);
 	});
 });

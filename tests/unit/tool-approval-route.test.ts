@@ -197,7 +197,7 @@ describe('POST /tool-approval — tools[] matches the send path', () => {
 		await approve(conversationId, userId);
 
 		const [opts] = mocks.relayCalls as RelayOpts[];
-		const rebuilt = await opts.rebuildRequestBody();
+		const rebuilt = await opts.rebuildRequestBody({ activatedToolNames: [] });
 		expect(names(rebuilt.tools)).toEqual(['web_search']);
 	});
 });
