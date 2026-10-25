@@ -14,6 +14,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { render, screen } from '@testing-library/svelte';
 import ToolCallBlock from '#lib/components/ToolCallBlock.svelte';
+import { SCHEDULED_RUN_CONTEXT_KEY } from '#lib/scheduled-run-context.js';
 
 /** Expand a tool block's <details> (skill bodies render lazily on expand). */
 async function expandDetails(container: HTMLElement) {
@@ -310,6 +311,23 @@ describe('ToolCallBlock — approval prompt (MCP / generic)', () => {
 		expect(screen.getByRole('button', { name: 'Allow' })).toBeInTheDocument();
 		expect(screen.getByRole('button', { name: 'Allow always' })).toBeInTheDocument();
 		expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument();
+	});
+
+	it('offers schedule-scoped choices on a scheduled task’s run', async () => {
+		const onApprovalSelect = vi.fn();
+		render(ToolCallBlock, {
+			props: { ...pendingProps, onApprovalSelect },
+			context: new Map([[SCHEDULED_RUN_CONTEXT_KEY, () => true]]),
+		});
+		// The account-wide grant isn't offered: the schedule's policy decides.
+		expect(screen.queryByRole('button', { name: 'Allow always' })).toBeNull();
+		screen.getByRole('button', { name: 'Always for this schedule' }).click();
+		screen.getByRole('button', { name: 'Never for this schedule' }).click();
+		expect(onApprovalSelect.mock.calls).toEqual([
+			['call-1', 'allow_schedule'],
+			['call-1', 'deny_schedule'],
+		]);
+		await tick();
 	});
 
 	it('highlights only the staged decision', () => {

@@ -83,6 +83,7 @@
 		type FanoutModel,
 	} from '#lib/fanout.js';
 	import { toast } from '#lib/toast.svelte.js';
+	import { setScheduledRunContext } from '#lib/scheduled-run-context.js';
 	import { isSnippetKind } from '#lib/types/api.js';
 	import type {
 		ChatMessage,
@@ -92,6 +93,8 @@
 	} from '#lib/types/api.js';
 
 	let { data }: { data: PageData } = $props();
+	// A scheduled task's run: its approval prompts offer "for this schedule".
+	setScheduledRunContext(() => data.conversation.scheduleId !== null);
 
 	// The model catalogue, shared with the rest of the (app) tree. What this page
 	// holds is a first-paint slice plus whatever has been resolved since — never,

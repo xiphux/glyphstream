@@ -926,6 +926,10 @@ export interface ConversationSummary {
 	 * indicator + the incognito re-tint. Distinct from `disabledFeatures`.
 	 */
 	private: boolean;
+	/** The scheduled task whose run created this conversation, or null for one a
+	 *  person started. Drives the sidebar's clock mark and, on a run waiting for
+	 *  approval, the "for this schedule" choices. May name a deleted schedule. */
+	scheduleId: string | null;
 }
 
 export interface ConversationDetail extends ConversationSummary {

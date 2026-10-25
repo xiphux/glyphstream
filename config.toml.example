@@ -78,6 +78,22 @@
 # [limits]
 # max_queued_generations_per_user = 40
 
+# ── Optional: [scheduled_tasks] ──────────────────────────────────────
+# Prompts users schedule to run on their own (Settings → Scheduled tasks). On by
+# default; every key is optional.
+#   enabled                  — false hides the feature and stops the runner.
+#   max_per_user             — schedules one NON-ADMIN may keep. Unset = no cap.
+#   min_interval_hours       — the floor on an "every N hours" schedule (default 1).
+#   default_deadline_minutes — a new schedule's deadline: how late a run may still
+#                              start before it's skipped (default 120).
+#   keep_runs                — run conversations kept per schedule (default 30).
+#   disable_after_failures   — failures in a row before a schedule turns itself
+#                              off (default 3).
+# See docs/scheduled-tasks.md#for-operators.
+# [scheduled_tasks]
+# max_per_user = 10
+# min_interval_hours = 1
+
 # ── Optional: [vision] ───────────────────────────────────────────────
 # Controls the downscaled copy of an image that gets inlined into a chat
 # request. Attached images are re-sent on EVERY turn for the life of the

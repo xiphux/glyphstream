@@ -1,4 +1,5 @@
 import { listConversations } from '#lib/server/db/queries/conversations.js';
+import { getScheduledTasksConfig } from '#lib/server/endpoints/config.js';
 import { listCustomModelsForUser } from '#lib/server/db/queries/custom-models.js';
 import { redirectUnauthenticatedPage } from '#lib/server/auth/guard.js';
 import { getUserPreferences } from '#lib/server/db/queries/user-preferences.js';
@@ -141,6 +142,8 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 	});
 	return {
 		user: locals.user,
+		// Whether to offer Settings → Scheduled tasks (`[scheduled_tasks] enabled`).
+		scheduledTasksEnabled: getScheduledTasksConfig().enabled,
 		// App lock as it applies to THIS client (null = off). `sliding` means the
 		// idle clock runs here — the installed app — so the layout keeps it fed
 		// while visible and covers the page when hidden. See server/auth/app-lock.ts.

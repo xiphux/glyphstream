@@ -1033,7 +1033,11 @@
 				-->
 				{#if accountMenuOpen}
 					{#await import('#lib/components/AccountMenuContent.svelte') then { default: AccountMenuContent }}
-						<AccountMenuContent {goto} isAdmin={data.user.role === 'admin'} />
+						<AccountMenuContent
+							{goto}
+							isAdmin={data.user.role === 'admin'}
+							scheduledTasks={data.scheduledTasksEnabled}
+						/>
 					{/await}
 				{/if}
 			</DropdownMenu.Root>

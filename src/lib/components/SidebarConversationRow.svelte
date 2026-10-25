@@ -6,7 +6,14 @@
 -->
 <script lang="ts">
 	import { DropdownMenu } from 'bits-ui';
-	import { Archive, MoreVertical, Pencil, Trash2, VenetianMask } from '@lucide/svelte';
+	import {
+		Archive,
+		CalendarClock,
+		MoreVertical,
+		Pencil,
+		Trash2,
+		VenetianMask,
+	} from '@lucide/svelte';
 	import { MAX_CONVERSATION_TITLE_LENGTH, type ConversationSummary } from '#lib/types/api.js';
 	import type { ConversationUiActions } from '#lib/conversation-ui-actions.svelte.js';
 	import type { GenerationActivity } from '#lib/generating-conversations.svelte.js';
@@ -110,6 +117,15 @@
 				strokeWidth={2.25}
 				class="shrink-0 text-accent"
 				aria-label="Private chat"
+			/>
+		{:else if c.scheduleId}
+			<!-- A scheduled task's run: same leading slot, so a morning's
+			 briefs read as briefs, not as chats someone started. -->
+			<CalendarClock
+				size={14}
+				strokeWidth={2.25}
+				class="shrink-0 text-fg-muted"
+				aria-label="Scheduled task"
 			/>
 		{/if}
 		<span class="min-w-0 truncate">{c.title ?? 'Untitled'}</span>

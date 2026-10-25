@@ -109,12 +109,19 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	let scheduleTask = meta.scheduleId ? getScheduledTask(meta.scheduleId, userId) : null;
 	let scheduled = scheduledPolicyForResume(params.id, userId, meta.scheduleId, scheduleTask);
 	const isToolPermitted = scheduled ? toolPermitter(scheduled.policy) : undefined;
-	if (
-		!scheduleTask &&
-		body.decisions.some((d) => d.action === 'allow_schedule' || d.action === 'deny_schedule')
-	) {
-		error(400, 'This conversation is not a scheduled task’s run');
-	}
+	// The schedule may have been deleted since the run: its "for this schedule"
+	// choices then decide just this call, like Allow / Reject.
+	const decisions = scheduleTask
+		? body.decisions
+		: body.decisions.map((d) => ({
+				...d,
+				action:
+					d.action === 'allow_schedule'
+						? ('allow' as const)
+						: d.action === 'deny_schedule'
+							? ('reject' as const)
+							: d.action,
+			}));
 
 	// Apply changes via updateMessageParts — the active-leaf doesn't move
 	// because we're rewriting existing rows, not appending.
@@ -123,7 +130,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const scheduleDenied: string[] = [];
 	let updatedAny = false;
 
-	for (const decision of body.decisions) {
+	for (const decision of decisions) {
 		// Read the branch fresh for each decision, and claim the call in the
 		// same synchronous step: a snapshot taken once before the loop goes
 		// stale across the awaits below, and a concurrent request could finish

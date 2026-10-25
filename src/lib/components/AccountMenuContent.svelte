@@ -4,6 +4,7 @@
 
 	import {
 		Brain,
+		CalendarClock,
 		ChartColumn,
 		KeyRound,
 		LogOut,
@@ -16,7 +17,16 @@
 		Users,
 	} from '@lucide/svelte';
 
-	let { goto, isAdmin = false }: { goto: (path: string) => unknown; isAdmin?: boolean } = $props();
+	let {
+		goto,
+		isAdmin = false,
+		scheduledTasks = false,
+	}: {
+		goto: (path: string) => unknown;
+		isAdmin?: boolean;
+		/** Whether the operator has scheduled tasks on (`[scheduled_tasks]`). */
+		scheduledTasks?: boolean;
+	} = $props();
 </script>
 
 <!--
@@ -74,6 +84,15 @@
 			<TextQuote size={14} strokeWidth={2.25} />
 			<span>Prompt snippets</span>
 		</DropdownMenu.Item>
+		{#if scheduledTasks}
+			<DropdownMenu.Item
+				onSelect={() => goto(resolve('settings/schedules'))}
+				class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
+			>
+				<CalendarClock size={14} strokeWidth={2.25} />
+				<span>Scheduled tasks</span>
+			</DropdownMenu.Item>
+		{/if}
 		<DropdownMenu.Item
 			onSelect={() => goto(resolve('settings/mcp'))}
 			class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"

@@ -154,6 +154,31 @@ export function updateScheduledTask(
 	return row ? rowToTask(row) : null;
 }
 
+/**
+ * Turn a schedule on or off without touching anything else — the list's
+ * toggle. Turning it on re-arms it at `nextRunAt` and clears a self-disable,
+ * as a save does; turning it off disarms it.
+ */
+export function setScheduledTaskEnabled(
+	id: string,
+	userId: string,
+	enabled: boolean,
+	nextRunAt: number | null,
+	now = Date.now(),
+): ScheduledTask | null {
+	const row = getDb()
+		.update(scheduledTasks)
+		.set(
+			enabled
+				? { enabled, nextRunAt, consecutiveFailures: 0, disabledReason: null, updatedAt: now }
+				: { enabled, nextRunAt: null, updatedAt: now },
+		)
+		.where(and(eq(scheduledTasks.id, id), eq(scheduledTasks.userId, userId)))
+		.returning()
+		.get();
+	return row ? rowToTask(row) : null;
+}
+
 /** Replace just the tool policy — the approval prompt's "for this schedule"
  *  choices. Leaves the failure streak alone: nothing else about it changed. */
 export function setScheduledTaskToolPolicy(

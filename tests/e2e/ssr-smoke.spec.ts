@@ -67,6 +67,7 @@ const ROUTES: Record<string, RouteCase> = {
 		path: () => '/settings/preferences',
 		renders: ['admin', 'user'],
 	},
+	'/(app)/settings/schedules': { path: () => '/settings/schedules', renders: ['admin', 'user'] },
 	'/(app)/settings/security': { path: () => '/settings/security', renders: ['admin', 'user'] },
 	'/(app)/settings/skills': { path: () => '/settings/skills', renders: ['admin', 'user'] },
 	'/(app)/settings/snippets': { path: () => '/settings/snippets', renders: ['admin', 'user'] },

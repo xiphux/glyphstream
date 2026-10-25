@@ -169,6 +169,7 @@ describe('one schedule', () => {
 		const theirs = await create(valid, { id: seedUser().id, role: 'user' });
 		const params = { id: theirs.id };
 		expect(await status(() => one.PUT(event(user, valid, params)))).toBe(404);
+		expect(await status(() => one.PATCH(event(user, { enabled: false }, params)))).toBe(404);
 		expect(await status(() => one.DELETE(event(user, undefined, params)))).toBe(404);
 		expect(await status(() => runNow.POST(event(user, undefined, params)))).toBe(404);
 		expect(await status(() => runs.GET(event(user, undefined, params)))).toBe(404);
@@ -179,6 +180,17 @@ describe('one schedule', () => {
 		const s = await create();
 		const res = await one.PUT(event(user, { ...valid, enabled: false }, { id: s.id }));
 		expect(((await res.json()) as { schedule: ScheduledTask }).schedule.nextRunAt).toBeNull();
+	});
+
+	it('toggles on and off without touching the rest', async () => {
+		const s = await create();
+		const patch = (enabled: unknown) => one.PATCH(event(user, { enabled }, { id: s.id }));
+		const off = ((await (await patch(false)).json()) as { schedule: ScheduledTask }).schedule;
+		expect(off).toMatchObject({ enabled: false, nextRunAt: null, name: s.name });
+		const on = ((await (await patch(true)).json()) as { schedule: ScheduledTask }).schedule;
+		expect(on.enabled).toBe(true);
+		expect(on.nextRunAt).toBe(s.nextRunAt);
+		expect(await status(() => patch('yes'))).toBe(400);
 	});
 
 	it('Run now starts a manual run, even while the schedule is off', async () => {

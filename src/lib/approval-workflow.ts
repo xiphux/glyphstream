@@ -16,7 +16,10 @@
 
 import { errorMessageFromResponse } from './fetch-error';
 
-export type ApprovalAction = 'allow' | 'allow_always' | 'reject';
+/** `allow_schedule` / `deny_schedule` are offered only on a scheduled task's
+ *  run: decide this call AND remember it in that schedule's tool policy. */
+export type ApprovalAction =
+	'allow' | 'allow_always' | 'reject' | 'allow_schedule' | 'deny_schedule';
 
 export interface ApprovalDecision {
 	toolCallId: string;

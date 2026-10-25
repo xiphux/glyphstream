@@ -328,16 +328,13 @@ describe('POST /tool-approval — resuming a scheduled run', () => {
 		});
 	});
 
-	it('refuses the schedule actions outside a scheduled run', async () => {
+	it('reads the schedule actions as plain allow / reject once the schedule is gone', async () => {
 		const { conversationId, userId } = seedPendingApproval();
-		let status = 0;
-		try {
-			await approve(conversationId, userId, [{ toolCallId: 'call_1', action: 'allow_schedule' }]);
-		} catch (e) {
-			status = (e as { status: number }).status;
-		}
-		expect(status).toBe(400);
-		expect(mocks.executions).toBe(0);
+		const res = await approve(conversationId, userId, [
+			{ toolCallId: 'call_1', action: 'allow_schedule' },
+		]);
+		expect(res.status).toBe(200);
+		expect(mocks.executions).toBe(1);
 	});
 
 	it('treats a later approval in a finished run’s conversation as an ordinary chat turn', async () => {

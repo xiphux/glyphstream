@@ -4,7 +4,8 @@
 	render generically). The shell owns the collapse/badge/attachments.
 -->
 <script lang="ts">
-	import { Check, ShieldCheck, ShieldX } from '@lucide/svelte';
+	import { CalendarCheck, CalendarX, Check, ShieldCheck, ShieldX } from '@lucide/svelte';
+	import { getScheduledRunContext } from '#lib/scheduled-run-context.js';
 	import ToolBlockShell from './ToolBlockShell.svelte';
 	import ToolResultSection from './ToolResultSection.svelte';
 	import { prettyJson, type ToolResultAttachment } from '#lib/chat-render.js';
@@ -41,6 +42,24 @@
 	// Read only inside the body snippet so it doesn't compute while collapsed.
 	const prettyArgs = $derived(prettyJson(argumentsJson));
 
+	// On a scheduled task's run the choices are about the SCHEDULE: its policy,
+	// not the account-wide trust list, decides what its runs may do.
+	const isScheduledRun = getScheduledRunContext();
+	const choices = $derived<Array<{ action: ApprovalAction; label: string; icon: typeof Check }>>(
+		isScheduledRun()
+			? [
+					{ action: 'allow', label: 'Allow', icon: Check },
+					{ action: 'allow_schedule', label: 'Always for this schedule', icon: CalendarCheck },
+					{ action: 'reject', label: 'Reject', icon: ShieldX },
+					{ action: 'deny_schedule', label: 'Never for this schedule', icon: CalendarX },
+				]
+			: [
+					{ action: 'allow', label: 'Allow', icon: Check },
+					{ action: 'allow_always', label: 'Allow always', icon: ShieldCheck },
+					{ action: 'reject', label: 'Reject', icon: ShieldX },
+				],
+	);
+
 	function approvalButtonClass(action: ApprovalAction): string {
 		const base =
 			'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-50';
@@ -49,8 +68,10 @@
 			case 'allow':
 				return `${base} ${selected ? 'border-success/50 bg-success/10 text-success' : 'border-border bg-surface-panel text-fg hover:bg-surface-raised'}`;
 			case 'allow_always':
+			case 'allow_schedule':
 				return `${base} ${selected ? 'border-info/50 bg-info/10 text-info' : 'border-border bg-surface-panel text-fg hover:bg-surface-raised'}`;
 			case 'reject':
+			case 'deny_schedule':
 				return `${base} ${selected ? 'border-danger/50 bg-danger/10 text-danger' : 'border-border bg-surface-panel text-fg hover:bg-surface-raised'}`;
 		}
 	}
@@ -77,34 +98,18 @@
 					Awaiting your approval
 				</div>
 				<div class="flex flex-wrap gap-1.5 pb-1 pt-0.5">
-					<button
-						type="button"
-						class={approvalButtonClass('allow')}
-						disabled={approvalBusy || !onApprovalSelect || !toolCallId}
-						onclick={() => toolCallId && onApprovalSelect && onApprovalSelect(toolCallId, 'allow')}
-					>
-						<Check size={12} strokeWidth={2.5} aria-hidden="true" />
-						Allow
-					</button>
-					<button
-						type="button"
-						class={approvalButtonClass('allow_always')}
-						disabled={approvalBusy || !onApprovalSelect || !toolCallId}
-						onclick={() =>
-							toolCallId && onApprovalSelect && onApprovalSelect(toolCallId, 'allow_always')}
-					>
-						<ShieldCheck size={12} strokeWidth={2.5} aria-hidden="true" />
-						Allow always
-					</button>
-					<button
-						type="button"
-						class={approvalButtonClass('reject')}
-						disabled={approvalBusy || !onApprovalSelect || !toolCallId}
-						onclick={() => toolCallId && onApprovalSelect && onApprovalSelect(toolCallId, 'reject')}
-					>
-						<ShieldX size={12} strokeWidth={2.5} aria-hidden="true" />
-						Reject
-					</button>
+					{#each choices as choice (choice.action)}
+						<button
+							type="button"
+							class={approvalButtonClass(choice.action)}
+							disabled={approvalBusy || !onApprovalSelect || !toolCallId}
+							onclick={() =>
+								toolCallId && onApprovalSelect && onApprovalSelect(toolCallId, choice.action)}
+						>
+							<choice.icon size={12} strokeWidth={2.5} aria-hidden="true" />
+							{choice.label}
+						</button>
+					{/each}
 				</div>
 			</div>
 		{:else}

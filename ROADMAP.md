@@ -510,33 +510,31 @@ proven, deliberately speculative — captured so the framing isn't lost. Each
 names the asset it pulls on. Priority within the section is unranked; the
 proactivity and pipeline bets are the most identity-defining.
 
-- **Standing agents / "the morning brief"** (asset: always-on process).
-  Scheduled prompts that run _without the user present_ and produce a feed —
-  "every morning, deep-research these three topics and push me a digest", "summarize
-  what changed in my watched repos overnight". This is the most differentiated
-  bet in the file: it reframes the product from a request-response chat box into
-  an _ambient assistant that works while you sleep_, and it's only possible
-  because the architecture is a persistent Node process + SQLite + push
-  notifications (all shipped — see `docs/notifications.md`), not a serverless
-  function. Composes directly with **deep research** above (the digest _is_ a
-  scheduled deep-research run) and the code-interpreter `tool_progress` idea (a
-  long autonomous run wants progress UI). Sketch: a `scheduled_agents` table
-  (per-user, `user_id`-scoped — the isolation invariant) holding a prompt +
-  cron-ish cadence + target model + enabled tools; a background runner on the
-  media-purger pattern (single process, hardcoded tick that wakes due agents);
-  each run lands as a normal conversation (so history/branching/gallery all work
-  for free) and fires the existing push payload (which already carries
-  `modality`). Open questions: do runs accrete into one long thread or spawn a
-  fresh conversation each fire?; per-user run quotas / wall-clock budget so a
-  household can't peg the GPU; whether the scheduler is its own thing or the
-  generic primitive that **watchers** (below) also rides on; surfacing/editing
-  schedules (a `/settings/agents` page vs. a "make this recurring" action on an
-  existing chat).
+- **Standing agents / "the morning brief"** (asset: always-on process). The
+  core shipped as **scheduled tasks** (`docs/scheduled-tasks.md`): per-user
+  `scheduled_tasks` + `scheduled_runs` tables, a sweeper (`server/scheduled/`)
+  that fires each run as an ordinary chat turn in a fresh conversation, at
+  `background` gate priority (yields to interactive turns, never preempts them),
+  bounded by a per-schedule deadline; a per-schedule Off / Ask / Allow tool
+  policy enforced at execution, an MCP preflight, notifications for every
+  ending, and operator limits in `[scheduled_tasks]`. Decided along the way: a
+  fresh conversation per run (not one accreting thread), presets rather than
+  cron. Remaining:
+  - _Continuity between runs._ "What changed since yesterday" wants the previous
+    run's answer as context — a short block from the last run, or pointing
+    `search_conversations` at the schedule's own runs. Deferred from v1.
+  - _Scheduled media._ A daily image or video (a wallpaper, a picture-book
+    page) through the durable generation jobs rather than the chat relay.
+  - _"Make this recurring"_ from an existing chat, prefilling the editor from
+    its first prompt, model and tool use.
+  - _Deep research_ (above) is the natural payload once it exists — the digest
+    _is_ a scheduled deep-research run, and a long autonomous run wants the
+    progress UI that idea calls for.
   - _Watchers / triggers._ The condition→notify sibling of the schedule→digest
     agent: "ping me when this product drops below $X", "when this repo cuts a
     release". Same background-runner + notification infra; the delta is a
     persisted _last-seen state_ per watcher and a comparison each tick. Likely
-    the same `scheduled_agents` table with a `trigger` mode. Open question:
+    the same `scheduled_tasks` table with a `trigger` mode. Open question:
     polling cadence vs. politeness to the watched source (and SSRF reuse —
     watchers fetch arbitrary URLs, so they ride the same egress gate as the web
     tools).

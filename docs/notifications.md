@@ -111,6 +111,20 @@ Implementation: `src/lib/sw/badge.ts` (unit-tested in
 and on notification tap, from the chat route on visit, and from the root
 layout when the app returns to the foreground.
 
+## Scheduled tasks
+
+A [scheduled task](scheduled-tasks.md)'s run notifies on every ending, not just
+a finished reply, because nobody was watching it happen. A finished run reads
+like any reply. The others say what happened instead of quoting the message:
+
+- **Waiting for your OK to use `<tool>`** — the run paused on a tool set to Ask.
+- **Didn't finish: `<reason>`** — an MCP server was down, the model failed, the
+  endpoint was too busy until the deadline, the server restarted mid-run…
+  ending in "— schedule turned off" when that failure was one too many in a row.
+
+These lines carry no message content, so they're shown even with **Show message
+content** off. A run you stop yourself doesn't notify.
+
 ## Operator setup
 
 The feature is **off by default** — a fresh GlyphStream install has no

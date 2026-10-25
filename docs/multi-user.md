@@ -183,6 +183,11 @@ A non-admin with that many generations queued or running (chat replies, images,
 videos and avatar draws all count) gets "try again when some finish" until some
 complete. **Admins are never capped.**
 
+[Scheduled tasks](scheduled-tasks.md) don't count toward this cap — their runs
+already wait behind everyone's chats — and have their own:
+`[scheduled_tasks] max_per_user` caps how many schedules a non-admin can keep, and
+`min_interval_hours` how often one can run.
+
 ### Restarting GlyphStream with generations queued
 
 Image and video generations are saved as they're queued, so restarting or

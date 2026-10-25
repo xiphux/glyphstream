@@ -98,6 +98,7 @@ export function createConversation(input: CreateInput): ConversationDetail {
 		updatedAt: now,
 		messages: [],
 		disabledFeatures,
+		scheduleId: input.scheduleId ?? null,
 		private: isPrivate,
 	};
 }
@@ -133,6 +134,7 @@ export function listConversations(userId: string): ConversationSummary[] {
 			createdAt: conversations.createdAt,
 			updatedAt: conversations.updatedAt,
 			private: conversations.private,
+			scheduleId: conversations.scheduleId,
 		})
 		.from(conversations)
 		.where(and(eq(conversations.userId, userId), isNull(conversations.archivedAt)))
@@ -151,6 +153,7 @@ export function listArchivedConversations(userId: string): ConversationSummary[]
 			createdAt: conversations.createdAt,
 			updatedAt: conversations.updatedAt,
 			private: conversations.private,
+			scheduleId: conversations.scheduleId,
 		})
 		.from(conversations)
 		.where(and(eq(conversations.userId, userId), isNotNull(conversations.archivedAt)))
@@ -331,6 +334,7 @@ export function getConversationDetail(
 			updatedAt: conversations.updatedAt,
 			disabledFeaturesJson: conversations.disabledFeaturesJson,
 			private: conversations.private,
+			scheduleId: conversations.scheduleId,
 		})
 		.from(conversations)
 		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
@@ -338,6 +342,7 @@ export function getConversationDetail(
 	if (!row) return null;
 
 	return {
+		scheduleId: row.scheduleId,
 		id: row.id,
 		title: row.title,
 		modelId: row.modelId,

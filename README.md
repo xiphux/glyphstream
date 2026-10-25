@@ -97,6 +97,8 @@ them into a single fast chat UI with one model picker.
   past chats — and a **private chat** mode that keeps a conversation out of both
   ([more](docs/chat.md#memory-and-recall)).
 - Every tool can be switched off per conversation.
+- **Scheduled tasks** — a prompt that runs on its own, like a morning brief, and
+  notifies you when it's done ([guide](docs/scheduled-tasks.md)).
 
 ### Self-hosting
 
@@ -156,6 +158,7 @@ pnpm dev                               # http://localhost:5173
 | [Prompt snippets](docs/prompt-snippets.md)       | Reusable prompt pieces: inserting, tagging, import and export                                       |
 | [MCP servers](docs/mcp.md)                       | stdio/HTTP transports, the approval model, examples                                                 |
 | [Push notifications](docs/notifications.md)      | VAPID keys, multi-device behavior, iOS install requirement                                          |
+| [Scheduled tasks](docs/scheduled-tasks.md)       | Prompts that run on their own: cadences, tool permissions, failures, limits                         |
 | [Deployment](docs/deployment.md)                 | Docker, reverse proxies (Caddy, nginx, Synology, Cloudflare), compression                           |
 | [Importing from Open WebUI](docs/import-owui.md) | The one-shot migration script and its caveats                                                       |
 

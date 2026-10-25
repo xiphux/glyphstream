@@ -9,6 +9,15 @@ arrived.
 
 ## Unreleased
 
+### Added
+
+- **Scheduled tasks** (Settings → Scheduled tasks): prompts that run on their own
+  — daily, on chosen weekdays, or every few hours — each as a new conversation,
+  with a notification when a run finishes, needs your approval, or fails. Each
+  schedule decides which MCP tools its runs may use unasked, must ask about, or
+  never see; runs wait behind people chatting. Operators can tune or turn it off
+  with `[scheduled_tasks]`.
+
 ### Security
 
 - Turning off a feature for a conversation (web access, an MCP server — or a
