@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.49.0
+
 ### Added
 
 - **Scheduled tasks** (Settings → Scheduled tasks): prompts that run on their own
