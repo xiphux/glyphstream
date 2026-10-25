@@ -39,12 +39,11 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 
 	return {
 		schedules: schedules.map((s) => ({ ...s, lastRun: latest.get(s.id) ?? null })),
-		// Runs are chat turns, so only chat models are offered.
-		models: models
-			.filter((m) => m.kind === 'chat')
-			.map((m) => ({ id: m.id, name: m.displayName }))
-			.sort((a, b) => a.name.localeCompare(b.name)),
-		customModels: listCustomModelsForUser(userId).map((cm) => ({ id: cm.id, name: cm.name })),
+		// Runs are chat turns, so only chat models are offered. The picker drops a
+		// preset whose base model isn't among these, so image/video presets go too.
+		models: models.filter((m) => m.kind === 'chat'),
+		customModels: listCustomModelsForUser(userId).map(({ systemPrompt: _, ...summary }) => summary),
+		favoriteModels: prefs?.favoriteModels ?? [],
 		servers: states.map((s) => ({
 			id: s.id,
 			displayName: s.displayName,

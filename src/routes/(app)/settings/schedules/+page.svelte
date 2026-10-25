@@ -171,6 +171,7 @@
 						initial={editingSchedule}
 						models={data.models}
 						customModels={data.customModels}
+						favoriteModels={data.favoriteModels}
 						servers={data.servers}
 						defaultTimezone={data.defaultTimezone}
 						defaultDeadlineMinutes={data.defaultDeadlineMinutes}

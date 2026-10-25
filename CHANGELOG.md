@@ -9,6 +9,10 @@ arrived.
 
 ## Unreleased
 
+### Changed
+
+- A schedule's model is now chosen with the same searchable, per-provider picker as the chat box, instead of one long dropdown.
+
 ## v0.49.0
 
 ### Added

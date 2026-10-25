@@ -13,7 +13,14 @@
 	import { errorMessageFromResponse } from '#lib/fetch-error.js';
 	import { toast } from '#lib/toast.svelte.js';
 	import { DAY_LABELS, EVERY_DAY, WEEKDAYS } from '#lib/schedule-format.js';
-	import type { FeatureCategory, ScheduleCadence, ScheduledTask } from '#lib/types/api.js';
+	import ModelPicker from '#lib/components/chat/ModelPicker.svelte';
+	import type {
+		CustomModelSummary,
+		FeatureCategory,
+		ModelEntry,
+		ScheduleCadence,
+		ScheduledTask,
+	} from '#lib/types/api.js';
 
 	type ToolState = 'off' | 'ask' | 'allow';
 	interface ServerOption {
@@ -26,8 +33,11 @@
 	interface Props {
 		/** The schedule being edited, or null to create one. */
 		initial: ScheduledTask | null;
-		models: Array<{ id: string; name: string }>;
-		customModels: Array<{ id: string; name: string }>;
+		/** Chat models only: a run is a chat turn. */
+		models: ModelEntry[];
+		customModels: CustomModelSummary[];
+		/** Shown as the picker's Favorites group; starring stays in the chat picker. */
+		favoriteModels: string[];
 		servers: ServerOption[];
 		defaultTimezone: string | null;
 		defaultDeadlineMinutes: number;
@@ -40,6 +50,7 @@
 		initial,
 		models,
 		customModels,
+		favoriteModels,
 		servers,
 		defaultTimezone,
 		defaultDeadlineMinutes,
@@ -68,7 +79,6 @@
 	// a background refresh would wipe what's being typed.
 	const start = untrack(() => ({
 		seed: initial,
-		firstModel: models[0]?.id ?? '',
 		minIntervalHours,
 		defaultTimezone,
 		defaultDeadlineMinutes,
@@ -76,8 +86,9 @@
 	const seed = start.seed;
 	let name = $state(seed?.name ?? '');
 	let prompt = $state(seed?.prompt ?? '');
+	// In the picker's shape: `endpointId::modelId`, or `custom::{id}` for a preset.
 	let modelChoice = $state(
-		seed?.customModelId ? `custom:${seed.customModelId}` : (seed?.modelId ?? start.firstModel),
+		seed?.customModelId ? `custom::${seed.customModelId}` : (seed?.modelId ?? ''),
 	);
 	let cadenceKind = $state<ScheduleCadence['kind']>(seed?.cadence.kind ?? 'daily');
 	let time = $state(seed?.cadence.kind === 'daily' ? seed.cadence.time : '07:00');
@@ -150,7 +161,7 @@
 	async function save() {
 		if (!canSave) return;
 		busy = true;
-		const custom = modelChoice.startsWith('custom:') ? modelChoice.slice('custom:'.length) : null;
+		const custom = modelChoice.startsWith('custom::') ? modelChoice.slice('custom::'.length) : null;
 		const entries = Object.entries(toolStates);
 		const payload = {
 			name: name.trim(),
@@ -209,28 +220,22 @@
 			class="{inputClass} resize-y"></textarea>
 	</label>
 
-	<label class="flex flex-col gap-1">
+	<div class="flex flex-col gap-1">
 		<span class="text-xs text-fg-muted">Model</span>
-		<select bind:value={modelChoice} class={inputClass}>
-			{#if customModels.length > 0}
-				<optgroup label="Your custom models">
-					{#each customModels as cm (cm.id)}
-						<option value="custom:{cm.id}">{cm.name}</option>
-					{/each}
-				</optgroup>
-			{/if}
-			<optgroup label="Models">
-				{#each models as m (m.id)}
-					<option value={m.id}>{m.name}</option>
-				{/each}
-			</optgroup>
-		</select>
-		{#if modelChoice.startsWith('custom:')}
+		<ModelPicker
+			{models}
+			{customModels}
+			filterKinds={['chat']}
+			favoritedIds={favoriteModels}
+			bind:value={modelChoice}
+			disabled={busy}
+		/>
+		{#if modelChoice.startsWith('custom::')}
 			<span class="text-xs text-fg-muted">
 				The custom model's prompt and settings are copied in when you save.
 			</span>
 		{/if}
-	</label>
+	</div>
 
 	<fieldset class="flex flex-col gap-2">
 		<legend class="mb-1 text-xs text-fg-muted">When</legend>
