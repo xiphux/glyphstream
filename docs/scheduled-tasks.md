@@ -36,7 +36,8 @@ one finishes, needs your approval, or fails.
 
 **Run now** starts a run straight away, whatever the schedule says and even
 while it's turned off. It's the way to try a prompt out, and to retry one that
-failed.
+failed. A schedule runs one at a time, so Run now is refused while one of its
+runs is queued or in progress.
 
 ## Tools: Off, Ask, Allow
 

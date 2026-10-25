@@ -429,6 +429,24 @@ export function expireWaitingScheduledRuns(cutoff: number, now = Date.now()): nu
 }
 
 /** Runs still queued or running — at startup, the ones a restart cut off. */
+/** Whether one of the schedule's runs is queued or running right now. */
+export function hasActiveScheduledRun(scheduleId: string, userId: string): boolean {
+	return (
+		getDb()
+			.select({ id: scheduledRuns.id })
+			.from(scheduledRuns)
+			.where(
+				and(
+					eq(scheduledRuns.scheduleId, scheduleId),
+					eq(scheduledRuns.userId, userId),
+					inArray(scheduledRuns.state, ['queued', 'running']),
+				),
+			)
+			.limit(1)
+			.get() !== undefined
+	);
+}
+
 export function listUnsettledScheduledRuns(
 	createdBefore: number,
 ): Array<ScheduledRun & { userId: string }> {

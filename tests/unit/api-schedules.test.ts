@@ -45,6 +45,7 @@ import * as one from '../../src/routes/api/user/schedules/[id]/+server';
 import * as runNow from '../../src/routes/api/user/schedules/[id]/run/+server';
 import * as runs from '../../src/routes/api/user/schedules/[id]/runs/+server';
 import { createCustomModel } from '#lib/server/db/queries/custom-models.js';
+import { insertScheduledRun } from '#lib/server/db/queries/scheduled-tasks.js';
 import type { ScheduledTask, ScheduledTasksResponse } from '#lib/types/api.js';
 
 type User = { id: string; role: 'admin' | 'user' };
@@ -198,6 +199,19 @@ describe('one schedule', () => {
 		const res = await runNow.POST(event(user, undefined, { id: s.id }));
 		expect(res.status).toBe(202);
 		expect(mocks.started).toEqual([{ id: s.id, userId: user.id, trigger: 'manual' }]);
+	});
+
+	it('Run now refuses while a run of the schedule is queued or running', async () => {
+		const s = await create();
+		insertScheduledRun({
+			scheduleId: s.id,
+			userId: user.id,
+			slotAt: 1,
+			trigger: 'schedule',
+			state: 'running',
+		});
+		expect(await status(() => runNow.POST(event(user, undefined, { id: s.id })))).toBe(409);
+		expect(mocks.started).toEqual([]);
 	});
 
 	it('deletes', async () => {
