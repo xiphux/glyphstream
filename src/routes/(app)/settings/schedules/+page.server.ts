@@ -2,7 +2,7 @@ import { error } from '@sveltejs/kit';
 import { listCustomModelsForUser } from '#lib/server/db/queries/custom-models.js';
 import { latestScheduledRuns, listScheduledTasks } from '#lib/server/db/queries/scheduled-tasks.js';
 import { getScheduledTasksConfig } from '#lib/server/endpoints/config.js';
-import { listAllModels } from '#lib/server/endpoints/list-models.js';
+import { listAllModelsWithErrors } from '#lib/server/endpoints/list-models.js';
 import { awaitMcpReady } from '#lib/server/mcp/bootstrap.js';
 import { getUserServerStates } from '#lib/server/mcp/registry.js';
 import { buildRegisteredName } from '#lib/server/mcp/tool-bridge.js';
@@ -29,8 +29,8 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 	);
 
 	await awaitMcpReady();
-	const [models, states] = await Promise.all([
-		listAllModels(),
+	const [results, states] = await Promise.all([
+		listAllModelsWithErrors(),
 		getUserServerStates(userId, {
 			connectBudgetMs: SCHEDULES_MCP_CONNECT_BUDGET_MS,
 			backgroundKnownServers: true,
@@ -40,8 +40,11 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 	return {
 		schedules: schedules.map((s) => ({ ...s, lastRun: latest.get(s.id) ?? null })),
 		// Runs are chat turns, so only chat models are offered. The picker drops a
-		// preset whose base model isn't among these, so image/video presets go too.
-		models: models.filter((m) => m.kind === 'chat'),
+		// preset whose base model isn't among these, so image/video presets go too —
+		// except on an endpoint that couldn't list its models just now, where a
+		// missing base means "unknown", not "gone".
+		models: results.flatMap((r) => r.models).filter((m) => m.kind === 'chat'),
+		unlistedEndpoints: results.filter((r) => r.error).map((r) => r.endpointId),
 		customModels: listCustomModelsForUser(userId).map(({ systemPrompt: _, ...summary }) => summary),
 		favoriteModels: prefs?.favoriteModels ?? [],
 		servers: states.map((s) => ({

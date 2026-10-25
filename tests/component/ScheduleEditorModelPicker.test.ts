@@ -30,12 +30,17 @@ function makeModel(endpointId: string, upstreamId: string): ModelEntry {
 	};
 }
 
-function makePreset(id: string, name: string, baseModelId: string): CustomModelSummary {
+function makePreset(
+	id: string,
+	name: string,
+	baseModelId: string,
+	baseEndpointId = 'bridge',
+): CustomModelSummary {
 	return {
 		id,
 		name,
 		description: null,
-		baseEndpointId: 'bridge',
+		baseEndpointId,
 		baseModelId,
 		parameters: null,
 		defaultDisabledFeatures: [],
@@ -51,6 +56,8 @@ const PRESETS = [
 	makePreset('cm-chat', 'Brief writer', 'gpt-4o'),
 	// Its base is an image model, so it isn't among MODELS.
 	makePreset('cm-image', 'Poster maker', 'flux'),
+	// On an endpoint that's down, so its base model isn't listed either.
+	makePreset('cm-offline', 'Offline helper', 'local-llm', 'offline'),
 ];
 
 function seed(overrides: Partial<ScheduledTask>): ScheduledTask {
@@ -77,7 +84,7 @@ function seed(overrides: Partial<ScheduledTask>): ScheduledTask {
 	};
 }
 
-function renderEditor(initial: ScheduledTask | null = null) {
+function renderEditor(initial: ScheduledTask | null = null, unlistedEndpoints: string[] = []) {
 	const onSaved = vi.fn();
 	render(ScheduleEditor, {
 		props: {
@@ -85,6 +92,7 @@ function renderEditor(initial: ScheduledTask | null = null) {
 			models: MODELS,
 			customModels: PRESETS,
 			favoriteModels: [],
+			unlistedEndpoints,
 			servers: [],
 			defaultTimezone: 'UTC',
 			defaultDeadlineMinutes: 60,
@@ -145,6 +153,18 @@ describe('ScheduleEditor model picker', () => {
 		await user.click(screen.getByRole('button', { name: 'Create schedule' }));
 		expect(body()).toMatchObject({ customModelId: 'cm-chat' });
 		expect(body()).not.toHaveProperty('modelId');
+	});
+
+	it('keeps a preset whose endpoint could not list its models', async () => {
+		const user = userEvent.setup();
+		const body = stubFetch();
+		renderEditor(seed({ customModelId: 'cm-offline' }), ['offline']);
+		expect(screen.getByLabelText('Select model')).toHaveTextContent('Offline helper');
+		await user.click(screen.getByLabelText('Select model'));
+		expect(screen.getByRole('option', { name: /Offline helper/ })).toBeInTheDocument();
+		await user.keyboard('{Escape}');
+		await user.click(screen.getByRole('button', { name: 'Save changes' }));
+		expect(body()).toMatchObject({ customModelId: 'cm-offline' });
 	});
 
 	it("doesn't offer a preset built on a model a run can't use", async () => {

@@ -172,6 +172,7 @@
 						models={data.models}
 						customModels={data.customModels}
 						favoriteModels={data.favoriteModels}
+						unlistedEndpoints={data.unlistedEndpoints}
 						servers={data.servers}
 						defaultTimezone={data.defaultTimezone}
 						defaultDeadlineMinutes={data.defaultDeadlineMinutes}

@@ -14,6 +14,7 @@
 	import { toast } from '#lib/toast.svelte.js';
 	import { DAY_LABELS, EVERY_DAY, WEEKDAYS } from '#lib/schedule-format.js';
 	import ModelPicker from '#lib/components/chat/ModelPicker.svelte';
+	import { endpointIdOf } from '#lib/model-ids.js';
 	import type {
 		CustomModelSummary,
 		FeatureCategory,
@@ -38,6 +39,9 @@
 		customModels: CustomModelSummary[];
 		/** Shown as the picker's Favorites group; starring stays in the chat picker. */
 		favoriteModels: string[];
+		/** Endpoints whose model list failed to load. A preset on one stays offered
+		 *  even though its base model isn't in `models`. */
+		unlistedEndpoints: string[];
 		servers: ServerOption[];
 		defaultTimezone: string | null;
 		defaultDeadlineMinutes: number;
@@ -51,6 +55,7 @@
 		models,
 		customModels,
 		favoriteModels,
+		unlistedEndpoints,
 		servers,
 		defaultTimezone,
 		defaultDeadlineMinutes,
@@ -227,6 +232,7 @@
 			{customModels}
 			filterKinds={['chat']}
 			favoritedIds={favoriteModels}
+			baseIsGone={(id: string) => !unlistedEndpoints.includes(endpointIdOf(id) ?? '')}
 			bind:value={modelChoice}
 			disabled={busy}
 		/>
