@@ -200,12 +200,14 @@ describe('scheduled runs', () => {
 		const u = seedUser();
 		const task = createScheduledTask(u.id, input(), 100);
 		const base = { scheduleId: task.id, userId: u.id, trigger: 'schedule' as const };
-		const running = insertScheduledRun({ ...base, slotAt: 1, state: 'queued' })!;
+		const running = insertScheduledRun({ ...base, slotAt: 1, state: 'queued', now: 10 })!;
 		updateScheduledRun(running.id, { state: 'running', startedAt: 5 });
-		insertScheduledRun({ ...base, slotAt: 2, state: 'done' });
-		insertScheduledRun({ ...base, slotAt: 3, state: 'needs_input' });
+		insertScheduledRun({ ...base, slotAt: 2, state: 'done', now: 10 });
+		insertScheduledRun({ ...base, slotAt: 3, state: 'needs_input', now: 10 });
+		// Filed by the current process: not cut off by anything.
+		insertScheduledRun({ ...base, slotAt: 4, state: 'queued', now: 20 });
 
-		expect(listUnsettledScheduledRuns().map((r) => [r.id, r.state])).toEqual([
+		expect(listUnsettledScheduledRuns(20).map((r) => [r.id, r.state])).toEqual([
 			[running.id, 'running'],
 		]);
 	});

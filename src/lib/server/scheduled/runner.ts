@@ -504,19 +504,27 @@ export function settleResumedRun(
 // --- restart -------------------------------------------------------------------
 
 const SWEPT = Symbol.for('glyphstream.scheduledRunsSwept');
-type GlobalWithFlag = typeof globalThis & { [SWEPT]?: boolean };
+const BOOTED = Symbol.for('glyphstream.scheduledRunnerBootedAt');
+type GlobalWithFlag = typeof globalThis & { [SWEPT]?: boolean; [BOOTED]?: number };
+// On globalThis for the same reason as the flag: an HMR re-evaluation is not a
+// new process, and must not move the line between "ours" and "a dead one's".
+(globalThis as GlobalWithFlag)[BOOTED] ??= Date.now();
 
 /**
  * Fail every run a restart cut off. A run's turn lives only in this process,
- * so a row still queued or running at startup has nothing behind it. Once per
- * process — a dev HMR reload re-evaluates this module, and running it again
- * then would fail runs that are very much alive.
+ * so a row a PREVIOUS process left queued or running has nothing behind it.
+ * Only rows filed before this process started: the sweep waits for the first
+ * tick, and a Run now pressed in the meantime is alive. Once per process — a
+ * dev HMR reload re-evaluates this module, and running it again then would
+ * fail runs that are very much alive.
  */
-export function failInterruptedRuns(): number {
+export function failInterruptedRuns(
+	bootedAt = (globalThis as GlobalWithFlag)[BOOTED] ?? Date.now(),
+): number {
 	const g = globalThis as GlobalWithFlag;
 	if (g[SWEPT]) return 0;
 	g[SWEPT] = true;
-	const runs = listUnsettledScheduledRuns();
+	const runs = listUnsettledScheduledRuns(bootedAt);
 	const cfg = getScheduledTasksConfig();
 	for (const run of runs) {
 		const detail = 'The server restarted before this run finished';

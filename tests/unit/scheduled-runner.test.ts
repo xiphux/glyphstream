@@ -461,13 +461,30 @@ describe('restart', () => {
 		})!;
 		updateScheduledRun(run.id, { state: 'running', conversationId: conv.id });
 
-		expect(failInterruptedRuns()).toBe(1);
-		expect(failInterruptedRuns()).toBe(0);
+		// As if the process started after the run was filed.
+		expect(failInterruptedRuns(Date.now() + 1)).toBe(1);
+		expect(failInterruptedRuns(Date.now() + 1)).toBe(0);
 		expect(listScheduledRuns(task.id, userId, 1)[0]).toMatchObject({
 			state: 'failed',
 			failureKind: 'interrupted',
 		});
 		expect(walkActiveBranch(conv.id).at(-1)?.parts[0]).toMatchObject({ type: 'error' });
 		expect(notify.mock.calls[0][0].summary).toMatch(/restarted/);
+	});
+
+	it('leaves a run this process started before the first tick alone', () => {
+		const { userId, task } = schedule();
+		const bootedAt = Date.now();
+		const run = insertScheduledRun({
+			scheduleId: task.id,
+			userId,
+			slotAt: SLOT,
+			trigger: 'manual',
+			state: 'queued',
+			now: bootedAt,
+		})!;
+		expect(failInterruptedRuns(bootedAt)).toBe(0);
+		expect(listScheduledRuns(task.id, userId, 1)[0]).toMatchObject({ id: run.id, state: 'queued' });
+		expect(notify).not.toHaveBeenCalled();
 	});
 });

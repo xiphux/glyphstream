@@ -3,7 +3,7 @@
  * `user_id`; the runner's cross-user reads (`listDueScheduledTasks`,
  * `listUnsettledScheduledRuns`) are the background sweep's, never a request's.
  */
-import { and, asc, desc, eq, inArray, isNull, lte, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lt, lte, notInArray, sql } from 'drizzle-orm';
 import type {
 	CustomModelParameters,
 	FeatureCategory,
@@ -429,11 +429,18 @@ export function expireWaitingScheduledRuns(cutoff: number, now = Date.now()): nu
 }
 
 /** Runs still queued or running — at startup, the ones a restart cut off. */
-export function listUnsettledScheduledRuns(): Array<ScheduledRun & { userId: string }> {
+export function listUnsettledScheduledRuns(
+	createdBefore: number,
+): Array<ScheduledRun & { userId: string }> {
 	return getDb()
 		.select()
 		.from(scheduledRuns)
-		.where(inArray(scheduledRuns.state, ['queued', 'running']))
+		.where(
+			and(
+				inArray(scheduledRuns.state, ['queued', 'running']),
+				lt(scheduledRuns.createdAt, createdBefore),
+			),
+		)
 		.all()
 		.map((row) => ({ ...rowToRun(row), userId: row.userId }));
 }
