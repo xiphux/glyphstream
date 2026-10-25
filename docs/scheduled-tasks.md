@@ -62,9 +62,10 @@ extra choices:
 - **Never for this schedule** — rejects the call and sets the tool to Off, so
   future runs aren't offered it.
 
-Either way you only answer once. A run waiting for approval holds nothing — no
-place in the queue, no GPU — so there's no hurry; after a week it's closed out
-as expired.
+Either way you only answer once. These choices belong to the run's own turn:
+anything you type into a run's conversation is an ordinary chat turn, under your
+usual permissions. A run waiting for approval holds nothing — no place in the
+queue, no GPU — so there's no hurry; after a week it's closed out as expired.
 
 Be careful with **Allow** on tools that _change_ things (send, delete, post).
 What a run reads — an email, a web page — can contain instructions, and with
@@ -122,7 +123,7 @@ schedules have [their own limits](#for-operators).
 Each schedule keeps its last 30 runs' conversations; older ones are deleted
 (their entries stay in the run history). A conversation you're still meant to
 act on — a run waiting for your approval — is never deleted. Deleting a schedule
-keeps its past runs' conversations.
+keeps its past runs' conversations, as ordinary chats.
 
 ## For operators
 

@@ -97,7 +97,12 @@ function toolDef(name: string, description = name): OpenAIToolDefinition {
 }
 
 /** user → assistant(tool_call) → tool(pending_approval). */
-function seedPendingApproval(): { conversationId: string; userId: string } {
+/** A conversation paused on an approval. `afterEarlierTurn`: the paused turn
+ *  is a follow-up, below an earlier exchange, rather than the first one. */
+function seedPendingApproval(opts: { afterEarlierTurn?: boolean } = {}): {
+	conversationId: string;
+	userId: string;
+} {
 	const u = seedUser();
 	const conv = createConversation({
 		userId: u.id,
@@ -125,6 +130,10 @@ function seedPendingApproval(): { conversationId: string; userId: string } {
 		parent = m.id;
 		return m;
 	};
+	if (opts.afterEarlierTurn) {
+		add('user', [{ type: 'text', text: 'brief' }]);
+		add('assistant', [{ type: 'text', text: 'the brief' }]);
+	}
 	add('user', [{ type: 'text', text: 'look it up' }]);
 	add('assistant', [
 		{ type: 'tool_call', toolCallId: 'call_1', toolName: 'mcp__srv__lookup', arguments: '{}' },
@@ -248,12 +257,15 @@ describe('POST /tool-approval — the resumed turn is registered like a sent one
 });
 
 describe('POST /tool-approval — resuming a scheduled run', () => {
-	async function seedScheduledPending(runState: 'needs_input' | 'done') {
+	async function seedScheduledPending(
+		runState: 'needs_input' | 'done',
+		opts: { afterEarlierTurn?: boolean } = {},
+	) {
 		const { createScheduledTask, insertScheduledRun, updateScheduledRun } =
 			await import('#lib/server/db/queries/scheduled-tasks.js');
 		const { conversations } = await import('#lib/server/db/schema.js');
 		const { eq } = await import('drizzle-orm');
-		const seeded = seedPendingApproval();
+		const seeded = seedPendingApproval(opts);
 		const task = createScheduledTask(
 			seeded.userId,
 			{
@@ -336,6 +348,32 @@ describe('POST /tool-approval — resuming a scheduled run', () => {
 		expect(res.status).toBe(200);
 		expect(mocks.executions).toBe(1);
 	});
+
+	it.each([
+		['the run has finished', 'done', false],
+		['the paused turn is a follow-up, not the run’s own', 'needs_input', true],
+	] as const)(
+		'reads the schedule actions as plain allow when %s, leaving the schedule alone',
+		async (_label, runState, afterEarlierTurn) => {
+			const { conversationId, userId, task, runId } = await seedScheduledPending(runState, {
+				afterEarlierTurn,
+			});
+
+			await approve(conversationId, userId, [{ toolCallId: 'call_1', action: 'allow_schedule' }]);
+
+			expect(mocks.executions).toBe(1);
+			const { getScheduledTask, listScheduledRuns } =
+				await import('#lib/server/db/queries/scheduled-tasks.js');
+			expect(getScheduledTask(task.id, userId)?.toolPolicy.allowed).toEqual([]);
+			const [opts] = mocks.relayCalls as Array<{ onOutcome?: unknown; toolPolicy?: unknown }>;
+			expect(opts.onOutcome).toBeUndefined();
+			expect(opts.toolPolicy).toBeUndefined();
+			expect(listScheduledRuns(task.id, userId, 1)[0]).toMatchObject({
+				id: runId,
+				state: runState,
+			});
+		},
+	);
 
 	it('treats a later approval in a finished run’s conversation as an ordinary chat turn', async () => {
 		const { conversationId, userId } = await seedScheduledPending('done');

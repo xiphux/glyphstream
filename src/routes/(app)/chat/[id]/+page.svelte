@@ -93,8 +93,6 @@
 	} from '#lib/types/api.js';
 
 	let { data }: { data: PageData } = $props();
-	// A scheduled task's run: its approval prompts offer "for this schedule".
-	setScheduledRunContext(() => data.conversation.scheduleId !== null);
 
 	// The model catalogue, shared with the rest of the (app) tree. What this page
 	// holds is a first-paint slice plus whatever has been resolved since — never,
@@ -272,6 +270,15 @@
 	// conversation on every turn and not.
 	// svelte-ignore state_referenced_locally
 	let messages = $state.raw<ChatMessage[]>(data.conversation.messages);
+	// A scheduled run paused on its own turn: its approval prompts offer "for
+	// this schedule". The load decides; the latest-user check re-reads it live,
+	// so a follow-up typed in the meantime (an ordinary turn) gets the ordinary
+	// choices — the same rule as the server's `scheduledPolicyForResume`.
+	setScheduledRunContext(
+		() =>
+			data.scheduledRunWaiting &&
+			[...messages].reverse().find((m) => m.role === 'user')?.parentMessageId === null,
+	);
 	// The page loads only the branch's newest window (see +page.server.ts);
 	// whether older messages exist above it, fetched by `loadEarlier` as the
 	// reader scrolls up.

@@ -20,7 +20,7 @@ import {
 	type ScheduledTaskInput,
 } from '#lib/server/db/queries/scheduled-tasks.js';
 import { createConversation } from '#lib/server/db/queries/conversations.js';
-import { users } from '#lib/server/db/schema.js';
+import { conversations, users } from '#lib/server/db/schema.js';
 
 let db: TestDB;
 beforeEach(() => {
@@ -210,6 +210,30 @@ describe('scheduled runs', () => {
 		expect(listUnsettledScheduledRuns(20).map((r) => [r.id, r.state])).toEqual([
 			[running.id, 'running'],
 		]);
+	});
+
+	it("unmarks a deleted schedule's run conversations, and only its owner's", () => {
+		const u = seedUser();
+		const task = createScheduledTask(u.id, input(), 100);
+		const conv = (userId: string) =>
+			createConversation({
+				userId,
+				endpointId: 'bridge',
+				modelId: 'bridge::m',
+				modelKind: 'chat',
+				scheduleId: task.id,
+			});
+		const mine = conv(u.id);
+		const notMine = conv(seedUser().id);
+		expect(deleteScheduledTask(task.id, u.id)).toBe(true);
+		const scheduleOf = (id: string) =>
+			db
+				.select({ s: conversations.scheduleId })
+				.from(conversations)
+				.where(eq(conversations.id, id))
+				.get()?.s;
+		expect(scheduleOf(mine.id)).toBeNull();
+		expect(scheduleOf(notMine.id)).toBe(task.id);
 	});
 
 	it('keeps the run row when its conversation is deleted', () => {

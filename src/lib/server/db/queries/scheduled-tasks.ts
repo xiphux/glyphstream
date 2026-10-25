@@ -18,7 +18,7 @@ import { generateId } from '../../util/id';
 import { coerceToolPolicy, parseToolPolicy } from '../../scheduled/tool-policy';
 import { getDb } from '../client';
 import { isUniqueViolation } from '../errors';
-import { scheduledRuns, scheduledTasks, users } from '../schema';
+import { conversations, scheduledRuns, scheduledTasks, users } from '../schema';
 import { parseDisabledFeatures, parseModelParameters } from './json-columns';
 
 type TaskRow = typeof scheduledTasks.$inferSelect;
@@ -193,13 +193,22 @@ export function setScheduledTaskToolPolicy(
 		.run();
 }
 
+/** Delete a schedule. Its past runs' conversations stay, as ordinary chats:
+ *  unmarked here, since `schedule_id` is a soft reference nothing else clears. */
 export function deleteScheduledTask(id: string, userId: string): boolean {
-	const row = getDb()
-		.delete(scheduledTasks)
-		.where(and(eq(scheduledTasks.id, id), eq(scheduledTasks.userId, userId)))
-		.returning({ id: scheduledTasks.id })
-		.get();
-	return row !== undefined;
+	return getDb().transaction((tx) => {
+		const row = tx
+			.delete(scheduledTasks)
+			.where(and(eq(scheduledTasks.id, id), eq(scheduledTasks.userId, userId)))
+			.returning({ id: scheduledTasks.id })
+			.get();
+		if (!row) return false;
+		tx.update(conversations)
+			.set({ scheduleId: null })
+			.where(and(eq(conversations.scheduleId, id), eq(conversations.userId, userId)))
+			.run();
+		return true;
+	});
 }
 
 export function getScheduledTask(id: string, userId: string): ScheduledTask | null {

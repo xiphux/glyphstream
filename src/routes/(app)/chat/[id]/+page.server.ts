@@ -3,6 +3,8 @@ import { CONVERSATION_MISSING_NOTICE } from '#lib/notices.js';
 import { requireUserPage } from '#lib/server/auth/guard.js';
 import { listActiveCanvases } from '#lib/server/db/queries/artifacts.js';
 import { getConversationDetail } from '#lib/server/db/queries/conversations.js';
+import { getScheduledTask } from '#lib/server/db/queries/scheduled-tasks.js';
+import { scheduledPolicyForResume } from '#lib/server/scheduled/runner.js';
 import { getCustomModelForUser } from '#lib/server/db/queries/custom-models.js';
 import {
 	BRANCH_WINDOW_SIZE,
@@ -188,7 +190,24 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 			})
 		: referencedModelIds;
 	const hasImageModel = allModels.some((m) => m.kind === 'image');
+	// A scheduled run paused on its own turn: its approval prompts offer "for
+	// this schedule". Not merely `scheduleId` — a finished run's conversation is
+	// an ordinary chat, whose prompts are answered with the account's trust list.
+	const scheduledRunWaiting =
+		conversation.scheduleId !== null &&
+		timeDb(
+			locals,
+			() =>
+				scheduledPolicyForResume(
+					conversation.id,
+					locals.user.id,
+					conversation.scheduleId,
+					getScheduledTask(conversation.scheduleId!, locals.user.id),
+					conversation.messages,
+				) !== null,
+		);
 	return {
+		scheduledRunWaiting,
 		conversation,
 		referencedModels,
 		answeredModelIds,

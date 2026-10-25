@@ -376,8 +376,9 @@ export const conversations = sqliteTable(
 		// The scheduled task whose run created this conversation (null for every
 		// chat a person started). A soft reference, not a foreign key: the column
 		// arrives by ALTER TABLE, and SQLite silently drops an ON DELETE added that
-		// way — deleting a schedule keeps its past runs' conversations, and a
-		// dangling id just reads as "no longer scheduled".
+		// way — so deleting a schedule clears it here itself
+		// (`deleteScheduledTask`), keeping its past runs' conversations as
+		// ordinary chats.
 		scheduleId: text('schedule_id'),
 	},
 	(t) => [

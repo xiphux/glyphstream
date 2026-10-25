@@ -106,12 +106,22 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	// A scheduled run that paused for approval resumes under its schedule's tool
 	// policy (read fresh, so an "allow for this schedule" just made applies), and
 	// its run row is settled when the resumed turn ends.
+	const pausedBranch = meta.scheduleId
+		? walkActiveBranch(params.id, { columns: 'serialization' })
+		: [];
 	let scheduleTask = meta.scheduleId ? getScheduledTask(meta.scheduleId, userId) : null;
-	let scheduled = scheduledPolicyForResume(params.id, userId, meta.scheduleId, scheduleTask);
+	let scheduled = scheduledPolicyForResume(
+		params.id,
+		userId,
+		meta.scheduleId,
+		scheduleTask,
+		pausedBranch,
+	);
 	const isToolPermitted = scheduled ? toolPermitter(scheduled.policy) : undefined;
-	// The schedule may have been deleted since the run: its "for this schedule"
-	// choices then decide just this call, like Allow / Reject.
-	const decisions = scheduleTask
+	// Not a run's own paused turn — a follow-up in its conversation, or the
+	// schedule was deleted since: "for this schedule" then decides just this
+	// call, like Allow / Reject, and the schedule is left alone.
+	const decisions = scheduled
 		? body.decisions
 		: body.decisions.map((d) => ({
 				...d,
@@ -200,7 +210,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	}
 	// Same for the schedule's own policy, and re-read it so the resumed turn
 	// runs under the policy as it now stands.
-	if (scheduleTask && (scheduleAllowed.length > 0 || scheduleDenied.length > 0)) {
+	if (scheduled && scheduleTask && (scheduleAllowed.length > 0 || scheduleDenied.length > 0)) {
 		const p = scheduleTask.toolPolicy;
 		const denied = new Set(scheduleDenied);
 		const allowed = new Set(scheduleAllowed);
@@ -210,7 +220,13 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			ask: p.ask.filter((n) => !denied.has(n) && !allowed.has(n)),
 		});
 		scheduleTask = getScheduledTask(scheduleTask.id, userId);
-		scheduled = scheduledPolicyForResume(params.id, userId, meta.scheduleId, scheduleTask);
+		scheduled = scheduledPolicyForResume(
+			params.id,
+			userId,
+			meta.scheduleId,
+			scheduleTask,
+			pausedBranch,
+		);
 	}
 
 	const parsed = parseModelId(meta.modelId);

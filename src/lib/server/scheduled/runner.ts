@@ -470,18 +470,24 @@ function pruneRuns(scheduleId: string, userId: string, keep: number): void {
 // --- approval resume ---------------------------------------------------------
 
 /**
- * The policy a turn in this conversation runs under, if it is a scheduled run
- * still waiting on approval — the one case where someone resumes a run rather
- * than chatting in its conversation. Anything typed into the conversation
- * afterwards is an ordinary chat turn with the person present.
+ * The policy a paused turn in this conversation resumes under, if it is a
+ * scheduled run's own turn still waiting on approval — the one case where
+ * someone resumes a run rather than chatting in its conversation. Anything
+ * typed into the conversation is an ordinary chat turn with the person present,
+ * even while the run waits: so the paused turn must answer the run's prompt,
+ * the root of the conversation (`branch` is the active branch, or its newest
+ * window — the latest user message on it decides).
  */
 export function scheduledPolicyForResume(
 	conversationId: string,
 	userId: string,
 	scheduleId: string | null,
 	task: ScheduledTask | null,
+	branch: ReadonlyArray<Pick<ChatMessage, 'role' | 'parentMessageId'>>,
 ): { runId: string; policy: ScheduledToolPolicy } | null {
 	if (!scheduleId || !task) return null;
+	const lastUser = [...branch].reverse().find((m) => m.role === 'user');
+	if (!lastUser || lastUser.parentMessageId) return null;
 	const run = getScheduledRunForConversation(conversationId, userId);
 	if (!run || run.state !== 'needs_input') return null;
 	return { runId: run.id, policy: task.toolPolicy };
