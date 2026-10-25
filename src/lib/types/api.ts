@@ -2310,6 +2310,10 @@ export type ScheduledRunFailureKind =
 	| 'interrupted'
 	/** A slot that passed while the server was down, superseded by a later one. */
 	| 'missed'
+	/** Stopped by hand (or its conversation deleted) before it finished. */
+	| 'stopped'
+	/** Waited on an approval for a week with no answer. */
+	| 'expired'
 	/** Anything else. */
 	| 'internal';
 

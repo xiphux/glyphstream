@@ -246,3 +246,66 @@ describe('POST /tool-approval — the resumed turn is registered like a sent one
 		]);
 	});
 });
+
+describe('POST /tool-approval — resuming a scheduled run', () => {
+	async function seedScheduledPending(runState: 'needs_input' | 'done') {
+		const { createScheduledTask, insertScheduledRun, updateScheduledRun } =
+			await import('#lib/server/db/queries/scheduled-tasks.js');
+		const { conversations } = await import('#lib/server/db/schema.js');
+		const { eq } = await import('drizzle-orm');
+		const seeded = seedPendingApproval();
+		const task = createScheduledTask(
+			seeded.userId,
+			{
+				name: 'Brief',
+				prompt: 'p',
+				modelId: 'mock::mock-chat',
+				customModelId: null,
+				systemPrompt: null,
+				parameters: null,
+				cadence: { kind: 'daily', time: '07:00', days: [1] },
+				timezone: 'UTC',
+				toolPolicy: { allowed: [], ask: ['mcp__srv__lookup'], memoryWrites: false },
+				disabledFeatures: [],
+				deadlineMinutes: 60,
+				enabled: true,
+			},
+			1,
+		);
+		mocks.testDb
+			.update(conversations)
+			.set({ scheduleId: task.id })
+			.where(eq(conversations.id, seeded.conversationId))
+			.run();
+		const run = insertScheduledRun({
+			scheduleId: task.id,
+			userId: seeded.userId,
+			slotAt: 1,
+			trigger: 'schedule',
+			state: 'queued',
+		})!;
+		updateScheduledRun(run.id, { state: runState, conversationId: seeded.conversationId });
+		return { ...seeded, task, runId: run.id };
+	}
+
+	it('settles the run when the resumed turn ends', async () => {
+		const { conversationId, userId, task, runId } = await seedScheduledPending('needs_input');
+
+		const res = await approve(conversationId, userId);
+		expect(res.status).toBe(200);
+		const [opts] = mocks.relayCalls as Array<{ onOutcome?: (o: unknown) => void }>;
+		opts.onOutcome?.({ kind: 'done', assistantMessageId: 'a1' });
+
+		const { listScheduledRuns } = await import('#lib/server/db/queries/scheduled-tasks.js');
+		expect(listScheduledRuns(task.id, userId, 1)[0]).toMatchObject({ id: runId, state: 'done' });
+	});
+
+	it('treats a later approval in a finished run’s conversation as an ordinary chat turn', async () => {
+		const { conversationId, userId } = await seedScheduledPending('done');
+
+		await approve(conversationId, userId);
+
+		const [opts] = mocks.relayCalls as Array<{ onOutcome?: unknown }>;
+		expect(opts.onOutcome).toBeUndefined();
+	});
+});

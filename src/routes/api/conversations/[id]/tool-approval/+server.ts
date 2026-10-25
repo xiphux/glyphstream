@@ -26,6 +26,10 @@ import { parseModelId } from '#lib/server/endpoints/model-id.js';
 import { awaitMcpReady } from '#lib/server/mcp/bootstrap.js';
 import { resolveDisabledFeatures } from '#lib/server/chat/private-seal.js';
 import { startChatTurn } from '#lib/server/chat/start-turn.js';
+import { getScheduledTask } from '#lib/server/db/queries/scheduled-tasks.js';
+import { scheduledPolicyForResume, settleResumedRun } from '#lib/server/scheduled/runner.js';
+import { toolPermitter } from '#lib/server/scheduled/tool-policy.js';
+import type { TurnOutcome } from '#lib/server/streaming/relay.js';
 import { getUserPreferences, setUserPreferences } from '#lib/server/db/queries/user-preferences.js';
 import { executeOneToolCall } from '#lib/server/streaming/tool-execution.js';
 import { clearInFlight, registerInFlight } from '#lib/server/streaming/in-flight.js';
@@ -90,6 +94,13 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 	await awaitMcpReady();
 
+	// A scheduled run that paused for approval resumes under its schedule's tool
+	// policy (read fresh, so an "allow for this schedule" just made applies), and
+	// its run row is settled when the resumed turn ends.
+	const scheduleTask = meta.scheduleId ? getScheduledTask(meta.scheduleId, userId) : null;
+	const scheduled = scheduledPolicyForResume(params.id, userId, meta.scheduleId, scheduleTask);
+	const isToolPermitted = scheduled ? toolPermitter(scheduled.policy) : undefined;
+
 	// Apply changes via updateMessageParts — the active-leaf doesn't move
 	// because we're rewriting existing rows, not appending.
 	const newlyTrusted: string[] = [];
@@ -126,6 +137,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				params.id,
 				request.signal,
 				disabledFeatures,
+				isToolPermitted,
 			);
 			const nextPart: Extract<MessagePart, { type: 'tool_result' }> = {
 				type: 'tool_result',
@@ -204,6 +216,13 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			allowTools: true,
 			requireTools: true,
 			initialParentMessageId,
+			toolPolicy: scheduled?.policy,
+			...(scheduled && scheduleTask
+				? {
+						onOutcome: (outcome: TurnOutcome) =>
+							settleResumedRun(scheduleTask, userId, scheduled.runId, params.id, outcome),
+					}
+				: {}),
 			// Free the registry entry when the generation settles, ahead of the
 			// relay's post-`done` title race — same reasoning as the send path, and
 			// the resumed turn is just as likely to be one the user walked away

@@ -40,6 +40,7 @@ import {
 } from '#lib/server/memory/embedding-backfill.js';
 import { startTopicBackfiller, stopTopicBackfiller } from '#lib/server/memory/topic-backfill.js';
 import { startDreamingWorker, stopDreamingWorker } from '#lib/server/memory/dreaming.js';
+import { startScheduledTaskRunner, stopScheduledTaskRunner } from '#lib/server/scheduled/runner.js';
 import {
 	startConversationSummaryWorker,
 	stopConversationSummaryWorker,
@@ -157,6 +158,11 @@ startDreamingWorker();
 // `max_concurrent`.
 startConversationSummaryWorker();
 
+// Scheduled tasks: fires each user's saved prompts on their cadence, as
+// background-priority chat turns (see server/scheduled/runner.ts). Fails any run
+// a restart cut off first. No-op when `[scheduled_tasks] enabled = false`.
+startScheduledTaskRunner();
+
 // Sample event-loop stalls from boot, so a request that was queued behind a
 // synchronous sweeper can be told apart from one that did the work itself —
 // `cpu` reads the same either way, because it counts the whole process. Unref'd,
@@ -233,6 +239,7 @@ process.on('sveltekit:shutdown', async () => {
 	stopTopicBackfiller();
 	stopDimensionsBackfiller();
 	stopConversationSummaryWorker();
+	stopScheduledTaskRunner();
 	// Only the fallback timer. Queued and running generations are deliberately
 	// left alone: their rows are what the next process resumes from.
 	stopGenerationJobResume();

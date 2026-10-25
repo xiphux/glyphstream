@@ -27,5 +27,6 @@ export function inFlightEntryStub(endpoint: LoadedEndpoint): InFlightEntry {
 		// Null until the relay acquires its slot — which is the thing under test.
 		generationStartedAt: null,
 		sourceMediaId: null,
+		background: false,
 	};
 }

@@ -46,6 +46,11 @@ interface CreateInput {
 	// "Private chat" content seal (see schema.ts). Set once at create time,
 	// never mutated. Airgaps the conversation from the cross-conversation stores.
 	private?: boolean;
+	/** Where `title` came from. Defaults to 'fallback', which the title task
+	 *  may overwrite; a scheduled run names its conversation itself ('user'). */
+	titleSource?: TitleSource;
+	/** The scheduled task this run's conversation belongs to. */
+	scheduleId?: string | null;
 }
 
 export function createConversation(input: CreateInput): ConversationDetail {
@@ -71,6 +76,8 @@ export function createConversation(input: CreateInput): ConversationDetail {
 			archivedAt: null,
 			disabledFeaturesJson: disabledFeatures.length ? JSON.stringify(disabledFeatures) : null,
 			private: isPrivate,
+			...(input.titleSource ? { titleSource: input.titleSource } : {}),
+			scheduleId: input.scheduleId ?? null,
 		})
 		.run();
 	return {
@@ -364,6 +371,8 @@ export function getConversationMeta(
 	activeLeafMessageId: string | null;
 	disabledFeatures: FeatureCategory[];
 	private: boolean;
+	/** Set when a scheduled task's run created the conversation. */
+	scheduleId: string | null;
 } | null {
 	const db = getDb();
 	const row = db
@@ -378,6 +387,7 @@ export function getConversationMeta(
 			activeLeafMessageId: conversations.activeLeafMessageId,
 			disabledFeaturesJson: conversations.disabledFeaturesJson,
 			private: conversations.private,
+			scheduleId: conversations.scheduleId,
 		})
 		.from(conversations)
 		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
@@ -394,6 +404,7 @@ export function getConversationMeta(
 		activeLeafMessageId: row.activeLeafMessageId,
 		disabledFeatures: parseDisabledFeatures(row.disabledFeaturesJson),
 		private: row.private,
+		scheduleId: row.scheduleId,
 	};
 }
 

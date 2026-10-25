@@ -85,6 +85,10 @@ export interface InFlightEntry {
 	 *  branches that are still generating — until one persists there's no output
 	 *  media row to read the provenance off. */
 	sourceMediaId: string | null;
+	/** A scheduled task's run, which nobody is waiting on. Set by the runner
+	 *  after registering; excluded from the per-user cap, which bounds what one
+	 *  person can queue by hand (schedules have their own limits). */
+	background: boolean;
 }
 
 const inFlight = new Map<string, Map<string, InFlightEntry>>();
@@ -125,6 +129,7 @@ export function registerInFlight(
 		// this when it emits `start`); a recovered fan-out uses it to tell a
 		// QUEUED branch from a generating one + restore the elapsed timer.
 		generationStartedAt: null,
+		background: false,
 	};
 	byBranch.set(branchKey, entry);
 	return entry;
@@ -298,9 +303,12 @@ export function activeConversationIds(): string[] {
 	return [...inFlight.keys()];
 }
 
-/** Total in-flight generations across `conversationIds`. */
+/** In-flight generations across `conversationIds` that someone started by
+ *  hand — scheduled runs (`background`) aren't counted. */
 export function countInFlight(conversationIds: readonly string[]): number {
 	let n = 0;
-	for (const id of conversationIds) n += inFlight.get(id)?.size ?? 0;
+	for (const id of conversationIds) {
+		for (const entry of inFlight.get(id)?.values() ?? []) if (!entry.background) n++;
+	}
 	return n;
 }

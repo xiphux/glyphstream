@@ -1192,3 +1192,79 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 		modelPromptHints,
 	};
 }
+
+/**
+ * `[scheduled_tasks]` — the operator's knobs for scheduled tasks. Every key is
+ * optional and the whole table may be absent; the defaults suit a household.
+ *
+ * - `enabled` (default true): false hides the feature and stops the runner.
+ * - `max_per_user`: how many schedules one NON-ADMIN user may keep. Unset
+ *   means no cap, like `[limits]`; admins are never capped.
+ * - `min_interval_hours` (default 1): the floor on an "every N hours"
+ *   schedule, so nobody points a shared GPU at a once-a-minute task.
+ * - `default_deadline_minutes` (default 120): a new schedule's deadline — how
+ *   long after its slot a run may still start before it's skipped.
+ * - `keep_runs` (default 30): how many of each schedule's run conversations
+ *   to keep; older ones are deleted (the run history keeps their rows).
+ * - `disable_after_failures` (default 3): a schedule that fails this many
+ *   times in a row turns itself off.
+ */
+export interface LoadedScheduledTasksConfig {
+	enabled: boolean;
+	maxPerUser: number | null;
+	minIntervalHours: number;
+	defaultDeadlineMinutes: number;
+	keepRuns: number;
+	disableAfterFailures: number;
+}
+
+export const DEFAULT_SCHEDULED_TASKS_CONFIG: LoadedScheduledTasksConfig = {
+	enabled: true,
+	maxPerUser: null,
+	minIntervalHours: 1,
+	defaultDeadlineMinutes: 120,
+	keepRuns: 30,
+	disableAfterFailures: 3,
+};
+
+const SCHEDULED_TASKS_KEYS = new Set([
+	'enabled',
+	'max_per_user',
+	'min_interval_hours',
+	'default_deadline_minutes',
+	'keep_runs',
+	'disable_after_failures',
+]);
+
+export function loadScheduledTasksConfig(path = configPath()): LoadedScheduledTasksConfig {
+	const { parsed, absolutePath } = readConfigToml(path);
+	const raw = parsed.scheduled_tasks;
+	if (raw === undefined || raw === null) return DEFAULT_SCHEDULED_TASKS_CONFIG;
+	if (typeof raw !== 'object' || Array.isArray(raw)) {
+		throw new ConfigError(`'[scheduled_tasks]' in ${absolutePath} must be a TOML table`);
+	}
+	const block = raw as Record<string, unknown>;
+	const at = `[scheduled_tasks] in ${absolutePath}`;
+	for (const key of Object.keys(block)) {
+		if (!SCHEDULED_TASKS_KEYS.has(key)) throw new ConfigError(`${at}: unknown key '${key}'`);
+	}
+	const d = DEFAULT_SCHEDULED_TASKS_CONFIG;
+	const int = (key: string, fallback: number, min: number, max?: number) =>
+		block[key] === undefined
+			? fallback
+			: requireNumber(block[key], key, at, { integer: true, min, max });
+	return {
+		enabled: block.enabled === undefined ? d.enabled : requireBoolean(block.enabled, 'enabled', at),
+		maxPerUser:
+			block.max_per_user === undefined
+				? d.maxPerUser
+				: requireNumber(block.max_per_user, 'max_per_user', at, { integer: true, min: 1 }),
+		minIntervalHours: int('min_interval_hours', d.minIntervalHours, 1, 24 * 7),
+		defaultDeadlineMinutes: int('default_deadline_minutes', d.defaultDeadlineMinutes, 5, 24 * 60),
+		keepRuns: int('keep_runs', d.keepRuns, 1),
+		disableAfterFailures: int('disable_after_failures', d.disableAfterFailures, 1),
+	};
+}
+
+/** Memoized {@link loadScheduledTasksConfig}. */
+export const getScheduledTasksConfig = memoizeConfig(() => loadScheduledTasksConfig());

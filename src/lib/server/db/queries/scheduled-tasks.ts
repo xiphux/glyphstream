@@ -370,6 +370,25 @@ export function latestScheduledRuns(
 	return out;
 }
 
+/**
+ * Close out runs that have waited on an approval since before `cutoff`. The
+ * pending call stays in the conversation — approving it later resumes it as
+ * an ordinary chat turn — but the run itself is over.
+ */
+export function expireWaitingScheduledRuns(cutoff: number, now = Date.now()): number {
+	return getDb()
+		.update(scheduledRuns)
+		.set({
+			state: 'failed',
+			failureKind: 'expired',
+			failureDetail: 'Nobody approved the tool it was waiting on',
+			finishedAt: now,
+		})
+		.where(and(eq(scheduledRuns.state, 'needs_input'), lte(scheduledRuns.createdAt, cutoff)))
+		.returning({ id: scheduledRuns.id })
+		.all().length;
+}
+
 /** Runs still queued or running — at startup, the ones a restart cut off. */
 export function listUnsettledScheduledRuns(): Array<ScheduledRun & { userId: string }> {
 	return getDb()
