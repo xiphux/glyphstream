@@ -15,7 +15,7 @@ import type {
 	ScheduledToolPolicy,
 } from '#lib/types/api.js';
 import { generateId } from '../../util/id';
-import { parseToolPolicy } from '../../scheduled/tool-policy';
+import { coerceToolPolicy, parseToolPolicy } from '../../scheduled/tool-policy';
 import { getDb } from '../client';
 import { isUniqueViolation } from '../errors';
 import { scheduledRuns, scheduledTasks, users } from '../schema';
@@ -152,6 +152,20 @@ export function updateScheduledTask(
 		.returning()
 		.get();
 	return row ? rowToTask(row) : null;
+}
+
+/** Replace just the tool policy — the approval prompt's "for this schedule"
+ *  choices. Leaves the failure streak alone: nothing else about it changed. */
+export function setScheduledTaskToolPolicy(
+	id: string,
+	userId: string,
+	policy: ScheduledToolPolicy,
+): void {
+	getDb()
+		.update(scheduledTasks)
+		.set({ toolPolicyJson: JSON.stringify(coerceToolPolicy(policy)), updatedAt: Date.now() })
+		.where(and(eq(scheduledTasks.id, id), eq(scheduledTasks.userId, userId)))
+		.run();
 }
 
 export function deleteScheduledTask(id: string, userId: string): boolean {

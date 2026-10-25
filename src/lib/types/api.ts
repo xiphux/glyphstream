@@ -2357,3 +2357,18 @@ export interface ScheduledRun {
 	startedAt: number | null;
 	finishedAt: number | null;
 }
+
+/** A schedule plus its most recent run, for the list on `/settings/schedules`. */
+export interface ScheduledTaskSummary extends ScheduledTask {
+	lastRun: ScheduledRun | null;
+}
+
+/** `GET /api/user/schedules`. */
+export interface ScheduledTasksResponse {
+	schedules: ScheduledTaskSummary[];
+}
+
+/** `GET /api/user/schedules/:id/runs`. */
+export interface ScheduledRunsResponse {
+	runs: ScheduledRun[];
+}

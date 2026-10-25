@@ -300,6 +300,46 @@ describe('POST /tool-approval — resuming a scheduled run', () => {
 		expect(listScheduledRuns(task.id, userId, 1)[0]).toMatchObject({ id: runId, state: 'done' });
 	});
 
+	it('“Allow for this schedule” runs the call and moves the tool to allowed', async () => {
+		const { conversationId, userId, task } = await seedScheduledPending('needs_input');
+
+		await approve(conversationId, userId, [{ toolCallId: 'call_1', action: 'allow_schedule' }]);
+
+		expect(mocks.executions).toBe(1);
+		const { getScheduledTask } = await import('#lib/server/db/queries/scheduled-tasks.js');
+		expect(getScheduledTask(task.id, userId)?.toolPolicy).toEqual({
+			allowed: ['mcp__srv__lookup'],
+			ask: [],
+			memoryWrites: false,
+		});
+	});
+
+	it('“Never for this schedule” rejects the call and stops offering the tool', async () => {
+		const { conversationId, userId, task } = await seedScheduledPending('needs_input');
+
+		await approve(conversationId, userId, [{ toolCallId: 'call_1', action: 'deny_schedule' }]);
+
+		expect(mocks.executions).toBe(0);
+		const { getScheduledTask } = await import('#lib/server/db/queries/scheduled-tasks.js');
+		expect(getScheduledTask(task.id, userId)?.toolPolicy).toEqual({
+			allowed: [],
+			ask: [],
+			memoryWrites: false,
+		});
+	});
+
+	it('refuses the schedule actions outside a scheduled run', async () => {
+		const { conversationId, userId } = seedPendingApproval();
+		let status = 0;
+		try {
+			await approve(conversationId, userId, [{ toolCallId: 'call_1', action: 'allow_schedule' }]);
+		} catch (e) {
+			status = (e as { status: number }).status;
+		}
+		expect(status).toBe(400);
+		expect(mocks.executions).toBe(0);
+	});
+
 	it('treats a later approval in a finished run’s conversation as an ordinary chat turn', async () => {
 		const { conversationId, userId } = await seedScheduledPending('done');
 

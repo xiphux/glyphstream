@@ -51,6 +51,7 @@ import { createCustomModel } from '#lib/server/db/queries/custom-models.js';
 import { createMemory } from '#lib/server/db/queries/memories.js';
 import { createPromptSnippet } from '#lib/server/db/queries/prompt-snippets.js';
 import { createSkill } from '#lib/server/db/queries/skills.js';
+import { createScheduledTask } from '#lib/server/db/queries/scheduled-tasks.js';
 import { insertCredential } from '#lib/server/db/queries/passkey.js';
 import { getMediaStore } from '#lib/server/media/disk-store.js';
 import { createUserMessage } from '#lib/server/messages/create-user-message.js';
@@ -134,6 +135,7 @@ interface Victim {
 	skillId: string;
 	passkeyId: string;
 	sessionId: string;
+	scheduleId: string;
 }
 
 let victim: Victim;
@@ -153,6 +155,7 @@ function paramsFor(route: string, crossConversation: boolean): Record<string, st
 		[/^\/api\/user\/skills\/\[id\]/, 'skillId'],
 		[/^\/api\/auth\/passkey\/\[id\]/, 'passkeyId'],
 		[/^\/api\/auth\/sessions\/\[id\]/, 'sessionId'],
+		[/^\/api\/user\/schedules\/\[id\]/, 'scheduleId'],
 	];
 	const hit = idFor.find(([re]) => re.test(route));
 	if (!hit) throw new Error(`no victim id mapped for ${route} — add it to paramsFor`);
@@ -194,6 +197,11 @@ function bodyFor(route: string, method: string): unknown {
 		text: 'pwned',
 		parts: [{ type: 'text', text: 'pwned' }],
 		enabled: false,
+		// A scheduled task's PUT validates all of these before its ownership check.
+		prompt: 'pwned',
+		modelId: 'e::m',
+		cadence: { kind: 'daily', time: '07:00', days: [1] },
+		timezone: 'UTC',
 		route,
 	};
 }
@@ -328,6 +336,24 @@ beforeAll(async () => {
 		}).id,
 		passkeyId: 'victim-passkey',
 		sessionId: validateSessionToken(victimSession.token)!.sessionId,
+		scheduleId: createScheduledTask(
+			v.id,
+			{
+				name: 'victim schedule',
+				prompt: 'victim secret prompt',
+				modelId: 'e::m',
+				customModelId: null,
+				systemPrompt: null,
+				parameters: null,
+				cadence: { kind: 'daily', time: '07:00', days: [1] },
+				timezone: 'UTC',
+				toolPolicy: { allowed: [], ask: [], memoryWrites: false },
+				disabledFeatures: [],
+				deadlineMinutes: 60,
+				enabled: true,
+			},
+			Date.now() + 86_400_000,
+		).id,
 	};
 
 	const i = seedUser();

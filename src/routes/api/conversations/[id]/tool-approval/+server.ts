@@ -26,7 +26,10 @@ import { parseModelId } from '#lib/server/endpoints/model-id.js';
 import { awaitMcpReady } from '#lib/server/mcp/bootstrap.js';
 import { resolveDisabledFeatures } from '#lib/server/chat/private-seal.js';
 import { startChatTurn } from '#lib/server/chat/start-turn.js';
-import { getScheduledTask } from '#lib/server/db/queries/scheduled-tasks.js';
+import {
+	getScheduledTask,
+	setScheduledTaskToolPolicy,
+} from '#lib/server/db/queries/scheduled-tasks.js';
 import { scheduledPolicyForResume, settleResumedRun } from '#lib/server/scheduled/runner.js';
 import { toolPermitter } from '#lib/server/scheduled/tool-policy.js';
 import type { TurnOutcome } from '#lib/server/streaming/relay.js';
@@ -39,8 +42,14 @@ import type { RequestHandler } from './$types';
 
 interface ApprovalDecision {
 	toolCallId: string;
-	action: 'allow' | 'allow_always' | 'reject';
+	action: ApprovalAction;
 }
+
+/** `allow_schedule` / `deny_schedule` are a scheduled run's: allow (or reject)
+ *  this call AND remember it in the schedule's tool policy, so the next run
+ *  neither asks nor is offered it. */
+const ACTIONS = ['allow', 'allow_always', 'reject', 'allow_schedule', 'deny_schedule'] as const;
+type ApprovalAction = (typeof ACTIONS)[number];
 
 interface ApprovalBody {
 	decisions: ApprovalDecision[];
@@ -77,7 +86,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		if (typeof d.toolCallId !== 'string' || d.toolCallId.length === 0) {
 			error(400, 'Each decision needs a non-empty toolCallId');
 		}
-		if (d.action !== 'allow' && d.action !== 'allow_always' && d.action !== 'reject') {
+		if (!(ACTIONS as readonly string[]).includes(d.action)) {
 			error(400, `Unknown action "${String(d.action)}"`);
 		}
 	}
@@ -97,13 +106,21 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	// A scheduled run that paused for approval resumes under its schedule's tool
 	// policy (read fresh, so an "allow for this schedule" just made applies), and
 	// its run row is settled when the resumed turn ends.
-	const scheduleTask = meta.scheduleId ? getScheduledTask(meta.scheduleId, userId) : null;
-	const scheduled = scheduledPolicyForResume(params.id, userId, meta.scheduleId, scheduleTask);
+	let scheduleTask = meta.scheduleId ? getScheduledTask(meta.scheduleId, userId) : null;
+	let scheduled = scheduledPolicyForResume(params.id, userId, meta.scheduleId, scheduleTask);
 	const isToolPermitted = scheduled ? toolPermitter(scheduled.policy) : undefined;
+	if (
+		!scheduleTask &&
+		body.decisions.some((d) => d.action === 'allow_schedule' || d.action === 'deny_schedule')
+	) {
+		error(400, 'This conversation is not a scheduled task’s run');
+	}
 
 	// Apply changes via updateMessageParts — the active-leaf doesn't move
 	// because we're rewriting existing rows, not appending.
 	const newlyTrusted: string[] = [];
+	const scheduleAllowed: string[] = [];
+	const scheduleDenied: string[] = [];
 	let updatedAny = false;
 
 	for (const decision of body.decisions) {
@@ -119,7 +136,8 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		executingToolCalls.add(claim);
 		try {
 			const { toolMsg, resultPart, toolCallPart } = found;
-			if (decision.action === 'reject') {
+			if (decision.action === 'reject' || decision.action === 'deny_schedule') {
+				if (decision.action === 'deny_schedule') scheduleDenied.push(toolCallPart.toolName);
 				updateMessageParts(toolMsg.id, params.id, [
 					{
 						type: 'tool_result',
@@ -154,6 +172,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				}
 			}
 			if (decision.action === 'allow_always') newlyTrusted.push(toolCallPart.toolName);
+			if (decision.action === 'allow_schedule') scheduleAllowed.push(toolCallPart.toolName);
 			updateMessageParts(toolMsg.id, params.id, [nextPart, ...execResult.mediaParts]);
 			updatedAny = true;
 		} finally {
@@ -171,6 +190,20 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		const existing = getUserPreferences(userId)?.trustedMcpTools ?? [];
 		const merged = Array.from(new Set([...existing, ...newlyTrusted]));
 		setUserPreferences(userId, { trustedMcpTools: merged });
+	}
+	// Same for the schedule's own policy, and re-read it so the resumed turn
+	// runs under the policy as it now stands.
+	if (scheduleTask && (scheduleAllowed.length > 0 || scheduleDenied.length > 0)) {
+		const p = scheduleTask.toolPolicy;
+		const denied = new Set(scheduleDenied);
+		const allowed = new Set(scheduleAllowed);
+		setScheduledTaskToolPolicy(scheduleTask.id, userId, {
+			...p,
+			allowed: [...new Set([...p.allowed, ...allowed])].filter((n) => !denied.has(n)),
+			ask: p.ask.filter((n) => !denied.has(n) && !allowed.has(n)),
+		});
+		scheduleTask = getScheduledTask(scheduleTask.id, userId);
+		scheduled = scheduledPolicyForResume(params.id, userId, meta.scheduleId, scheduleTask);
 	}
 
 	const parsed = parseModelId(meta.modelId);
