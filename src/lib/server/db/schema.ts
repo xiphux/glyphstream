@@ -373,6 +373,12 @@ export const conversations = sqliteTable(
 		// tool-approval handlers additionally derive an effective disabled-feature set
 		// (sealPrivateFeatures) so personalization/web/mcp/prompt-enhancement are off.
 		private: integer('private', { mode: 'boolean' }).notNull().default(false),
+		// The scheduled task whose run created this conversation (null for every
+		// chat a person started). A soft reference, not a foreign key: the column
+		// arrives by ALTER TABLE, and SQLite silently drops an ON DELETE added that
+		// way — deleting a schedule keeps its past runs' conversations, and a
+		// dangling id just reads as "no longer scheduled".
+		scheduleId: text('schedule_id'),
 	},
 	(t) => [
 		index('idx_conversations_user_updated').on(t.userId, t.updatedAt),
@@ -1261,4 +1267,110 @@ export const generationJobs = sqliteTable(
 		startedAt: integer('started_at'),
 	},
 	(t) => [index('idx_generation_jobs_anchor').on(t.anchorMessageId)],
+);
+
+// --- scheduled tasks ------------------------------------------------------
+//
+// A saved prompt that runs on a cadence with nobody present (see
+// server/scheduled/). The row is the preset: model, system prompt, parameters
+// and tool policy are copied onto each run's conversation when it fires, so an
+// edit changes future runs only — the custom-models convention.
+//
+// `next_run_at` is the only thing the runner seeks on. It's recomputed from
+// the cadence after every fire (never incremented), so a server that was down
+// for a week resumes on the next real slot rather than replaying the backlog.
+// Null while the schedule is disabled.
+
+export const scheduledTasks = sqliteTable(
+	'scheduled_tasks',
+	{
+		id: text('id').primaryKey(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		name: text('name').notNull(),
+		prompt: text('prompt').notNull(),
+		// Conversation-facing `endpoint::model` id. For a custom model, the
+		// preset's base model — copied at save time, with its prompt + params.
+		modelId: text('model_id').notNull(),
+		customModelId: text('custom_model_id').references(() => customModels.id, {
+			onDelete: 'set null',
+		}),
+		systemPrompt: text('system_prompt'),
+		parametersJson: text('parameters_json'),
+		// `ScheduleCadence` (#lib/types/api.ts).
+		cadenceJson: text('cadence_json').notNull(),
+		// IANA zone the cadence's wall-clock times are in.
+		timezone: text('timezone').notNull(),
+		// `ScheduledToolPolicy`: which MCP tools run unasked / ask / are offered.
+		toolPolicyJson: text('tool_policy_json').notNull(),
+		// FeatureCategory[] applied to each run's conversation, as a chat's own
+		// opt-outs are. NULL = none.
+		disabledFeaturesJson: text('disabled_features'),
+		// A run not started this long after its slot is skipped: a morning brief
+		// that finally runs at 3pm is worth less than knowing it didn't.
+		deadlineMinutes: integer('deadline_minutes').notNull(),
+		enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+		nextRunAt: integer('next_run_at'),
+		// Failed runs in a row; the schedule disables itself past a threshold.
+		consecutiveFailures: integer('consecutive_failures').notNull().default(0),
+		// Why the schedule turned itself off, for the settings page. Cleared on
+		// re-enable. NULL when enabled, or disabled by the user.
+		disabledReason: text('disabled_reason'),
+		createdAt: integer('created_at').notNull(),
+		updatedAt: integer('updated_at').notNull(),
+	},
+	(t) => [
+		index('idx_scheduled_tasks_user').on(t.userId, t.createdAt),
+		// The runner's tick: enabled schedules whose slot has come, across all
+		// users. Partial, so disabled schedules cost it nothing.
+		index('idx_scheduled_tasks_due')
+			.on(t.nextRunAt)
+			.where(sql`${t.enabled} = 1`),
+		index('idx_scheduled_tasks_custom_model').on(t.customModelId),
+	],
+);
+
+// One row per fire of a schedule (or press of Run now): the run history the
+// settings page lists, and the record a restart reads to find runs it cut off.
+export const scheduledRuns = sqliteTable(
+	'scheduled_runs',
+	{
+		id: text('id').primaryKey(),
+		scheduleId: text('schedule_id')
+			.notNull()
+			.references(() => scheduledTasks.id, { onDelete: 'cascade' }),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		// Kept when the conversation is deleted, so the history still says the
+		// run happened.
+		conversationId: text('conversation_id').references(() => conversations.id, {
+			onDelete: 'set null',
+		}),
+		// The slot this run is for (unix ms). For Run now, the moment it was
+		// pressed. Unique per schedule, so a tick that races itself can't fire
+		// the same slot twice.
+		slotAt: integer('slot_at').notNull(),
+		trigger: text('trigger', { enum: ['schedule', 'manual'] }).notNull(),
+		state: text('state', {
+			enum: ['queued', 'running', 'done', 'needs_input', 'failed', 'skipped'],
+		}).notNull(),
+		// `ScheduledRunFailureKind` when failed or skipped.
+		failureKind: text('failure_kind'),
+		failureDetail: text('failure_detail'),
+		createdAt: integer('created_at').notNull(),
+		startedAt: integer('started_at'),
+		finishedAt: integer('finished_at'),
+	},
+	(t) => [
+		uniqueIndex('uq_scheduled_runs_schedule_slot').on(t.scheduleId, t.slotAt),
+		index('idx_scheduled_runs_schedule_created').on(t.scheduleId, t.createdAt),
+		index('idx_scheduled_runs_user').on(t.userId),
+		index('idx_scheduled_runs_conversation').on(t.conversationId),
+		// Startup's sweep for runs a restart cut off.
+		index('idx_scheduled_runs_unsettled')
+			.on(t.state)
+			.where(sql`${t.state} in ('queued', 'running')`),
+	],
 );

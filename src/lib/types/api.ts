@@ -2251,3 +2251,105 @@ export interface ModelStatsReport {
 	/** Local endpoints first, then config order; removed endpoints last. */
 	endpoints: ModelStatsEndpoint[];
 }
+
+// --- scheduled tasks -------------------------------------------------------
+
+/**
+ * When a scheduled task fires. Deliberately a few presets rather than cron:
+ * they cover the "every morning" / "weekdays" / "every few hours" cases people
+ * actually set up, and each has an obvious meaning across a DST change.
+ *
+ *  - `daily`: at `time` (local "HH:MM" in the schedule's zone) on each listed
+ *    weekday — 0 = Sunday … 6 = Saturday. All seven is "every day"; one is
+ *    "weekly". A time that doesn't exist that day (the spring-forward gap)
+ *    runs as many minutes later as the gap is long; a repeated one (fall-back)
+ *    runs once, the first time.
+ *  - `interval`: every `everyHours` hours, on a grid anchored at `anchorAt`
+ *    (unix ms). Wall-clock-free, so the zone doesn't affect it.
+ */
+export type ScheduleCadence =
+	| { kind: 'daily'; time: string; days: number[] }
+	| { kind: 'interval'; everyHours: number; anchorAt: number };
+
+/**
+ * What a scheduled run may do with MCP tools. Every MCP tool is in exactly
+ * one of three states:
+ *
+ *  - in `allowed`: offered, and runs without asking;
+ *  - in `ask`: offered, and the run pauses for approval (with a notification)
+ *    when the model calls it;
+ *  - neither: not offered at all, and refused if the model names it anyway.
+ *
+ * Built-in tools follow the run's `disabledFeatures` like a chat's, except
+ * that the memory-writing ones are refused unless `memoryWrites` is set — a
+ * daily summary of your inbox shouldn't fill your memories.
+ */
+export interface ScheduledToolPolicy {
+	allowed: string[];
+	ask: string[];
+	memoryWrites: boolean;
+}
+
+export type ScheduledRunState =
+	'queued' | 'running' | 'done' | 'needs_input' | 'failed' | 'skipped';
+
+/** Why a run failed or was skipped — machine-readable, so the settings page and
+ *  the notification can say what to do about it. */
+export type ScheduledRunFailureKind =
+	/** A server the policy needs is down, and one reconnect didn't bring it back. */
+	| 'mcp_unavailable'
+	/** A per-user server the policy needs has no token (or a rejected one). */
+	| 'mcp_credentials'
+	/** The schedule's model or endpoint is no longer configured. */
+	| 'model_unavailable'
+	/** The upstream failed, or the turn hit the tool-loop bound. */
+	| 'upstream_error'
+	/** Didn't get an endpoint slot before the schedule's deadline. */
+	| 'deadline'
+	/** The server restarted mid-run. */
+	| 'interrupted'
+	/** A slot that passed while the server was down, superseded by a later one. */
+	| 'missed'
+	/** Anything else. */
+	| 'internal';
+
+/** A scheduled task as the settings page sees it. */
+export interface ScheduledTask {
+	id: string;
+	name: string;
+	prompt: string;
+	modelId: string;
+	customModelId: string | null;
+	systemPrompt: string | null;
+	parameters: CustomModelParameters | null;
+	cadence: ScheduleCadence;
+	timezone: string;
+	toolPolicy: ScheduledToolPolicy;
+	disabledFeatures: FeatureCategory[];
+	deadlineMinutes: number;
+	enabled: boolean;
+	/** The next slot (unix ms), null while disabled. Runs fire up to a few
+	 *  minutes after it — see `jitterFor`. */
+	nextRunAt: number | null;
+	consecutiveFailures: number;
+	/** Why the schedule turned itself off; null if enabled or turned off by hand. */
+	disabledReason: string | null;
+	createdAt: number;
+	updatedAt: number;
+}
+
+/** One fire of a schedule, for its run history. */
+export interface ScheduledRun {
+	id: string;
+	scheduleId: string;
+	/** Null once the conversation is deleted. */
+	conversationId: string | null;
+	slotAt: number;
+	trigger: 'schedule' | 'manual';
+	state: ScheduledRunState;
+	failureKind: ScheduledRunFailureKind | null;
+	failureDetail: string | null;
+	createdAt: number;
+	startedAt: number | null;
+	finishedAt: number | null;
+}

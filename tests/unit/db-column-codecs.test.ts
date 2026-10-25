@@ -40,6 +40,7 @@ import {
 import { getMcpCredential, setMcpCredential } from '#lib/server/db/queries/mcp-credentials.js';
 import { findCredentialById, insertCredential } from '#lib/server/db/queries/passkey.js';
 import { decodeVector, encodeVector } from '#lib/server/retrieval/vector.js';
+import { createScheduledTask, getScheduledTask } from '#lib/server/db/queries/scheduled-tasks.js';
 
 const COVERED = [
 	'conversations.private',
@@ -48,6 +49,7 @@ const COVERED = [
 	'memories.embedding',
 	'passkey_credentials.backed_up',
 	'passkey_credentials.public_key',
+	'scheduled_tasks.enabled',
 ];
 
 /** `typeof(col)` and the raw value, bypassing drizzle's decoder. */
@@ -173,5 +175,33 @@ describe('conversations.private', () => {
 			v: isPrivate ? 1 : 0,
 		});
 		expect(getConversationMeta(id, userId)!.private).toBe(isPrivate);
+	});
+});
+
+describe('scheduled_tasks.enabled', () => {
+	it.each([true, false])('enabled=%s is stored as 0/1 and read back as a boolean', (enabled) => {
+		const { id } = createScheduledTask(
+			userId,
+			{
+				name: 'n',
+				prompt: 'p',
+				modelId: 'e::m',
+				customModelId: null,
+				systemPrompt: null,
+				parameters: null,
+				cadence: { kind: 'daily', time: '07:00', days: [1] },
+				timezone: 'UTC',
+				toolPolicy: { allowed: [], ask: [], memoryWrites: false },
+				disabledFeatures: [],
+				deadlineMinutes: 60,
+				enabled,
+			},
+			1,
+		);
+		expect(raw('scheduled_tasks', 'enabled', `id = '${id}'`)).toEqual({
+			t: 'integer',
+			v: enabled ? 1 : 0,
+		});
+		expect(getScheduledTask(id, userId)!.enabled).toBe(enabled);
 	});
 });
