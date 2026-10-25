@@ -60,12 +60,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Renovate updates `runs-on` labels but not matrix values, so these
-        # runners are bumped by hand alongside its runner PRs.
+        # The marker comments let Renovate update these alongside the
+        # `runs-on` labels (see customManagers in xiphux/renovate-config).
         include:
           - platform: linux/amd64
+            # renovate: github-runner
             runner: ubuntu-24.04
           - platform: linux/arm64
+            # renovate: github-runner
             runner: ubuntu-22.04-arm
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
