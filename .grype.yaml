@@ -6,15 +6,15 @@
 # once the finding stops appearing rather than leaving it to rot.
 
 ignore:
-  # npm's own bundled dependencies, as of 2026-10-05.
+  # npm's own bundled dependencies, as of 2026-10-26.
   #
   # The image keeps npm and npx because the documented stdio MCP setup is
   # `command = "npx"` (see the runtime stage of the Dockerfile), and npm ships
   # its dependencies inside its own package, so these come with the base image
-  # (node:26-alpine) rather than from our lockfile -- nothing here can upgrade
-  # them. The newest npm releases (11.21.0 and 12.2.0) still bundle the same
-  # undici 6.28.0, brace-expansion 5.0.9 and ip-address versions, so there is no
-  # npm to upgrade to either. The server never loads them: they are reached
+  # (node:26-alpine, npm 11.20.0) rather than from our lockfile -- nothing here
+  # can upgrade them. The newest npm releases (11.21.1 and 12.2.1) bundle undici
+  # 6.29.0 and ip-address 10.7.2, still short of the fixes (6.29.1, 10.7.4), so
+  # there is no npm to upgrade to either. The server never loads them: they are reached
   # only when an MCP server is configured to run through npx, which fetches a
   # package the operator chose.
   #
@@ -42,3 +42,11 @@ ignore:
     package: { name: ip-address, location: /usr/local/lib/node_modules/npm/** }
   - vulnerability: GHSA-2vr4-cq9g-pvrc
     package: { name: ip-address, location: /usr/local/lib/node_modules/npm/** }
+  - vulnerability: GHSA-xjj6-f33q-929c
+    package: { name: undici, location: /usr/local/lib/node_modules/npm/** }
+  - vulnerability: GHSA-4qv8-2p9j-2685
+    package: { name: undici, location: /usr/local/lib/node_modules/npm/** }
+  - vulnerability: GHSA-rxp7-6hxx-x8q5
+    package: { name: ip-address, location: /usr/local/lib/node_modules/npm/** }
+  - vulnerability: GHSA-rj75-hqrm-r3gf
+    package: { name: postcss-selector-parser, location: /usr/local/lib/node_modules/npm/** }
