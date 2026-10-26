@@ -11,6 +11,7 @@
 	import RenderBlocks from './RenderBlocks.svelte';
 	import CanvasCard from './CanvasCard.svelte';
 	import AssistantAvatar from './AssistantAvatar.svelte';
+	import TextingBubbles from './TextingBubbles.svelte';
 	import { splitCanvasCards, type RenderBlock } from '#lib/chat-render.js';
 	import type { ApprovalAction } from '#lib/approval-workflow.js';
 	import type { McpUnavailableServer } from '#lib/types/api.js';
@@ -52,6 +53,8 @@
 		 *  silent. Empty = no notice. */
 		mcpUnavailable?: McpUnavailableServer[];
 		onOpenCanvas?: (artifactId: string | null) => void;
+		/** The 'texting' reply style — see MessageBubble. */
+		texting?: boolean;
 	}
 
 	let {
@@ -71,6 +74,7 @@
 		mergeWithPrev = false,
 		mcpUnavailable = [],
 		onOpenCanvas,
+		texting = false,
 	}: Props = $props();
 
 	// Canvas cards render at the bottom of the live bubble, matching how the
@@ -80,25 +84,7 @@
 	let split = $derived(splitCanvasCards(blocks));
 </script>
 
-<article
-	class={[
-		'min-w-0 bg-surface-raised px-4 text-sm',
-		mergeWithPrev ? 'rounded-t-none pt-1' : 'rounded-t-2xl pt-3',
-		'rounded-b-2xl pb-3',
-	]}
->
-	{#if !mergeWithPrev}
-		<div class="flex items-center gap-1.5">
-			{#if assistantAvatarMediaId}
-				<AssistantAvatar
-					mediaId={assistantAvatarMediaId}
-					label={assistantLabel}
-					onClick={onImageClick}
-				/>
-			{/if}
-			<div class="text-[11px] font-medium tracking-wide opacity-60">{assistantLabel}</div>
-		</div>
-	{/if}
+{#snippet mcpNotice()}
 	{#if mcpUnavailable.length > 0}
 		<div class="mt-1 mb-2 rounded-md border px-3 py-2 text-xs alert-danger">
 			<span class="font-medium"
@@ -109,52 +95,102 @@
 			Settings → MCP.
 		</div>
 	{/if}
-	<RenderBlocks
-		{blocks}
-		{onImageClick}
-		{openingLightboxFor}
-		{approvalDecisions}
-		{approvalBusy}
-		{onApprovalSelect}
-		codeCopy={false}
-	/>
-	{#each split.cards as block (block.type === 'tool_call' ? block.toolCallId : '')}
-		{#if block.type === 'tool_call'}
-			<CanvasCard result={block.result} onOpen={onOpenCanvas} />
-		{/if}
-	{/each}
-	{#if split.body.length === 0 && split.cards.length === 0}
-		<!-- Pre-first-token placeholder: thinking dots + optional
-		     progress/elapsed indicators. Once any text, tool_call, or canvas
-		     card lands, RenderBlocks (+ the cards above) takes over. -->
-		<div class="mt-1 flex items-center gap-2 text-fg-muted">
-			<span>{queued ? (queued.paused ? 'Paused' : 'Queued') : label}</span>
-			<span class="inline-flex gap-1">
-				<span class="animate-pulse">·</span>
-				<span class="animate-pulse [animation-delay:120ms]">·</span>
-				<span class="animate-pulse [animation-delay:240ms]">·</span>
-			</span>
-			{#if queued}
-				{#if queued.ahead > 0}
-					<span
-						class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-fg-secondary"
-					>
-						{queued.ahead} ahead
-					</span>
-				{/if}
-			{:else if status}
+{/snippet}
+
+{#snippet placeholder()}
+	<div class="mt-1 flex items-center gap-2 text-fg-muted">
+		<span>{queued ? (queued.paused ? 'Paused' : 'Queued') : label}</span>
+		<span class="inline-flex gap-1">
+			<span class="animate-pulse">·</span>
+			<span class="animate-pulse [animation-delay:120ms]">·</span>
+			<span class="animate-pulse [animation-delay:240ms]">·</span>
+		</span>
+		{#if queued}
+			{#if queued.ahead > 0}
 				<span
 					class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-fg-secondary"
 				>
-					{status}
+					{queued.ahead} ahead
 				</span>
 			{/if}
-			{#if progress !== null}
-				<span class="font-mono text-xs tabular-nums">{progress.toFixed(0)}%</span>
+		{:else if status}
+			<span
+				class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-fg-secondary"
+			>
+				{status}
+			</span>
+		{/if}
+		{#if progress !== null}
+			<span class="font-mono text-xs tabular-nums">{progress.toFixed(0)}%</span>
+		{/if}
+		{#if elapsedSeconds >= 0.3}
+			<span class="font-mono text-xs tabular-nums">{elapsedSeconds.toFixed(1)}s</span>
+		{/if}
+	</div>
+{/snippet}
+
+{#if texting}
+	<article class="min-w-0">
+		{@render mcpNotice()}
+		<TextingBubbles
+			{blocks}
+			{assistantLabel}
+			{assistantAvatarMediaId}
+			showHeader={!mergeWithPrev}
+			{onImageClick}
+			{openingLightboxFor}
+			{approvalDecisions}
+			{approvalBusy}
+			{onApprovalSelect}
+			codeCopy={false}
+			pending={split.body.length === 0 && split.cards.length === 0 ? placeholder : undefined}
+		/>
+		{#each split.cards as block (block.type === 'tool_call' ? block.toolCallId : '')}
+			{#if block.type === 'tool_call'}
+				<CanvasCard result={block.result} onOpen={onOpenCanvas} />
 			{/if}
-			{#if elapsedSeconds >= 0.3}
-				<span class="font-mono text-xs tabular-nums">{elapsedSeconds.toFixed(1)}s</span>
+		{/each}
+	</article>
+{:else}
+	<article
+		class={[
+			'min-w-0 bg-surface-raised px-4 text-sm',
+			mergeWithPrev ? 'rounded-t-none pt-1' : 'rounded-t-2xl pt-3',
+			'rounded-b-2xl pb-3',
+		]}
+	>
+		{#if !mergeWithPrev}
+			<div class="flex items-center gap-1.5">
+				{#if assistantAvatarMediaId}
+					<AssistantAvatar
+						mediaId={assistantAvatarMediaId}
+						label={assistantLabel}
+						onClick={onImageClick}
+					/>
+				{/if}
+				<div class="text-[11px] font-medium tracking-wide opacity-60">{assistantLabel}</div>
+			</div>
+		{/if}
+		{@render mcpNotice()}
+		<RenderBlocks
+			{blocks}
+			{onImageClick}
+			{openingLightboxFor}
+			{approvalDecisions}
+			{approvalBusy}
+			{onApprovalSelect}
+			codeCopy={false}
+		/>
+		{#each split.cards as block (block.type === 'tool_call' ? block.toolCallId : '')}
+			{#if block.type === 'tool_call'}
+				<CanvasCard result={block.result} onOpen={onOpenCanvas} />
 			{/if}
-		</div>
-	{/if}
-</article>
+		{/each}
+		{#if split.body.length === 0 && split.cards.length === 0}
+			<!-- Pre-first-token placeholder: thinking dots + optional
+			     progress/elapsed indicators. Once any text, tool_call, or canvas
+			     card lands, RenderBlocks (+ the cards above) takes over. -->
+			{@render placeholder()}
+		{/if}
+	</article>
+{/if}

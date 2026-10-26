@@ -14,6 +14,7 @@
 	import CanvasCard from './CanvasCard.svelte';
 	import AssistantAvatar from './AssistantAvatar.svelte';
 	import MessageReaction from './MessageReaction.svelte';
+	import TextingBubbles from './TextingBubbles.svelte';
 	import { messageToBlocks, type RenderBlock, type ToolResultEntry } from '#lib/chat-render.js';
 	import type { ChatMessage } from '#lib/types/api.js';
 	import type { ApprovalAction } from '#lib/approval-workflow.js';
@@ -45,6 +46,9 @@
 		 *  artifact reads as the turn's result rather than buried mid-reply. */
 		bottomCanvasCards?: RenderBlock[];
 		onOpenCanvas?: (artifactId: string | null) => void;
+		/** The conversation's 'texting' reply style: an assistant row renders as
+		 *  a run of text bubbles (TextingBubbles) instead of one bubble. */
+		texting?: boolean;
 	}
 
 	let {
@@ -63,6 +67,7 @@
 		reaction = null,
 		bottomCanvasCards = [],
 		onOpenCanvas,
+		texting = false,
 	}: Props = $props();
 
 	const roleLabel = $derived(
@@ -77,45 +82,66 @@
 	const avatarMediaId = $derived(message.role === 'assistant' ? assistantAvatarMediaId : null);
 </script>
 
-<article
-	class={[
-		// `relative` anchors the reaction badge, which hangs outside the bubble's
-		// bottom-left corner. Harmless on the rows that never carry one.
-		'relative min-w-0 px-4 text-sm',
-		message.role === 'user'
-			? 'ml-auto max-w-[85%] bg-accent/15'
-			: message.role === 'assistant'
-				? 'bg-surface-raised'
-				: 'bg-warning/10',
-		mergeWithPrev ? 'rounded-t-none pt-1' : 'rounded-t-2xl pt-3',
-		mergeWithNext ? 'rounded-b-none pb-1' : 'rounded-b-2xl pb-3',
-	]}
->
-	{#if !mergeWithPrev}
-		<!-- The avatar lives INSIDE the label row's mergeWithPrev guard: a
+{#if texting && message.role === 'assistant'}
+	<article class="min-w-0">
+		<TextingBubbles
+			blocks={messageToBlocks(message, toolResultsByCallId)}
+			{assistantLabel}
+			{assistantAvatarMediaId}
+			showHeader={!mergeWithPrev}
+			{onImageClick}
+			{openingLightboxFor}
+			{approvalDecisions}
+			{approvalBusy}
+			{onApprovalSelect}
+		/>
+		{#each bottomCanvasCards as block (block.type === 'tool_call' ? block.toolCallId : '')}
+			{#if block.type === 'tool_call'}
+				<CanvasCard result={block.result} onOpen={onOpenCanvas} />
+			{/if}
+		{/each}
+	</article>
+{:else}
+	<article
+		class={[
+			// `relative` anchors the reaction badge, which hangs outside the bubble's
+			// bottom-left corner. Harmless on the rows that never carry one.
+			'relative min-w-0 px-4 text-sm',
+			message.role === 'user'
+				? 'ml-auto max-w-[85%] bg-accent/15'
+				: message.role === 'assistant'
+					? 'bg-surface-raised'
+					: 'bg-warning/10',
+			mergeWithPrev ? 'rounded-t-none pt-1' : 'rounded-t-2xl pt-3',
+			mergeWithNext ? 'rounded-b-none pb-1' : 'rounded-b-2xl pb-3',
+		]}
+	>
+		{#if !mergeWithPrev}
+			<!-- The avatar lives INSIDE the label row's mergeWithPrev guard: a
 		     multi-iteration tool turn renders as one visual bubble, so repeating
 		     the portrait mid-bubble would read as a second speaker. -->
-		<div class="flex items-center gap-1.5">
-			{#if avatarMediaId}
-				<AssistantAvatar mediaId={avatarMediaId} label={roleLabel} onClick={onImageClick} />
-			{/if}
-			<div class="text-[11px] font-medium tracking-wide opacity-60">{roleLabel}</div>
-		</div>
-	{/if}
-	<RenderBlocks
-		blocks={messageToBlocks(message, toolResultsByCallId)}
-		{onImageClick}
-		{openingLightboxFor}
-		{approvalDecisions}
-		{approvalBusy}
-		{onApprovalSelect}
-	/>
-	{#if reaction && message.role === 'user'}
-		<MessageReaction emoji={reaction} reactorLabel={assistantLabel} />
-	{/if}
-	{#each bottomCanvasCards as block (block.type === 'tool_call' ? block.toolCallId : '')}
-		{#if block.type === 'tool_call'}
-			<CanvasCard result={block.result} onOpen={onOpenCanvas} />
+			<div class="flex items-center gap-1.5">
+				{#if avatarMediaId}
+					<AssistantAvatar mediaId={avatarMediaId} label={roleLabel} onClick={onImageClick} />
+				{/if}
+				<div class="text-[11px] font-medium tracking-wide opacity-60">{roleLabel}</div>
+			</div>
 		{/if}
-	{/each}
-</article>
+		<RenderBlocks
+			blocks={messageToBlocks(message, toolResultsByCallId)}
+			{onImageClick}
+			{openingLightboxFor}
+			{approvalDecisions}
+			{approvalBusy}
+			{onApprovalSelect}
+		/>
+		{#if reaction && message.role === 'user'}
+			<MessageReaction emoji={reaction} reactorLabel={assistantLabel} />
+		{/if}
+		{#each bottomCanvasCards as block (block.type === 'tool_call' ? block.toolCallId : '')}
+			{#if block.type === 'tool_call'}
+				<CanvasCard result={block.result} onOpen={onOpenCanvas} />
+			{/if}
+		{/each}
+	</article>
+{/if}

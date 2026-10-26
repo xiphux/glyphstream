@@ -140,6 +140,7 @@
 		preferredFirstName(data.prefs?.name, data.user.displayName, data.user.email ?? 'You'),
 	);
 	const assistantLabel = $derived(data.assistantLabel);
+	const texting = $derived(data.conversation.replyStyle === 'texting');
 	// The conversation's own identity — the preset's name + avatar, or the
 	// friendly base-model name with no avatar.
 	const conversationIdentity = $derived({
@@ -2583,6 +2584,7 @@
 									reaction={m.role === 'user' ? reactionFor(m.id) : null}
 									bottomCanvasCards={canvasCardsByGroupLast.get(m.id) ?? []}
 									onOpenCanvas={(artifactId: string | null) => canvas.show(artifactId ?? undefined)}
+									{texting}
 								/>
 							{/if}
 							{#if (m.role === 'user' || m.role === 'assistant') && m.id !== edit.messageId && !mergeWithNext}
@@ -2633,6 +2635,7 @@
 							mergeWithPrev={fuseWithPrevAssistant}
 							mcpUnavailable={turn.inFlightMcpUnavailable}
 							onOpenCanvas={(artifactId: string | null) => canvas.show(artifactId ?? undefined)}
+							{texting}
 						/>
 					</div>
 				{/if}

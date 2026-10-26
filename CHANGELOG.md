@@ -9,6 +9,10 @@ arrived.
 
 ## Unreleased
 
+### Added
+
+- Custom models can use a texting reply style: each paragraph of a reply arrives as its own chat bubble, and a `Name:` prefix lets one preset play several people in a group chat.
+
 ### Fixed
 
 - Opening a canvas after the model updated it could show the previous version until the page was reloaded.

@@ -14,6 +14,7 @@
 		type FeatureCategory,
 		type FeatureCategoryEntry,
 		type ModelEntry,
+		type ReplyStyle,
 	} from '#lib/types/api.js';
 
 	let {
@@ -41,6 +42,7 @@
 	let topPStr = $state('');
 	let maxTokensStr = $state('');
 	let defaultDisabledFeatures = $state<FeatureCategory[]>([]);
+	let replyStyle = $state<ReplyStyle>('standard');
 	// Avatar edits are staged, not applied on pick: everything else in this form
 	// commits on Save, and a portrait that silently persisted the moment it was
 	// chosen — surviving "Clear (new)" — would be the odd one out.
@@ -90,6 +92,7 @@
 		topPStr = '';
 		maxTokensStr = '';
 		defaultDisabledFeatures = [];
+		replyStyle = 'standard';
 		setAvatarFile(null);
 		avatarMediaId = null;
 		avatarCleared = false;
@@ -107,6 +110,7 @@
 		topPStr = m.parameters?.top_p !== undefined ? String(m.parameters.top_p) : '';
 		maxTokensStr = m.parameters?.max_tokens !== undefined ? String(m.parameters.max_tokens) : '';
 		defaultDisabledFeatures = [...m.defaultDisabledFeatures];
+		replyStyle = m.replyStyle;
 		setAvatarFile(null);
 		avatarMediaId = m.avatarMediaId;
 		avatarCleared = false;
@@ -254,6 +258,7 @@
 					systemPrompt: systemPrompt.trim() || undefined,
 					parameters: buildParameters(),
 					defaultDisabledFeatures: [...defaultDisabledFeatures],
+					replyStyle,
 				};
 
 				const url = editingId ? `/api/custom-models/${editingId}` : '/api/custom-models';
@@ -520,6 +525,30 @@
 						class="w-full resize-y rounded-md border border-border bg-surface-panel px-3 py-2 font-mono text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-xs"
 					></textarea>
 				</div>
+
+				{#if baseKind === null || baseKind === 'chat'}
+					<div>
+						<label class="mb-1 block text-xs font-medium" for="reply-style">Reply style</label>
+						<select
+							id="reply-style"
+							bind:value={replyStyle}
+							disabled={busy}
+							class="w-full rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
+						>
+							<option value="standard">Standard</option>
+							<option value="texting">Texting</option>
+						</select>
+						<p class="mt-1.5 text-[11px] text-fg-muted">
+							{#if replyStyle === 'texting'}
+								Replies arrive as a run of short text bubbles, one per paragraph. The model is told
+								how to format them; to have it play more than one person, describe them in the
+								system prompt and it can start a text with <code>Name:</code>.
+							{:else}
+								Replies render as a single message.
+							{/if}
+						</p>
+					</div>
+				{/if}
 
 				<details class="rounded-md border border-border px-3 py-2">
 					<summary class="cursor-pointer text-xs font-medium text-fg-secondary">

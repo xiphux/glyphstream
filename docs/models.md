@@ -33,6 +33,27 @@ avatar shown beside its name above each reply. A preset is copied onto a
 conversation when the conversation is created, so editing the preset later
 doesn't change chats that already used it.
 
+### Texting reply style
+
+A preset's **Reply style** can be set to **Texting**, for presets meant to feel
+like a text conversation. Each paragraph of a reply then shows as its own chat
+bubble, as if the other side had sent several texts in a row. Glyphstream tells
+the model to write that way, so the preset's system prompt only needs to describe
+the character.
+
+The same preset can play more than one person. A text that starts with a name and
+a colon (`Sam: see you there`) shows under that name, with a coloured initial.
+Texts with no name come from whoever sent the previous one; each reply starts
+with the preset itself. If the model puts the preset's own name in front of a
+text, that text shows as the preset's. To keep ordinary sentences from reading as
+a speaker, a name counts only at the very start of a text, must be at most three
+words and 30 characters, and must be followed by a colon and a space.
+
+This only changes how replies look. Each reply is still stored as one message, so
+retrying, editing and branching work as usual. The model also sees its earlier
+replies exactly as it wrote them, names included. Like the rest of a preset, the
+style is fixed when a conversation is created.
+
 ## Sharing hardware
 
 - **Per-endpoint concurrency caps** queue requests instead of running your
