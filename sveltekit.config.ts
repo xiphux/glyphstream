@@ -33,8 +33,10 @@ export const sveltekitOptions: Parameters<typeof sveltekit>[0] = {
 	// the Host header. That is wrong over plain http (local and LAN installs, the
 	// e2e server) and behind any proxy that doesn't forward Host (nginx's default
 	// proxy_pass), so every delete in the app 403'd there. The app's gate keys
-	// off the browser-set Sec-Fetch-Site precisely to be immune to that, and
-	// covers more: every mutating /api request, JSON included, which Kit's check
+	// off the browser-set Sec-Fetch-Site precisely to be immune to that —
+	// browsers send it only to secure targets, so over plain http the gate
+	// compares Origin with EXTERNAL_BASE_URL instead of the inferred origin —
+	// and covers more: every mutating /api request, JSON included, which Kit's check
 	// never inspected. It reaches only /api/*, so
 	// tests/unit/csrf-gate-coverage.test.ts fails if a mutating route — or a form
 	// action — ever appears anywhere else.

@@ -267,7 +267,9 @@ scheme and port included (`http://192.168.1.20:3000`). Browsers withhold the
 each change's `Origin` with `EXTERNAL_BASE_URL` instead, and refuses changes made
 through any other address (the IP when it names a hostname, say). `ORIGIN` is no
 longer read — adapter-node takes it from the build now — so there's no need to
-set it.
+set it. (`PROTOCOL_HEADER=x-forwarded-proto` and `HOST_HEADER=x-forwarded-host`
+are still read, if you'd rather adapter-node trust a proxy's forwarded scheme and
+host.)
 
 Any pass-through reverse proxy works — pre-compression of static assets is
 handled inside Node, so as long as the proxy forwards `Accept-Encoding`
