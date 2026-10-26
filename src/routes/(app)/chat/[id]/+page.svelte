@@ -477,10 +477,11 @@
 		serverInFlightSince = data.inFlightSince;
 		serverGeneratingSince = data.inFlightGeneratingSince;
 		avatarDraw.syncFromServer(data.avatarDrawSince);
-		// Re-seed the canvas ONLY when switching conversations. A mid-turn
+		// Fully re-seed the canvas ONLY when switching conversations. A mid-turn
 		// refreshAll refreshes `data` with the same id — re-hydrating then
 		// would reopen a pane the user closed and clobber the just-applied live
-		// state, which already matches the persisted content.
+		// state. That refresh merges via `canvas.sync` instead (below), since the
+		// live state only matches the persisted content if the event arrived.
 		if (data.conversation.id !== hydratedCanvasConvId) {
 			hydratedCanvasConvId = data.conversation.id;
 			canvas.hydrate(data.canvases);
@@ -492,7 +493,9 @@
 			disabledFeatures = [...data.conversation.disabledFeatures];
 		} else {
 			// Same conversation: pick up any canvas version the live stream event
-			// didn't deliver, leaving the pane's open/focus state alone.
+			// didn't deliver, leaving open state and an existing focus alone. A
+			// canvas that is the conversation's first arrives unfocused-into, so
+			// `maybeAutoOpenCanvas` below opens it on desktop — as `apply` would.
 			const seeds = data.canvases;
 			untrack(() => canvas.sync(seeds));
 		}

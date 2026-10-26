@@ -58,8 +58,9 @@ export class CanvasController {
 
 	/**
 	 * Merge a same-conversation reload's seed: take any version newer than what
-	 * the pane holds, and any canvas it doesn't know, without touching open state
-	 * or focus. The live `canvas_version` event isn't guaranteed to arrive — a
+	 * the pane holds, and any canvas it doesn't know. Never touches open state and
+	 * keeps an existing focus — it only picks one when nothing was focused (the
+	 * conversation had no canvas yet). The live `canvas_version` event isn't guaranteed to arrive — a
 	 * turn finished by the recovery poll after an iOS suspension, or one run
 	 * while the stream was detached, never delivers it — and without this the
 	 * pane kept showing the pre-turn version until a full page reload.
