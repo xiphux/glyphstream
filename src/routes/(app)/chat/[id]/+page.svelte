@@ -1225,7 +1225,8 @@
 		// The inline message editor rides along: it's lazy because nothing shows it
 		// until Edit is clicked, and warming it here means that first click doesn't
 		// blank the message while the chunk downloads. A failed warm-up (offline) is
-		// harmless — the click imports it again — so it mustn't surface as an error.
+		// harmless — the click imports it again, and the markup offers a Cancel if
+		// that fails too — so it mustn't surface as an error.
 		const warmLiveRenderers = () => {
 			void ensureLiveHighlighter();
 			void ensureLiveMarkdown();
@@ -2573,6 +2574,21 @@
 										onSave={() => void edit.save()}
 										onCancel={() => edit.cancel()}
 									/>
+								{:catch}
+									<!-- The chunk didn't load (offline, or a tab outliving a redeploy).
+									     Cancel puts the message back rather than leaving it blank. -->
+									<div
+										class="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm alert-danger"
+									>
+										<span>Couldn't load the editor.</span>
+										<button
+											type="button"
+											onclick={() => edit.cancel()}
+											class="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-black/5 dark:hover:bg-white/10"
+										>
+											Cancel
+										</button>
+									</div>
 								{/await}
 							{:else}
 								{@const identity = assistantIdentityFor(m)}
