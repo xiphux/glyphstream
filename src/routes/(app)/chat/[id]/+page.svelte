@@ -45,7 +45,6 @@
 		markGenerating,
 		type GenerationActivity,
 	} from '#lib/generating-conversations.svelte.js';
-	import EditMessageForm from '#lib/components/chat/EditMessageForm.svelte';
 	import InFlightBubble from '#lib/components/chat/InFlightBubble.svelte';
 	import MessageActions from '#lib/components/chat/MessageActions.svelte';
 	import MessageBubble from '#lib/components/chat/MessageBubble.svelte';
@@ -1222,9 +1221,15 @@
 		// Idle keeps the "already loaded before the first token arrives" property
 		// (the user still has to type and send) without competing with first paint.
 		// Safari has no requestIdleCallback, so fall back to a short timeout.
+		//
+		// The inline message editor rides along: it's lazy because nothing shows it
+		// until Edit is clicked, and warming it here means that first click doesn't
+		// blank the message while the chunk downloads. A failed warm-up (offline) is
+		// harmless — the click imports it again — so it mustn't surface as an error.
 		const warmLiveRenderers = () => {
 			void ensureLiveHighlighter();
 			void ensureLiveMarkdown();
+			import('#lib/components/chat/EditMessageForm.svelte').catch(() => {});
 		};
 		// Called through `window` rather than via a detached reference: WebIDL
 		// does fall back to the global for a `this`-less Window operation, but
@@ -2557,15 +2562,18 @@
 						a sibling under the original's parent (preserving the
 						original as a branch); Cancel discards.
 					-->
-								<EditMessageForm
-									bind:editText={edit.text}
-									attachments={edit.attachments}
-									{allowAttachments}
-									enterBehavior={data.prefs?.enterBehavior ?? 'send'}
-									activeKind={editSnippetKind}
-									onSave={() => void edit.save()}
-									onCancel={() => edit.cancel()}
-								/>
+								<!-- Lazy: off the initial load, and warmed at idle (see onMount). -->
+								{#await import('#lib/components/chat/EditMessageForm.svelte') then { default: EditMessageForm }}
+									<EditMessageForm
+										bind:editText={edit.text}
+										attachments={edit.attachments}
+										{allowAttachments}
+										enterBehavior={data.prefs?.enterBehavior ?? 'send'}
+										activeKind={editSnippetKind}
+										onSave={() => void edit.save()}
+										onCancel={() => edit.cancel()}
+									/>
+								{/await}
 							{:else}
 								{@const identity = assistantIdentityFor(m)}
 								<MessageBubble
