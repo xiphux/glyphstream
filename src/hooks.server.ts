@@ -580,6 +580,19 @@ const securityHeaders: Handle = async ({ event, resolve }) => {
 	return response;
 };
 
+/** EXTERNAL_BASE_URL's origin, or null unless it's a parseable http(s) URL. */
+function declaredOrigin(): string | null {
+	try {
+		// Only a real http(s) origin: a scheme-less `chat.lan:3000` parses with
+		// `chat.lan:` as its scheme and an origin of "null", which an
+		// `Origin: null` header (a no-referrer form post) would then match.
+		const url = new URL(publicBaseUrl());
+		return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : null;
+	} catch {
+		return null;
+	}
+}
+
 /**
  * CSRF gate for /api/* state-mutating requests — the ONLY CSRF check:
  * SvelteKit's own origin check is off (`csrf.trustedOrigins: ['*']` in
@@ -614,18 +627,6 @@ const securityHeaders: Handle = async ({ event, resolve }) => {
  * (/api/auth/github/callback and /api/auth/oauth/<provider>/callback)
  * are GET only and protected separately via their state cookie.
  */
-function declaredOrigin(): string | null {
-	try {
-		// Only a real http(s) origin: a scheme-less `chat.lan:3000` parses with
-		// `chat.lan:` as its scheme and an origin of "null", which an
-		// `Origin: null` header (a no-referrer form post) would then match.
-		const url = new URL(publicBaseUrl());
-		return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : null;
-	} catch {
-		return null;
-	}
-}
-
 const csrf: Handle = async ({ event, resolve }) => {
 	const path = routedPathname(event.url.pathname);
 	if (STATE_MUTATING_METHODS.has(event.request.method) && path.startsWith('/api/')) {
