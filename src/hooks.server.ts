@@ -23,6 +23,7 @@ import {
 	compressDynamicResponses,
 	compressStreamingResponses,
 	passkeyLoginEnabled,
+	publicBaseUrl,
 	validateAuthMethodsEnabled,
 	validateSecrets,
 } from '#lib/server/env.js';
@@ -594,15 +595,33 @@ const securityHeaders: Handle = async ({ event, resolve }) => {
  * Preferred signal is `Sec-Fetch-Site`: it's browser-set, not
  * spoofable by attacker JS, and unaffected by reverse-proxy header
  * rewriting (where a missing X-Forwarded-Proto could otherwise make
- * Origin and event.url.origin disagree on scheme). Falls back to a
- * straight Origin compare for the handful of browsers too old to
- * emit Fetch-Metadata headers (pre-2020 Chromium / pre-16.4 Safari).
+ * Origin and event.url.origin disagree on scheme). Browsers send it only
+ * to a secure target, so every https request is decided by it.
+ *
+ * The Origin fallback therefore serves plain-http deployments (a LAN
+ * address, a NAS without a certificate) as well as browsers too old to
+ * emit Fetch-Metadata (pre-2020 Chromium / pre-16.4 Safari). There,
+ * event.url.origin is wrong: adapter-node 6 takes its origin from the
+ * build-time `paths.origin`, not a runtime ORIGIN, and otherwise guesses
+ * `https://` + Host. So the fallback also accepts EXTERNAL_BASE_URL's
+ * origin — the operator's declaration of this server's public origin,
+ * which already decides cookie `Secure`, the OAuth redirect and the
+ * passkey RP ID. Matching the Host header instead would be forgeable by
+ * DNS rebinding; this can't be.
  *
  * GET / HEAD are unaffected — no state change, and Origin isn't
  * consistently sent on them. The OAuth callback flows
  * (/api/auth/github/callback and /api/auth/oauth/<provider>/callback)
  * are GET only and protected separately via their state cookie.
  */
+function declaredOrigin(): string | null {
+	try {
+		return new URL(publicBaseUrl()).origin;
+	} catch {
+		return null;
+	}
+}
+
 const csrf: Handle = async ({ event, resolve }) => {
 	const path = routedPathname(event.url.pathname);
 	if (STATE_MUTATING_METHODS.has(event.request.method) && path.startsWith('/api/')) {
@@ -615,9 +634,9 @@ const csrf: Handle = async ({ event, resolve }) => {
 				return new Response('Forbidden: origin mismatch', { status: 403 });
 			}
 		} else {
-			// Legacy browser without Fetch-Metadata. Fall back to Origin.
+			// Plain http, or a browser without Fetch-Metadata. Fall back to Origin.
 			const origin = event.request.headers.get('origin');
-			if (origin !== event.url.origin) {
+			if (origin !== event.url.origin && origin !== declaredOrigin()) {
 				return new Response('Forbidden: origin mismatch', { status: 403 });
 			}
 		}

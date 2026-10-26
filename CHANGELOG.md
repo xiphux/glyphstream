@@ -20,6 +20,7 @@ arrived.
 ### Fixed
 
 - Over plain http on a local address (e.g. `http://192.168.x.x`), toasts, attachments and sending a message no longer fail with "crypto.randomUUID is not a function".
+- An instance served over plain http without a proxy no longer refuses every change with a 403. Set `EXTERNAL_BASE_URL` to the exact address browsers use; `ORIGIN` is no longer needed (it stopped being read in v0.45.0).
 
 ## v0.49.0
 

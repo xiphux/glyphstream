@@ -260,15 +260,14 @@ HTTP/2 (and HTTP/3 if you want it). Set `EXTERNAL_BASE_URL` in `.env` to the
 public origin so the OAuth redirect URI matches (see the
 [authentication guide](authentication.md)).
 
-Also set **`ORIGIN`** to the same value. adapter-node builds each request's URL
-from `ORIGIN`; without it, it assumes `https://` plus the `Host` header. Behind a
-TLS-terminating proxy that guess is usually right, but on a plain-http setup (a
-LAN address, a NAS without a certificate) it isn't, and the CSRF check's
-fallback for browsers that send no `Sec-Fetch-Site` header (pre-2020 Chromium,
-Safari before 16.4) compares the browser's `http://` origin with it and refuses
-every change. Current browsers are unaffected either way. If the proxy forwards
-the scheme and host instead, `PROTOCOL_HEADER=x-forwarded-proto` and
-`HOST_HEADER=x-forwarded-host` do the same job.
+**Serving plain http** (a LAN address, a NAS without a certificate) works without
+a proxy, but set `EXTERNAL_BASE_URL` to exactly the address browsers use,
+scheme and port included (`http://192.168.1.20:3000`). Browsers withhold the
+`Sec-Fetch-Site` header from insecure origins, so there the CSRF check compares
+each change's `Origin` with `EXTERNAL_BASE_URL` instead, and refuses changes made
+through any other address (the IP when it names a hostname, say). `ORIGIN` is no
+longer read — adapter-node takes it from the build now — so there's no need to
+set it.
 
 Any pass-through reverse proxy works — pre-compression of static assets is
 handled inside Node, so as long as the proxy forwards `Accept-Encoding`

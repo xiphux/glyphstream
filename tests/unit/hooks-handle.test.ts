@@ -195,6 +195,55 @@ describe('CSRF gate on /api/* state changes', () => {
 		});
 	});
 
+	// adapter-node guesses `https://` + Host for event.url (call() mirrors that
+	// with ORIGIN), so a plain-http deploy's real origin never matches it.
+	// Browsers send no Sec-Fetch-Site to an http target, leaving Origin.
+	describe('plain-http deployment', () => {
+		afterEach(() => {
+			vi.unstubAllEnvs();
+		});
+
+		it("allows an Origin matching EXTERNAL_BASE_URL's origin", async () => {
+			vi.stubEnv('EXTERNAL_BASE_URL', 'http://chat.example.test/');
+			const { response } = await call('/api/conversations', {
+				method: 'POST',
+				headers: { origin: 'http://chat.example.test' },
+			});
+			expect(response.status).toBe(200);
+		});
+
+		it.each([
+			['another http host', 'http://evil.example'],
+			['another port on the declared host', 'http://chat.example.test:8080'],
+		])('refuses %s', async (_label, origin) => {
+			vi.stubEnv('EXTERNAL_BASE_URL', 'http://chat.example.test');
+			const { response, resolve } = await call('/api/conversations', {
+				method: 'POST',
+				headers: { origin },
+			});
+			expect(response.status).toBe(403);
+			expect(resolve).not.toHaveBeenCalled();
+		});
+
+		it('gives an https deployment no http exception', async () => {
+			vi.stubEnv('EXTERNAL_BASE_URL', 'https://chat.example.test');
+			const { response } = await call('/api/conversations', {
+				method: 'POST',
+				headers: { origin: 'http://chat.example.test' },
+			});
+			expect(response.status).toBe(403);
+		});
+
+		it('still lets Sec-Fetch-Site overrule a declared-origin match', async () => {
+			vi.stubEnv('EXTERNAL_BASE_URL', 'http://chat.example.test');
+			const { response } = await call('/api/conversations', {
+				method: 'POST',
+				headers: { 'sec-fetch-site': 'cross-site', origin: 'http://chat.example.test' },
+			});
+			expect(response.status).toBe(403);
+		});
+	});
+
 	it('gates a percent-encoded /api path, not just the literal prefix', async () => {
 		const { response, resolve } = await call('/%61pi/conversations', {
 			method: 'POST',
