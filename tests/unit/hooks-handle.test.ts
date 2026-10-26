@@ -241,6 +241,15 @@ describe('CSRF gate on /api/* state changes', () => {
 			expect(resolve).not.toHaveBeenCalled();
 		});
 
+		it("trusts no default origin when EXTERNAL_BASE_URL isn't set", async () => {
+			vi.stubEnv('EXTERNAL_BASE_URL', undefined);
+			const { response } = await call('/api/conversations', {
+				method: 'POST',
+				headers: { origin: 'http://localhost:5173' },
+			});
+			expect(response.status).toBe(403);
+		});
+
 		it('gives an https deployment no http exception', async () => {
 			vi.stubEnv('EXTERNAL_BASE_URL', 'https://chat.example.test');
 			const { response } = await call('/api/conversations', {

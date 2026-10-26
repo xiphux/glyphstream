@@ -582,6 +582,9 @@ const securityHeaders: Handle = async ({ event, resolve }) => {
 
 /** EXTERNAL_BASE_URL's origin, or null unless it's a parseable http(s) URL. */
 function declaredOrigin(): string | null {
+	// Unset, publicBaseUrl() falls back to the dev default — an origin no
+	// operator declared, so it earns no trust here.
+	if (!process.env.EXTERNAL_BASE_URL) return null;
 	try {
 		// Only a real http(s) origin: a scheme-less `chat.lan:3000` parses with
 		// `chat.lan:` as its scheme and an origin of "null", which an
