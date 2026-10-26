@@ -88,8 +88,8 @@ export interface ChatToolContextInput {
 }
 
 export interface ChatToolContext {
-	/** System prompt with the environment preamble, skills catalog, and
-	 *  deferred-tool hint folded in. */
+	/** System prompt with the environment preamble, reply-style instructions,
+	 *  skills catalog, deferred-tool hint and reactions hint folded in. */
 	systemPrompt: string | null;
 	/** The blocks `systemPrompt` folded in on top of `baseSystemPrompt`, kept
 	 *  separately so the context breakdown can price them. The catalog and hint are

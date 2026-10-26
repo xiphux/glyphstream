@@ -38,7 +38,8 @@ const TAG = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*?(\/?)>/g;
 
 /**
  * Split html into its top-level elements. Whitespace between them is dropped;
- * anything else at the top level stays with the element before it.
+ * any other stray top-level text is kept, joined to the element that follows
+ * it (or as a chunk of its own at the very end).
  */
 export function splitTopLevelHtml(html: string): string[] {
 	const out: string[] = [];
@@ -112,7 +113,8 @@ function extractPlainSpeaker(text: string): { speaker: string | null; text: stri
  * A reply's blocks as texts. A text without a prefix is from whoever sent the
  * one before it in this reply — the conversation's own assistant for the
  * first. A prefix naming the assistant itself (`defaultName`, compared without
- * case) counts as no prefix, since models often sign their own texts.
+ * case) hands the text back to the assistant, since models often sign their
+ * own texts.
  */
 export function textingItems(blocks: RenderBlock[], defaultName: string): TextingItem[] {
 	const self = defaultName.trim().toLowerCase();
