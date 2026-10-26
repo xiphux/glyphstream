@@ -612,7 +612,8 @@ function declaredOrigin(): string | null {
  * spoofable by attacker JS, and unaffected by reverse-proxy header
  * rewriting (where a missing X-Forwarded-Proto could otherwise make
  * Origin and event.url.origin disagree on scheme). Browsers send it only
- * to a secure target, so every https request is decided by it.
+ * to a secure target, so every https request from a modern browser is decided
+ * by it.
  *
  * The Origin fallback therefore serves plain-http deployments (a LAN
  * address, a NAS without a certificate) as well as browsers too old to
