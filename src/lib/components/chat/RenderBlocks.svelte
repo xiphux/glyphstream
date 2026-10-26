@@ -30,6 +30,10 @@
 		approvalDecisions?: Map<string, ApprovalAction>;
 		approvalBusy?: boolean;
 		onApprovalSelect?: (toolCallId: string, action: ApprovalAction) => void;
+		/** Copy buttons on code blocks. Off while the text is still streaming:
+		 *  each frame re-creates every node in the html block, so a button is
+		 *  replaced mid-click and the click lands on nothing. */
+		codeCopy?: boolean;
 	}
 
 	let {
@@ -39,6 +43,7 @@
 		approvalDecisions,
 		approvalBusy = false,
 		onApprovalSelect,
+		codeCopy = true,
 	}: Props = $props();
 
 	// Successful canvas edits don't render inline — the chat page hoists them to
@@ -81,9 +86,9 @@
 		     or client-rendered via renderLiveMarkdown (in-flight).
 		     Both pass through markdown-it with html=false; safe to {@html}.
 		     withCodeCopyButtons adds only markup of its own. -->
-		<div class="gs-prose mt-1" {@attach codeCopyClicks}>
+		<div class="gs-prose mt-1" {@attach codeCopy && codeCopyClicks}>
 			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-			{@html withCodeCopyButtons(block.html)}
+			{@html codeCopy ? withCodeCopyButtons(block.html) : block.html}
 		</div>
 	{:else if block.type === 'plain-text'}
 		<div class="mt-1 whitespace-pre-wrap break-words">{block.text}</div>

@@ -76,6 +76,18 @@ describe('RenderBlocks — code copy button', () => {
 		}
 	});
 
+	it('omits the buttons when codeCopy is off', () => {
+		const { container } = render(RenderBlocks, {
+			props: {
+				blocks: [{ type: 'html', html: '<pre><code>x\n</code></pre>' }],
+				onImageClick: vi.fn(),
+				codeCopy: false,
+			},
+		});
+		expect(container.querySelector('pre')).not.toBeNull();
+		expect(container.querySelector('.gs-code')).toBeNull();
+	});
+
 	it('leaves prose without code blocks untouched', () => {
 		const { container } = renderBlocks([
 			{ type: 'html', html: '<p>no <code>inline</code> blocks</p>' },

@@ -126,3 +126,15 @@ describe('InFlightBubble — with blocks', () => {
 		expect(screen.queryByText('Thinking')).toBeNull();
 	});
 });
+
+describe('InFlightBubble — code copy buttons', () => {
+	// The streaming html is re-created every frame, so a button would be
+	// replaced mid-click. They arrive with the persisted message instead.
+	it('renders code blocks without copy buttons while streaming', () => {
+		const { container } = render(InFlightBubble, {
+			props: { ...base, blocks: [{ type: 'html', html: '<pre><code>x\n</code></pre>' }] },
+		});
+		expect(container.querySelector('pre')).not.toBeNull();
+		expect(container.querySelector('.gs-code-copy')).toBeNull();
+	});
+});

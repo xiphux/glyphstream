@@ -217,7 +217,7 @@
 
 				<div class={bodyClass}>
 					{#if blocks.length > 0}
-						<RenderBlocks {blocks} {onImageClick} />
+						<RenderBlocks {blocks} {onImageClick} codeCopy={c.status !== 'streaming'} />
 					{/if}
 					{#if c.status === 'error'}
 						<!-- Rendered from `c.error` in both directions (live frame and

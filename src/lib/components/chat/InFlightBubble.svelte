@@ -116,6 +116,7 @@
 		{approvalDecisions}
 		{approvalBusy}
 		{onApprovalSelect}
+		codeCopy={false}
 	/>
 	{#each split.cards as block (block.type === 'tool_call' ? block.toolCallId : '')}
 		{#if block.type === 'tool_call'}
