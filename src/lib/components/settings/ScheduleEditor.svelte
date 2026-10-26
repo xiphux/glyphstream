@@ -34,7 +34,7 @@
 	interface Props {
 		/** The schedule being edited, or null to create one. */
 		initial: ScheduledTask | null;
-		/** Chat models only: a run is a chat turn. */
+		/** Every kind; the picker offers only chat ones, since a run is a chat turn. */
 		models: ModelEntry[];
 		customModels: CustomModelSummary[];
 		/** Shown as the picker's Favorites group; starring stays in the chat picker. */

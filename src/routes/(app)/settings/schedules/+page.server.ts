@@ -39,11 +39,11 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 
 	return {
 		schedules: schedules.map((s) => ({ ...s, lastRun: latest.get(s.id) ?? null })),
-		// Runs are chat turns, so only chat models are offered. The picker drops a
-		// preset whose base model isn't among these, so image/video presets go too —
-		// except on an endpoint that couldn't list its models just now, where a
-		// missing base means "unknown", not "gone".
-		models: results.flatMap((r) => r.models).filter((m) => m.kind === 'chat'),
+		// Every kind, not just chat: the editor's picker narrows to chat itself, and
+		// needs a non-chat base model in hand to drop the presets built on it. One it
+		// can't find is dropped too — unless its endpoint couldn't list its models
+		// just now, where missing means "unknown", not "gone".
+		models: results.flatMap((r) => r.models),
 		unlistedEndpoints: results.filter((r) => r.error).map((r) => r.endpointId),
 		customModels: listCustomModelsForUser(userId).map(({ systemPrompt: _, ...summary }) => summary),
 		favoriteModels: prefs?.favoriteModels ?? [],

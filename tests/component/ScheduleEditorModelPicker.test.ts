@@ -10,16 +10,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import ScheduleEditor from '#lib/components/settings/ScheduleEditor.svelte';
-import type { CustomModelSummary, ModelEntry, ScheduledTask } from '#lib/types/api.js';
+import type { CustomModelSummary, ModelEntry, ModelKind, ScheduledTask } from '#lib/types/api.js';
 
-function makeModel(endpointId: string, upstreamId: string): ModelEntry {
+function makeModel(endpointId: string, upstreamId: string, kind: ModelKind = 'chat'): ModelEntry {
 	return {
 		id: `${endpointId}::${upstreamId}`,
 		endpointId,
 		upstreamId,
 		displayName: upstreamId,
 		ownedBy: null,
-		kind: 'chat',
+		kind,
 		kindKnown: true,
 		group: endpointId,
 		groupKey: endpointId,
@@ -50,11 +50,15 @@ function makePreset(
 	};
 }
 
-// Chat models only, as the page load ships them.
-const MODELS = [makeModel('bridge', 'gpt-4o'), makeModel('cloud', 'big-model')];
+// Every kind, as the page load ships them; the picker offers only chat.
+const MODELS = [
+	makeModel('bridge', 'gpt-4o'),
+	makeModel('bridge', 'flux', 'image'),
+	makeModel('cloud', 'big-model'),
+];
 const PRESETS = [
 	makePreset('cm-chat', 'Brief writer', 'gpt-4o'),
-	// Its base is an image model, so it isn't among MODELS.
+	// Built on an image model.
 	makePreset('cm-image', 'Poster maker', 'flux'),
 	// On an endpoint that's down, so its base model isn't listed either.
 	makePreset('cm-offline', 'Offline helper', 'local-llm', 'offline'),
@@ -167,12 +171,17 @@ describe('ScheduleEditor model picker', () => {
 		expect(body()).toMatchObject({ customModelId: 'cm-offline' });
 	});
 
-	it("doesn't offer a preset built on a model a run can't use", async () => {
+	it.each([
+		['its endpoint listed fine', []],
+		// The listing failed, but an earlier one's models are still known.
+		['its endpoint is failing on a cached list', ['bridge']],
+	])("doesn't offer a preset built on a model a run can't use when %s", async (_, unlisted) => {
 		const user = userEvent.setup();
-		renderEditor();
+		renderEditor(null, unlisted);
 		await user.click(screen.getByLabelText('Select model'));
 		expect(screen.getByRole('option', { name: /Brief writer/ })).toBeInTheDocument();
 		expect(screen.queryByRole('option', { name: /Poster maker/ })).toBeNull();
+		expect(screen.queryByRole('option', { name: /^flux/ })).toBeNull();
 	});
 
 	it("shows an existing schedule's preset, and keeps it on save", async () => {
