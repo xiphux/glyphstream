@@ -616,7 +616,11 @@ const securityHeaders: Handle = async ({ event, resolve }) => {
  */
 function declaredOrigin(): string | null {
 	try {
-		return new URL(publicBaseUrl()).origin;
+		// Only a real http(s) origin: a scheme-less `chat.lan:3000` parses with
+		// `chat.lan:` as its scheme and an origin of "null", which an
+		// `Origin: null` header (a no-referrer form post) would then match.
+		const url = new URL(publicBaseUrl());
+		return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : null;
 	} catch {
 		return null;
 	}
@@ -635,8 +639,10 @@ const csrf: Handle = async ({ event, resolve }) => {
 			}
 		} else {
 			// Plain http, or a browser without Fetch-Metadata. Fall back to Origin.
+			// A missing Origin is refused outright, so it can never match an
+			// unparseable EXTERNAL_BASE_URL's null.
 			const origin = event.request.headers.get('origin');
-			if (origin !== event.url.origin && origin !== declaredOrigin()) {
+			if (!origin || (origin !== event.url.origin && origin !== declaredOrigin())) {
 				return new Response('Forbidden: origin mismatch', { status: 403 });
 			}
 		}

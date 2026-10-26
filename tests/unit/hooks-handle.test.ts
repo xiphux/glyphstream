@@ -225,6 +225,22 @@ describe('CSRF gate on /api/* state changes', () => {
 			expect(resolve).not.toHaveBeenCalled();
 		});
 
+		// A malformed EXTERNAL_BASE_URL must fail closed, not match a missing
+		// or opaque Origin.
+		it.each([
+			['an unparseable value with no Origin', '192.168.1.20:3000', {}],
+			['an empty value with no Origin', '', {}],
+			['a scheme-less host:port with Origin: null', 'chat.lan:3000', { origin: 'null' }],
+		])('refuses %s', async (_label, declared, headers: Record<string, string>) => {
+			vi.stubEnv('EXTERNAL_BASE_URL', declared);
+			const { response, resolve } = await call('/api/conversations', {
+				method: 'POST',
+				headers,
+			});
+			expect(response.status).toBe(403);
+			expect(resolve).not.toHaveBeenCalled();
+		});
+
 		it('gives an https deployment no http exception', async () => {
 			vi.stubEnv('EXTERNAL_BASE_URL', 'https://chat.example.test');
 			const { response } = await call('/api/conversations', {
