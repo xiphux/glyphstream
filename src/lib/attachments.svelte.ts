@@ -14,6 +14,7 @@
 
 import { untrack } from 'svelte';
 import type { ModelKind } from '#lib/types/api.js';
+import { randomUUID } from '#lib/uuid.js';
 
 // --- client-side image resize -------------------------------------------
 //
@@ -264,7 +265,7 @@ export class AttachmentStore {
 		this.items = [
 			...this.items,
 			{
-				clientId: crypto.randomUUID(),
+				clientId: randomUUID(),
 				mediaId,
 				objectUrl: `/api/media/${mediaId}/display`,
 				contentType: opts.contentType ?? 'image/*',
@@ -292,7 +293,7 @@ export class AttachmentStore {
 		// a thumbnail, but createObjectURL is still harmless and gives a handle
 		// to revoke uniformly on remove(); the chip UI ignores objectUrl for
 		// `kind: 'file'`.
-		const clientId = crypto.randomUUID();
+		const clientId = randomUUID();
 		const initial: AttachedItem = {
 			clientId,
 			mediaId: null,

@@ -38,6 +38,7 @@ import {
 } from './chat-render';
 import { buildSendRequestBody, type SendOptions } from './chat-send-body';
 import { consumeChatStream } from './consume-chat-stream';
+import { randomUUID } from './uuid';
 import { errorMessageFromResponse } from './fetch-error';
 import { clearTitlePending, markTitlePending } from './title-pending.svelte';
 import type {
@@ -305,7 +306,7 @@ export class ChatTurnController {
 			parts.push({ type: 'image', mediaId });
 		}
 		return {
-			id: `optimistic-${crypto.randomUUID()}`,
+			id: `optimistic-${randomUUID()}`,
 			role: 'user',
 			parts,
 			contentHtml: null,

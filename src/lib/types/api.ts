@@ -728,7 +728,7 @@ export type ColorScheme = 'system' | 'light' | 'dark';
  * so saved sets are never gardened on config edits.
  */
 export interface SavedModelSet {
-	/** Stable id, generated client-side via crypto.randomUUID(). */
+	/** Stable id, generated client-side via randomUUID() (#lib/uuid). */
 	id: string;
 	/** User-given label, e.g. "Favorite Anime Image Models". Non-empty. */
 	name: string;

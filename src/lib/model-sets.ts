@@ -22,6 +22,7 @@
 import { invalidate } from '$app/navigation';
 import { errorMessageFromResponse } from '#lib/fetch-error.js';
 import { toast } from '#lib/toast.svelte.js';
+import { randomUUID } from '#lib/uuid.js';
 import type { CompareSelection } from '#lib/fanout.js';
 import type { SavedModelSet } from '#lib/types/api.js';
 
@@ -56,7 +57,7 @@ export async function saveModelSet(
 	const trimmed = name.trim();
 	if (!trimmed || selections.length === 0) return;
 	const set: SavedModelSet = {
-		id: crypto.randomUUID(),
+		id: randomUUID(),
 		name: trimmed,
 		models: selections.map((s) => ({ modelId: s.modelId, count: s.count })),
 	};

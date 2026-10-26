@@ -7,6 +7,7 @@
 	import favicon from '#lib/assets/favicon.svg';
 	import UpdateBanner from '#lib/components/UpdateBanner.svelte';
 	import { toast } from '#lib/toast.svelte.js';
+	import { randomUUID } from '#lib/uuid.js';
 	import { streamPresence } from '#lib/stream-presence.svelte.js';
 	import { syncAppBadgeFromWindow } from '#lib/sw/badge.js';
 	import { shouldPromptForUpdate } from '#lib/sw/update-prompt.js';
@@ -117,7 +118,7 @@
 	// (browser-only — effects don't run in SSR). Defined before the tracking
 	// effect so the viewerId exists on first sync.
 	$effect(() => {
-		presenceViewerId ??= crypto.randomUUID();
+		presenceViewerId ??= randomUUID();
 		const heartbeat = setInterval(syncPresence, HEARTBEAT_MS);
 		return () => clearInterval(heartbeat);
 	});

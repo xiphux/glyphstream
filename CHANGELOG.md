@@ -17,6 +17,10 @@ arrived.
 
 - A schedule's model is now chosen with the same searchable, per-provider picker as the chat box, instead of one long dropdown.
 
+### Fixed
+
+- Over plain http on a local address (e.g. `http://192.168.x.x`), toasts, attachments and sending a message no longer fail with "crypto.randomUUID is not a function".
+
 ## v0.49.0
 
 ### Added

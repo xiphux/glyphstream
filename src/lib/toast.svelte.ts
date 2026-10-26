@@ -18,6 +18,8 @@
  *    this and everything else together (see ROADMAP).
  */
 
+import { randomUUID } from '#lib/uuid.js';
+
 type ToastKind = 'success' | 'info' | 'error';
 
 export interface ToastAction {
@@ -65,7 +67,7 @@ class ToastStore {
 			this.timer = null;
 		}
 		this.current = {
-			id: crypto.randomUUID(),
+			id: randomUUID(),
 			kind,
 			message,
 			description: options.description,
