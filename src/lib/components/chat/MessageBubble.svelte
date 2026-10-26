@@ -88,7 +88,6 @@
 			blocks={messageToBlocks(message, toolResultsByCallId)}
 			{assistantLabel}
 			{assistantAvatarMediaId}
-			showHeader={!mergeWithPrev}
 			{onImageClick}
 			{openingLightboxFor}
 			{approvalDecisions}

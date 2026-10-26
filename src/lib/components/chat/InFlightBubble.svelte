@@ -136,7 +136,6 @@
 			{blocks}
 			{assistantLabel}
 			{assistantAvatarMediaId}
-			showHeader={!mergeWithPrev}
 			{onImageClick}
 			{openingLightboxFor}
 			{approvalDecisions}

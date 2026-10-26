@@ -2,8 +2,13 @@
 	An assistant reply in the 'texting' reply style: one bubble per text, as
 	`textingItems` splits it, under the name (and face) of whoever sent it. A
 	header shows wherever the sender changes, so a run of texts from one person
-	carries one name, as in a messaging app. Anything that isn't text — tool
-	calls, images, reasoning — keeps its standard rendering in a bubble of its own.
+	carries one name, as in a messaging app. The first text always gets one, even
+	when this row continues a tool turn from the row above: speakers start over
+	with the assistant in each row (it's a separate model reply), so leaving the
+	header off would show its text under whoever spoke last above.
+
+	Anything that isn't text — tool calls, images, reasoning — keeps its
+	standard rendering in a bubble of its own.
 
 	Shared by MessageBubble and InFlightBubble so the live reply and the stored
 	one split the same way.
@@ -21,9 +26,6 @@
 		blocks: RenderBlock[];
 		assistantLabel: string;
 		assistantAvatarMediaId?: string | null;
-		/** False when this reply continues the one above it (a multi-iteration
-		 *  tool turn), so its first text by the assistant needs no header. */
-		showHeader: boolean;
 		onImageClick: (mediaId: string) => void;
 		openingLightboxFor?: string | null;
 		approvalDecisions?: Map<string, ApprovalAction>;
@@ -40,7 +42,6 @@
 		blocks,
 		assistantLabel,
 		assistantAvatarMediaId = null,
-		showHeader,
 		onImageClick,
 		openingLightboxFor = null,
 		approvalDecisions,
@@ -53,7 +54,7 @@
 	// Each item paired with whether it opens a new sender's run. `undefined`
 	// as the starting sender makes the first text always differ from it.
 	const rows = $derived.by(() => {
-		let prev: string | null | undefined = showHeader ? undefined : null;
+		let prev: string | null | undefined = undefined;
 		// Without the successful canvas edits, which the caller renders as cards
 		// at the bottom: left in, a canvas-only reply would draw an empty bubble.
 		const items = textingItems(splitCanvasCards(blocks).body, assistantLabel);

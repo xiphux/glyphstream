@@ -60,12 +60,14 @@ describe('texting reply style', () => {
 		expect(screen.getAllByText('Chloe')).toHaveLength(1);
 	});
 
-	it('drops the opening header on a reply that continues the one above', () => {
+	// A tool turn's next row starts over with the assistant; without its header,
+	// that text would read as from whoever spoke last in the row above.
+	it('keeps the opening header on a reply that continues the one above', () => {
 		render(MessageBubble, {
 			props: { ...bubbleProps, mergeWithPrev: true, message: reply('<p>more</p>') },
 		});
 		expect(screen.getByText('more')).toBeInTheDocument();
-		expect(screen.queryByText('Chloe')).toBeNull();
+		expect(screen.getByText('Chloe')).toBeInTheDocument();
 	});
 
 	it('draws no empty bubble for a reply that only edited a canvas', () => {
