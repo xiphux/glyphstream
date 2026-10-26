@@ -49,13 +49,9 @@ export async function handleCodeCopyClick(e: MouseEvent): Promise<void> {
 	const pre = button.parentElement?.querySelector('pre');
 	if (!pre) return;
 	const text = (pre.textContent ?? '').replace(/\n$/, '');
-	try {
-		await navigator.clipboard.writeText(text);
-	} catch (err) {
-		// clipboard is unavailable outside a secure context (plain-http
-		// self-hosting) and rejects when the document isn't focused. Select the
-		// block instead, so a manual copy is one keystroke away.
-		console.warn('Copy to clipboard failed:', err);
+	if (!(await copyText(text))) {
+		// Nothing could write the clipboard. Select the block instead, so a
+		// manual copy is one keystroke away.
 		const selection = window.getSelection();
 		if (selection) {
 			const range = document.createRange();
@@ -71,6 +67,49 @@ export async function handleCodeCopyClick(e: MouseEvent): Promise<void> {
 		delete button.dataset.copied;
 		button.setAttribute('aria-label', 'Copy code');
 	}, COPIED_MS);
+}
+
+/**
+ * The async clipboard API exists only in a secure context, and a self-hosted
+ * instance reached over plain http on a LAN address isn't one — Safari then
+ * has no `navigator.clipboard` at all. `execCommand('copy')` is deprecated but
+ * still works there, and in every browser, from inside a click. Its absence is
+ * checked synchronously so that path runs within the click's user activation.
+ */
+async function copyText(text: string): Promise<boolean> {
+	if (window.isSecureContext && navigator.clipboard) {
+		try {
+			await navigator.clipboard.writeText(text);
+			return true;
+		} catch (err) {
+			console.warn('Copy to clipboard failed:', err);
+		}
+	}
+	return copyWithExecCommand(text);
+}
+
+function copyWithExecCommand(text: string): boolean {
+	// A textarea rather than selecting the <pre>: the selection would carry the
+	// fence's trailing newline. readonly keeps iOS from raising the keyboard.
+	const previous = document.activeElement;
+	const scratch = document.createElement('textarea');
+	scratch.value = text;
+	scratch.setAttribute('readonly', '');
+	scratch.style.position = 'fixed';
+	scratch.style.top = '0';
+	scratch.style.opacity = '0';
+	document.body.append(scratch);
+	scratch.select();
+	scratch.setSelectionRange(0, text.length);
+	try {
+		return document.execCommand('copy');
+	} catch {
+		return false;
+	} finally {
+		scratch.remove();
+		// select() moved focus to the scratch textarea; hand it back.
+		if (previous instanceof HTMLElement) previous.focus({ preventScroll: true });
+	}
 }
 
 /** Attachment for a prose container: routes its code-copy button clicks. */

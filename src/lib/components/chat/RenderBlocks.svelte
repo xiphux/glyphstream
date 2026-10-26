@@ -81,8 +81,8 @@
 		     or client-rendered via renderLiveMarkdown (in-flight).
 		     Both pass through markdown-it with html=false; safe to {@html}.
 		     withCodeCopyButtons adds only markup of its own. -->
-		<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 		<div class="gs-prose mt-1" {@attach codeCopyClicks}>
+			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 			{@html withCodeCopyButtons(block.html)}
 		</div>
 	{:else if block.type === 'plain-text'}

@@ -4,7 +4,7 @@
  * RenderBlock.type; the block shapes come from chat-render.ts.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import RenderBlocks from '#lib/components/chat/RenderBlocks.svelte';
@@ -47,6 +47,20 @@ describe('RenderBlocks — html + plain-text', () => {
 });
 
 describe('RenderBlocks — code copy button', () => {
+	// happy-dom leaves isSecureContext undefined — the plain-http case; the
+	// tests of the async clipboard path need a secure one.
+	// happy-dom has no execCommand; tests that need one install a stub.
+	const realExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand');
+	beforeEach(() => {
+		vi.stubGlobal('isSecureContext', true);
+	});
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
+		if (realExecCommand) Object.defineProperty(document, 'execCommand', realExecCommand);
+		else delete (document as { execCommand?: unknown }).execCommand;
+	});
+
 	const shiki =
 		'<p>here:</p><pre class="shiki" tabindex="0"><code><span class="line"><span>line one</span></span>\n<span class="line"><span>line two</span></span></code></pre>';
 
@@ -83,6 +97,36 @@ describe('RenderBlocks — code copy button', () => {
 		expect(writeText).toHaveBeenCalledWith('# Title\n\n- item');
 		expect(button).toHaveAttribute('data-copied');
 		expect(button).toHaveAccessibleName('Copied');
+	});
+
+	it('falls back to execCommand where the clipboard API is missing (plain http)', async () => {
+		const user = userEvent.setup();
+		const writeText = vi.spyOn(navigator.clipboard, 'writeText');
+		vi.stubGlobal('isSecureContext', false);
+		let copied: string | null = null;
+		document.execCommand = vi.fn((cmd: string) => {
+			if (cmd === 'copy') copied = document.querySelector('textarea')?.value ?? null;
+			return true;
+		});
+		renderBlocks([{ type: 'html', html: '<pre><code>raw text\n</code></pre>' }]);
+		const button = screen.getByRole('button', { name: 'Copy code' });
+		await user.click(button);
+		expect(writeText).not.toHaveBeenCalled();
+		expect(copied).toBe('raw text');
+		expect(button).toHaveAttribute('data-copied');
+		expect(document.querySelector('textarea')).toBeNull();
+	});
+
+	it('selects the block when nothing can write the clipboard', async () => {
+		const user = userEvent.setup();
+		vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+		document.execCommand = vi.fn(() => false);
+		renderBlocks([{ type: 'html', html: '<pre><code>raw text\n</code></pre>' }]);
+		const button = screen.getByRole('button', { name: 'Copy code' });
+		await user.click(button);
+		expect(button).not.toHaveAttribute('data-copied');
+		expect(window.getSelection()?.toString()).toContain('raw text');
 	});
 
 	it('copies multi-line shiki output as plain text', async () => {
