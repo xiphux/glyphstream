@@ -490,6 +490,11 @@
 			// as the canvas: a same-conversation refresh must not overwrite an
 			// optimistic toggle whose PATCH is still in flight.
 			disabledFeatures = [...data.conversation.disabledFeatures];
+		} else {
+			// Same conversation: pick up any canvas version the live stream event
+			// didn't deliver, leaving the pane's open/focus state alone.
+			const seeds = data.canvases;
+			untrack(() => canvas.sync(seeds));
 		}
 		maybeAutoOpenCanvas();
 	});

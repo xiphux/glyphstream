@@ -50,18 +50,27 @@ export class CanvasController {
 	 * appropriate. Focus starts on the most-recently-updated canvas.
 	 */
 	hydrate(seeds: CanvasSeed[]): void {
-		this.docs = seeds.map((s) => ({
-			artifactId: s.id,
-			versionId: s.currentVersionId ?? '',
-			title: s.title,
-			content: s.content,
-			contentHtml: s.contentHtml,
-			versionNumber: s.versionNumber,
-			editSource: 'agent',
-		}));
+		this.docs = seeds.map(toVersion);
 		this.focusedId =
 			seeds.length > 0 ? seeds.reduce((a, b) => (b.updatedAt > a.updatedAt ? b : a)).id : null;
 		this.open = false;
+	}
+
+	/**
+	 * Merge a same-conversation reload's seed: take any version newer than what
+	 * the pane holds, and any canvas it doesn't know, without touching open state
+	 * or focus. The live `canvas_version` event isn't guaranteed to arrive — a
+	 * turn finished by the recovery poll after an iOS suspension, or one run
+	 * while the stream was detached, never delivers it — and without this the
+	 * pane kept showing the pre-turn version until a full page reload.
+	 */
+	sync(seeds: CanvasSeed[]): void {
+		for (const s of seeds) {
+			const idx = this.docs.findIndex((d) => d.artifactId === s.id);
+			if (idx < 0) this.docs.push(toVersion(s));
+			else if (s.versionNumber > this.docs[idx].versionNumber) this.docs[idx] = toVersion(s);
+		}
+		if (this.focusedId === null && this.docs.length > 0) this.focusedId = this.docs[0].artifactId;
 	}
 
 	/** Apply a live edit from a canvas_version stream event: upsert the doc,
@@ -95,4 +104,16 @@ export class CanvasController {
 	clearChangeFlag(): void {
 		this.lastChangedVersionId = null;
 	}
+}
+
+function toVersion(s: CanvasSeed): CanvasVersion {
+	return {
+		artifactId: s.id,
+		versionId: s.currentVersionId ?? '',
+		title: s.title,
+		content: s.content,
+		contentHtml: s.contentHtml,
+		versionNumber: s.versionNumber,
+		editSource: 'agent',
+	};
 }

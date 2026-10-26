@@ -9,6 +9,10 @@ arrived.
 
 ## Unreleased
 
+### Fixed
+
+- Opening a canvas after the model updated it could show the previous version until the page was reloaded.
+
 ## v0.49.1
 
 ### Added
