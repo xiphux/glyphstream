@@ -121,6 +121,14 @@ describe('validateCreateInput', () => {
 		).toThrow(expect.objectContaining({ status: 400 }));
 	});
 
+	it('defaults replyStyle to standard and refuses an unknown one', () => {
+		expect(validateCreateInput(valid).replyStyle).toBe('standard');
+		expect(validateCreateInput({ ...valid, replyStyle: 'texting' }).replyStyle).toBe('texting');
+		expect(() => validateCreateInput({ ...valid, replyStyle: 'sms' } as never)).toThrow(
+			expect.objectContaining({ status: 400 }),
+		);
+	});
+
 	it('rejects empty name', () => {
 		expect(() => validateCreateInput({ ...valid, name: '   ' })).toThrow();
 	});

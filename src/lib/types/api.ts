@@ -941,6 +941,8 @@ export interface ConversationDetail extends ConversationSummary {
 	/** Per-conversation avatar override. When set it wins over the preset's;
 	 *  null falls back to the preset (or to no avatar at all). */
 	avatarMediaId: string | null;
+	/** Snapshotted from the custom model at create time; 'standard' otherwise. */
+	replyStyle: ReplyStyle;
 	activeLeafMessageId: string | null;
 	/** The active branch, root → leaf — or, for the chat page, only its newest
 	 *  window (see `hasEarlierMessages`). */
@@ -1008,6 +1010,15 @@ export interface CustomModelParameters {
 	max_tokens?: number;
 }
 
+/**
+ * How a conversation's assistant replies are presented. 'texting' shows each
+ * paragraph as its own chat bubble, optionally prefixed `Name: ` to speak as
+ * someone else (see `#lib/texting.ts`), and tells the model so at send time.
+ */
+export type ReplyStyle = 'standard' | 'texting';
+
+export const REPLY_STYLES: readonly ReplyStyle[] = ['standard', 'texting'];
+
 export interface CustomModel {
 	id: string;
 	name: string;
@@ -1021,6 +1032,8 @@ export interface CustomModel {
 	 *  picks the preset. Empty array means "all features on", same as the
 	 *  global default. */
 	defaultDisabledFeatures: FeatureCategory[];
+	/** Copied onto each conversation created from the preset. */
+	replyStyle: ReplyStyle;
 	/** Media id of the preset's avatar, shown beside the model name above its
 	 *  replies. Null when unset. Not part of Create/Update — it moves a media
 	 *  ref_count with it, so it has its own single write path
@@ -1047,6 +1060,8 @@ export interface CreateCustomModelRequest {
 	systemPrompt?: string;
 	parameters?: CustomModelParameters;
 	defaultDisabledFeatures?: FeatureCategory[];
+	/** Defaults to 'standard'. */
+	replyStyle?: ReplyStyle;
 }
 
 export type UpdateCustomModelRequest = Partial<CreateCustomModelRequest>;

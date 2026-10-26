@@ -1,6 +1,11 @@
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import { generateId } from '../../util/id';
-import type { CustomModel, CustomModelParameters, FeatureCategory } from '#lib/types/api.js';
+import type {
+	CustomModel,
+	CustomModelParameters,
+	FeatureCategory,
+	ReplyStyle,
+} from '#lib/types/api.js';
 import { getDb } from '../client';
 import { customModels, media } from '../schema';
 import { parseDisabledFeatures, parseModelParameters } from './json-columns';
@@ -16,6 +21,8 @@ interface CreateInput {
 	parameters: CustomModelParameters | null;
 	/** Omit / pass [] for the historical default "all features on". */
 	defaultDisabledFeatures?: FeatureCategory[];
+	/** Omit for 'standard'. */
+	replyStyle?: ReplyStyle;
 }
 
 interface UpdateInput {
@@ -26,6 +33,7 @@ interface UpdateInput {
 	systemPrompt?: string | null;
 	parameters?: CustomModelParameters | null;
 	defaultDisabledFeatures?: FeatureCategory[];
+	replyStyle?: ReplyStyle;
 }
 
 function rowToCustomModel(row: typeof customModels.$inferSelect): CustomModel {
@@ -38,6 +46,7 @@ function rowToCustomModel(row: typeof customModels.$inferSelect): CustomModel {
 		systemPrompt: row.systemPrompt,
 		parameters: parseModelParameters(row.parametersJson),
 		defaultDisabledFeatures: parseDisabledFeatures(row.defaultDisabledFeaturesJson),
+		replyStyle: row.replyStyle,
 		avatarMediaId: row.avatarMediaId,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
@@ -76,6 +85,7 @@ export function createCustomModel(input: CreateInput): CustomModel {
 	const id = generateId();
 	const now = Date.now();
 	const defaultDisabledFeatures = input.defaultDisabledFeatures ?? [];
+	const replyStyle = input.replyStyle ?? 'standard';
 	db.insert(customModels)
 		.values({
 			id,
@@ -87,6 +97,7 @@ export function createCustomModel(input: CreateInput): CustomModel {
 			systemPrompt: input.systemPrompt,
 			parametersJson: input.parameters ? JSON.stringify(input.parameters) : null,
 			defaultDisabledFeaturesJson: encodeDisabledFeatures(defaultDisabledFeatures),
+			replyStyle,
 			createdAt: now,
 			updatedAt: now,
 		})
@@ -100,6 +111,7 @@ export function createCustomModel(input: CreateInput): CustomModel {
 		systemPrompt: input.systemPrompt,
 		parameters: input.parameters,
 		defaultDisabledFeatures,
+		replyStyle,
 		// Avatars are never set at create time — the editor uploads or picks one
 		// against an existing preset, so the single ref-counted write path
 		// (`setCustomModelAvatar`) is the only thing that ever populates this.
@@ -141,6 +153,7 @@ export function updateCustomModel(
 		if (input.defaultDisabledFeatures !== undefined) {
 			patch.defaultDisabledFeaturesJson = encodeDisabledFeatures(input.defaultDisabledFeatures);
 		}
+		if (input.replyStyle !== undefined) patch.replyStyle = input.replyStyle;
 
 		tx.update(customModels).set(patch).where(eq(customModels.id, id)).run();
 		const refreshed = tx.select().from(customModels).where(eq(customModels.id, id)).get();

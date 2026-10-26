@@ -7,6 +7,7 @@ import type {
 	CustomModelParameters,
 	FeatureCategory,
 	ModelKind,
+	ReplyStyle,
 } from '#lib/types/api.js';
 import { getDb } from '../client';
 import { conversations, media, messages } from '../schema';
@@ -41,6 +42,8 @@ interface CreateInput {
 	customModelId?: string | null;
 	systemPrompt?: string | null;
 	parameters?: CustomModelParameters | null;
+	/** From the custom model; omit for 'standard'. */
+	replyStyle?: ReplyStyle;
 	title?: string | null;
 	disabledFeatures?: FeatureCategory[] | null;
 	// "Private chat" content seal (see schema.ts). Set once at create time,
@@ -69,6 +72,7 @@ export function createConversation(input: CreateInput): ConversationDetail {
 			customModelId: input.customModelId ?? null,
 			systemPrompt: input.systemPrompt ?? null,
 			parametersJson: input.parameters ? JSON.stringify(input.parameters) : null,
+			replyStyle: input.replyStyle ?? 'standard',
 			title: input.title ?? null,
 			activeLeafMessageId: null,
 			createdAt: now,
@@ -93,6 +97,7 @@ export function createConversation(input: CreateInput): ConversationDetail {
 		avatarMediaId: null,
 		systemPrompt: input.systemPrompt ?? null,
 		parameters: input.parameters ?? null,
+		replyStyle: input.replyStyle ?? 'standard',
 		activeLeafMessageId: null,
 		createdAt: now,
 		updatedAt: now,
@@ -329,6 +334,7 @@ export function getConversationDetail(
 			avatarMediaId: conversations.avatarMediaId,
 			systemPrompt: conversations.systemPrompt,
 			parametersJson: conversations.parametersJson,
+			replyStyle: conversations.replyStyle,
 			activeLeafMessageId: conversations.activeLeafMessageId,
 			createdAt: conversations.createdAt,
 			updatedAt: conversations.updatedAt,
@@ -352,6 +358,7 @@ export function getConversationDetail(
 		avatarMediaId: row.avatarMediaId,
 		systemPrompt: row.systemPrompt,
 		parameters: parseModelParameters(row.parametersJson),
+		replyStyle: row.replyStyle,
 		activeLeafMessageId: row.activeLeafMessageId,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
@@ -372,6 +379,7 @@ export function getConversationMeta(
 	modelKind: ModelKind | null;
 	systemPrompt: string | null;
 	parameters: CustomModelParameters | null;
+	replyStyle: ReplyStyle;
 	title: string | null;
 	activeLeafMessageId: string | null;
 	disabledFeatures: FeatureCategory[];
@@ -388,6 +396,7 @@ export function getConversationMeta(
 			modelKind: conversations.modelKind,
 			systemPrompt: conversations.systemPrompt,
 			parametersJson: conversations.parametersJson,
+			replyStyle: conversations.replyStyle,
 			title: conversations.title,
 			activeLeafMessageId: conversations.activeLeafMessageId,
 			disabledFeaturesJson: conversations.disabledFeaturesJson,
@@ -405,6 +414,7 @@ export function getConversationMeta(
 		modelKind: row.modelKind,
 		systemPrompt: row.systemPrompt,
 		parameters: parseModelParameters(row.parametersJson),
+		replyStyle: row.replyStyle,
 		title: row.title,
 		activeLeafMessageId: row.activeLeafMessageId,
 		disabledFeatures: parseDisabledFeatures(row.disabledFeaturesJson),

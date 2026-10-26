@@ -28,6 +28,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		systemPrompt: validated.systemPrompt,
 		parameters: validated.parameters,
 		defaultDisabledFeatures: validated.defaultDisabledFeatures,
+		replyStyle: validated.replyStyle,
 	});
 	return Response.json({ customModel: model }, { status: 201 });
 };

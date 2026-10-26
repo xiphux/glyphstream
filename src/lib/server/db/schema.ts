@@ -314,6 +314,14 @@ export const conversations = sqliteTable(
 		// (temperature/top_p/max_tokens) can grow to per-modality params later
 		// without another migration.
 		parametersJson: text('parameters_json'),
+		// How assistant replies are presented (`ReplyStyle`), snapshotted from the
+		// custom model at create time like the prompt above. 'texting' renders each
+		// paragraph as its own bubble and adds the texting instructions to the system
+		// prompt at send time (`chat/reply-style.ts`). Display + prompt only: the
+		// stored message is the reply exactly as the model wrote it.
+		replyStyle: text('reply_style', { enum: ['standard', 'texting'] })
+			.notNull()
+			.default('standard'),
 		// Forward FK to messages.id; nullable until first message exists.
 		// SQLite resolves the cyclic FK fine because both sides are nullable
 		// at the right moments (active_leaf is null at conversation creation;
@@ -545,6 +553,11 @@ export const customModels = sqliteTable(
 		// gates — e.g. a code-review preset that shouldn't pull in personal
 		// context, or a URL-summarizer where web access is redundant.
 		defaultDisabledFeaturesJson: text('default_disabled_features'),
+		// `ReplyStyle` copied onto each conversation created from this preset (see
+		// `conversations.reply_style`). Editing it doesn't change existing chats.
+		replyStyle: text('reply_style', { enum: ['standard', 'texting'] })
+			.notNull()
+			.default('standard'),
 		// The preset's avatar — a media row shown beside the model name above
 		// each of its replies, so a preset roleplaying a character reads as a
 		// someone rather than a name. NULL = no avatar (the label renders alone,

@@ -17,6 +17,7 @@ import type {
 	CustomModelParameters,
 	GeneratingConversationsResponse,
 	ModelKind,
+	ReplyStyle,
 } from '#lib/types/api.js';
 import { validateDisabledFeaturesOrThrow400 } from '#lib/server/util/validate-features.js';
 import type { RequestHandler } from './$types';
@@ -62,6 +63,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	let resolvedSystemPrompt: string | null;
 	let resolvedParameters: CustomModelParameters | null = null;
 	let resolvedCustomModelId: string | null = null;
+	let resolvedReplyStyle: ReplyStyle = 'standard';
 
 	// modelKind is optional and validated identically whether a custom
 	// model or a base model id was supplied — the caller forwards it so
@@ -89,6 +91,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		resolvedSystemPrompt = cm.systemPrompt;
 		resolvedParameters = cm.parameters;
 		resolvedCustomModelId = cm.id;
+		resolvedReplyStyle = cm.replyStyle;
 	} else {
 		const modelId = optionalString(body.modelId, 'modelId')?.trim();
 		if (!modelId) error(400, "'modelId' or 'customModelId' is required");
@@ -133,6 +136,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		systemPrompt: resolvedSystemPrompt,
 		parameters: resolvedParameters,
 		customModelId: resolvedCustomModelId,
+		replyStyle: resolvedReplyStyle,
 		title:
 			requireMaxLength(
 				optionalString(body.title, 'title')?.trim(),

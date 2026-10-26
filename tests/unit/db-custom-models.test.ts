@@ -279,4 +279,40 @@ describe('custom-models CRUD', () => {
 		const updated = updateCustomModel(cm.id, u.id, { name: 'Renamed' });
 		expect(updated?.defaultDisabledFeatures).toEqual(['personalization']);
 	});
+	it('replyStyle defaults to standard, persists, and patches', () => {
+		const u = seedUser();
+		const base = {
+			userId: u.id,
+			description: null,
+			baseEndpointId: 'bridge',
+			baseModelId: 'x',
+			systemPrompt: null,
+			parameters: null,
+		};
+		expect(createCustomModel({ ...base, name: 'A' }).replyStyle).toBe('standard');
+		const cm = createCustomModel({ ...base, name: 'B', replyStyle: 'texting' });
+		expect(getCustomModelForUser(cm.id, u.id)?.replyStyle).toBe('texting');
+		expect(updateCustomModel(cm.id, u.id, { name: 'C' })?.replyStyle).toBe('texting');
+		expect(updateCustomModel(cm.id, u.id, { replyStyle: 'standard' })?.replyStyle).toBe('standard');
+	});
+
+	it('a conversation keeps the replyStyle it was created with', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat',
+			replyStyle: 'texting',
+		});
+		expect(conv.replyStyle).toBe('texting');
+		expect(getConversationDetail(conv.id, u.id)?.replyStyle).toBe('texting');
+		const plain = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat',
+		});
+		expect(getConversationDetail(plain.id, u.id)?.replyStyle).toBe('standard');
+	});
 });

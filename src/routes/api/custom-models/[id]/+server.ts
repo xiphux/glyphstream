@@ -14,6 +14,7 @@ import {
 import {
 	validateDefaultDisabledFeatures,
 	validateParameters,
+	validateReplyStyle,
 } from '#lib/server/custom-models/validate.js';
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
 import type { UpdateCustomModelRequest } from '#lib/types/api.js';
@@ -81,6 +82,9 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	}
 	if (body.defaultDisabledFeatures !== undefined) {
 		patch.defaultDisabledFeatures = validateDefaultDisabledFeatures(body.defaultDisabledFeatures);
+	}
+	if (body.replyStyle !== undefined) {
+		patch.replyStyle = validateReplyStyle(body.replyStyle);
 	}
 
 	const updated = updateCustomModel(params.id, locals.user.id, patch);

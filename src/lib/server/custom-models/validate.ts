@@ -15,7 +15,9 @@ import type {
 	CreateCustomModelRequest,
 	CustomModelParameters,
 	FeatureCategory,
+	ReplyStyle,
 } from '#lib/types/api.js';
+import { REPLY_STYLES } from '#lib/types/api.js';
 
 export interface ValidatedCreate {
 	name: string;
@@ -25,6 +27,7 @@ export interface ValidatedCreate {
 	systemPrompt: string | null;
 	parameters: CustomModelParameters | null;
 	defaultDisabledFeatures: FeatureCategory[];
+	replyStyle: ReplyStyle;
 }
 
 export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCreate {
@@ -59,6 +62,8 @@ export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCr
 		)?.trim() || null;
 	const parameters = validateParameters(body.parameters);
 	const defaultDisabledFeatures = validateDefaultDisabledFeatures(body.defaultDisabledFeatures);
+	const replyStyle =
+		body.replyStyle === undefined ? 'standard' : validateReplyStyle(body.replyStyle);
 
 	return {
 		name,
@@ -68,7 +73,15 @@ export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCr
 		systemPrompt,
 		parameters,
 		defaultDisabledFeatures,
+		replyStyle,
 	};
+}
+
+export function validateReplyStyle(raw: unknown): ReplyStyle {
+	if (!REPLY_STYLES.includes(raw as ReplyStyle)) {
+		error(400, `'replyStyle' must be one of: ${REPLY_STYLES.join(', ')}`);
+	}
+	return raw as ReplyStyle;
 }
 
 /** Same shape rules as the per-conversation field — undefined / null → []
