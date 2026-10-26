@@ -8,7 +8,9 @@ exist; everything else here works out of the box.
 
 - **Streaming with live markdown.** Replies render as markdown while they
   stream, with syntax-highlighted code; when the reply finishes, the server's
-  full-coverage highlight swaps in.
+  full-coverage highlight swaps in. Every code block has a copy button in its
+  corner (on hover with a mouse, always shown on touch), which copies the
+  block's raw text.
 - **Reasoning blocks.** Thinking models (DeepSeek-R1, the o-series, anything
   that streams reasoning) get a collapsible reasoning block that expands while
   the model is thinking.

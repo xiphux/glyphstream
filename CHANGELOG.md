@@ -9,6 +9,10 @@ arrived.
 
 ## Unreleased
 
+### Added
+
+- Code blocks in replies have a copy button, so a raw version of something can be copied without selecting it by hand.
+
 ### Changed
 
 - A schedule's model is now chosen with the same searchable, per-provider picker as the chat box, instead of one long dropdown.

@@ -46,6 +46,54 @@ describe('RenderBlocks — html + plain-text', () => {
 	});
 });
 
+describe('RenderBlocks — code copy button', () => {
+	const shiki =
+		'<p>here:</p><pre class="shiki" tabindex="0"><code><span class="line"><span>line one</span></span>\n<span class="line"><span>line two</span></span></code></pre>';
+
+	it('puts a copy button beside each code block, outside the <pre>', () => {
+		const { container } = renderBlocks([
+			{ type: 'html', html: shiki + '<pre><code class="language-text">plain\n</code></pre>' },
+		]);
+		const wrappers = container.querySelectorAll('.gs-prose .gs-code');
+		expect(wrappers).toHaveLength(2);
+		for (const w of wrappers) {
+			expect(w.querySelector(':scope > button.gs-code-copy')).not.toBeNull();
+			expect(w.querySelector('pre button')).toBeNull();
+		}
+	});
+
+	it('leaves prose without code blocks untouched', () => {
+		const { container } = renderBlocks([
+			{ type: 'html', html: '<p>no <code>inline</code> blocks</p>' },
+		]);
+		expect(container.querySelector('.gs-code-copy')).toBeNull();
+	});
+
+	it('copies the block text without the trailing newline', async () => {
+		const user = userEvent.setup();
+		const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+		renderBlocks([
+			{
+				type: 'html',
+				html: '<pre><code class="language-markdown"># Title\n\n- item\n</code></pre>',
+			},
+		]);
+		const button = screen.getByRole('button', { name: 'Copy code' });
+		await user.click(button);
+		expect(writeText).toHaveBeenCalledWith('# Title\n\n- item');
+		expect(button).toHaveAttribute('data-copied');
+		expect(button).toHaveAccessibleName('Copied');
+	});
+
+	it('copies multi-line shiki output as plain text', async () => {
+		const user = userEvent.setup();
+		const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+		renderBlocks([{ type: 'html', html: shiki }]);
+		await user.click(screen.getByRole('button', { name: 'Copy code' }));
+		expect(writeText).toHaveBeenCalledWith('line one\nline two');
+	});
+});
+
 describe('RenderBlocks — tool_call', () => {
 	it('renders a ToolCallBlock for tool_call blocks', () => {
 		renderBlocks([

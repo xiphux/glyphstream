@@ -15,6 +15,7 @@
 	import { isCanvasTool, splitCanvasCards, type RenderBlock } from '#lib/chat-render.js';
 	import { parseRatio } from '#lib/aspect-ratio.js';
 	import type { ApprovalAction } from '#lib/approval-workflow.js';
+	import { codeCopyClicks, withCodeCopyButtons } from '#lib/code-copy.js';
 
 	interface Props {
 		blocks: RenderBlock[];
@@ -78,9 +79,12 @@
 	{:else if block.type === 'html'}
 		<!-- HTML is either server-rendered (shiki, persisted assistant)
 		     or client-rendered via renderLiveMarkdown (in-flight).
-		     Both pass through markdown-it with html=false; safe to {@html}. -->
+		     Both pass through markdown-it with html=false; safe to {@html}.
+		     withCodeCopyButtons adds only markup of its own. -->
 		<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-		<div class="gs-prose mt-1">{@html block.html}</div>
+		<div class="gs-prose mt-1" {@attach codeCopyClicks}>
+			{@html withCodeCopyButtons(block.html)}
+		</div>
 	{:else if block.type === 'plain-text'}
 		<div class="mt-1 whitespace-pre-wrap break-words">{block.text}</div>
 	{:else if block.type === 'tool_call' && isCanvasTool(block.toolName)}

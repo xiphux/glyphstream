@@ -834,3 +834,34 @@ body {
 .gs-prose pre:not(.shiki) > code {
 	@apply font-mono;
 }
+
+/* Copy button on code blocks (#lib/code-copy.ts wraps each <pre> in .gs-code).
+   Sits outside the <pre> so it stays put when the code scrolls sideways.
+   Visible by default; hidden until hover only where a hover can bring it back
+   (touch has no hover — see the can-hover note in CLAUDE.md). */
+.gs-prose .gs-code {
+	@apply relative;
+}
+.gs-prose .gs-code-copy {
+	@apply absolute top-1.5 right-1.5 flex size-7 items-center justify-center rounded-md border border-border-strong bg-surface-panel text-fg-muted transition-opacity;
+}
+.gs-prose .gs-code-copy:hover {
+	@apply text-fg-secondary;
+}
+.gs-prose .gs-code-copy-done,
+.gs-prose .gs-code-copy[data-copied] .gs-code-copy-idle {
+	@apply hidden;
+}
+.gs-prose .gs-code-copy[data-copied] .gs-code-copy-done {
+	@apply block;
+}
+@media (hover: hover) {
+	.gs-prose .gs-code-copy {
+		@apply opacity-0;
+	}
+	.gs-prose .gs-code:hover .gs-code-copy,
+	.gs-prose .gs-code-copy:focus-visible,
+	.gs-prose .gs-code-copy[data-copied] {
+		@apply opacity-100;
+	}
+}
