@@ -279,3 +279,32 @@ describe('custom models — avatar', () => {
 		expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual(['PATCH /api/custom-models/cm-1']);
 	});
 });
+
+describe('custom models — reply style', () => {
+	async function savedReplyStyle(baseModelId: string): Promise<unknown> {
+		const user = userEvent.setup();
+		const fetchMock = vi.fn(() =>
+			Promise.resolve({
+				ok: true,
+				status: 200,
+				json: () => Promise.resolve({ customModel: { id: 'cm-1' } }),
+			}),
+		);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		renderPage([makeCustom({ name: 'Chloe', baseModelId, replyStyle: 'texting' })]);
+		await user.click(screen.getByRole('button', { name: /^Chloe/ }));
+		await user.click(screen.getByRole('button', { name: 'Save changes' }));
+		const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1];
+		return (JSON.parse(init.body as string) as { replyStyle: unknown }).replyStyle;
+	}
+
+	it('keeps a chat preset’s texting style', async () => {
+		expect(await savedReplyStyle('gpt-4o')).toBe('texting');
+	});
+
+	// The selector is hidden for a non-chat base, so a style left over from an
+	// earlier chat base mustn't be saved invisibly.
+	it('saves standard once the base is no longer a chat model', async () => {
+		expect(await savedReplyStyle('flux')).toBe('standard');
+	});
+});

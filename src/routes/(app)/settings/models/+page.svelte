@@ -258,7 +258,9 @@
 					systemPrompt: systemPrompt.trim() || undefined,
 					parameters: buildParameters(),
 					defaultDisabledFeatures: [...defaultDisabledFeatures],
-					replyStyle,
+					// The selector is hidden for non-chat bases; don't keep a style the
+					// user can no longer see (or that means nothing for an image model).
+					replyStyle: baseKind === null || baseKind === 'chat' ? replyStyle : 'standard',
 				};
 
 				const url = editingId ? `/api/custom-models/${editingId}` : '/api/custom-models';
