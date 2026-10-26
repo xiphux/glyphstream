@@ -17,6 +17,7 @@ import type {
 	ChatMessage,
 	FeatureCategory,
 	McpUnavailableServer,
+	ReplyStyle,
 	ScheduledToolPolicy,
 } from '#lib/types/api.js';
 import { policyNeedsApproval, toolPermitter } from '../scheduled/tool-policy';
@@ -29,6 +30,7 @@ import { buildUserMcpToolDefinitions } from '../mcp/tool-bridge';
 import { getUserServerStates } from '../mcp/registry';
 import { awaitMcpReady } from '../mcp/bootstrap';
 import { composeEnvironmentBlock } from './environment-context';
+import { replyStyleInstructions } from './reply-style';
 import { appendSkillsCatalog, buildSkillsRequestContext } from './skills-context';
 import {
 	appendToolSearchHint,
@@ -63,6 +65,9 @@ export interface ChatToolContextInput {
 	 * the composed persona prompt.
 	 */
 	baseSystemPrompt: string | null;
+	/** The conversation's reply style; a non-standard one adds its formatting
+	 *  instructions right after `baseSystemPrompt`. Omitted = 'standard'. */
+	replyStyle?: ReplyStyle;
 	/**
 	 * The active branch AFTER any synthetic skill-activation exchange, used to
 	 * seed cross-turn deferred-tool activations.
@@ -91,6 +96,8 @@ export interface ChatToolContext {
 	 *  null when the model doesn't support tools (nothing was appended); the
 	 *  environment preamble is unconditional. */
 	environmentBlock: string;
+	/** The reply style's formatting instructions, or null for 'standard'. */
+	replyStyleInstructions: string | null;
 	skillsCatalog: string | null;
 	toolSearchHint: string | null;
 	/** `REACTIONS_HINT` when `react_to_message` is advertised, else null. Priced
@@ -131,7 +138,10 @@ export async function buildChatToolContext(input: ChatToolContextInput): Promise
 	// with its own snapshotted prompt needs it just as much. Without it the model
 	// silently dates the world to its training cutoff.
 	const environmentBlock = composeEnvironmentBlock(new Date(), input.timeZone);
-	let systemPrompt: string | null = [environmentBlock, baseSystemPrompt]
+	// The reply style's instructions sit right after the prompt they shape the
+	// output of. Fixed per conversation, so they never move the prefix.
+	const styleInstructions = replyStyleInstructions(input.replyStyle ?? 'standard');
+	let systemPrompt: string | null = [environmentBlock, baseSystemPrompt, styleInstructions]
 		.filter(Boolean)
 		.join('\n\n');
 
@@ -235,6 +245,7 @@ export async function buildChatToolContext(input: ChatToolContextInput): Promise
 	return {
 		systemPrompt,
 		environmentBlock,
+		replyStyleInstructions: styleInstructions,
 		skillsCatalog: skillsCtx.catalog,
 		toolSearchHint: toolSearchCtx.hint,
 		reactionsHint,

@@ -74,6 +74,9 @@ export interface ContextBreakdownInput {
 	customSystemPrompt: string | null;
 	/** The unconditional environment preamble (today's date). */
 	environmentBlock: string;
+	/** The reply style's formatting instructions. Priced as part of the system
+	 *  prompt: they arrive with the preset, alongside its own prompt. */
+	replyStyleInstructions?: string | null;
 	skillsCatalog: string | null;
 	toolSearchHint: string | null;
 	/** The system-prompt line that advertises reactions. Priced as part of the
@@ -107,6 +110,9 @@ export async function buildContextBreakdown(
 	acc.add('system:environment', input.environmentBlock.length);
 	if (input.customSystemPrompt) {
 		acc.add('system:custom', input.customSystemPrompt.length);
+	}
+	if (input.replyStyleInstructions) {
+		acc.add('system:custom', input.replyStyleInstructions.length);
 	}
 	for (const part of input.personaParts) {
 		acc.add(part.key, part.text.length);
