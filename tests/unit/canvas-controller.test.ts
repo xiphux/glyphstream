@@ -66,4 +66,11 @@ describe('CanvasController.sync', () => {
 		c.show('a');
 		expect(c.current?.content).toBe('a v1');
 	});
+
+	it('focuses the most-recently-updated of several new canvases, like hydrate', () => {
+		const c = new CanvasController();
+		c.hydrate([]);
+		c.sync([seed('a', 1, 10), seed('b', 1, 30), seed('c', 1, 20)]);
+		expect(c.focusedId).toBe('b');
+	});
 });

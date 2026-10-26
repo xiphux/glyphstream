@@ -493,8 +493,8 @@
 			disabledFeatures = [...data.conversation.disabledFeatures];
 		} else {
 			// Same conversation: pick up any canvas version the live stream event
-			// didn't deliver, leaving open state and an existing focus alone. A
-			// canvas that is the conversation's first arrives unfocused-into, so
+			// didn't deliver, leaving open state and an existing focus alone. If
+			// this brings the conversation's first canvas, `sync` focuses it and
 			// `maybeAutoOpenCanvas` below opens it on desktop — as `apply` would.
 			const seeds = data.canvases;
 			untrack(() => canvas.sync(seeds));

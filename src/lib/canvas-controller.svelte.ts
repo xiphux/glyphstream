@@ -51,8 +51,7 @@ export class CanvasController {
 	 */
 	hydrate(seeds: CanvasSeed[]): void {
 		this.docs = seeds.map(toVersion);
-		this.focusedId =
-			seeds.length > 0 ? seeds.reduce((a, b) => (b.updatedAt > a.updatedAt ? b : a)).id : null;
+		this.focusedId = mostRecentId(seeds);
 		this.open = false;
 	}
 
@@ -66,12 +65,16 @@ export class CanvasController {
 	 * pane kept showing the pre-turn version until a full page reload.
 	 */
 	sync(seeds: CanvasSeed[]): void {
+		const added: CanvasSeed[] = [];
 		for (const s of seeds) {
 			const idx = this.docs.findIndex((d) => d.artifactId === s.id);
-			if (idx < 0) this.docs.push(toVersion(s));
-			else if (s.versionNumber > this.docs[idx].versionNumber) this.docs[idx] = toVersion(s);
+			if (idx < 0) {
+				this.docs.push(toVersion(s));
+				added.push(s);
+			} else if (s.versionNumber > this.docs[idx].versionNumber) this.docs[idx] = toVersion(s);
 		}
-		if (this.focusedId === null && this.docs.length > 0) this.focusedId = this.docs[0].artifactId;
+		// Same rule as `hydrate`: focus the most-recently-touched one.
+		if (this.focusedId === null) this.focusedId = mostRecentId(added);
 	}
 
 	/** Apply a live edit from a canvas_version stream event: upsert the doc,
@@ -105,6 +108,10 @@ export class CanvasController {
 	clearChangeFlag(): void {
 		this.lastChangedVersionId = null;
 	}
+}
+
+function mostRecentId(seeds: CanvasSeed[]): string | null {
+	return seeds.length > 0 ? seeds.reduce((a, b) => (b.updatedAt > a.updatedAt ? b : a)).id : null;
 }
 
 function toVersion(s: CanvasSeed): CanvasVersion {
