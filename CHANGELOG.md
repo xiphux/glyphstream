@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.49.1
+
 ### Added
 
 - Code blocks in replies have a copy button, so a raw version of something can be copied without selecting it by hand.
