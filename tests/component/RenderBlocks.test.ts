@@ -55,6 +55,7 @@ describe('RenderBlocks — code copy button', () => {
 		vi.stubGlobal('isSecureContext', true);
 	});
 	afterEach(() => {
+		vi.useRealTimers();
 		vi.restoreAllMocks();
 		vi.unstubAllGlobals();
 		if (realExecCommand) Object.defineProperty(document, 'execCommand', realExecCommand);
@@ -139,6 +140,21 @@ describe('RenderBlocks — code copy button', () => {
 		await user.click(button);
 		expect(button).not.toHaveAttribute('data-copied');
 		expect(window.getSelection()?.toString()).toContain('raw text');
+	});
+
+	it('a repeat click restarts the Copied state instead of ending it early', async () => {
+		vi.useFakeTimers();
+		const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+		vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+		renderBlocks([{ type: 'html', html: '<pre><code>x\n</code></pre>' }]);
+		const button = screen.getByRole('button', { name: 'Copy code' });
+		await user.click(button);
+		await vi.advanceTimersByTimeAsync(1000);
+		await user.click(button);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(button).toHaveAttribute('data-copied');
+		await vi.advanceTimersByTimeAsync(600);
+		expect(button).not.toHaveAttribute('data-copied');
 	});
 
 	it('copies multi-line shiki output as plain text', async () => {

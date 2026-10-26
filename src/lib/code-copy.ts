@@ -37,6 +37,7 @@ export function withCodeCopyButtons(html: string): string {
 }
 
 const COPIED_MS = 1500;
+const copiedTimers = new WeakMap<Element, ReturnType<typeof setTimeout>>();
 
 /**
  * Delegated click handler for the buttons `withCodeCopyButtons` adds. Copies
@@ -63,10 +64,17 @@ export async function handleCodeCopyClick(e: MouseEvent): Promise<void> {
 	}
 	button.dataset.copied = '';
 	button.setAttribute('aria-label', 'Copied');
-	setTimeout(() => {
-		delete button.dataset.copied;
-		button.setAttribute('aria-label', 'Copy code');
-	}, COPIED_MS);
+	// A repeat click restarts the confirmation rather than letting the first
+	// click's timer cut it short.
+	clearTimeout(copiedTimers.get(button));
+	copiedTimers.set(
+		button,
+		setTimeout(() => {
+			copiedTimers.delete(button);
+			delete button.dataset.copied;
+			button.setAttribute('aria-label', 'Copy code');
+		}, COPIED_MS),
+	);
 }
 
 /**
