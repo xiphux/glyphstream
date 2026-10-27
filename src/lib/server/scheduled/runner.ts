@@ -489,7 +489,7 @@ function textOf(message: ChatMessage | null): string {
 }
 
 /** `mcp__mail__send_email` → `send_email`; the server reads from the title. */
-function toolLabel(name: string | undefined): string {
+export function toolLabel(name: string | undefined): string {
 	if (!name) return 'a tool';
 	const m = /^mcp__.+?__(.+)$/.exec(name);
 	return m ? m[1] : name;

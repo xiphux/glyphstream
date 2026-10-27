@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => ({
 	upstream: [] as Array<() => Response>,
 	upstreamBodies: [] as Array<{ messages: Array<{ role: string; content: unknown }> }>,
 	enabled: true,
+	tools: false,
 }));
 
 vi.mock('#lib/server/endpoints/client.js', async (orig) => ({
@@ -50,7 +51,7 @@ vi.mock('#lib/server/endpoints/registry.js', () => ({
 	getEndpoint: (id: string) => (id === 'mock' ? ENDPOINT : undefined),
 }));
 vi.mock('#lib/server/endpoints/list-models.js', () => ({
-	listAllModels: async () => [{ endpointId: 'mock', upstreamId: 'm', supportsTools: false }],
+	listAllModels: async () => [{ endpointId: 'mock', upstreamId: 'm', supportsTools: mocks.tools }],
 }));
 vi.mock('#lib/server/endpoints/config.js', async (orig) => ({
 	...(await orig<typeof import('#lib/server/endpoints/config.js')>()),
@@ -86,7 +87,7 @@ import {
 } from '#lib/server/db/queries/messages.js';
 import { getCheckIn, setCheckIn } from '#lib/server/db/queries/check-ins.js';
 import { resetEndpointGatesForTests } from '#lib/server/endpoints/concurrency.js';
-import { _resetForTests } from '#lib/server/tools/registry.js';
+import { _resetForTests, register } from '#lib/server/tools/registry.js';
 import {
 	getInFlightSince,
 	registerInFlight,
@@ -181,6 +182,7 @@ beforeEach(() => {
 	mocks.upstream = [];
 	mocks.upstreamBodies = [];
 	mocks.enabled = true;
+	mocks.tools = false;
 	notify.mockClear();
 	_resetForTests();
 });
@@ -350,6 +352,49 @@ describe('firing', () => {
 		]);
 		expect(getCheckIn(t.conversationId, t.userId)?.note).toBe('try again');
 		expect(notify).not.toHaveBeenCalled();
+	});
+
+	it('says so when it stops to ask before using a tool', async () => {
+		mocks.tools = true;
+		register({
+			definition: {
+				type: 'function',
+				function: { name: 'mcp__mail__send', description: 'send', parameters: { type: 'object' } },
+			},
+			metadata: { category: 'mcp:mail' },
+			execute: () => {
+				throw new Error('must not run before approval');
+			},
+		});
+		const t = thread();
+		scheduled(t);
+		mocks.upstream.push(() =>
+			sse([
+				{
+					choices: [
+						{
+							delta: {
+								tool_calls: [
+									{
+										index: 0,
+										id: 'call_1',
+										type: 'function',
+										function: { name: 'mcp__mail__send', arguments: '{}' },
+									},
+								],
+							},
+							finish_reason: null,
+						},
+					],
+				},
+				{ choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+			]),
+		);
+		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
+		await idle(t.conversationId);
+		expect(notify).toHaveBeenCalledWith(
+			expect.objectContaining({ summary: 'Waiting for your OK to use send' }),
+		);
 	});
 
 	it('lets a check-in set one more, but not a third in a row', async () => {

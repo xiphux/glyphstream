@@ -63,6 +63,7 @@ import type { TurnOutcome } from '../streaming/relay';
 import { errorMessage } from '../streaming/sse-transport';
 import { createLogger } from '../log';
 import { createSweeper } from '../util/sweeper';
+import { toolLabel } from '../scheduled/runner';
 
 const log = createLogger('check-ins');
 
@@ -236,7 +237,16 @@ function settleCheckIn(
 	outcome: TurnOutcome,
 ): void {
 	const { conversationId, userId } = row;
-	if (outcome.kind === 'error' || outcome.kind === 'halted_for_approval') return;
+	if (outcome.kind === 'error') return;
+	// Nobody is watching, and the relay's own push is suppressed: say the check-in
+	// is waiting on them, or it sits on an approval prompt no one knows about.
+	if (outcome.kind === 'halted_for_approval') {
+		const summary = `Waiting for your OK to use ${toolLabel(outcome.pendingToolNames[0])}`;
+		void notifyCheckIn(row, outcome.assistantMessageId, '', summary).catch((e: unknown) =>
+			log.warn('notify failed:', errorMessage(e)),
+		);
+		return;
+	}
 	const reply =
 		outcome.kind === 'done' ? getMessage(conversationId, outcome.assistantMessageId) : null;
 	if (reply && !isCheckInSkip(partsToText(reply.parts))) {
@@ -273,7 +283,12 @@ function replyText(parts: Parameters<typeof partsToText>[0]): string {
 		.join('\n\n');
 }
 
-async function notifyCheckIn(row: CheckInRow, replyId: string, text: string): Promise<void> {
+async function notifyCheckIn(
+	row: CheckInRow,
+	replyId: string,
+	text: string,
+	summary?: string,
+): Promise<void> {
 	const { conversationId, userId } = row;
 	const meta = getConversationMeta(conversationId, userId);
 	if (!meta) return;
@@ -287,6 +302,7 @@ async function notifyCheckIn(row: CheckInRow, replyId: string, text: string): Pr
 		conversationTitle: sender,
 		previewText: buildPreview(text),
 		modality: 'chat',
+		...(summary ? { summary } : {}),
 	});
 }
 
