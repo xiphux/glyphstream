@@ -563,8 +563,9 @@ export const customModels = sqliteTable(
 			.notNull()
 			.default('standard'),
 		// Copied onto each conversation created from this preset (see
-		// `conversations.check_ins`). Off unless set; the editor defaults it on
-		// for a texting preset.
+		// `conversations.check_ins`). A create that doesn't say defaults it on for
+		// a texting preset and off otherwise (`validateCreateInput`, and the editor
+		// to match).
 		checkIns: integer('check_ins', { mode: 'boolean' }).notNull().default(false),
 		// The preset's avatar — a media row shown beside the model name above
 		// each of its replies, so a preset roleplaying a character reads as a

@@ -1,7 +1,7 @@
 /**
  * Check-ins: the assistant saying it will get back to the user later, and then
- * doing so. A conversation may only if its preset allows it (`checkIns`, on by
- * default for a texting preset, off for a standard one).
+ * doing so. A conversation can check in only if its preset allows it
+ * (`checkIns`, on by default for a texting preset, off for a standard one).
  *
  * A reply that ends with `[later 1h: ask how the interview went]` sets a
  * check-in (see `server/check-ins/`). If the reply is still the end of the
