@@ -54,6 +54,27 @@ retrying, editing and branching work as usual. The model also sees its earlier
 replies exactly as it wrote them, names included. Like the rest of a preset, the
 style is fixed when a conversation is created.
 
+#### Photos
+
+A texting partner can send photos. Glyphstream tells the model it can write a
+text of its own as `[photo: …]`, describing the picture in full along with its
+aspect ratio. That text shows as a photo placeholder with the description and a
+**Develop** button.
+
+**Develop** opens the same dialog as drawing an avatar, with the description
+already filled in. You can edit the prompt, pick a shape (a ratio named in the
+description is preselected), and choose an image model. Pick several models to
+compare their versions side by side and send the one you like. The photo arrives
+as its own message after the reply, the way a picture often lands after the texts
+around it. Use the button on the photo to develop it again, and the arrows under
+it to switch between versions.
+
+You can develop photos only while the reply is the latest thing in the thread,
+with nothing after it but its own photos. Once you answer, its undeveloped photos
+stay as descriptions. A photo is shown but never sent back to the model, which
+already has its description. To make a character send more or fewer photos, say
+so in the preset's prompt ("loves sending selfies").
+
 ## Sharing hardware
 
 - **Per-endpoint concurrency caps** queue requests instead of running your

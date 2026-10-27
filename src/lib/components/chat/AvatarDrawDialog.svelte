@@ -11,10 +11,16 @@
 
 	A dialog rather than more of the popover menu: a popover dismisses on any
 	outside click, which is a bad place to be editing a paragraph.
+
+	Also how a texting photo is developed (`purpose="photo"`): the same draw, so
+	the same dialog, with the marker's description as the prompt and an
+	aspect-ratio picker, since a photo is whatever shape the phone was held.
 -->
 <script lang="ts">
 	import BaseDialog from '#lib/components/BaseDialog.svelte';
 	import ModelPicker from './ModelPicker.svelte';
+	import AspectRatioSelector from './AspectRatioSelector.svelte';
+	import { agreedDefault, offeredRatios } from '#lib/aspect-ratio.js';
 	import type { CompareSelection } from '#lib/fanout.js';
 	import type { ModelEntry } from '#lib/types/api.js';
 
@@ -76,6 +82,11 @@
 		onModelChange: (id: string) => void;
 		onDraw: () => void;
 		onCancel: () => void;
+		/** What's being drawn — the avatar (default) or a texting photo. */
+		purpose?: 'avatar' | 'photo';
+		/** A photo's shape, or null for each model's default. Bindable; unused for
+		 *  an avatar, which is always square. */
+		aspectRatio?: string | null;
 	}
 
 	let {
@@ -96,13 +107,37 @@
 		onModelChange,
 		onDraw,
 		onCancel,
+		purpose = 'avatar',
+		aspectRatio = $bindable(null),
 	}: Props = $props();
+
+	const isPhoto = $derived(purpose === 'photo');
 
 	// The picker's compare mode is sticky — it stays on with one model in the
 	// cart, which is a single draw wearing a comparison's clothes. Everything
 	// downstream keys off "is this actually a comparison", not off the toggle.
 	const compareTotal = $derived(compareSelections.reduce((n, s) => n + s.count, 0));
 	const comparing = $derived(compareMode && compareTotal >= 2);
+
+	// The shapes on offer are the selected models': all of them in a comparison
+	// (each takes its nearest, server-side), else the one model.
+	const selectedModels = $derived(
+		comparing
+			? models.filter((m) => compareSelections.some((s) => s.modelId === m.id))
+			: models.filter((m) => m.id === modelId),
+	);
+	const ratioOptions = $derived(offeredRatios(selectedModels));
+	const ratioDefault = $derived(agreedDefault(selectedModels));
+	// Owned here rather than by the workflow: it only answers a detection in
+	// this dialog's prompt, and the dialog remounts per open.
+	let dismissedRatio = $state<string | null>(null);
+	let ratioRef = $state<{ flushDetection(): void }>();
+
+	function draw() {
+		// The ratio the prompt names may still be inside the picker's debounce.
+		ratioRef?.flushDetection();
+		onDraw();
+	}
 </script>
 
 <BaseDialog
@@ -114,10 +149,14 @@
 	}}
 	role="dialog"
 	titleId="avatar-draw-title"
-	title="Draw the avatar"
+	title={isPhoto ? 'Develop the photo' : 'Draw the avatar'}
 >
 	<p class="mt-1 text-xs text-fg-muted">
-		This is what gets sent to the image model. Trim anything the model said in character.
+		{#if isPhoto}
+			This is what gets sent to the image model — the photo as it was described.
+		{:else}
+			This is what gets sent to the image model. Trim anything the model said in character.
+		{/if}
 	</p>
 
 	<label class="mt-3 block text-xs font-medium" for="avatar-prompt">Image prompt</label>
@@ -154,6 +193,21 @@
 		{/if}
 	</div>
 
+	{#if isPhoto && ratioOptions.length > 0}
+		<div class="mt-3 flex items-center gap-2">
+			<span class="text-xs font-medium">Shape</span>
+			<AspectRatioSelector
+				bind:this={ratioRef}
+				options={ratioOptions}
+				defaultValue={ratioDefault}
+				promptText={prompt}
+				bind:value={aspectRatio}
+				bind:dismissedRatio
+				disabled={!!status}
+			/>
+		</div>
+	{/if}
+
 	<label class="mt-3 flex items-start gap-2 text-xs">
 		<input
 			type="checkbox"
@@ -186,16 +240,16 @@
 		</button>
 		<button
 			type="button"
-			onclick={onDraw}
+			onclick={draw}
 			disabled={!!status || !prompt.trim() || (!comparing && !modelId)}
 			class="rounded-md bg-surface-inverse px-4 py-1.5 text-sm font-medium text-fg-inverse transition hover:opacity-90 disabled:opacity-50"
 		>
 			{#if status}
-				Drawing…
+				{isPhoto ? 'Developing…' : 'Drawing…'}
 			{:else if comparing}
-				Draw with {compareTotal} models
+				{isPhoto ? 'Develop' : 'Draw'} with {compareTotal} models
 			{:else}
-				Draw
+				{isPhoto ? 'Develop' : 'Draw'}
 			{/if}
 		</button>
 	</div>

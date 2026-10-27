@@ -33,6 +33,7 @@ import {
 } from './fanout';
 import { errorMessageFromResponse } from './fetch-error';
 import { clearTitlePending, markTitlePending } from './title-pending.svelte';
+import { photoOriginOf } from './texting-photos';
 import type {
 	ChatMessage,
 	ConversationRecoveryPoll,
@@ -44,6 +45,7 @@ import type {
 	PrepareAvatarDrawResponse,
 	PrepareFanoutRequest,
 	PrepareFanoutResponse,
+	PhotoOrigin,
 } from './types/api';
 
 /** Everything the controller needs from the host page. Getters for reactive
@@ -75,6 +77,12 @@ export interface FanoutDeps {
  *  than read per branch — see `#dispatchColumns`. */
 interface DispatchMode {
 	mode: 'turn' | 'avatar';
+}
+
+/** A texting photo's marker as an `AvatarDrawPrompt` field — absent, not
+ *  undefined, for a portrait. */
+function withPhoto(photo: PhotoOrigin | null): { photo?: PhotoOrigin } {
+	return photo ? { photo } : {};
 }
 
 /** branchId prefix for the server-driven "Generating…" placeholder columns of a
@@ -174,6 +182,20 @@ export class FanoutController {
 	/** An avatar comparison: keep-many like any image grid, but ALSO pick-one —
 	 *  the pick adopts a face rather than continuing the thread with that model. */
 	isAvatar = $derived(this.#mode === 'avatar');
+	/**
+	 * The avatar comparison is a texting photo's: its candidates develop a
+	 * `[photo: …]` marker, and the pick sends one rather than adopting a face.
+	 * Read off the columns — the live ones carry it in their draw inputs, a
+	 * recovered one on its image part — and the server decides what the pick does
+	 * on its own from that same part, so a grid that can't tell yet (recovered
+	 * with nothing landed) only mislabels its pick button.
+	 */
+	isPhoto = $derived(
+		this.#mode === 'avatar' &&
+			this.columns.some(
+				(c) => !!c.avatarPrompt?.photo || (!!c.persisted && !!photoOriginOf(c.persisted)),
+			),
+	);
 
 	/** Whether `col` can be re-rolled. Always, for a turn fan-out (the server
 	 *  re-derives the prompt from the shared user message); for an avatar column
@@ -257,7 +279,9 @@ export class FanoutController {
 				dispatchIndex: m.fanoutIndex ?? null,
 				// Set only for an avatar comparison's portraits; a failed one has no
 				// media row to read it off, so it can't be re-rolled once recovered.
-				avatarPrompt: m.avatarPrompt ?? null,
+				// A photo's marker is on its image part, so a re-roll develops the
+				// same one.
+				avatarPrompt: m.avatarPrompt ? { ...m.avatarPrompt, ...withPhoto(photoOriginOf(m)) } : null,
 				persisted: m,
 				error: errPart?.message ?? null,
 				errorMessageId: errPart ? m.id : null,
@@ -522,6 +546,9 @@ export class FanoutController {
 		prompt: string;
 		enhance: boolean;
 		branches: readonly FanoutModel[];
+		/** A texting photo's comparison: the marker it develops, and its shape. */
+		photo?: PhotoOrigin;
+		aspectRatio?: string | null;
 	}): Promise<void> {
 		if (input.branches.length > MAX_FANOUT_BRANCHES_PER_CONVERSATION) {
 			this.#deps.setError(
@@ -564,7 +591,11 @@ export class FanoutController {
 		}
 
 		this.#mode = 'avatar';
-		const avatarPrompt = { prompt: input.prompt, enhance: input.enhance };
+		const avatarPrompt = {
+			prompt: input.prompt,
+			enhance: input.enhance,
+			...withPhoto(input.photo ?? null),
+		};
 		this.userMessageId = input.sourceMessageId;
 		this.live = true;
 
@@ -589,8 +620,9 @@ export class FanoutController {
 			statusLabel: null,
 			startedAt: null,
 			inputMediaId: null,
-			// Avatar portraits are pinned square server-side, not picked here.
-			aspectRatio: null,
+			// Avatar portraits are pinned square server-side, not picked here; a
+			// photo takes the shape from the dialog.
+			aspectRatio: input.photo ? (input.aspectRatio ?? null) : null,
 			avatarPrompt,
 			persisted: null,
 			error: null,
@@ -693,6 +725,8 @@ export class FanoutController {
 							modelId: col.modelId,
 							prompt: avatar.prompt,
 							enhance: avatar.enhance,
+							photo: avatar.photo,
+							aspectRatio: col.aspectRatio,
 							fanoutSize: opts?.fanoutSize,
 							branchIndex: col.dispatchIndex,
 						})

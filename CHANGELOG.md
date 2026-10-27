@@ -12,6 +12,7 @@ arrived.
 ### Added
 
 - Custom models can use a texting reply style: each paragraph of a reply arrives as its own chat bubble, and a `Name:` prefix lets one preset play several people in a group chat.
+- In a texting chat the model can send photos: each one shows as a placeholder you develop with one or more image models, picking the best if you compared several.
 
 ### Fixed
 

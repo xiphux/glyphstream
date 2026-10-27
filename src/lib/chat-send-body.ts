@@ -35,7 +35,7 @@
  * the boundary, strict types where they buy clarity.
  */
 
-import type { ModelKind } from './types/api';
+import type { ModelKind, PhotoOrigin } from './types/api';
 
 export interface SendOptions {
 	/**
@@ -186,6 +186,10 @@ export function buildAvatarBranchBody(input: {
 	fanoutSize?: number;
 	/** Grid position, exactly as in `buildFanoutBranchBody`. */
 	branchIndex?: number | null;
+	/** A texting photo's comparison: the marker every candidate develops. */
+	photo?: PhotoOrigin;
+	/** A photo's shape. The server ignores it for a portrait, which is square. */
+	aspectRatio?: string | null;
 }): Record<string, unknown> {
 	return {
 		fanout: true,
@@ -193,6 +197,8 @@ export function buildAvatarBranchBody(input: {
 		modelId: input.modelId,
 		prompt: input.prompt,
 		enhance: input.enhance,
+		...(input.photo ? { photo: input.photo } : {}),
+		...(input.photo && input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
 		...(input.fanoutSize !== undefined ? { fanoutSize: input.fanoutSize } : {}),
 		...(input.branchIndex !== undefined && input.branchIndex !== null
 			? { branchIndex: input.branchIndex }

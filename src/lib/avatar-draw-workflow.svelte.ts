@@ -4,6 +4,12 @@
  * and the draw itself (one model in the background, or several as a fan-out
  * comparison).
  *
+ * It also develops texting photos (`openPhotoDialog`), which go through the
+ * same draw end to end — see the generate route. The differences are confined
+ * to what's sent: the marker the photo develops, its shape, and the message it
+ * hangs under, which for a photo is the reply (or the photo before it) rather
+ * than the latest reply with text.
+ *
  * Lifted out of the chat page, which hosts it. The recovery half (the ring,
  * the interruption latches, the reconcile) is `AvatarDrawController`; this is
  * the half that starts a draw, and it reports progress through that controller.
@@ -19,7 +25,19 @@ import { toast } from './toast.svelte.js';
 import type { AvatarDrawController } from './avatar-draw-controller.svelte.js';
 import type { FanoutController } from './fanout-controller.svelte.js';
 import type { ModelCatalogue } from './model-catalogue.svelte.js';
-import type { ChatMessage } from './types/api.js';
+import type { ChatMessage, PhotoOrigin } from './types/api.js';
+
+/** A texting photo the dialog is developing. */
+export interface PhotoDraw {
+	/** The marker, as every candidate will carry it. */
+	origin: PhotoOrigin;
+	/** What the photo hangs under — see `PhotoChain.anchorId`. */
+	anchorId: string;
+	/** The message this draw replaces at the end of the thread: the photo being
+	 *  developed again, or a failed attempt. Its sibling-to-be, so the leaf moves
+	 *  over to the new photo when it lands. */
+	replacesId?: string;
+}
 
 /** What the workflow reads from the host page. Getters, so each read is fresh:
  *  the page reassigns `convId` and `messages` on an in-place navigation. */
@@ -63,6 +81,16 @@ export class AvatarDrawWorkflow {
 	 */
 	compareSelections = $state<CompareSelection[]>([]);
 	compareMode = $state(false);
+	/** Set while the dialog is developing a texting photo instead of drawing the
+	 *  avatar. Cleared by `openDialog`. */
+	photo = $state<PhotoDraw | null>(null);
+	/** A photo's shape, `W:H` or null for each model's default — bound to the
+	 *  dialog's aspect-ratio picker. A portrait is always square. */
+	aspectRatio = $state<string | null>(null);
+	/** The marker a background photo draw THIS client started is developing, so
+	 *  its placeholder can say so. Null otherwise (including after a reload: the
+	 *  header ring still shows the draw, it just can't say which photo). */
+	developing = $state<PhotoOrigin | null>(null);
 	#modelOverride = $state<string | null>(null);
 
 	/** The image models this user can draw with. */
@@ -107,6 +135,16 @@ export class AvatarDrawWorkflow {
 	);
 
 	/**
+	 * The message the draw hangs under: the photo's anchor when developing one,
+	 * else the avatar's source reply.
+	 */
+	readonly #anchor = $derived.by(() => {
+		const photo = this.photo;
+		if (!photo) return this.sourceMessage;
+		return this.#deps.messages().find((m) => m.id === photo.anchorId);
+	});
+
+	/**
 	 * Whether this description has already been drawn on the active branch. A
 	 * second generation appends another portrait under the SAME description, so
 	 * the variants land as siblings and the ‹N/M› arrows compare them for free —
@@ -146,7 +184,7 @@ export class AvatarDrawWorkflow {
 	 * contain) and 409s; this is the affordance, not the rule.
 	 */
 	readonly canCompare = $derived.by(() => {
-		const source = this.sourceMessage;
+		const source = this.#anchor;
 		// Past a reaction's tool row, matching the server's parkable rule — the two
 		// must agree, or we offer a comparison the server then refuses.
 		const leaf = lastReplyMessage(this.#deps.messages());
@@ -173,7 +211,26 @@ export class AvatarDrawWorkflow {
 		// import so it opens on the tap regardless, and its picker fills in when this
 		// resolves — `loading` is threaded through so the wait is visible.
 		void this.#deps.catalogue.ensureAll();
+		this.photo = null;
 		this.prompt = extractAvatarPrompt(partsToText(source.parts));
+		this.#openFresh();
+	}
+
+	/**
+	 * Open the dialog to develop a texting photo: the marker's description is
+	 * the prompt, already the thing to draw — no in-character prose to trim, and
+	 * any aspect ratio the model wrote into it is picked up by the dialog's
+	 * ratio picker.
+	 */
+	openPhotoDialog(photo: PhotoDraw, description: string): void {
+		void this.#deps.catalogue.ensureAll();
+		this.photo = photo;
+		this.prompt = description;
+		this.aspectRatio = null;
+		this.#openFresh();
+	}
+
+	#openFresh(): void {
 		this.enhance = this.#deps.enhanceByDefault();
 		// A fresh cart every time. Carrying one over would make the next draw a
 		// silent comparison — and, where `canCompare` has since gone false, one the
@@ -191,6 +248,7 @@ export class AvatarDrawWorkflow {
 	reset(): void {
 		this.open = false;
 		this.prompt = '';
+		this.photo = null;
 	}
 
 	setModel(id: string): void {
@@ -214,8 +272,9 @@ export class AvatarDrawWorkflow {
 	 * announce — the portraits are candidates until one is picked.
 	 */
 	async #drawComparison(): Promise<void> {
-		const source = this.sourceMessage;
+		const source = this.#anchor;
 		if (!source) return;
+		const photo = this.photo;
 		const branches = this.#compareBranches;
 		if (branches.length < 2) return;
 		// Close first: past this point the grid reports progress, and a dialog left
@@ -229,6 +288,7 @@ export class AvatarDrawWorkflow {
 			prompt: this.prompt,
 			enhance: this.enhance,
 			branches,
+			...(photo ? { photo: photo.origin, aspectRatio: this.aspectRatio } : {}),
 		});
 	}
 
@@ -252,8 +312,12 @@ export class AvatarDrawWorkflow {
 			return;
 		}
 		const avatarDraw = this.#deps.draw;
-		const source = this.sourceMessage;
+		const source = this.#anchor;
 		if (!source || !this.modelId || avatarDraw.status) return;
+		// Snapshotted with the conversation below, for the same reason: the dialog
+		// can be reopened for something else while this draw runs.
+		const photo = this.photo;
+		const aspectRatio = this.aspectRatio;
 		// Snapshot the conversation ONCE. Everything below runs across awaits that
 		// span the whole generation, and `convId` is reassigned when the user
 		// navigates to another chat — reading it again afterwards is how A's
@@ -268,6 +332,7 @@ export class AvatarDrawWorkflow {
 		// the two places that know. See the catch for what it decides.
 		let serverReported = false;
 		avatarDraw.begin(cid);
+		if (photo) this.developing = photo.origin;
 		try {
 			const res = await fetch(`/api/conversations/${cid}/avatar/generate`, {
 				method: 'POST',
@@ -277,6 +342,13 @@ export class AvatarDrawWorkflow {
 					modelId: this.modelId,
 					prompt: this.prompt,
 					enhance: this.enhance,
+					...(photo
+						? {
+								photo: photo.origin,
+								aspectRatio,
+								...(photo.replacesId ? { expectLeafMessageId: photo.replacesId } : {}),
+							}
+						: {}),
 				}),
 			});
 			// A rejection (bad model, message gone) lands here with the dialog still
@@ -343,7 +415,8 @@ export class AvatarDrawWorkflow {
 			// thread. Navigating back re-runs the load anyway.
 			if (this.#deps.convId() === cid) {
 				await refreshAll();
-				if (drew) toast.success('Avatar updated');
+				// A photo announces itself by arriving in the thread.
+				if (drew && !photo) toast.success('Avatar updated');
 			}
 		} catch (e) {
 			if (this.#deps.convId() !== cid) return;
@@ -381,10 +454,17 @@ export class AvatarDrawWorkflow {
 			const suppress = !serverReported && avatarDraw.wasInterrupted(cid);
 			avatarDraw.reportFailure(
 				cid,
-				suppress ? undefined : e instanceof Error ? e.message : 'Avatar generation failed',
+				suppress
+					? undefined
+					: e instanceof Error
+						? e.message
+						: photo
+							? 'Photo generation failed'
+							: 'Avatar generation failed',
 			);
 		} finally {
 			avatarDraw.end(cid);
+			if (photo && this.developing === photo.origin) this.developing = null;
 		}
 	}
 }

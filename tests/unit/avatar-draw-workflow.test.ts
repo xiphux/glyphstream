@@ -217,3 +217,71 @@ describe('drawing across a conversation switch', () => {
 		expect(w.open).toBe(true);
 	});
 });
+
+describe('developing a texting photo', () => {
+	// A texting reply with a photo marker, then the first photo developed from it.
+	const reply = msg('r1', 'assistant', 'u1', text('[photo: me, 3:4]\n\n[photo: the view]'));
+	const p0 = msg('p0', 'assistant', 'r1', [
+		{ type: 'image', mediaId: 'img', photo: { sourceMessageId: 'r1', index: 0 } },
+	]);
+	const thread = [msg('u1', 'user', null, text('send pics')), reply, p0];
+	const origin = { sourceMessageId: 'r1', index: 1 };
+	const sentBody = () =>
+		JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string) as Record<
+			string,
+			unknown
+		>;
+
+	it('hangs the photo under its anchor and sends the marker, the shape and no avatar', async () => {
+		const { w } = setup({ messages: thread });
+		w.openPhotoDialog({ origin, anchorId: 'p0' }, 'the view');
+		expect(w.prompt).toBe('the view');
+		w.aspectRatio = '16:9';
+		await w.generate();
+		const body = sentBody();
+		expect(body).toEqual({
+			sourceMessageId: 'p0',
+			modelId: 'img-1',
+			prompt: 'the view',
+			enhance: false,
+			photo: origin,
+			aspectRatio: '16:9',
+		});
+	});
+
+	it('names the photo it replaces when developing one again', async () => {
+		const { w } = setup({ messages: thread });
+		w.openPhotoDialog(
+			{ origin: { sourceMessageId: 'r1', index: 0 }, anchorId: 'r1', replacesId: 'p0' },
+			'me, 3:4',
+		);
+		// p0 is the leaf and a child of the anchor, so its siblings can be compared.
+		expect(w.canCompare).toBe(true);
+		await w.generate();
+		const body = sentBody();
+		expect(body).toMatchObject({ sourceMessageId: 'r1', expectLeafMessageId: 'p0' });
+	});
+
+	it('compares photos with the marker and shape on every branch', async () => {
+		const { w, fanout } = setup({ messages: thread });
+		w.openPhotoDialog({ origin, anchorId: 'p0' }, 'the view');
+		w.aspectRatio = '4:3';
+		w.compareMode = true;
+		w.compareSelections = [
+			{ modelId: 'img-1', count: 1 },
+			{ modelId: 'img-2', count: 1 },
+		];
+		await w.generate();
+		expect(fanout.sendAvatarDraw).toHaveBeenCalledWith(
+			expect.objectContaining({ sourceMessageId: 'p0', photo: origin, aspectRatio: '4:3' }),
+		);
+	});
+
+	it('goes back to drawing the avatar when the avatar dialog is opened', () => {
+		const { w } = setup();
+		w.openPhotoDialog({ origin, anchorId: 'a1' }, 'x');
+		w.openDialog();
+		expect(w.photo).toBe(null);
+		expect(w.prompt).toBe('a red fox');
+	});
+});

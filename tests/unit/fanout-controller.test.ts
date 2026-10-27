@@ -1386,6 +1386,53 @@ describe('FanoutController — avatar comparisons', () => {
 		expect(fc.columns).toHaveLength(2);
 	});
 
+	it('develops a texting photo on every branch, with its marker and shape', async () => {
+		const posts = stubDraw();
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		const photo = { sourceMessageId: 'desc', index: 0 };
+		await fc.sendAvatarDraw({
+			sourceMessageId: 'desc',
+			prompt: 'the view',
+			enhance: false,
+			branches: TWO_MODELS,
+			photo,
+			aspectRatio: '16:9',
+		});
+		for (const post of posts.slice(1)) {
+			expect(post.body).toMatchObject({ photo, aspectRatio: '16:9' });
+		}
+		expect(fc.isPhoto).toBe(true);
+	});
+
+	it('re-rolls a recovered photo with its marker and shape', async () => {
+		// The marker rides on the candidate's image part and the shape comes off its
+		// media row, so a grid rebuilt after a reload re-develops the same photo.
+		const posts = stubDraw();
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		const photo = { sourceMessageId: 'desc', index: 2 };
+		const p1 = mediaSibling('p1', 'bridge::sdxl', null, [
+			{ type: 'image', mediaId: 'p1-out', photo },
+		]);
+		p1.avatarPrompt = { prompt: 'the view', enhance: false };
+		p1.aspectRatio = '3:4';
+		fc.syncFromServer({
+			parentMessageId: 'desc',
+			avatar: true,
+			kind: 'image',
+			siblings: [p1],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		});
+		expect(fc.isPhoto).toBe(true);
+
+		await fc.regenerate(fc.columns[0]);
+		expect(posts[0].body).toMatchObject({ photo, aspectRatio: '3:4', prompt: 'the view' });
+	});
+
 	it('offers no re-roll on a recovered portrait with no prompt to re-send', async () => {
 		// A failed branch has no media row, so recovery has nothing to read a
 		// prompt off. The grid hides the control; this is the backstop behind it.

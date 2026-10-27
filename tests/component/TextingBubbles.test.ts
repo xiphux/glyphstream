@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen } from '@testing-library/svelte';
 import MessageBubble from '#lib/components/chat/MessageBubble.svelte';
 import InFlightBubble from '#lib/components/chat/InFlightBubble.svelte';
 import type { ChatMessage } from '#lib/types/api.js';
@@ -115,5 +115,67 @@ describe('texting reply style', () => {
 		expect(screen.getByText('hey')).toBeInTheDocument();
 		expect(screen.getByText('yo')).toBeInTheDocument();
 		expect(screen.getByText('Sam')).toBeInTheDocument();
+	});
+
+	describe('photos', () => {
+		const PHOTOS = '<p>look</p>\n<p>[photo: me at the beach]</p>\n<p>Sam: [photo: the dog]</p>';
+
+		it('shows an undeveloped marker as a photo to develop', async () => {
+			const onDevelop = vi.fn();
+			render(MessageBubble, {
+				props: {
+					...bubbleProps,
+					message: reply(PHOTOS),
+					textingPhotos: { developed: new Set([1]), onDevelop },
+				},
+			});
+			expect(screen.getByText('me at the beach')).toBeInTheDocument();
+			// The developed one has arrived as a photo below, so it isn't shown here.
+			expect(screen.queryByText('the dog')).toBeNull();
+			await fireEvent.click(screen.getByRole('button', { name: 'Develop' }));
+			expect(onDevelop).toHaveBeenCalledWith(0);
+		});
+
+		it('offers no Develop where nothing can develop it', () => {
+			render(MessageBubble, {
+				props: {
+					...bubbleProps,
+					message: reply(PHOTOS),
+					textingPhotos: { developed: new Set<number>() },
+				},
+			});
+			expect(screen.getByText('the dog')).toBeInTheDocument();
+			expect(screen.queryByRole('button', { name: 'Develop' })).toBeNull();
+		});
+
+		it('draws a developed photo bare, under its sender, with a way to develop it again', async () => {
+			const onRedevelop = vi.fn();
+			const onImageClick = vi.fn();
+			render(MessageBubble, {
+				props: {
+					...bubbleProps,
+					onImageClick,
+					mergeWithPrev: true,
+					message: {
+						...reply(''),
+						contentHtml: null,
+						parts: [
+							{
+								type: 'image',
+								mediaId: 'media-1',
+								aspectRatio: '3:4',
+								photo: { sourceMessageId: 'm-0', index: 1, speaker: 'Sam' },
+							},
+						],
+					},
+					textingPhotos: { developed: new Set<number>(), onRedevelop },
+				},
+			});
+			expect(screen.getByText('Sam')).toBeInTheDocument();
+			await fireEvent.click(screen.getByRole('button', { name: 'Open photo' }));
+			expect(onImageClick).toHaveBeenCalledWith('media-1');
+			await fireEvent.click(screen.getByRole('button', { name: 'Develop again' }));
+			expect(onRedevelop).toHaveBeenCalled();
+		});
 	});
 });
