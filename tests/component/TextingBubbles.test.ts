@@ -179,3 +179,30 @@ describe('texting reply style', () => {
 		});
 	});
 });
+
+describe('texting check-ins', () => {
+	const MARKED = '<p>gtg</p>\n<p>[later 1h: ask about work]</p>';
+
+	it('never shows the marker as a text', () => {
+		render(MessageBubble, { props: { ...bubbleProps, message: reply(MARKED) } });
+		expect(screen.getByText('gtg')).toBeInTheDocument();
+		expect(screen.queryByText(/later 1h/)).toBeNull();
+		expect(screen.queryByText(/check in/)).toBeNull();
+	});
+
+	it('says when a pending one is due, and offers to call it off', async () => {
+		const onCancel = vi.fn();
+		render(MessageBubble, {
+			props: {
+				...bubbleProps,
+				message: reply(MARKED),
+				textingCheckIn: { fireAt: Date.now() + 3_600_000, onCancel },
+			},
+		});
+		expect(screen.getByText(/Will check in around/)).toBeInTheDocument();
+		// What it meant to say stays a surprise.
+		expect(screen.queryByText(/ask about work/)).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		expect(onCancel).toHaveBeenCalledOnce();
+	});
+});

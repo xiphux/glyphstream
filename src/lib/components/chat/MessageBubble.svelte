@@ -18,7 +18,7 @@
 	import { messageToBlocks, type RenderBlock, type ToolResultEntry } from '#lib/chat-render.js';
 	import type { ChatMessage } from '#lib/types/api.js';
 	import type { ApprovalAction } from '#lib/approval-workflow.js';
-	import type { TextingPhotos } from '#lib/texting.js';
+	import type { TextingCheckIn, TextingPhotos } from '#lib/texting.js';
 
 	interface Props {
 		message: ChatMessage;
@@ -53,6 +53,8 @@
 		/** Texting only: what this row's photo markers (or delivered photo) can
 		 *  do — see TextingBubbles. */
 		textingPhotos?: TextingPhotos;
+		/** Texting only: this reply's pending check-in, if it set one. */
+		textingCheckIn?: TextingCheckIn;
 	}
 
 	let {
@@ -73,6 +75,7 @@
 		onOpenCanvas,
 		texting = false,
 		textingPhotos,
+		textingCheckIn,
 	}: Props = $props();
 
 	const roleLabel = $derived(
@@ -99,6 +102,7 @@
 			{approvalBusy}
 			{onApprovalSelect}
 			photos={textingPhotos}
+			checkIn={textingCheckIn}
 		/>
 		{#each bottomCanvasCards as block (block.type === 'tool_call' ? block.toolCallId : '')}
 			{#if block.type === 'tool_call'}

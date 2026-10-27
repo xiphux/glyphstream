@@ -75,6 +75,30 @@ stay as descriptions. A photo is shown but never sent back to the model, which
 already has its description. To make a character send more or fewer photos, say
 so in the preset's prompt ("loves sending selfies").
 
+#### Check-ins
+
+A texting partner can also text you first. When the model says it'll text you
+later, it ends its reply with `[later 2h: …]`: how long to wait (up to a day),
+and a note to itself about what it meant to say. That line isn't shown as a
+text. Instead, a note under the reply says when it will check in, with a
+**Cancel** link.
+
+If the reply is still the latest thing in the thread when the time comes,
+Glyphstream sends the model a reminder in your place. The reminder says what
+time it is, how long it's been, and what the model meant to do. The model then
+texts you, and you get a notification as if it had texted out of the blue. The
+reminder shows in the thread as a "checked in" divider, not as a message from
+you. If the moment has passed, the model can decline, and the check-in leaves no
+trace.
+
+A check-in is called off when you answer, regenerate the reply, or switch to
+another branch before it's due. It waits while something else is running in the
+conversation, and is dropped if that makes it more than half an hour late (or a
+quarter of its delay, for a long one) — after a restart, say. A model can follow
+up on its own check-in once; after two in a row with no answer from you, it
+stops until you reply. Each conversation has at most one pending check-in.
+Operators can turn the feature off with `[check_ins] enabled = false`.
+
 ## Sharing hardware
 
 - **Per-endpoint concurrency caps** queue requests instead of running your

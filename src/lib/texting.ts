@@ -13,7 +13,11 @@
  * A text that is nothing but `[photo: description]` is a photo the sender took:
  * it shows as a placeholder until the user develops it into an image, which
  * then arrives as its own message after the reply (see `texting-photos.ts`).
+ *
+ * A text that is nothing but `[later 1h: …]` sets a check-in (see
+ * `check-ins.ts`). It isn't a text anyone sent, so it never shows as one.
  */
+import { checkInMarker, type CheckInMarker } from './check-ins';
 import type { RenderBlock } from './chat-render';
 import type { PhotoOrigin } from './types/api';
 
@@ -33,6 +37,8 @@ export type TextingItem =
 	/** A `[photo: …]` marker. `index` is its position among the reply's photos,
 	 *  which is what a developed photo's `PhotoOrigin.index` points back at. */
 	| { kind: 'photo'; speaker: string | null; description: string; index: number }
+	/** A `[later …]` check-in marker, shown (if at all) as a note, not a text. */
+	| ({ kind: 'later' } & CheckInMarker)
 	/** A developed photo: an image carrying a `PhotoOrigin`, from its sender. */
 	| {
 			kind: 'sent-photo';
@@ -57,6 +63,13 @@ export interface TextingPhotos {
 	/** The marker being developed right now, which says so instead of offering
 	 *  the button. */
 	developing?: number | null;
+}
+
+/** The note a `[later …]` marker shows while its check-in is pending. Absent
+ *  otherwise — one that fired, was cancelled or went stale shows nothing. */
+export interface TextingCheckIn {
+	fireAt: number;
+	onCancel: () => void;
 }
 
 /** The void elements markdown-it and shiki emit: these never get a close tag. */
@@ -133,7 +146,7 @@ export function extractSpeaker(html: string): { speaker: string | null; html: st
 	return { speaker: name, html: '<p>' + html.slice(m[0].length) };
 }
 
-function extractPlainSpeaker(text: string): { speaker: string | null; text: string } {
+export function extractPlainSpeaker(text: string): { speaker: string | null; text: string } {
 	const m = PLAIN_PREFIX.exec(text);
 	if (!m || m[1].length > MAX_NAME_CHARS) return { speaker: null, text };
 	return { speaker: m[1], text: text.slice(m[0].length) };
@@ -195,6 +208,11 @@ export function textingItems(blocks: RenderBlock[], defaultName: string): Textin
 		return speaker;
 	};
 	const push = (from: string | null, text: { html: string } | { text: string }) => {
+		const later = checkInMarker(text);
+		if (later) {
+			items.push({ kind: 'later', ...later });
+			return;
+		}
 		const description = photoDescription(text);
 		if (description === null) items.push({ kind: 'text', speaker: from, ...text });
 		else items.push({ kind: 'photo', speaker: from, description, index: photos++ });

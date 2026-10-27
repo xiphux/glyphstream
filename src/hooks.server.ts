@@ -42,6 +42,7 @@ import {
 import { startTopicBackfiller, stopTopicBackfiller } from '#lib/server/memory/topic-backfill.js';
 import { startDreamingWorker, stopDreamingWorker } from '#lib/server/memory/dreaming.js';
 import { startScheduledTaskRunner, stopScheduledTaskRunner } from '#lib/server/scheduled/runner.js';
+import { startCheckInRunner, stopCheckInRunner } from '#lib/server/check-ins/runner.js';
 import {
 	startConversationSummaryWorker,
 	stopConversationSummaryWorker,
@@ -164,6 +165,11 @@ startConversationSummaryWorker();
 // a restart cut off, on its first tick. No-op when `[scheduled_tasks] enabled = false`.
 startScheduledTaskRunner();
 
+// Texting check-ins: fires the "I'll text you later" an assistant set for itself,
+// as a background-priority turn in its conversation (see server/check-ins/runner.ts).
+// No-op when `[check_ins] enabled = false`.
+startCheckInRunner();
+
 // Sample event-loop stalls from boot, so a request that was queued behind a
 // synchronous sweeper can be told apart from one that did the work itself —
 // `cpu` reads the same either way, because it counts the whole process. Unref'd,
@@ -241,6 +247,7 @@ process.on('sveltekit:shutdown', async () => {
 	stopDimensionsBackfiller();
 	stopConversationSummaryWorker();
 	stopScheduledTaskRunner();
+	stopCheckInRunner();
 	// Only the fallback timer. Queued and running generations are deliberately
 	// left alone: their rows are what the next process resumes from.
 	stopGenerationJobResume();

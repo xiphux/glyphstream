@@ -1390,3 +1390,41 @@ export const scheduledRuns = sqliteTable(
 			.where(sql`${t.state} in ('queued', 'running')`),
 	],
 );
+
+/**
+ * A texting check-in the assistant has set for itself: `[later 1h: …]` at the
+ * end of a reply (see `#lib/check-ins.ts`). Pending only — a row is deleted the
+ * moment it fires, is cancelled, or turns out to be stale, since what happened
+ * is recorded in the conversation itself (the check-in message) or, for one
+ * that never fired, nowhere worth keeping.
+ *
+ * One per conversation: a new marker replaces the old one.
+ */
+export const checkIns = sqliteTable(
+	'check_ins',
+	{
+		id: text('id').primaryKey(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		conversationId: text('conversation_id')
+			.notNull()
+			.references(() => conversations.id, { onDelete: 'cascade' }),
+		// The reply that set it. It fires only while that reply (or a photo it
+		// sent) is still the end of the active branch, and goes with it when the
+		// reply is deleted.
+		sourceMessageId: text('source_message_id')
+			.notNull()
+			.references(() => messages.id, { onDelete: 'cascade' }),
+		// What the assistant meant to do, in its own words.
+		note: text('note').notNull(),
+		fireAt: integer('fire_at').notNull(),
+		createdAt: integer('created_at').notNull(),
+	},
+	(t) => [
+		uniqueIndex('uq_check_ins_conversation').on(t.conversationId),
+		index('idx_check_ins_fire_at').on(t.fireAt),
+		index('idx_check_ins_user').on(t.userId),
+		index('idx_check_ins_source_message').on(t.sourceMessageId),
+	],
+);

@@ -311,6 +311,13 @@ export interface RelayParams {
 	 * every error path that reports to the client reports here too.
 	 */
 	onOutcome?: (outcome: TurnOutcome) => void;
+	/**
+	 * The turn's final reply, once it has finished — not halted for approval,
+	 * stopped or failed — called just before `done` is written. Unlike
+	 * `onOutcome`, which waits out the title race, this runs before the client
+	 * reloads on `done`, so what it records is in that reload.
+	 */
+	onFinalReply?: (assistantMessage: ChatMessage) => void;
 	/** What the turn's endpoint slot is for: `chat` unless a scheduled task runs
 	 *  it, so the admin endpoint view can tell the two apart. */
 	slotPurpose?: Extract<SlotPurpose, 'chat' | 'scheduled'>;
@@ -633,6 +640,19 @@ async function runChatTurn(
 		// the intermediate role:'tool' rows from the loop.
 		if (finalAssistantMessage) {
 			if (!haltedForApproval) recordTurnStats(params, finalAssistantMessage, stoppedFinal);
+			if (
+				params.onFinalReply &&
+				!haltedForApproval &&
+				!stoppedFinal &&
+				finalAssistantMessage.finishReason !== 'cancelled' &&
+				finalAssistantMessage.finishReason !== 'error'
+			) {
+				try {
+					params.onFinalReply(finalAssistantMessage);
+				} catch (e) {
+					log.warn('onFinalReply threw:', errorMessage(e));
+				}
+			}
 			write({
 				type: 'done',
 				assistantMessage: finalAssistantMessage,

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
 	DEFAULT_SCHEDULED_TASKS_CONFIG,
+	loadCheckInsConfig,
 	loadScheduledTasksConfig,
 } from '#lib/server/endpoints/config.js';
 
@@ -54,5 +55,21 @@ disable_after_failures = 2
 		expect(() => loadScheduledTasksConfig(writeConfig(`[scheduled_tasks]\n${line}\n`))).toThrow(
 			message,
 		);
+	});
+});
+
+describe('loadCheckInsConfig', () => {
+	it('is on unless turned off', () => {
+		expect(loadCheckInsConfig(writeConfig(''))).toEqual({ enabled: true });
+		expect(loadCheckInsConfig(writeConfig('[check_ins]\nenabled = false\n'))).toEqual({
+			enabled: false,
+		});
+	});
+
+	it.each([
+		['enabled = 1', /boolean/],
+		['enable = true', /unknown key 'enable'/],
+	])('rejects %s', (line, message) => {
+		expect(() => loadCheckInsConfig(writeConfig(`[check_ins]\n${line}\n`))).toThrow(message);
 	});
 });

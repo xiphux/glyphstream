@@ -449,7 +449,14 @@ export interface UpstreamModel {
 // so the persisted shape can't drift from reality.
 
 export type MessagePart =
-	| { type: 'text'; text: string }
+	| {
+			type: 'text';
+			text: string;
+			/** Set on the reminder a texting check-in sends the model in the user's
+			 *  place (see `#lib/check-ins.ts`): it goes upstream like any text, but
+			 *  the thread draws it as a divider, since the user didn't write it. */
+			checkIn?: true;
+	  }
 	| {
 			type: 'image';
 			mediaId: string;
@@ -573,6 +580,14 @@ export type MessagePart =
 			 */
 			activatedToolNames?: string[];
 	  };
+
+/** A texting check-in waiting to fire: the reply that set it, when, and what
+ *  for. See `#lib/check-ins.ts`. */
+export interface PendingCheckIn {
+	sourceMessageId: string;
+	fireAt: number;
+	note: string;
+}
 
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 

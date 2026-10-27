@@ -9,6 +9,10 @@ arrived.
 
 ## Unreleased
 
+### Added
+
+- In a texting chat the model can text you first: when it says it'll text you later, it sets a check-in, and if you haven't replied by then it follows up, with a notification.
+
 ## v0.50.0
 
 ### Added

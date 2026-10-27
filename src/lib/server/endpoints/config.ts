@@ -1268,3 +1268,32 @@ export function loadScheduledTasksConfig(path = configPath()): LoadedScheduledTa
 
 /** Memoized {@link loadScheduledTasksConfig}. */
 export const getScheduledTasksConfig = memoizeConfig(() => loadScheduledTasksConfig());
+
+/**
+ * `[check_ins]` — texting check-ins (`#lib/check-ins.ts`). The table may be
+ * absent; `enabled` (default true) set to false stops the runner and drops the
+ * marker instruction from texting chats' system prompt.
+ */
+export interface LoadedCheckInsConfig {
+	enabled: boolean;
+}
+
+export function loadCheckInsConfig(path = configPath()): LoadedCheckInsConfig {
+	const { parsed, absolutePath } = readConfigToml(path);
+	const raw = parsed.check_ins;
+	if (raw === undefined || raw === null) return { enabled: true };
+	if (typeof raw !== 'object' || Array.isArray(raw)) {
+		throw new ConfigError(`'[check_ins]' in ${absolutePath} must be a TOML table`);
+	}
+	const block = raw as Record<string, unknown>;
+	const at = `[check_ins] in ${absolutePath}`;
+	for (const key of Object.keys(block)) {
+		if (key !== 'enabled') throw new ConfigError(`${at}: unknown key '${key}'`);
+	}
+	return {
+		enabled: block.enabled === undefined ? true : requireBoolean(block.enabled, 'enabled', at),
+	};
+}
+
+/** Memoized {@link loadCheckInsConfig}. */
+export const getCheckInsConfig = memoizeConfig(() => loadCheckInsConfig());

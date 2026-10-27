@@ -2,6 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import { CONVERSATION_MISSING_NOTICE } from '#lib/notices.js';
 import { requireUserPage } from '#lib/server/auth/guard.js';
 import { listActiveCanvases } from '#lib/server/db/queries/artifacts.js';
+import { getCheckIn } from '#lib/server/db/queries/check-ins.js';
 import { getConversationDetail } from '#lib/server/db/queries/conversations.js';
 import { getScheduledTask } from '#lib/server/db/queries/scheduled-tasks.js';
 import { scheduledPolicyForResume } from '#lib/server/scheduled/runner.js';
@@ -206,8 +207,15 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 						conversation.messages,
 					),
 				)?.promptMessageId ?? null);
+	// A texting check-in waiting to fire, for the note under the reply that set
+	// it and the page's wake-up when it's due.
+	const checkIn =
+		conversation.replyStyle === 'texting'
+			? timeDb(locals, () => getCheckIn(conversation.id, locals.user.id))
+			: null;
 	return {
 		scheduledRunPromptId,
+		checkIn,
 		conversation,
 		referencedModels,
 		answeredModelIds,

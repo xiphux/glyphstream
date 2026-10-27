@@ -423,6 +423,18 @@ export function getConversationMeta(
 	};
 }
 
+/** The preset a conversation was created from, if any — for naming its
+ *  assistant away from the page (a check-in's notification). Scoped by user. */
+export function getConversationCustomModelId(id: string, userId: string): string | null {
+	return (
+		getDb()
+			.select({ customModelId: conversations.customModelId })
+			.from(conversations)
+			.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
+			.get()?.customModelId ?? null
+	);
+}
+
 /**
  * Replace the per-conversation feature opt-out list. Empty array → null in
  * the DB (canonical "all features on" state, matches absence). Scoped by

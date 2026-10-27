@@ -94,6 +94,15 @@
 # max_per_user = 10
 # min_interval_hours = 1
 
+# ── Optional: [check_ins] ────────────────────────────────────────────
+# Texting check-ins: a texting model that says it'll text later sets a timer, and
+# follows up then if the user hasn't replied. On by default.
+#   enabled — false stops the runner and leaves the instruction out of texting
+#             chats' system prompt.
+# See docs/models.md#check-ins.
+# [check_ins]
+# enabled = false
+
 # ── Optional: [vision] ───────────────────────────────────────────────
 # Controls the downscaled copy of an image that gets inlined into a chat
 # request. Attached images are re-sent on EVERY turn for the life of the

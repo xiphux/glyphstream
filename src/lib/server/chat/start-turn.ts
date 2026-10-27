@@ -25,6 +25,7 @@ import type { getConversationMeta } from '../db/queries/conversations';
 import { walkActiveBranch } from '../db/queries/messages';
 import { getUserPreferences } from '../db/queries/user-preferences';
 import { mediaIdToDataUrl } from '../media/data-url';
+import { scheduleCheckInFromReply } from '../check-ins/schedule';
 import type { InFlightEntry } from '../streaming/in-flight';
 import { startStreamingRelay, type RelayParams } from '../streaming/relay';
 import { composePersonaPrompt } from './persona-context';
@@ -220,6 +221,16 @@ export async function startChatTurn(
 		onGenerationSettled: input.onGenerationSettled,
 		onComplete: input.onComplete,
 		onOutcome: input.onOutcome,
+		// A texting reply that lands on the thread replaces the conversation's
+		// check-in with whatever it sets. Not a comparison's branch, which isn't
+		// on the thread until it's picked.
+		...(meta.replyStyle === 'texting' && input.advanceActiveLeaf !== false
+			? {
+					onFinalReply: (reply: ChatMessage) => {
+						scheduleCheckInFromReply(conversationId, userId, reply.id);
+					},
+				}
+			: {}),
 		slotPurpose: input.slotPurpose,
 		slotPriority: input.slotPriority,
 		// A synthesized skill activation parents the model's first response off

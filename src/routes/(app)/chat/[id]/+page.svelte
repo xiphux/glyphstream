@@ -71,7 +71,9 @@
 	import { AvatarDrawController } from '#lib/avatar-draw-controller.svelte.js';
 	import { AvatarDrawWorkflow } from '#lib/avatar-draw-workflow.svelte.js';
 	import { developedPhotos, photoChain, photoMarkers, photoOriginOf } from '#lib/texting-photos.js';
-	import type { TextingPhotos } from '#lib/texting.js';
+	import type { TextingCheckIn, TextingPhotos } from '#lib/texting.js';
+	import { CheckInController } from '#lib/check-in-controller.svelte.js';
+	import { isCheckInMessage } from '#lib/check-ins.js';
 	import { ChatLightbox } from '#lib/chat-lightbox.svelte.js';
 	import { MediaFavorites } from '#lib/media-favorites.svelte.js';
 	import FanoutColumns from '#lib/components/chat/FanoutColumns.svelte';
@@ -357,6 +359,8 @@
 	//
 	// svelte-ignore state_referenced_locally
 	const avatarDraw = new AvatarDrawController({ convId: () => convId }, data.avatarDrawSince);
+	// svelte-ignore state_referenced_locally
+	const checkIns = new CheckInController({ convId: () => convId }, data.checkIn);
 	const avatarStatus = $derived(avatarDraw.status);
 
 	// svelte-ignore state_referenced_locally
@@ -479,6 +483,7 @@
 		serverInFlightSince = data.inFlightSince;
 		serverGeneratingSince = data.inFlightGeneratingSince;
 		avatarDraw.syncFromServer(data.avatarDrawSince);
+		checkIns.syncFromServer(data.checkIn);
 		// Fully re-seed the canvas ONLY when switching conversations. A mid-turn
 		// refreshAll refreshes `data` with the same id — re-hydrating then
 		// would reopen a pane the user closed and clobber the just-applied live
@@ -1653,6 +1658,43 @@
 		};
 	}
 
+	// Texting check-ins: the pending one shows under the reply that set it, and
+	// only while that reply is still the end of the thread — the moment the user
+	// answers, it's as good as gone (the server drops it when it comes due).
+	const liveCheckIn = $derived.by(() => {
+		const pending = texting ? checkIns.pending : null;
+		return pending && developableChain?.replyId === pending.sourceMessageId ? pending : null;
+	});
+
+	// A plain turn doesn't reload the page, so read what the reply that just
+	// streamed in sets. A tool-using turn's reply isn't in `messages` until its
+	// reload, which brings the server's row instead.
+	$effect(() => {
+		const id = turn.streamedMessageId;
+		if (!id || !texting) return;
+		untrack(() => checkIns.noteReply(messages, id));
+	});
+
+	$effect(() => {
+		const pending = liveCheckIn;
+		if (!pending) return;
+		return checkIns.wakeWhenDue(pending);
+	});
+
+	function textingCheckInFor(m: ChatMessage): TextingCheckIn | undefined {
+		const pending = liveCheckIn;
+		if (!pending || pending.sourceMessageId !== m.id) return undefined;
+		return {
+			fireAt: pending.fireAt,
+			onCancel: () =>
+				void checkIns.cancel().catch((e: unknown) => {
+					toast.error(e instanceof Error ? e.message : String(e));
+				}),
+		};
+	}
+
+	const checkInTime = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+
 	/**
 	 * Whose name and face a row goes under. A photo is drawn by an image model,
 	 * which is what labels it by default — but it was SENT by the reply's
@@ -2556,7 +2598,18 @@
 					</div>
 				{/if}
 				{#each visibleMessages as m (m.id)}
-					{#if isCompactionSummary(m)}
+					{#if isCheckInMessage(m)}
+						<!-- A check-in's reminder: the model was prompted in the user's
+						 place, so it's a marker in the timeline, not a bubble of theirs. -->
+						<div
+							id="checkin-{m.id}"
+							class="flex items-center gap-3 text-[11px] font-medium tracking-wide text-fg-muted"
+						>
+							<span class="h-px flex-1 bg-border" aria-hidden="true"></span>
+							<span>{assistantLabel} checked in · {checkInTime.format(m.createdAt)}</span>
+							<span class="h-px flex-1 bg-border" aria-hidden="true"></span>
+						</div>
+					{:else if isCompactionSummary(m)}
 						<!-- A compaction summary: collapsed divider, not a bubble. The
 						 real messages it stands in for stay visible above/below it.
 						 `summary-<id>` (not `msg-<id>`) is the scroll/highlight target a
@@ -2686,6 +2739,7 @@
 									onOpenCanvas={(artifactId: string | null) => canvas.show(artifactId ?? undefined)}
 									{texting}
 									textingPhotos={textingPhotosFor(m, identity.label)}
+									textingCheckIn={textingCheckInFor(m)}
 								/>
 							{/if}
 							{#if (m.role === 'user' || m.role === 'assistant') && m.id !== edit.messageId && !mergeWithNext}

@@ -13,6 +13,10 @@
 	here, because the photo itself arrives as a row of its own after the reply —
 	which this component also draws, as the bare picture a phone shows.
 
+	A `[later …]` text sets a check-in. It's a note to the app, not a text, so it
+	shows only while that check-in is pending — as a quiet line saying when, with
+	a way to call it off.
+
 	Anything else — tool calls, other images, reasoning — keeps its standard
 	rendering in a bubble of its own.
 
@@ -20,7 +24,7 @@
 	one split the same way.
 -->
 <script lang="ts">
-	import { Camera, RefreshCw } from '@lucide/svelte';
+	import { Camera, Clock, RefreshCw } from '@lucide/svelte';
 	import RenderBlocks from './RenderBlocks.svelte';
 	import AssistantAvatar from './AssistantAvatar.svelte';
 	import type { Snippet } from 'svelte';
@@ -28,7 +32,12 @@
 	import type { ApprovalAction } from '#lib/approval-workflow.js';
 	import { cssAspectRatio } from '#lib/aspect-ratio.js';
 	import { codeCopyClicks, withCodeCopyButtons } from '#lib/code-copy.js';
-	import { speakerHue, textingItems, type TextingPhotos } from '#lib/texting.js';
+	import {
+		speakerHue,
+		textingItems,
+		type TextingCheckIn,
+		type TextingPhotos,
+	} from '#lib/texting.js';
 
 	interface Props {
 		blocks: RenderBlock[];
@@ -45,6 +54,7 @@
 		 *  yet (a live reply before its first token). */
 		pending?: Snippet;
 		photos?: TextingPhotos;
+		checkIn?: TextingCheckIn;
 	}
 
 	let {
@@ -59,7 +69,16 @@
 		codeCopy = true,
 		pending,
 		photos,
+		checkIn,
 	}: Props = $props();
+
+	const timeFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+	const dayFormat = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
+	/** "3:40 PM", or "Tue 3:40 PM" when it isn't today. */
+	function fireTime(at: number): string {
+		const sameDay = new Date(at).toDateString() === new Date().toDateString();
+		return sameDay ? timeFormat.format(at) : `${dayFormat.format(at)} ${timeFormat.format(at)}`;
+	}
 
 	// Each item paired with whether it opens a new sender's run. `undefined`
 	// as the starting sender makes the first text always differ from it.
@@ -68,12 +87,16 @@
 		// Without the successful canvas edits, which the caller renders as cards
 		// at the bottom: left in, a canvas-only reply would draw an empty bubble.
 		// Without the photos that have arrived, too, which show further down.
+		// Only the last marker sets the check-in, and only while it's pending.
 		const items = textingItems(splitCanvasCards(blocks).body, assistantLabel).filter(
-			(item) => item.kind !== 'photo' || !photos?.developed.has(item.index),
+			(item, i, all) =>
+				item.kind === 'later'
+					? !!checkIn && !all.slice(i + 1).some((x) => x.kind === 'later')
+					: item.kind !== 'photo' || !photos?.developed.has(item.index),
 		);
 		if (items.length === 0 && pending) items.push({ kind: 'text', speaker: null, text: '' });
 		return items.map((item) => {
-			if (item.kind === 'blocks') return { item, header: false };
+			if (item.kind === 'blocks' || item.kind === 'later') return { item, header: false };
 			// A delivered photo is a row of its own, after texts that may have
 			// changed sender, so it always says who it's from.
 			const header = item.kind === 'sent-photo' || item.speaker !== prev;
@@ -110,7 +133,23 @@
 
 <div class="flex min-w-0 flex-col items-start gap-1 text-sm">
 	{#each rows as { item, header }, i (i)}
-		{#if item.kind === 'blocks'}
+		{#if item.kind === 'later'}
+			{#if checkIn}
+				{@const pending = checkIn}
+				<div class="flex items-center gap-1.5 px-1 pt-0.5 text-xs text-fg-muted">
+					<Clock class="size-3.5 shrink-0" aria-hidden="true" />
+					<span>Will check in around {fireTime(pending.fireAt)}</span>
+					<span aria-hidden="true">·</span>
+					<button
+						type="button"
+						onclick={() => pending.onCancel()}
+						class="underline-offset-2 transition hover:text-fg-secondary hover:underline"
+					>
+						Cancel
+					</button>
+				</div>
+			{/if}
+		{:else if item.kind === 'blocks'}
 			<div class="w-full min-w-0 rounded-2xl bg-surface-raised px-4 pt-2 pb-3">
 				<RenderBlocks
 					blocks={item.blocks}

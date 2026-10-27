@@ -11,6 +11,7 @@
  * Re-sent on every turn: keep it short.
  */
 import type { ReplyStyle } from '#lib/types/api.js';
+import { getCheckInsConfig } from '../endpoints/config';
 
 export const TEXTING_INSTRUCTIONS =
 	"You're texting. Write each text as its own short paragraph, separated by a blank line; " +
@@ -28,6 +29,18 @@ export const TEXTING_INSTRUCTIONS =
 	"The camera can't see this chat, so describe the picture completely, including how anyone in it looks, " +
 	'and give its aspect ratio: 3:4, 2:3 or 9:16 upright; 4:3, 3:2 or 16:9 sideways.';
 
+/**
+ * The check-in marker `#lib/check-ins.ts` reads. "Only when you've said so" is
+ * what keeps every goodbye from setting one. The reminder, when it comes, says
+ * how to pass on it; that wording lives there, not here, because this is rent.
+ */
+export const CHECK_IN_INSTRUCTIONS =
+	"If you tell them you'll text later, end your reply with [later 2h: what you mean to text about] " +
+	"(any delay up to 24h). If they haven't replied by then, you'll be reminded so you can text them.";
+
 export function replyStyleInstructions(style: ReplyStyle): string | null {
-	return style === 'texting' ? TEXTING_INSTRUCTIONS : null;
+	if (style !== 'texting') return null;
+	return getCheckInsConfig().enabled
+		? `${TEXTING_INSTRUCTIONS} ${CHECK_IN_INSTRUCTIONS}`
+		: TEXTING_INSTRUCTIONS;
 }
