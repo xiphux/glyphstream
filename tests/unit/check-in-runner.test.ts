@@ -95,6 +95,9 @@ import {
 import { graceFor, reminderText, runCheckInSweep } from '#lib/server/check-ins/runner.js';
 import { scheduleCheckInFromReply } from '#lib/server/check-ins/schedule.js';
 import { isCheckInMessage } from '#lib/check-ins.js';
+import { getDb } from '#lib/server/db/client.js';
+import { users } from '#lib/server/db/schema.js';
+import { eq } from 'drizzle-orm';
 import type { ChatMessage, MessagePart } from '#lib/types/api.js';
 
 const notify = vi.mocked(notifyConversationComplete);
@@ -352,6 +355,32 @@ describe('firing', () => {
 			fireAt: T0 + 2 * HOUR,
 		});
 		expect(getCheckIn(t.conversationId, t.userId)?.note).toBe('other');
+	});
+});
+
+describe('fairness and accounts', () => {
+	it("never fires a disabled account's check-in", async () => {
+		const t = thread();
+		scheduled(t);
+		getDb().update(users).set({ disabledAt: T0 }).where(eq(users.id, t.userId)).run();
+		expect(await runCheckInSweep(T0 + HOUR)).toBe(0);
+		expect(mocks.upstreamBodies).toHaveLength(0);
+	});
+
+	it('reaches a due check-in behind a pile of waiting ones', async () => {
+		const busy = [];
+		for (let i = 0; i < 60; i++) {
+			const w = thread();
+			scheduled(w, T0 - 1);
+			busy.push(registerInFlight(w.conversationId, ENDPOINT));
+		}
+		const t = thread();
+		scheduled(t);
+		mocks.upstream.push(reply('hey'));
+		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
+		await idle(t.conversationId);
+		expect(roles(walkActiveBranch(t.conversationId)).at(-2)).toBe('check-in');
+		for (const b of busy) b.controller.abort();
 	});
 });
 

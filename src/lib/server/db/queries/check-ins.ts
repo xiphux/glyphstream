@@ -3,11 +3,11 @@
  * reach is scoped by `user_id`; `listDueCheckIns` is the runner's cross-user
  * sweep, never a request's.
  */
-import { and, asc, eq, lte } from 'drizzle-orm';
+import { and, asc, eq, gt, isNull, lte, or } from 'drizzle-orm';
 import type { PendingCheckIn } from '#lib/types/api.js';
 import { generateId } from '../../util/id';
 import { getDb } from '../client';
-import { checkIns } from '../schema';
+import { checkIns, users } from '../schema';
 
 export type CheckInRow = typeof checkIns.$inferSelect;
 
@@ -70,13 +70,35 @@ export function deleteCheckInIfUnchanged(id: string, fireAt: number): void {
 		.run();
 }
 
-/** Check-ins due by `now`, oldest first. The runner's sweep — across users. */
-export function listDueCheckIns(now: number, limit: number): CheckInRow[] {
+/**
+ * Check-ins due by `now`, oldest first, after the `after` cursor when one is
+ * given — the runner pages past rows that are waiting. The runner's sweep,
+ * across users; a disabled account's are left out, as its scheduled tasks are
+ * (and are dropped as too late if the account comes back).
+ */
+export function listDueCheckIns(
+	now: number,
+	limit: number,
+	after?: Pick<CheckInRow, 'fireAt' | 'id'>,
+): CheckInRow[] {
 	return getDb()
-		.select()
+		.select({ checkIn: checkIns })
 		.from(checkIns)
-		.where(lte(checkIns.fireAt, now))
+		.innerJoin(users, eq(users.id, checkIns.userId))
+		.where(
+			and(
+				lte(checkIns.fireAt, now),
+				isNull(users.disabledAt),
+				after
+					? or(
+							gt(checkIns.fireAt, after.fireAt),
+							and(eq(checkIns.fireAt, after.fireAt), gt(checkIns.id, after.id)),
+						)
+					: undefined,
+			),
+		)
 		.orderBy(asc(checkIns.fireAt), asc(checkIns.id))
 		.limit(limit)
-		.all();
+		.all()
+		.map(({ checkIn }) => checkIn);
 }

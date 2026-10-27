@@ -66,7 +66,14 @@ const log = createLogger('check-ins');
 
 const TICK_MS = 30_000;
 const INITIAL_DELAY_MS = 20_000;
+/** Check-ins fired or dropped per tick. Each fire only starts a turn (it
+ *  queues on the gate), so this bounds the tick's own work, not GPU load. */
 const MAX_FIRES_PER_TICK = 20;
+/** Rows looked at per tick, waiting ones included. Waiting rows are paged past
+ *  rather than counted against the fires, so a pile of them (one user with many
+ *  busy conversations) can't keep everyone else's from being reached. */
+const MAX_SCANNED_PER_TICK = 500;
+const PAGE_SIZE = 50;
 const MIN_GRACE_MS = 30 * 60_000;
 
 /** How late a check-in may still fire: half an hour, or a quarter of its delay
@@ -87,18 +94,31 @@ export async function runCheckInSweep(now = Date.now()): Promise<number> {
 	running = true;
 	try {
 		let fired = 0;
-		for (const row of listDueCheckIns(now, MAX_FIRES_PER_TICK)) {
-			let result: FireResult;
-			try {
-				result = fireCheckIn(row, now);
-			} catch (e) {
-				log.warn(`check-in for ${row.conversationId} failed to fire:`, errorMessage(e));
-				result = 'drop';
+		let handled = 0;
+		let scanned = 0;
+		let cursor: CheckInRow | undefined;
+		while (handled < MAX_FIRES_PER_TICK && scanned < MAX_SCANNED_PER_TICK) {
+			const page = listDueCheckIns(now, PAGE_SIZE, cursor);
+			for (const row of page) {
+				if (handled >= MAX_FIRES_PER_TICK) break;
+				scanned++;
+				let result: FireResult;
+				try {
+					result = fireCheckIn(row, now);
+				} catch (e) {
+					log.warn(`check-in for ${row.conversationId} failed to fire:`, errorMessage(e));
+					result = 'drop';
+				}
+				if (result === 'fired') {
+					fired++;
+					handled++;
+				} else if (result === 'drop' || now > row.fireAt + graceFor(row)) {
+					deleteCheckInIfUnchanged(row.id, row.fireAt);
+					handled++;
+				}
 			}
-			if (result === 'fired') fired++;
-			else if (result === 'drop' || now > row.fireAt + graceFor(row)) {
-				deleteCheckInIfUnchanged(row.id, row.fireAt);
-			}
+			if (page.length < PAGE_SIZE) break;
+			cursor = page.at(-1);
 		}
 		return fired;
 	} finally {
