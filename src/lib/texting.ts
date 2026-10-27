@@ -182,6 +182,10 @@ export function textingItems(blocks: RenderBlock[], defaultName: string): Textin
 	const self = defaultName.trim().toLowerCase();
 	const items: TextingItem[] = [];
 	let speaker: string | null = null;
+	// A marker's number is PERSISTED: a developed photo's `PhotoOrigin.index`
+	// names the marker it came from. Changing what counts as a marker (or the
+	// order they're counted in) renumbers every stored reply, and the wrong
+	// placeholders then show as developed.
 	let photos = 0;
 	const resolve = (named: string | null): string | null => {
 		if (named !== null) speaker = named.toLowerCase() === self ? null : named;
