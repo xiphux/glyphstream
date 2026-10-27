@@ -142,7 +142,8 @@ export async function buildChatToolContext(input: ChatToolContextInput): Promise
 	// silently dates the world to its training cutoff.
 	const environmentBlock = composeEnvironmentBlock(new Date(), input.timeZone);
 	// The reply style's instructions sit right after the prompt they shape the
-	// output of. Fixed per conversation, so they never move the prefix.
+	// output of. Fixed per conversation (and by the operator's `[check_ins]`
+	// switch), so nothing a turn does moves the prefix.
 	const styleInstructions = replyStyleInstructions(
 		input.replyStyle ?? 'standard',
 		input.checkIns ?? false,

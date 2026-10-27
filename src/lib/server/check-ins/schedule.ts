@@ -20,7 +20,7 @@ import { getCheckInsConfig } from '../endpoints/config';
  * `userId`'s.
  *
  * Runs before every such turn's `done`, so the common case — no marker — must
- * cost nothing: the branch is only walked (for the unanswered-in-a-row cap)
+ * stay cheap: one keyed DELETE, and the branch is only walked (for the unanswered-in-a-row cap)
  * when the reply's own text has one, and then without the render columns.
  */
 export function scheduleCheckInFromReply(

@@ -17,8 +17,9 @@
  * restart would arrive at the wrong moment, so past that it's dropped too.
  *
  * The model may also decline: the reminder tells it to answer `[no text]` if
- * the moment has gone, and a reply like that (or a turn that produced nothing)
- * is taken back out of the thread, reminder included, as if it never fired.
+ * the moment has gone, and a reply like that (or a turn stopped before it
+ * produced anything) is taken back out of the thread, reminder included, as if
+ * it never fired. A turn that failed is left in place, error and all.
  */
 import { partsToText } from '#lib/message-parts.js';
 import type { ReplyStyle } from '#lib/types/api.js';
