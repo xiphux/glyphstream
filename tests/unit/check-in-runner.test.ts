@@ -155,7 +155,7 @@ function thread(
 
 /** The thread's pending check-in, set the way a finished turn sets it. */
 function scheduled(t: ReturnType<typeof thread>, now = T0) {
-	expect(scheduleCheckInFromReply(t.conversationId, t.userId, t.answer.id, now)).toBe(true);
+	expect(scheduleCheckInFromReply(t.conversationId, t.userId, t.answer, now)).toBe(true);
 	return getCheckIn(t.conversationId, t.userId)!;
 }
 
@@ -210,14 +210,14 @@ describe('scheduling', () => {
 			role: 'assistant',
 			parts: [{ type: 'text', text: 'actually nvm' }],
 		});
-		expect(scheduleCheckInFromReply(t.conversationId, t.userId, next.id, T0)).toBe(false);
+		expect(scheduleCheckInFromReply(t.conversationId, t.userId, next, T0)).toBe(false);
 		expect(getCheckIn(t.conversationId, t.userId)).toBeNull();
 	});
 
 	it('sets nothing while turned off', () => {
 		mocks.enabled = false;
 		const t = thread();
-		expect(scheduleCheckInFromReply(t.conversationId, t.userId, t.answer.id, T0)).toBe(false);
+		expect(scheduleCheckInFromReply(t.conversationId, t.userId, t.answer, T0)).toBe(false);
 	});
 });
 

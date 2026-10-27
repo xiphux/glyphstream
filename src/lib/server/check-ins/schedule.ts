@@ -7,30 +7,38 @@
  * the reply that set it — so the old row goes whether or not the new reply sets
  * one of its own.
  */
-import { checkInSetBy } from '#lib/texting-check-ins.js';
+import { partsToText } from '#lib/message-parts.js';
+import { checkInSetBy, replyCheckIn } from '#lib/texting-check-ins.js';
+import type { ChatMessage } from '#lib/types/api.js';
 import { deleteCheckIn, setCheckIn } from '../db/queries/check-ins';
 import { walkActiveBranch } from '../db/queries/messages';
 import { getCheckInsConfig } from '../endpoints/config';
 
 /**
- * Replace the conversation's check-in with whatever `replyId` sets. Returns
+ * Replace the conversation's check-in with whatever `reply` sets. Returns
  * whether it set one. The caller has already resolved the conversation as
  * `userId`'s.
+ *
+ * Runs before every such turn's `done`, so the common case — no marker — must
+ * cost nothing: the branch is only walked (for the unanswered-in-a-row cap)
+ * when the reply's own text has one, and then without the render columns.
  */
 export function scheduleCheckInFromReply(
 	conversationId: string,
 	userId: string,
-	replyId: string,
+	reply: Pick<ChatMessage, 'id' | 'parts'>,
 	now = Date.now(),
 ): boolean {
 	deleteCheckIn(conversationId, userId);
 	if (!getCheckInsConfig().enabled) return false;
-	const marker = checkInSetBy(walkActiveBranch(conversationId), replyId);
+	if (!replyCheckIn(partsToText(reply.parts))) return false;
+	const branch = walkActiveBranch(conversationId, { columns: 'serialization' });
+	const marker = checkInSetBy(branch, reply.id);
 	if (!marker) return false;
 	setCheckIn({
 		userId,
 		conversationId,
-		sourceMessageId: replyId,
+		sourceMessageId: reply.id,
 		note: marker.note,
 		fireAt: now + marker.delayMs,
 		now,

@@ -146,7 +146,7 @@ function fireCheckIn(row: CheckInRow, now: number): FireResult {
 	) {
 		return 'wait';
 	}
-	const branch = walkActiveBranch(conversationId);
+	const branch = walkActiveBranch(conversationId, { columns: 'serialization' });
 	const leaf = branch.at(-1);
 	if (!leaf || photoChain(branch)?.replyId !== row.sourceMessageId) return 'drop';
 	const model = parseModelId(meta.modelId);

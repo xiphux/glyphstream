@@ -228,7 +228,7 @@ export async function startChatTurn(
 		...(meta.checkIns && input.advanceActiveLeaf !== false
 			? {
 					onFinalReply: (reply: ChatMessage) => {
-						scheduleCheckInFromReply(conversationId, userId, reply.id);
+						scheduleCheckInFromReply(conversationId, userId, reply);
 					},
 				}
 			: {}),
