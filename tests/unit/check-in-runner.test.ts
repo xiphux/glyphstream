@@ -336,6 +336,22 @@ describe('firing', () => {
 		expect(notify).not.toHaveBeenCalled();
 	});
 
+	it('keeps a reply that only puts it off again, without notifying', async () => {
+		const t = thread();
+		scheduled(t);
+		mocks.upstream.push(reply('[later 2h: try again]'));
+		await runCheckInSweep(T0 + HOUR);
+		await idle(t.conversationId);
+		expect(roles(walkActiveBranch(t.conversationId))).toEqual([
+			'user',
+			'assistant',
+			'check-in',
+			'assistant',
+		]);
+		expect(getCheckIn(t.conversationId, t.userId)?.note).toBe('try again');
+		expect(notify).not.toHaveBeenCalled();
+	});
+
 	it('lets a check-in set one more, but not a third in a row', async () => {
 		const t = thread();
 		scheduled(t);

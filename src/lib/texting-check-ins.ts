@@ -26,6 +26,19 @@ export function replyCheckIn(source: string): CheckInMarker | null {
 	return found;
 }
 
+/**
+ * A reply's markdown source without its `[later …]` paragraphs — what the user
+ * actually sees of it, for a notification's preview or for deciding whether it
+ * said anything at all.
+ */
+export function withoutCheckInText(source: string): string {
+	if (!/\[later\s/i.test(source)) return source;
+	return source
+		.split(/\n\s*\n/)
+		.filter((para) => !checkInMarker(extractPlainSpeaker(para.trim())))
+		.join('\n\n');
+}
+
 /** How many check-ins have fired in a row, unanswered, above `index`. */
 export function unansweredCheckIns(branch: ChatMessage[], index: number): number {
 	let count = 0;

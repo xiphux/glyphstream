@@ -24,6 +24,7 @@ import { partsToText } from '#lib/message-parts.js';
 import type { ReplyStyle } from '#lib/types/api.js';
 import { friendlyModelName } from '#lib/model-ids.js';
 import { photoChain } from '#lib/texting-photos.js';
+import { withoutCheckInText } from '#lib/texting-check-ins.js';
 import { extractPlainSpeaker, photoDescription } from '#lib/texting.js';
 import { CHECK_IN_SKIP, checkInMarker, graceFor, isCheckInSkip } from '#lib/check-ins.js';
 import {
@@ -239,6 +240,9 @@ function settleCheckIn(
 	const reply =
 		outcome.kind === 'done' ? getMessage(conversationId, outcome.assistantMessageId) : null;
 	if (reply && !isCheckInSkip(partsToText(reply.parts))) {
+		// A reply that only put the check-in off again ([later …] and nothing
+		// else) stays, so its new check-in does, but there's nothing to notify.
+		if (!withoutCheckInText(partsToText(reply.parts)).trim()) return;
 		void notifyCheckIn(row, reply.id, replyText(reply.parts)).catch((e: unknown) =>
 			log.warn('notify failed:', errorMessage(e)),
 		);
@@ -257,8 +261,8 @@ function settleCheckIn(
 	deleteBranch(conversationId, reminderId, userId);
 }
 
-/** A reply's texts, without the markers that aren't texts — for deciding
- *  whether it said anything, and for the notification's preview. */
+/** A reply's texts, without the markers that aren't texts (photos' too) —
+ *  for the notification's preview. */
 function replyText(parts: Parameters<typeof partsToText>[0]): string {
 	return partsToText(parts)
 		.split(/\n\s*\n/)

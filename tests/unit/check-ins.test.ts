@@ -7,7 +7,7 @@ import {
 	MIN_CHECK_IN_DELAY_MS,
 	parseDelay,
 } from '#lib/check-ins.js';
-import { checkInSetBy, replyCheckIn } from '#lib/texting-check-ins.js';
+import { checkInSetBy, replyCheckIn, withoutCheckInText } from '#lib/texting-check-ins.js';
 import { textingItems, withoutCheckInMarkers } from '#lib/texting.js';
 import type { ChatMessage, MessagePart } from '#lib/types/api.js';
 
@@ -164,5 +164,13 @@ describe('withoutCheckInMarkers', () => {
 	it('leaves a reply without one untouched', () => {
 		const blocks = [{ type: 'html' as const, html: '<p>see you [later], maybe</p>' }];
 		expect(withoutCheckInMarkers(blocks)).toEqual(blocks);
+	});
+});
+
+describe('withoutCheckInText', () => {
+	it('drops marker paragraphs, signed or not, and nothing else', () => {
+		expect(withoutCheckInText('good luck!\n\nChloe: [later 2h: ask]')).toBe('good luck!');
+		expect(withoutCheckInText('[later 2h: ask]')).toBe('');
+		expect(withoutCheckInText('see you [later], maybe')).toBe('see you [later], maybe');
 	});
 });
