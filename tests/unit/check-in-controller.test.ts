@@ -60,6 +60,23 @@ describe('noteReply', () => {
 	});
 });
 
+describe('syncFromServer', () => {
+	it('keeps the object it has for an unchanged row, so the wake-up keeps its timer', () => {
+		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
+		c.syncFromServer({ ...PENDING });
+		expect(c.pending).toBe(PENDING);
+	});
+
+	it('takes a row that changed', () => {
+		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
+		const later = { ...PENDING, fireAt: PENDING.fireAt + 1 };
+		c.syncFromServer(later);
+		expect(c.pending).toBe(later);
+		c.syncFromServer(null);
+		expect(c.pending).toBeNull();
+	});
+});
+
 describe('cancel', () => {
 	it('deletes it on the server', async () => {
 		const fetchMock = vi.fn(async () => Response.json({ cancelled: true }));

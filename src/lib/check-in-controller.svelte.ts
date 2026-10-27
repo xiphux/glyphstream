@@ -34,7 +34,25 @@ export class CheckInController {
 
 	/** The page load's row — the truth, whatever was guessed before it. */
 	syncFromServer(seed: PendingCheckIn | null): void {
-		this.pending = seed;
+		this.#set(seed);
+	}
+
+	/** Every load deserializes the row afresh, so an unchanged one keeps the
+	 *  object it had: the page's wake-up effect re-arms on a new one, and a
+	 *  reload every few seconds while overdue is what it would cost. */
+	#set(next: PendingCheckIn | null): void {
+		const cur = this.pending;
+		if (
+			cur &&
+			next &&
+			cur.sourceMessageId === next.sourceMessageId &&
+			cur.fireAt === next.fireAt &&
+			cur.note === next.note &&
+			cur.createdAt === next.createdAt
+		) {
+			return;
+		}
+		this.pending = next;
 	}
 
 	/** A reply just finished streaming: it replaces the pending check-in with
@@ -43,14 +61,16 @@ export class CheckInController {
 		const reply = messages.find((m) => m.id === replyId);
 		if (!reply) return;
 		const marker = checkInSetBy(messages, replyId);
-		this.pending = marker
-			? {
-					sourceMessageId: replyId,
-					fireAt: reply.createdAt + marker.delayMs,
-					note: marker.note,
-					createdAt: reply.createdAt,
-				}
-			: null;
+		this.#set(
+			marker
+				? {
+						sourceMessageId: replyId,
+						fireAt: reply.createdAt + marker.delayMs,
+						note: marker.note,
+						createdAt: reply.createdAt,
+					}
+				: null,
+		);
 	}
 
 	async cancel(): Promise<void> {
