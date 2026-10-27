@@ -32,7 +32,9 @@ export const TEXTING_INSTRUCTIONS =
 
 /**
  * The check-in marker `#lib/check-ins.ts` reads, per style — on only for a
- * conversation whose preset allows check-ins. "Only when you've said so" is
+ * conversation whose preset allows check-ins. It must be a paragraph of its
+ * own: that's the unit both the parser and the bubbles split on, so "a line of
+ * its own" (one newline) would leave it unread and on show. "Only when you've said so" is
  * what keeps every goodbye from setting one. The reminder, when it comes, says
  * how to pass on it; that wording lives there, not here, because this is rent.
  */
@@ -42,7 +44,7 @@ export const CHECK_IN_INSTRUCTIONS: Record<ReplyStyle, string> = {
 		"(any delay up to 24h). If they haven't replied by then, you'll be reminded so you can text them.",
 	standard:
 		"If you tell the user you'll get back to them later, end your reply with [later 2h: what you mean to say] " +
-		"on a line of its own (any delay up to 24h). If they haven't replied by then, you'll be reminded so you " +
+		"as its own paragraph (any delay up to 24h). If they haven't replied by then, you'll be reminded so you " +
 		'can reach out.',
 };
 
