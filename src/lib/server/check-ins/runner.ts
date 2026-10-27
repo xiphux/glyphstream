@@ -52,6 +52,7 @@ import { parseModelId } from '../endpoints/model-id';
 import { getEndpoint } from '../endpoints/registry';
 import { buildPreview, notifyConversationComplete } from '../push/notify';
 import { startChatTurn } from '../chat/start-turn';
+import { resolveDisabledFeatures } from '../chat/private-seal';
 import { resolveTimeZone } from '../chat/environment-context';
 import {
 	clearInFlight,
@@ -179,7 +180,7 @@ function fireCheckIn(row: CheckInRow, now: number): FireResult {
 		meta,
 		endpoint,
 		model,
-		disabledFeatures: meta.disabledFeatures,
+		disabledFeatures: resolveDisabledFeatures(meta),
 		inFlight,
 		userMessage: reminder,
 		allowTools: true,

@@ -74,11 +74,16 @@ vi.mock('#lib/server/push/notify.js', async (orig) => ({
 	...(await orig<typeof import('#lib/server/push/notify.js')>()),
 	notifyConversationComplete: vi.fn(async () => {}),
 }));
+vi.mock('#lib/server/chat/start-turn.js', async (orig) => {
+	const real = await orig<typeof import('#lib/server/chat/start-turn.js')>();
+	return { ...real, startChatTurn: vi.fn(real.startChatTurn) };
+});
 vi.mock('#lib/server/tasks/title-task-runner.js', () => ({
 	startTitleTaskIfFirstExchange: vi.fn(() => Promise.resolve(null)),
 }));
 
 import { notifyConversationComplete } from '#lib/server/push/notify.js';
+import { startChatTurn } from '#lib/server/chat/start-turn.js';
 import { createConversation } from '#lib/server/db/queries/conversations.js';
 import {
 	appendMessage,
@@ -129,6 +134,7 @@ function thread(
 	replyText = 'gtg, work\n\n[later 1h: ask how the meeting went]',
 	style: 'texting' | 'standard' = 'texting',
 	checkIns = true,
+	isPrivate = false,
 ) {
 	const u = seedUser();
 	const conv = createConversation({
@@ -138,6 +144,7 @@ function thread(
 		modelKind: 'chat',
 		replyStyle: style,
 		checkIns,
+		private: isPrivate,
 	});
 	const user = appendMessage({
 		conversationId: conv.id,
@@ -184,6 +191,7 @@ beforeEach(() => {
 	mocks.enabled = true;
 	mocks.tools = false;
 	notify.mockClear();
+	vi.mocked(startChatTurn).mockClear();
 	_resetForTests();
 });
 afterEach(() => {
@@ -289,6 +297,16 @@ describe('firing', () => {
 		expect(roles(branch)).toEqual(['user', 'assistant', 'check-in', 'assistant']);
 		expect(text(branch[2])).toContain('since your last message');
 		expect(text(branch[2])).toContain('Reach out now');
+	});
+
+	it('keeps a private chat sealed, as any other turn in it is', async () => {
+		const t = thread(undefined, 'texting', true, true);
+		scheduled(t);
+		mocks.upstream.push(reply('hey'));
+		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
+		await idle(t.conversationId);
+		const { disabledFeatures } = vi.mocked(startChatTurn).mock.calls[0][0];
+		expect(disabledFeatures).toEqual(expect.arrayContaining(['personalization', 'web']));
 	});
 
 	it('fires under a photo the reply sent', async () => {
