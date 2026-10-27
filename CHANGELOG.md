@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.50.0
+
 ### Added
 
 - Custom models can use a texting reply style: each paragraph of a reply arrives as its own chat bubble, and a `Name:` prefix lets one preset play several people in a group chat.
