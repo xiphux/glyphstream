@@ -74,6 +74,7 @@
 	import type { TextingPhotos } from '#lib/texting.js';
 	import { CheckInController } from '#lib/check-in-controller.svelte.js';
 	import { isCheckInMessage, type PendingCheckInNote } from '#lib/check-ins.js';
+	import { withoutCheckInText } from '#lib/texting-check-ins.js';
 	import { ChatLightbox } from '#lib/chat-lightbox.svelte.js';
 	import { MediaFavorites } from '#lib/media-favorites.svelte.js';
 	import FanoutColumns from '#lib/components/chat/FanoutColumns.svelte';
@@ -2295,8 +2296,10 @@
 	let copyTimer: ReturnType<typeof setTimeout> | null = null;
 
 	async function copyMessage(m: ChatMessage) {
-		const text = partsToText(m.parts);
-		if (!text) return;
+		// A check-in marker isn't drawn, so it isn't copied either.
+		const text =
+			m.role === 'assistant' ? withoutCheckInText(partsToText(m.parts)) : partsToText(m.parts);
+		if (!text.trim()) return;
 		try {
 			await navigator.clipboard.writeText(text);
 			recentlyCopiedId = m.id;
