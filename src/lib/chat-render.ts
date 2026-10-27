@@ -8,7 +8,7 @@
  */
 
 import { unhandled } from './exhaustive.ts';
-import type { ChatMessage, MessagePart, ModelEntry } from './types/api.ts';
+import type { ChatMessage, MessagePart, ModelEntry, PhotoOrigin } from './types/api.ts';
 import { arrangeForDisplay, isCompactionSummary } from './chat-compaction.ts';
 import { friendlyModelName } from './model-ids.ts';
 
@@ -99,6 +99,8 @@ export type RenderBlock =
 			aspectRatio?: string;
 			width?: number;
 			height?: number;
+			/** A texting photo's marker — see `PhotoOrigin`. */
+			photo?: PhotoOrigin;
 	  }
 	| { type: 'video'; mediaId: string }
 	/** Non-image, non-video media attachment (xlsx/csv/pdf/json/...) —
@@ -349,6 +351,7 @@ function partToBlock(
 				aspectRatio: p.aspectRatio,
 				width: p.width,
 				height: p.height,
+				...(p.photo ? { photo: p.photo } : {}),
 			};
 		case 'video':
 			return { type: 'video', mediaId: p.mediaId };

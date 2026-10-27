@@ -17,7 +17,16 @@ export const TEXTING_INSTRUCTIONS =
 	"each paragraph appears as a separate message bubble. Don't put your name in front of your texts. " +
 	'To send a text as someone else in the chat, begin it with their name and a colon ("Name: "). ' +
 	'A text with no name is from whoever sent the text before it, or from you if it comes first. ' +
-	'Never otherwise begin a text with a word followed by a colon.';
+	'Never otherwise begin a text with a word followed by a colon. ' +
+	// The photo marker `#lib/texting.ts` reads. The image model that develops it
+	// sees only this description, hence "completely"; the ratio is picked up by
+	// the draw dialog's aspect-ratio detection. "After your other texts" because
+	// that is where a developed photo shows up: it arrives as a message of its
+	// own after the reply, so a marker mid-reply would read out of order.
+	'To send a photo, when it fits the moment, write it as its own text after your other texts: ' +
+	'[photo: what it shows]. ' +
+	"The camera can't see this chat, so describe the picture completely, including how anyone in it looks, " +
+	'and give its aspect ratio: 3:4, 2:3 or 9:16 upright; 4:3, 3:2 or 16:9 sideways.';
 
 export function replyStyleInstructions(style: ReplyStyle): string | null {
 	return style === 'texting' ? TEXTING_INSTRUCTIONS : null;

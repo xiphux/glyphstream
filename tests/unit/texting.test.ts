@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderMarkdown } from '#lib/server/markdown/render.js';
-import { extractSpeaker, splitTopLevelHtml, textingItems } from '#lib/texting.js';
+import { extractSpeaker, photoDescription, splitTopLevelHtml, textingItems } from '#lib/texting.js';
 import type { RenderBlock } from '#lib/chat-render.js';
 
 /** Texts as `[speaker, html]` pairs, from markdown rendered the way a stored
@@ -93,6 +93,56 @@ describe('textingItems', () => {
 			{ kind: 'text', speaker: 'Sam', text: 'two' },
 			{ kind: 'blocks', blocks: [blocks[1], blocks[2]] },
 			{ kind: 'text', speaker: 'Sam', html: '<p>three</p>' },
+		]);
+	});
+});
+
+describe('photo markers', () => {
+	async function items(markdown: string) {
+		const html = (await renderMarkdown(markdown))!;
+		return textingItems([{ type: 'html', html }], 'Chloe');
+	}
+
+	it('turns a marker text into a numbered photo, from whoever sent it', async () => {
+		expect(
+			await items('look!\n\n[photo: me at the beach, 3:4]\n\nSam: *[Photo: Sam & the dog]*\n\nlol'),
+		).toEqual([
+			{ kind: 'text', speaker: null, html: '<p>look!</p>' },
+			{ kind: 'photo', speaker: null, description: 'me at the beach, 3:4', index: 0 },
+			{ kind: 'photo', speaker: 'Sam', description: 'Sam & the dog', index: 1 },
+			{ kind: 'text', speaker: 'Sam', html: '<p>lol</p>' },
+		]);
+	});
+
+	it('numbers a live reply the same way', () => {
+		const blocks: RenderBlock[] = [
+			{ type: 'plain-text', text: '[photo: one]\n\nhi\n\n**[photo: two]**' },
+		];
+		expect(textingItems(blocks, 'Chloe').filter((i) => i.kind === 'photo')).toEqual([
+			{ kind: 'photo', speaker: null, description: 'one', index: 0 },
+			{ kind: 'photo', speaker: null, description: 'two', index: 1 },
+		]);
+	});
+
+	it.each(['here you go [photo: a cat]', '[photo: ]', '[photo: a cat] and more', 'photo: a cat'])(
+		'leaves %s as a text',
+		async (markdown) => {
+			const [item] = await items(markdown);
+			expect(item.kind).toBe('text');
+		},
+	);
+
+	it('reads markup out of the description', () => {
+		expect(photoDescription({ html: '<p>[photo: a <em>very</em> &quot;big&quot; dog]</p>' })).toBe(
+			'a very "big" dog',
+		);
+	});
+
+	it('gives a developed photo to the speaker it carries', () => {
+		const photo = { sourceMessageId: 'r1', index: 0, speaker: 'Sam' };
+		const blocks: RenderBlock[] = [{ type: 'image', mediaId: 'm1', photo }];
+		expect(textingItems(blocks, 'Chloe')).toEqual([
+			{ kind: 'sent-photo', speaker: 'Sam', block: blocks[0] },
 		]);
 	});
 });

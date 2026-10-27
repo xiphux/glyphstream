@@ -13,7 +13,7 @@
 	import CanvasCard from '#lib/components/chat/CanvasCard.svelte';
 	import FileAttachmentChip from '#lib/components/FileAttachmentChip.svelte';
 	import { isCanvasTool, splitCanvasCards, type RenderBlock } from '#lib/chat-render.js';
-	import { parseRatio } from '#lib/aspect-ratio.js';
+	import { cssAspectRatio } from '#lib/aspect-ratio.js';
 	import type { ApprovalAction } from '#lib/approval-workflow.js';
 	import { codeCopyClicks, withCodeCopyButtons } from '#lib/code-copy.js';
 
@@ -57,16 +57,6 @@
 			return b.type + ':' + b.mediaId;
 		}
 		return b.type + ':' + i;
-	}
-
-	/** The image's CSS aspect-ratio: its measured size when the part has one,
-	 *  else the upstream's `W:H` label, else undefined (no reservation). */
-	function cssRatio(block: { width?: number; height?: number; aspectRatio?: string }) {
-		if (block.width && block.height) return `${block.width} / ${block.height}`;
-		const ratio = block.aspectRatio;
-		if (!ratio || parseRatio(ratio) === null) return undefined;
-		const [w, h] = ratio.split(':');
-		return `${w} / ${h}`;
 	}
 </script>
 
@@ -128,7 +118,7 @@
 				src="/api/media/{block.mediaId}/display"
 				alt={block.alt ?? 'Image'}
 				loading="lazy"
-				style:aspect-ratio={cssRatio(block)}
+				style:aspect-ratio={cssAspectRatio(block)}
 				class="block h-auto w-full max-h-[80vh] rounded-lg object-contain"
 			/>
 		</button>

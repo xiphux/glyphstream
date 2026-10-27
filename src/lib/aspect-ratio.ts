@@ -233,3 +233,18 @@ export function writeStickyRatio(value: string): void {
 		// Per-viewer convenience; losing it costs a click next time.
 	}
 }
+
+/** An image's CSS `aspect-ratio`, for reserving its box before it loads: its
+ *  measured size when the part has one, else the upstream's `W:H` label, else
+ *  undefined (no reservation). */
+export function cssAspectRatio(block: {
+	width?: number;
+	height?: number;
+	aspectRatio?: string;
+}): string | undefined {
+	if (block.width && block.height) return `${block.width} / ${block.height}`;
+	const ratio = block.aspectRatio;
+	if (!ratio || parseRatio(ratio) === null) return undefined;
+	const [w, h] = ratio.split(':');
+	return `${w} / ${h}`;
+}

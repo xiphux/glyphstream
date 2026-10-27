@@ -18,6 +18,7 @@
 	import { messageToBlocks, type RenderBlock, type ToolResultEntry } from '#lib/chat-render.js';
 	import type { ChatMessage } from '#lib/types/api.js';
 	import type { ApprovalAction } from '#lib/approval-workflow.js';
+	import type { TextingPhotos } from '#lib/texting.js';
 
 	interface Props {
 		message: ChatMessage;
@@ -49,6 +50,9 @@
 		/** The conversation's 'texting' reply style: an assistant row renders as
 		 *  a run of text bubbles (TextingBubbles) instead of one bubble. */
 		texting?: boolean;
+		/** Texting only: what this row's photo markers (or delivered photo) can
+		 *  do — see TextingBubbles. */
+		textingPhotos?: TextingPhotos;
 	}
 
 	let {
@@ -68,6 +72,7 @@
 		bottomCanvasCards = [],
 		onOpenCanvas,
 		texting = false,
+		textingPhotos,
 	}: Props = $props();
 
 	const roleLabel = $derived(
@@ -93,6 +98,7 @@
 			{approvalDecisions}
 			{approvalBusy}
 			{onApprovalSelect}
+			photos={textingPhotos}
 		/>
 		{#each bottomCanvasCards as block (block.type === 'tool_call' ? block.toolCallId : '')}
 			{#if block.type === 'tool_call'}

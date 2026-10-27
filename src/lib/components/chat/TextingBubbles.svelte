@@ -7,20 +7,28 @@
 	with the assistant in each row (it's a separate model reply), so leaving the
 	header off would show its text under whoever spoke last above.
 
-	Anything that isn't text — tool calls, images, reasoning — keeps its
-	standard rendering in a bubble of its own.
+	A `[photo: …]` text is a photo the sender took. Until it's developed it shows
+	as a placeholder with its description (and, while the reply is the latest
+	thing in the thread, a Develop button); once developed it disappears from
+	here, because the photo itself arrives as a row of its own after the reply —
+	which this component also draws, as the bare picture a phone shows.
+
+	Anything else — tool calls, other images, reasoning — keeps its standard
+	rendering in a bubble of its own.
 
 	Shared by MessageBubble and InFlightBubble so the live reply and the stored
 	one split the same way.
 -->
 <script lang="ts">
+	import { Camera, RefreshCw } from '@lucide/svelte';
 	import RenderBlocks from './RenderBlocks.svelte';
 	import AssistantAvatar from './AssistantAvatar.svelte';
 	import type { Snippet } from 'svelte';
 	import { splitCanvasCards, type RenderBlock } from '#lib/chat-render.js';
 	import type { ApprovalAction } from '#lib/approval-workflow.js';
+	import { cssAspectRatio } from '#lib/aspect-ratio.js';
 	import { codeCopyClicks, withCodeCopyButtons } from '#lib/code-copy.js';
-	import { speakerHue, textingItems } from '#lib/texting.js';
+	import { speakerHue, textingItems, type TextingPhotos } from '#lib/texting.js';
 
 	interface Props {
 		blocks: RenderBlock[];
@@ -36,6 +44,7 @@
 		/** Shown in a bubble from the assistant while there is nothing to show
 		 *  yet (a live reply before its first token). */
 		pending?: Snippet;
+		photos?: TextingPhotos;
 	}
 
 	let {
@@ -49,6 +58,7 @@
 		onApprovalSelect,
 		codeCopy = true,
 		pending,
+		photos,
 	}: Props = $props();
 
 	// Each item paired with whether it opens a new sender's run. `undefined`
@@ -57,57 +67,50 @@
 		let prev: string | null | undefined = undefined;
 		// Without the successful canvas edits, which the caller renders as cards
 		// at the bottom: left in, a canvas-only reply would draw an empty bubble.
-		const items = textingItems(splitCanvasCards(blocks).body, assistantLabel);
+		// Without the photos that have arrived, too, which show further down.
+		const items = textingItems(splitCanvasCards(blocks).body, assistantLabel).filter(
+			(item) => item.kind !== 'photo' || !photos?.developed.has(item.index),
+		);
 		if (items.length === 0 && pending) items.push({ kind: 'text', speaker: null, text: '' });
 		return items.map((item) => {
-			if (item.kind !== 'text') return { item, header: false };
-			const header = item.speaker !== prev;
+			if (item.kind === 'blocks') return { item, header: false };
+			// A delivered photo is a row of its own, after texts that may have
+			// changed sender, so it always says who it's from.
+			const header = item.kind === 'sent-photo' || item.speaker !== prev;
 			prev = item.speaker;
 			return { item, header };
 		});
 	});
 </script>
 
+{#snippet senderHeader(speaker: string | null, first: boolean)}
+	<div class={['flex items-center gap-1.5', !first && 'mt-2']}>
+		{#if speaker === null}
+			{#if assistantAvatarMediaId}
+				<AssistantAvatar
+					mediaId={assistantAvatarMediaId}
+					label={assistantLabel}
+					onClick={onImageClick}
+				/>
+			{/if}
+		{:else}
+			<span
+				aria-hidden="true"
+				class="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
+				style:background-color="hsl({speakerHue(speaker)} 50% 45%)"
+			>
+				{Array.from(speaker)[0].toUpperCase()}
+			</span>
+		{/if}
+		<div class="text-[11px] font-medium tracking-wide opacity-60">
+			{speaker ?? assistantLabel}
+		</div>
+	</div>
+{/snippet}
+
 <div class="flex min-w-0 flex-col items-start gap-1 text-sm">
 	{#each rows as { item, header }, i (i)}
-		{#if item.kind === 'text'}
-			{#if header}
-				<div class={['flex items-center gap-1.5', i > 0 && 'mt-2']}>
-					{#if item.speaker === null}
-						{#if assistantAvatarMediaId}
-							<AssistantAvatar
-								mediaId={assistantAvatarMediaId}
-								label={assistantLabel}
-								onClick={onImageClick}
-							/>
-						{/if}
-					{:else}
-						<span
-							aria-hidden="true"
-							class="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
-							style:background-color="hsl({speakerHue(item.speaker)} 50% 45%)"
-						>
-							{Array.from(item.speaker)[0].toUpperCase()}
-						</span>
-					{/if}
-					<div class="text-[11px] font-medium tracking-wide opacity-60">
-						{item.speaker ?? assistantLabel}
-					</div>
-				</div>
-			{/if}
-			<div class="max-w-[85%] min-w-0 rounded-2xl bg-surface-raised px-3.5 py-2">
-				{#if pending && blocks.length === 0}
-					{@render pending()}
-				{:else if 'html' in item}
-					<div class="gs-prose" {@attach codeCopy && codeCopyClicks}>
-						<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-						{@html codeCopy ? withCodeCopyButtons(item.html) : item.html}
-					</div>
-				{:else}
-					<div class="whitespace-pre-wrap break-words">{item.text}</div>
-				{/if}
-			</div>
-		{:else}
+		{#if item.kind === 'blocks'}
 			<div class="w-full min-w-0 rounded-2xl bg-surface-raised px-4 pt-2 pb-3">
 				<RenderBlocks
 					blocks={item.blocks}
@@ -119,6 +122,76 @@
 					{codeCopy}
 				/>
 			</div>
+		{:else}
+			{#if header}
+				{@render senderHeader(item.speaker, i === 0)}
+			{/if}
+			{#if item.kind === 'photo'}
+				<div
+					class="flex w-60 max-w-[85%] flex-col gap-1.5 rounded-2xl border border-dashed border-border-strong bg-surface-raised px-3.5 py-2.5"
+				>
+					<div class="flex items-center gap-1.5 text-xs font-medium text-fg-muted">
+						<Camera class="size-3.5" aria-hidden="true" />
+						Photo
+					</div>
+					<p class="line-clamp-4 text-sm italic text-fg-secondary">{item.description}</p>
+					{#if photos?.developing === item.index}
+						<p class="text-xs text-fg-muted">Developing…</p>
+					{:else if photos?.onDevelop}
+						{@const index = item.index}
+						<button
+							type="button"
+							onclick={() => photos?.onDevelop?.(index)}
+							class="self-start rounded-md bg-surface-inverse px-3 py-1 text-xs font-medium text-fg-inverse transition hover:opacity-90"
+						>
+							Develop
+						</button>
+					{/if}
+				</div>
+			{:else if item.kind === 'sent-photo'}
+				{@const mediaId = item.block.mediaId}
+				<div class="relative w-64 max-w-[75%]">
+					<button
+						type="button"
+						onclick={() => onImageClick(mediaId)}
+						aria-label="Open photo"
+						disabled={openingLightboxFor === mediaId}
+						class="block w-full overflow-hidden rounded-2xl p-0 transition disabled:opacity-60"
+					>
+						<img
+							src="/api/media/{mediaId}/display"
+							alt={item.block.alt ?? 'Photo'}
+							loading="lazy"
+							style:aspect-ratio={cssAspectRatio(item.block)}
+							class="block h-auto max-h-[70vh] w-full object-cover"
+						/>
+					</button>
+					{#if photos?.onRedevelop}
+						<button
+							type="button"
+							onclick={() => photos?.onRedevelop?.()}
+							aria-label="Develop again"
+							title="Develop again"
+							class="absolute top-2 right-2 rounded-full bg-black/55 p-1.5 text-white transition hover:bg-black/70"
+						>
+							<RefreshCw class="size-3.5" aria-hidden="true" />
+						</button>
+					{/if}
+				</div>
+			{:else}
+				<div class="max-w-[85%] min-w-0 rounded-2xl bg-surface-raised px-3.5 py-2">
+					{#if pending && blocks.length === 0}
+						{@render pending()}
+					{:else if 'html' in item}
+						<div class="gs-prose" {@attach codeCopy && codeCopyClicks}>
+							<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+							{@html codeCopy ? withCodeCopyButtons(item.html) : item.html}
+						</div>
+					{:else}
+						<div class="whitespace-pre-wrap break-words">{item.text}</div>
+					{/if}
+				</div>
+			{/if}
 		{/if}
 	{/each}
 </div>

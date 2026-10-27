@@ -489,6 +489,9 @@ export type MessagePart =
 			 */
 			width?: number;
 			height?: number;
+			/** Set on a photo developed from a texting reply's `[photo: …]` marker —
+			 *  see `PhotoOrigin`. Display only, like the fields above. */
+			photo?: PhotoOrigin;
 	  }
 	| { type: 'video'; mediaId: string }
 	| {
@@ -691,6 +694,26 @@ export interface ChatMessage {
 export interface AvatarDrawPrompt {
 	prompt: string;
 	enhance: boolean;
+	/** Set when the draw is a texting photo rather than a portrait: the marker it
+	 *  develops, which every candidate carries onto its image part. */
+	photo?: PhotoOrigin;
+}
+
+/**
+ * Which `[photo: …]` marker a developed photo came from: the texting reply that
+ * sent it, and the marker's position among that reply's photos (0-based, in
+ * reading order — `textingItems` numbers them). Persisted on the photo's image
+ * part, so the reply knows which of its markers have arrived, and the pick knows
+ * a candidate is a photo rather than a portrait.
+ *
+ * A PERSISTED shape: add fields as optional.
+ */
+export interface PhotoOrigin {
+	sourceMessageId: string;
+	index: number;
+	/** Who sent it, when not the conversation's own assistant (a group chat's
+	 *  `Sam: [photo: …]`). Absent for the assistant. */
+	speaker?: string;
 }
 
 // --- user preferences --------------------------------------------------
