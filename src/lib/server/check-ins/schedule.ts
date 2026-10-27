@@ -1,8 +1,8 @@
 /**
- * Setting a texting check-in from a reply that finished with a `[later …]`
+ * Setting a check-in from a reply that finished with a `[later …]`
  * marker (see `#lib/check-ins.ts`).
  *
- * Runs as each texting turn ends. Any reply that lands on the active branch
+ * Runs as each turn ends in a conversation that allows check-ins. Any reply that lands on the active branch
  * supersedes the conversation's previous check-in — the thread has moved past
  * the reply that set it — so the old row goes whether or not the new reply sets
  * one of its own.

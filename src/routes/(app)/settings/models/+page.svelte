@@ -43,6 +43,11 @@
 	let maxTokensStr = $state('');
 	let defaultDisabledFeatures = $state<FeatureCategory[]>([]);
 	let replyStyle = $state<ReplyStyle>('standard');
+	// Check-ins default with the style — on for a texting partner, off for a
+	// standard preset (more often a tool than a character) — until the user sets
+	// them by hand, after which a style change leaves them alone.
+	let checkIns = $state(false);
+	let checkInsTouched = $state(false);
 	// Avatar edits are staged, not applied on pick: everything else in this form
 	// commits on Save, and a portrait that silently persisted the moment it was
 	// chosen — surviving "Clear (new)" — would be the odd one out.
@@ -93,6 +98,8 @@
 		maxTokensStr = '';
 		defaultDisabledFeatures = [];
 		replyStyle = 'standard';
+		checkIns = false;
+		checkInsTouched = false;
 		setAvatarFile(null);
 		avatarMediaId = null;
 		avatarCleared = false;
@@ -111,6 +118,8 @@
 		maxTokensStr = m.parameters?.max_tokens !== undefined ? String(m.parameters.max_tokens) : '';
 		defaultDisabledFeatures = [...m.defaultDisabledFeatures];
 		replyStyle = m.replyStyle;
+		checkIns = m.checkIns;
+		checkInsTouched = m.checkIns !== (m.replyStyle === 'texting');
 		setAvatarFile(null);
 		avatarMediaId = m.avatarMediaId;
 		avatarCleared = false;
@@ -261,6 +270,7 @@
 					// The selector is hidden for non-chat bases; don't keep a style the
 					// user can no longer see (or that means nothing for an image model).
 					replyStyle: baseKind === null || baseKind === 'chat' ? replyStyle : 'standard',
+					checkIns: (baseKind === null || baseKind === 'chat') && checkIns,
 				};
 
 				const url = editingId ? `/api/custom-models/${editingId}` : '/api/custom-models';
@@ -534,6 +544,10 @@
 						<select
 							id="reply-style"
 							bind:value={replyStyle}
+							onchange={(e) => {
+								// The event's value: the binding may not have caught up yet.
+								if (!checkInsTouched) checkIns = e.currentTarget.value === 'texting';
+							}}
 							disabled={busy}
 							class="w-full rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
 						>
@@ -550,6 +564,24 @@
 							{/if}
 						</p>
 					</div>
+
+					<label class="flex cursor-pointer items-start gap-2 text-xs">
+						<input
+							type="checkbox"
+							bind:checked={checkIns}
+							onchange={() => (checkInsTouched = true)}
+							disabled={busy}
+							class="mt-0.5 h-3.5 w-3.5 rounded border-border accent-surface-inverse disabled:opacity-50"
+						/>
+						<span class="min-w-0">
+							<span class="font-medium">Can check in</span>
+							<span class="mt-0.5 block text-[11px] text-fg-muted">
+								When it says it'll get back to you later, it sets itself a reminder, and reaches out
+								then if you haven't replied. Suits a character; leave it off for a preset that does
+								a task. For something on a timetable, use a scheduled task instead.
+							</span>
+						</span>
+					</label>
 				{/if}
 
 				<details class="rounded-md border border-border px-3 py-2">

@@ -1,5 +1,5 @@
 /**
- * The chat page's side of texting check-ins (see `check-ins.ts`): which one is
+ * The chat page's side of check-ins (see `check-ins.ts`): which one is
  * pending, cancelling it, and waking the page when it comes due.
  *
  * The server is the truth — the page load carries the pending row — but a

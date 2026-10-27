@@ -1,8 +1,9 @@
 /**
- * Which check-in a texting reply sets, read off the thread — shared by the
+ * Which check-in a reply sets, read off the thread — shared by the
  * server, which schedules it as the reply lands, and the chat page, which shows
  * the note under a reply it just streamed without waiting for a reload. See
- * `check-ins.ts` for the feature.
+ * `check-ins.ts` for the feature. Named for the texting parse it shares (a
+ * marker may carry a `Name: ` prefix); a standard reply reads the same way.
  */
 import { checkInMarker, isCheckInMessage, MAX_UNANSWERED_CHECK_INS } from './check-ins';
 import type { CheckInMarker } from './check-ins';

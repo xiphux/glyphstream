@@ -71,9 +71,9 @@
 	import { AvatarDrawController } from '#lib/avatar-draw-controller.svelte.js';
 	import { AvatarDrawWorkflow } from '#lib/avatar-draw-workflow.svelte.js';
 	import { developedPhotos, photoChain, photoMarkers, photoOriginOf } from '#lib/texting-photos.js';
-	import type { TextingCheckIn, TextingPhotos } from '#lib/texting.js';
+	import type { TextingPhotos } from '#lib/texting.js';
 	import { CheckInController } from '#lib/check-in-controller.svelte.js';
-	import { isCheckInMessage } from '#lib/check-ins.js';
+	import { isCheckInMessage, type PendingCheckInNote } from '#lib/check-ins.js';
 	import { ChatLightbox } from '#lib/chat-lightbox.svelte.js';
 	import { MediaFavorites } from '#lib/media-favorites.svelte.js';
 	import FanoutColumns from '#lib/components/chat/FanoutColumns.svelte';
@@ -1658,12 +1658,16 @@
 		};
 	}
 
-	// Texting check-ins: the pending one shows under the reply that set it, and
-	// only while that reply is still the end of the thread — the moment the user
-	// answers, it's as good as gone (the server drops it when it comes due).
+	// Check-ins, where the conversation's preset allows them: the pending one
+	// shows under the reply that set it, and only while that reply (or a photo it
+	// sent) is still the end of the thread — the moment the user answers, it's as
+	// good as gone (the server drops it when it comes due).
+	const checkInsOn = $derived(data.conversation.checkIns);
 	const liveCheckIn = $derived.by(() => {
-		const pending = texting ? checkIns.pending : null;
-		return pending && developableChain?.replyId === pending.sourceMessageId ? pending : null;
+		const pending = checkInsOn ? checkIns.pending : null;
+		if (!pending) return null;
+		const chain = texting ? developableChain : photoChain(messages);
+		return chain?.replyId === pending.sourceMessageId ? pending : null;
 	});
 
 	// A plain turn doesn't reload the page, so read what the reply that just
@@ -1671,7 +1675,7 @@
 	// reload, which brings the server's row instead.
 	$effect(() => {
 		const id = turn.streamedMessageId;
-		if (!id || !texting) return;
+		if (!id || !checkInsOn) return;
 		untrack(() => checkIns.noteReply(messages, id));
 	});
 
@@ -1681,7 +1685,7 @@
 		return checkIns.wakeWhenDue(pending);
 	});
 
-	function textingCheckInFor(m: ChatMessage): TextingCheckIn | undefined {
+	function checkInNoteFor(m: ChatMessage): PendingCheckInNote | undefined {
 		const pending = liveCheckIn;
 		if (!pending || pending.sourceMessageId !== m.id) return undefined;
 		return {
@@ -2739,7 +2743,7 @@
 									onOpenCanvas={(artifactId: string | null) => canvas.show(artifactId ?? undefined)}
 									{texting}
 									textingPhotos={textingPhotosFor(m, identity.label)}
-									textingCheckIn={textingCheckInFor(m)}
+									checkIn={checkInNoteFor(m)}
 								/>
 							{/if}
 							{#if (m.role === 'user' || m.role === 'assistant') && m.id !== edit.messageId && !mergeWithNext}

@@ -64,6 +64,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	let resolvedParameters: CustomModelParameters | null = null;
 	let resolvedCustomModelId: string | null = null;
 	let resolvedReplyStyle: ReplyStyle = 'standard';
+	let resolvedCheckIns = false;
 
 	// modelKind is optional and validated identically whether a custom
 	// model or a base model id was supplied — the caller forwards it so
@@ -92,6 +93,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		resolvedParameters = cm.parameters;
 		resolvedCustomModelId = cm.id;
 		resolvedReplyStyle = cm.replyStyle;
+		resolvedCheckIns = cm.checkIns;
 	} else {
 		const modelId = optionalString(body.modelId, 'modelId')?.trim();
 		if (!modelId) error(400, "'modelId' or 'customModelId' is required");
@@ -137,6 +139,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		parameters: resolvedParameters,
 		customModelId: resolvedCustomModelId,
 		replyStyle: resolvedReplyStyle,
+		checkIns: resolvedCheckIns,
 		title:
 			requireMaxLength(
 				optionalString(body.title, 'title')?.trim(),

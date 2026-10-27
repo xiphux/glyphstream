@@ -1,11 +1,11 @@
 /**
- * The check-in runner: fires each texting check-in that has come due.
+ * The check-in runner: fires each check-in that has come due.
  *
  * Firing appends the reminder — a user-role message flagged `checkIn`, telling
  * the model what time it is and what it meant to do — under the end of the
  * thread, then runs an ordinary chat turn on it the way a scheduled task does:
  * nobody connected, `background` priority, through the same `startChatTurn` a
- * send uses. Its reply is the text that arrives out of the blue, and the push
+ * send uses. Its reply is the message that arrives out of the blue, and the push
  * notification is what makes it feel like one.
  *
  * A check-in only fires if the thread is still where the reply that set it left
@@ -21,6 +21,7 @@
  * is taken back out of the thread, reminder included, as if it never fired.
  */
 import { partsToText } from '#lib/message-parts.js';
+import type { ReplyStyle } from '#lib/types/api.js';
 import { friendlyModelName } from '#lib/model-ids.js';
 import { photoChain } from '#lib/texting-photos.js';
 import { extractPlainSpeaker, photoDescription } from '#lib/texting.js';
@@ -137,7 +138,7 @@ function fireCheckIn(row: CheckInRow, now: number): FireResult {
 	if (!getCheckInsConfig().enabled) return 'drop';
 	const { conversationId, userId } = row;
 	const meta = getConversationMeta(conversationId, userId);
-	if (!meta || meta.replyStyle !== 'texting') return 'drop';
+	if (!meta || !meta.checkIns) return 'drop';
 	if (
 		getInFlightSince(conversationId) !== null ||
 		getAvatarDrawSince(conversationId) !== null ||
@@ -162,7 +163,7 @@ function fireCheckIn(row: CheckInRow, now: number): FireResult {
 		parts: [
 			{
 				type: 'text',
-				text: reminderText(row, now, prefs?.timezone ?? null),
+				text: reminderText(row, now, prefs?.timezone ?? null, meta.replyStyle),
 				checkIn: true,
 			},
 		],
@@ -211,6 +212,7 @@ export function reminderText(
 	row: Pick<CheckInRow, 'note' | 'createdAt'>,
 	now: number,
 	timeZone: string | null,
+	style: ReplyStyle = 'texting',
 ): string {
 	const when = new Intl.DateTimeFormat('en-US', {
 		weekday: 'long',
@@ -224,9 +226,11 @@ export function reminderText(
 			? `${minutes} minute${minutes === 1 ? '' : 's'}`
 			: `${Math.round(minutes / 60)} hours`;
 	const note = row.note.replace(/[.!\s]+$/, '');
+	const [last, act] =
+		style === 'texting' ? ['text', 'Text them now'] : ['message', 'Reach out now'];
 	return (
-		`(Check-in: it's ${when}, ${elapsed} since your last text, and they haven't replied. ` +
-		`You meant to: ${note}. Text them now if it still fits; if it no longer makes sense, ` +
+		`(Check-in: it's ${when}, ${elapsed} since your last ${last}, and they haven't replied. ` +
+		`You meant to: ${note}. ${act} if it still fits; if it no longer makes sense, ` +
 		`reply with only ${CHECK_IN_SKIP}.)`
 	);
 }

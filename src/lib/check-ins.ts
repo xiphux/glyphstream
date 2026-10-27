@@ -1,17 +1,19 @@
 /**
- * Texting check-ins: the assistant saying it will text later, and then doing so.
+ * Check-ins: the assistant saying it will get back to the user later, and then
+ * doing so. A conversation may only if its preset allows it (`checkIns`, on by
+ * default for a texting preset, off for a standard one).
  *
- * A texting reply that ends with `[later 1h: ask how the interview went]` sets
- * a check-in (see `server/check-ins/`). If the reply is still the end of the
+ * A reply that ends with `[later 1h: ask how the interview went]` sets a
+ * check-in (see `server/check-ins/`). If the reply is still the end of the
  * thread when the hour is up — the user hasn't answered, regenerated it or
  * moved to another branch — the app sends the model a reminder in the user's
- * place, and its reply arrives as though it had texted out of the blue. The
+ * place, and its reply arrives as though it had reached out of its own accord. The
  * reminder is a user-role row so the conversation still alternates the way
  * every chat template expects, but it is drawn as a divider, not as something
  * the user said.
  *
  * Client-safe: the marker is parsed here for both the server, which schedules
- * from it, and the bubbles, which hide it.
+ * from it, and the bubbles of either reply style, which hide it.
  */
 import type { ChatMessage } from './types/api';
 
@@ -88,6 +90,13 @@ export function checkInMarker(text: { html: string } | { text: string }): CheckI
 	}
 	const delayMs = parseDelay(delay);
 	return delayMs === null || !note ? null : { delayMs, note };
+}
+
+/** What the note under a reply shows while its check-in is pending. Absent
+ *  otherwise — one that fired, was cancelled or went stale shows nothing. */
+export interface PendingCheckInNote {
+	fireAt: number;
+	onCancel: () => void;
 }
 
 /** Whether a message is a check-in reminder (drawn as a divider). */

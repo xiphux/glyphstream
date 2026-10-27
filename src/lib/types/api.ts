@@ -452,7 +452,7 @@ export type MessagePart =
 	| {
 			type: 'text';
 			text: string;
-			/** Set on the reminder a texting check-in sends the model in the user's
+			/** Set on the reminder a check-in sends the model in the user's
 			 *  place (see `#lib/check-ins.ts`): it goes upstream like any text, but
 			 *  the thread draws it as a divider, since the user didn't write it. */
 			checkIn?: true;
@@ -581,7 +581,7 @@ export type MessagePart =
 			activatedToolNames?: string[];
 	  };
 
-/** A texting check-in waiting to fire: the reply that set it, when, and what
+/** A check-in waiting to fire: the reply that set it, when, and what
  *  for. See `#lib/check-ins.ts`. */
 export interface PendingCheckIn {
 	sourceMessageId: string;
@@ -981,6 +981,9 @@ export interface ConversationDetail extends ConversationSummary {
 	avatarMediaId: string | null;
 	/** Snapshotted from the custom model at create time; 'standard' otherwise. */
 	replyStyle: ReplyStyle;
+	/** Whether the assistant may set itself check-ins (`#lib/check-ins.ts`).
+	 *  Snapshotted from the custom model; false for a chat with no preset. */
+	checkIns: boolean;
 	activeLeafMessageId: string | null;
 	/** The active branch, root → leaf — or, for the chat page, only its newest
 	 *  window (see `hasEarlierMessages`). */
@@ -1072,6 +1075,9 @@ export interface CustomModel {
 	defaultDisabledFeatures: FeatureCategory[];
 	/** Copied onto each conversation created from the preset. */
 	replyStyle: ReplyStyle;
+	/** Whether its chats may check in on the user (`#lib/check-ins.ts`). Copied
+	 *  onto each conversation created from the preset. */
+	checkIns: boolean;
 	/** Media id of the preset's avatar, shown beside the model name above its
 	 *  replies. Null when unset. Not part of Create/Update — it moves a media
 	 *  ref_count with it, so it has its own single write path
@@ -1100,6 +1106,8 @@ export interface CreateCustomModelRequest {
 	defaultDisabledFeatures?: FeatureCategory[];
 	/** Defaults to 'standard'. */
 	replyStyle?: ReplyStyle;
+	/** Defaults to on for a texting preset, off otherwise. */
+	checkIns?: boolean;
 }
 
 export type UpdateCustomModelRequest = Partial<CreateCustomModelRequest>;

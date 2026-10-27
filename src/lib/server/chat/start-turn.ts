@@ -142,6 +142,7 @@ export async function startChatTurn(
 		supportsTools,
 		baseSystemPrompt,
 		replyStyle: meta.replyStyle,
+		checkIns: meta.checkIns,
 		branch,
 		trustedMcpTools: prefs?.trustedMcpTools ?? [],
 		timeZone: prefs?.timezone ?? null,
@@ -221,10 +222,10 @@ export async function startChatTurn(
 		onGenerationSettled: input.onGenerationSettled,
 		onComplete: input.onComplete,
 		onOutcome: input.onOutcome,
-		// A texting reply that lands on the thread replaces the conversation's
-		// check-in with whatever it sets. Not a comparison's branch, which isn't
-		// on the thread until it's picked.
-		...(meta.replyStyle === 'texting' && input.advanceActiveLeaf !== false
+		// A reply that lands on the thread replaces the conversation's check-in
+		// with whatever it sets. Not a comparison's branch, which isn't on the
+		// thread until it's picked.
+		...(meta.checkIns && input.advanceActiveLeaf !== false
 			? {
 					onFinalReply: (reply: ChatMessage) => {
 						scheduleCheckInFromReply(conversationId, userId, reply.id);

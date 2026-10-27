@@ -1,5 +1,5 @@
 /**
- * Pending texting check-ins (see `#lib/check-ins.ts`). Every read a request can
+ * Pending check-ins (see `#lib/check-ins.ts`). Every read a request can
  * reach is scoped by `user_id`; `listDueCheckIns` is the runner's cross-user
  * sweep, never a request's.
  */

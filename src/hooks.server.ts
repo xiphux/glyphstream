@@ -165,7 +165,7 @@ startConversationSummaryWorker();
 // a restart cut off, on its first tick. No-op when `[scheduled_tasks] enabled = false`.
 startScheduledTaskRunner();
 
-// Texting check-ins: fires the "I'll text you later" an assistant set for itself,
+// Check-ins: fires the "I'll get back to you" an assistant set for itself,
 // as a background-priority turn in its conversation (see server/check-ins/runner.ts).
 // No-op when `[check_ins] enabled = false`.
 startCheckInRunner();

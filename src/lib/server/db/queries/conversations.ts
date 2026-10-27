@@ -44,6 +44,8 @@ interface CreateInput {
 	parameters?: CustomModelParameters | null;
 	/** From the custom model; omit for 'standard'. */
 	replyStyle?: ReplyStyle;
+	/** From the custom model; omit for off. */
+	checkIns?: boolean;
 	title?: string | null;
 	disabledFeatures?: FeatureCategory[] | null;
 	// "Private chat" content seal (see schema.ts). Set once at create time,
@@ -73,6 +75,7 @@ export function createConversation(input: CreateInput): ConversationDetail {
 			systemPrompt: input.systemPrompt ?? null,
 			parametersJson: input.parameters ? JSON.stringify(input.parameters) : null,
 			replyStyle: input.replyStyle ?? 'standard',
+			checkIns: input.checkIns ?? false,
 			title: input.title ?? null,
 			activeLeafMessageId: null,
 			createdAt: now,
@@ -98,6 +101,7 @@ export function createConversation(input: CreateInput): ConversationDetail {
 		systemPrompt: input.systemPrompt ?? null,
 		parameters: input.parameters ?? null,
 		replyStyle: input.replyStyle ?? 'standard',
+		checkIns: input.checkIns ?? false,
 		activeLeafMessageId: null,
 		createdAt: now,
 		updatedAt: now,
@@ -335,6 +339,7 @@ export function getConversationDetail(
 			systemPrompt: conversations.systemPrompt,
 			parametersJson: conversations.parametersJson,
 			replyStyle: conversations.replyStyle,
+			checkIns: conversations.checkIns,
 			activeLeafMessageId: conversations.activeLeafMessageId,
 			createdAt: conversations.createdAt,
 			updatedAt: conversations.updatedAt,
@@ -359,6 +364,7 @@ export function getConversationDetail(
 		systemPrompt: row.systemPrompt,
 		parameters: parseModelParameters(row.parametersJson),
 		replyStyle: row.replyStyle,
+		checkIns: row.checkIns,
 		activeLeafMessageId: row.activeLeafMessageId,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
@@ -380,6 +386,7 @@ export function getConversationMeta(
 	systemPrompt: string | null;
 	parameters: CustomModelParameters | null;
 	replyStyle: ReplyStyle;
+	checkIns: boolean;
 	title: string | null;
 	activeLeafMessageId: string | null;
 	disabledFeatures: FeatureCategory[];
@@ -397,6 +404,7 @@ export function getConversationMeta(
 			systemPrompt: conversations.systemPrompt,
 			parametersJson: conversations.parametersJson,
 			replyStyle: conversations.replyStyle,
+			checkIns: conversations.checkIns,
 			title: conversations.title,
 			activeLeafMessageId: conversations.activeLeafMessageId,
 			disabledFeaturesJson: conversations.disabledFeaturesJson,
@@ -415,6 +423,7 @@ export function getConversationMeta(
 		systemPrompt: row.systemPrompt,
 		parameters: parseModelParameters(row.parametersJson),
 		replyStyle: row.replyStyle,
+		checkIns: row.checkIns,
 		title: row.title,
 		activeLeafMessageId: row.activeLeafMessageId,
 		disabledFeatures: parseDisabledFeatures(row.disabledFeaturesJson),

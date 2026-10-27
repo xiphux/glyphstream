@@ -18,7 +18,9 @@
 	import { messageToBlocks, type RenderBlock, type ToolResultEntry } from '#lib/chat-render.js';
 	import type { ChatMessage } from '#lib/types/api.js';
 	import type { ApprovalAction } from '#lib/approval-workflow.js';
-	import type { TextingCheckIn, TextingPhotos } from '#lib/texting.js';
+	import { withoutCheckInMarkers, type TextingPhotos } from '#lib/texting.js';
+	import type { PendingCheckInNote } from '#lib/check-ins.js';
+	import CheckInNote from './CheckInNote.svelte';
 
 	interface Props {
 		message: ChatMessage;
@@ -53,8 +55,8 @@
 		/** Texting only: what this row's photo markers (or delivered photo) can
 		 *  do — see TextingBubbles. */
 		textingPhotos?: TextingPhotos;
-		/** Texting only: this reply's pending check-in, if it set one. */
-		textingCheckIn?: TextingCheckIn;
+		/** This reply's pending check-in, if it set one: a note under it. */
+		checkIn?: PendingCheckInNote;
 	}
 
 	let {
@@ -75,7 +77,7 @@
 		onOpenCanvas,
 		texting = false,
 		textingPhotos,
-		textingCheckIn,
+		checkIn,
 	}: Props = $props();
 
 	const roleLabel = $derived(
@@ -102,7 +104,7 @@
 			{approvalBusy}
 			{onApprovalSelect}
 			photos={textingPhotos}
-			checkIn={textingCheckIn}
+			{checkIn}
 		/>
 		{#each bottomCanvasCards as block (block.type === 'tool_call' ? block.toolCallId : '')}
 			{#if block.type === 'tool_call'}
@@ -137,7 +139,9 @@
 			</div>
 		{/if}
 		<RenderBlocks
-			blocks={messageToBlocks(message, toolResultsByCallId)}
+			blocks={message.role === 'assistant'
+				? withoutCheckInMarkers(messageToBlocks(message, toolResultsByCallId))
+				: messageToBlocks(message, toolResultsByCallId)}
 			{onImageClick}
 			{openingLightboxFor}
 			{approvalDecisions}
@@ -153,4 +157,7 @@
 			{/if}
 		{/each}
 	</article>
+	{#if checkIn}
+		<CheckInNote {checkIn} />
+	{/if}
 {/if}

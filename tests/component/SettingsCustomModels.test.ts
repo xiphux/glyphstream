@@ -49,6 +49,7 @@ function makeCustom(overrides: Partial<CustomModel> = {}): CustomModel {
 		parameters: null,
 		defaultDisabledFeatures: overrides.defaultDisabledFeatures ?? [],
 		replyStyle: overrides.replyStyle ?? 'standard',
+		checkIns: overrides.checkIns ?? false,
 		avatarMediaId: overrides.avatarMediaId ?? null,
 		createdAt: 0,
 		updatedAt: 0,
@@ -97,6 +98,7 @@ function renderPage(customModels: CustomModel[] = []) {
 function featureRowLabels(): string[] {
 	return screen
 		.getAllByRole('checkbox')
+		.filter((el) => el.closest('label')?.textContent?.includes('on by default'))
 		.map(
 			(el) =>
 				el
@@ -306,5 +308,33 @@ describe('custom models — reply style', () => {
 	// earlier chat base mustn't be saved invisibly.
 	it('saves standard once the base is no longer a chat model', async () => {
 		expect(await savedReplyStyle('flux')).toBe('standard');
+	});
+});
+
+describe('custom models — check-ins', () => {
+	const checkbox = () => screen.getByRole('checkbox', { name: /Can check in/ });
+
+	it('follows the reply style until set by hand', async () => {
+		const user = userEvent.setup();
+		renderPage([]);
+		expect(checkbox()).not.toBeChecked();
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'texting');
+		expect(checkbox()).toBeChecked();
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'standard');
+		expect(checkbox()).not.toBeChecked();
+
+		await user.click(checkbox());
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'texting');
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'standard');
+		expect(checkbox()).toBeChecked();
+	});
+
+	it('keeps a saved preset’s choice when its style changes', async () => {
+		const user = userEvent.setup();
+		renderPage([makeCustom({ name: 'Editor', replyStyle: 'standard', checkIns: false })]);
+		await user.click(screen.getByRole('button', { name: /^Editor/ }));
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'texting');
+		// Off was the standard default, so it still follows the style.
+		expect(checkbox()).toBeChecked();
 	});
 });

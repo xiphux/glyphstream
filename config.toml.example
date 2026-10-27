@@ -95,10 +95,11 @@
 # min_interval_hours = 1
 
 # ── Optional: [check_ins] ────────────────────────────────────────────
-# Texting check-ins: a texting model that says it'll text later sets a timer, and
-# follows up then if the user hasn't replied. On by default.
-#   enabled — false stops the runner and leaves the instruction out of texting
-#             chats' system prompt.
+# Check-ins: a custom model that says it'll get back to the user later sets a
+# timer, and follows up then if they haven't replied. Each preset opts in (texting
+# presets by default); this is the server-wide switch. On by default.
+#   enabled — false stops the runner and leaves the instruction out of every
+#             chat's system prompt, whatever its preset says.
 # See docs/models.md#check-ins.
 # [check_ins]
 # enabled = false

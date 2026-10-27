@@ -9,6 +9,7 @@
 -->
 <script lang="ts">
 	import RenderBlocks from './RenderBlocks.svelte';
+	import { withoutCheckInMarkers } from '#lib/texting.js';
 	import CanvasCard from './CanvasCard.svelte';
 	import AssistantAvatar from './AssistantAvatar.svelte';
 	import TextingBubbles from './TextingBubbles.svelte';
@@ -172,7 +173,7 @@
 		{/if}
 		{@render mcpNotice()}
 		<RenderBlocks
-			{blocks}
+			blocks={withoutCheckInMarkers(blocks)}
 			{onImageClick}
 			{openingLightboxFor}
 			{approvalDecisions}

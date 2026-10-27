@@ -196,7 +196,7 @@ describe('texting check-ins', () => {
 			props: {
 				...bubbleProps,
 				message: reply(MARKED),
-				textingCheckIn: { fireAt: Date.now() + 3_600_000, onCancel },
+				checkIn: { fireAt: Date.now() + 3_600_000, onCancel },
 			},
 		});
 		expect(screen.getByText(/Will check in around/)).toBeInTheDocument();
@@ -204,5 +204,18 @@ describe('texting check-ins', () => {
 		expect(screen.queryByText(/ask about work/)).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 		expect(onCancel).toHaveBeenCalledOnce();
+	});
+	it('works the same way under a standard reply', () => {
+		render(MessageBubble, {
+			props: {
+				...bubbleProps,
+				texting: false,
+				message: reply(MARKED),
+				checkIn: { fireAt: Date.now() + 3_600_000, onCancel: vi.fn() },
+			},
+		});
+		expect(screen.getByText('gtg')).toBeInTheDocument();
+		expect(screen.queryByText(/later 1h/)).toBeNull();
+		expect(screen.getByText(/Will check in around/)).toBeInTheDocument();
 	});
 });

@@ -207,12 +207,11 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 						conversation.messages,
 					),
 				)?.promptMessageId ?? null);
-	// A texting check-in waiting to fire, for the note under the reply that set
+	// A check-in waiting to fire, for the note under the reply that set
 	// it and the page's wake-up when it's due.
-	const checkIn =
-		conversation.replyStyle === 'texting'
-			? timeDb(locals, () => getCheckIn(conversation.id, locals.user.id))
-			: null;
+	const checkIn = conversation.checkIns
+		? timeDb(locals, () => getCheckIn(conversation.id, locals.user.id))
+		: null;
 	return {
 		scheduledRunPromptId,
 		checkIn,

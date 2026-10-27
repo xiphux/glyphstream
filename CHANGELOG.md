@@ -11,7 +11,7 @@ arrived.
 
 ### Added
 
-- In a texting chat the model can text you first: when it says it'll text you later, it sets a check-in, and if you haven't replied by then it follows up, with a notification.
+- Custom models can check in on you: when one says it'll get back to you later, it sets a reminder, and if you haven't replied by then it reaches out, with a notification. On by default for texting presets; a per-preset setting for the rest.
 
 ## v0.50.0
 

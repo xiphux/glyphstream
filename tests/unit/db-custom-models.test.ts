@@ -296,6 +296,41 @@ describe('custom-models CRUD', () => {
 		expect(updateCustomModel(cm.id, u.id, { replyStyle: 'standard' })?.replyStyle).toBe('standard');
 	});
 
+	it('checkIns defaults off, persists, and patches', () => {
+		const u = seedUser();
+		const base = {
+			userId: u.id,
+			description: null,
+			baseEndpointId: 'bridge',
+			baseModelId: 'x',
+			systemPrompt: null,
+			parameters: null,
+		};
+		expect(createCustomModel({ ...base, name: 'A' }).checkIns).toBe(false);
+		const cm = createCustomModel({ ...base, name: 'B', checkIns: true });
+		expect(getCustomModelForUser(cm.id, u.id)?.checkIns).toBe(true);
+		expect(updateCustomModel(cm.id, u.id, { checkIns: false })?.checkIns).toBe(false);
+	});
+
+	it('a conversation keeps the checkIns it was created with', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat',
+			checkIns: true,
+		});
+		expect(getConversationDetail(conv.id, u.id)?.checkIns).toBe(true);
+		const plain = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat',
+		});
+		expect(getConversationDetail(plain.id, u.id)?.checkIns).toBe(false);
+	});
+
 	it('a conversation keeps the replyStyle it was created with', () => {
 		const u = seedUser();
 		const conv = createConversation({

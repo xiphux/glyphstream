@@ -65,13 +65,6 @@ export interface TextingPhotos {
 	developing?: number | null;
 }
 
-/** The note a `[later …]` marker shows while its check-in is pending. Absent
- *  otherwise — one that fired, was cancelled or went stale shows nothing. */
-export interface TextingCheckIn {
-	fireAt: number;
-	onCancel: () => void;
-}
-
 /** The void elements markdown-it and shiki emit: these never get a close tag. */
 const VOID = /^(?:br|hr|img)$/i;
 
@@ -243,6 +236,38 @@ export function textingItems(blocks: RenderBlock[], defaultName: string): Textin
 		}
 	}
 	return items;
+}
+
+/**
+ * A reply's blocks without its `[later …]` texts — for the standard reply
+ * style, whose bubble would otherwise show the marker as a paragraph. (The
+ * texting bubbles split into texts anyway, and drop them there.)
+ */
+export function withoutCheckInMarkers(blocks: RenderBlock[]): RenderBlock[] {
+	if (!blocks.some(mayHoldMarker)) return blocks;
+	return blocks.flatMap((block): RenderBlock[] => {
+		if (!mayHoldMarker(block)) return [block];
+		if (block.type === 'html') {
+			const kept = splitTopLevelHtml(block.html).filter(
+				(chunk) => !checkInMarker(extractSpeaker(chunk)),
+			);
+			return kept.length ? [{ ...block, html: kept.join('\n') }] : [];
+		}
+		if (block.type === 'plain-text') {
+			const kept = block.text
+				.split(/\n\s*\n/)
+				.filter((para) => !checkInMarker(extractPlainSpeaker(para.trim())));
+			return kept.join('').trim() ? [{ ...block, text: kept.join('\n\n') }] : [];
+		}
+		return [block];
+	});
+}
+
+function mayHoldMarker(block: RenderBlock): boolean {
+	return (
+		(block.type === 'html' && /\[later\s/i.test(block.html)) ||
+		(block.type === 'plain-text' && /\[later\s/i.test(block.text))
+	);
 }
 
 /** One of a fixed set of hues for a speaker, stable for a given name, so the

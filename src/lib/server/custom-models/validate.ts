@@ -28,6 +28,7 @@ export interface ValidatedCreate {
 	parameters: CustomModelParameters | null;
 	defaultDisabledFeatures: FeatureCategory[];
 	replyStyle: ReplyStyle;
+	checkIns: boolean;
 }
 
 export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCreate {
@@ -64,6 +65,10 @@ export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCr
 	const defaultDisabledFeatures = validateDefaultDisabledFeatures(body.defaultDisabledFeatures);
 	const replyStyle =
 		body.replyStyle === undefined ? 'standard' : validateReplyStyle(body.replyStyle);
+	// Unset follows the style: a texting partner checks in, a standard preset —
+	// more often a tool than a character — doesn't unless asked to.
+	const checkIns =
+		body.checkIns === undefined ? replyStyle === 'texting' : validateCheckIns(body.checkIns);
 
 	return {
 		name,
@@ -74,7 +79,13 @@ export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCr
 		parameters,
 		defaultDisabledFeatures,
 		replyStyle,
+		checkIns,
 	};
+}
+
+export function validateCheckIns(raw: unknown): boolean {
+	if (typeof raw !== 'boolean') error(400, "'checkIns' must be a boolean");
+	return raw;
 }
 
 export function validateReplyStyle(raw: unknown): ReplyStyle {

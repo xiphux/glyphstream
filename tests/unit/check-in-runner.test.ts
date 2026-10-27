@@ -126,7 +126,8 @@ const T0 = Date.UTC(2026, 9, 27, 15, 0);
 
 function thread(
 	replyText = 'gtg, work\n\n[later 1h: ask how the meeting went]',
-	style = 'texting',
+	style: 'texting' | 'standard' = 'texting',
+	checkIns = true,
 ) {
 	const u = seedUser();
 	const conv = createConversation({
@@ -134,7 +135,8 @@ function thread(
 		endpointId: 'mock',
 		modelId: 'mock::m',
 		modelKind: 'chat',
-		replyStyle: style as 'texting',
+		replyStyle: style,
+		checkIns,
 	});
 	const user = appendMessage({
 		conversationId: conv.id,
@@ -267,11 +269,23 @@ describe('firing', () => {
 		expect(mocks.upstreamBodies).toHaveLength(0);
 	});
 
-	it('is dropped in a conversation that no longer texts', async () => {
-		const t = thread(undefined, 'standard');
+	it("is dropped in a conversation that can't check in", async () => {
+		const t = thread(undefined, 'texting', false);
 		scheduled(t);
 		expect(await runCheckInSweep(T0 + HOUR)).toBe(0);
 		expect(getCheckIn(t.conversationId, t.userId)).toBeNull();
+	});
+
+	it('reaches out in a standard conversation too, worded for one', async () => {
+		const t = thread('Good luck!\n\n[later 1h: ask how the meeting went]', 'standard');
+		scheduled(t);
+		mocks.upstream.push(reply('How did the meeting go?'));
+		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
+		await idle(t.conversationId);
+		const branch = walkActiveBranch(t.conversationId);
+		expect(roles(branch)).toEqual(['user', 'assistant', 'check-in', 'assistant']);
+		expect(text(branch[2])).toContain('since your last message');
+		expect(text(branch[2])).toContain('Reach out now');
 	});
 
 	it('fires under a photo the reply sent', async () => {

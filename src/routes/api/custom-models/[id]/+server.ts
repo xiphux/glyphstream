@@ -14,6 +14,7 @@ import {
 import {
 	validateDefaultDisabledFeatures,
 	validateParameters,
+	validateCheckIns,
 	validateReplyStyle,
 } from '#lib/server/custom-models/validate.js';
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
@@ -85,6 +86,9 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	}
 	if (body.replyStyle !== undefined) {
 		patch.replyStyle = validateReplyStyle(body.replyStyle);
+	}
+	if (body.checkIns !== undefined) {
+		patch.checkIns = validateCheckIns(body.checkIns);
 	}
 
 	const updated = updateCustomModel(params.id, locals.user.id, patch);

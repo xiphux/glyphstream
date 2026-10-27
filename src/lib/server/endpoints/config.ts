@@ -1270,9 +1270,9 @@ export function loadScheduledTasksConfig(path = configPath()): LoadedScheduledTa
 export const getScheduledTasksConfig = memoizeConfig(() => loadScheduledTasksConfig());
 
 /**
- * `[check_ins]` — texting check-ins (`#lib/check-ins.ts`). The table may be
+ * `[check_ins]` — check-ins (`#lib/check-ins.ts`). The table may be
  * absent; `enabled` (default true) set to false stops the runner and drops the
- * marker instruction from texting chats' system prompt.
+ * marker instruction from the system prompt, whatever presets allow.
  */
 export interface LoadedCheckInsConfig {
 	enabled: boolean;

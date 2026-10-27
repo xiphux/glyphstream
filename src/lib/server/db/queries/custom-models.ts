@@ -23,6 +23,8 @@ interface CreateInput {
 	defaultDisabledFeatures?: FeatureCategory[];
 	/** Omit for 'standard'. */
 	replyStyle?: ReplyStyle;
+	/** Omit for off. */
+	checkIns?: boolean;
 }
 
 interface UpdateInput {
@@ -34,6 +36,7 @@ interface UpdateInput {
 	parameters?: CustomModelParameters | null;
 	defaultDisabledFeatures?: FeatureCategory[];
 	replyStyle?: ReplyStyle;
+	checkIns?: boolean;
 }
 
 function rowToCustomModel(row: typeof customModels.$inferSelect): CustomModel {
@@ -47,6 +50,7 @@ function rowToCustomModel(row: typeof customModels.$inferSelect): CustomModel {
 		parameters: parseModelParameters(row.parametersJson),
 		defaultDisabledFeatures: parseDisabledFeatures(row.defaultDisabledFeaturesJson),
 		replyStyle: row.replyStyle,
+		checkIns: row.checkIns,
 		avatarMediaId: row.avatarMediaId,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
@@ -86,6 +90,7 @@ export function createCustomModel(input: CreateInput): CustomModel {
 	const now = Date.now();
 	const defaultDisabledFeatures = input.defaultDisabledFeatures ?? [];
 	const replyStyle = input.replyStyle ?? 'standard';
+	const checkIns = input.checkIns ?? false;
 	db.insert(customModels)
 		.values({
 			id,
@@ -98,6 +103,7 @@ export function createCustomModel(input: CreateInput): CustomModel {
 			parametersJson: input.parameters ? JSON.stringify(input.parameters) : null,
 			defaultDisabledFeaturesJson: encodeDisabledFeatures(defaultDisabledFeatures),
 			replyStyle,
+			checkIns,
 			createdAt: now,
 			updatedAt: now,
 		})
@@ -112,6 +118,7 @@ export function createCustomModel(input: CreateInput): CustomModel {
 		parameters: input.parameters,
 		defaultDisabledFeatures,
 		replyStyle,
+		checkIns,
 		// Avatars are never set at create time — the editor uploads or picks one
 		// against an existing preset, so the single ref-counted write path
 		// (`setCustomModelAvatar`) is the only thing that ever populates this.
@@ -154,6 +161,7 @@ export function updateCustomModel(
 			patch.defaultDisabledFeaturesJson = encodeDisabledFeatures(input.defaultDisabledFeatures);
 		}
 		if (input.replyStyle !== undefined) patch.replyStyle = input.replyStyle;
+		if (input.checkIns !== undefined) patch.checkIns = input.checkIns;
 
 		tx.update(customModels).set(patch).where(eq(customModels.id, id)).run();
 		const refreshed = tx.select().from(customModels).where(eq(customModels.id, id)).get();

@@ -110,6 +110,7 @@ beforeEach(() => {
 		modelKind: 'chat',
 		// So the reply style's instructions are among the pieces priced.
 		replyStyle: 'texting',
+		checkIns: true,
 	}).id;
 	const q = appendMessage({
 		conversationId,
@@ -194,7 +195,9 @@ describe('the context readout prices what the send path sends', () => {
 			priced.reactionsHint,
 		].filter((p): p is string => !!p);
 		expect(pieces.length).toBeGreaterThan(2);
-		expect(priced.replyStyleInstructions).toBe(`${TEXTING_INSTRUCTIONS} ${CHECK_IN_INSTRUCTIONS}`);
+		expect(priced.replyStyleInstructions).toBe(
+			`${TEXTING_INSTRUCTIONS} ${CHECK_IN_INSTRUCTIONS.texting}`,
+		);
 		for (const piece of pieces) expect(system.content).toContain(piece);
 		// Joined by blank lines and nothing more: the priced pieces are the whole
 		// prompt, so the readout can't be missing a block the sender added.

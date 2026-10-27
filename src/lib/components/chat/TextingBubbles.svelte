@@ -24,20 +24,17 @@
 	one split the same way.
 -->
 <script lang="ts">
-	import { Camera, Clock, RefreshCw } from '@lucide/svelte';
+	import { Camera, RefreshCw } from '@lucide/svelte';
 	import RenderBlocks from './RenderBlocks.svelte';
+	import CheckInNote from './CheckInNote.svelte';
 	import AssistantAvatar from './AssistantAvatar.svelte';
 	import type { Snippet } from 'svelte';
 	import { splitCanvasCards, type RenderBlock } from '#lib/chat-render.js';
 	import type { ApprovalAction } from '#lib/approval-workflow.js';
 	import { cssAspectRatio } from '#lib/aspect-ratio.js';
 	import { codeCopyClicks, withCodeCopyButtons } from '#lib/code-copy.js';
-	import {
-		speakerHue,
-		textingItems,
-		type TextingCheckIn,
-		type TextingPhotos,
-	} from '#lib/texting.js';
+	import { speakerHue, textingItems, type TextingPhotos } from '#lib/texting.js';
+	import type { PendingCheckInNote } from '#lib/check-ins.js';
 
 	interface Props {
 		blocks: RenderBlock[];
@@ -54,7 +51,7 @@
 		 *  yet (a live reply before its first token). */
 		pending?: Snippet;
 		photos?: TextingPhotos;
-		checkIn?: TextingCheckIn;
+		checkIn?: PendingCheckInNote;
 	}
 
 	let {
@@ -71,14 +68,6 @@
 		photos,
 		checkIn,
 	}: Props = $props();
-
-	const timeFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
-	const dayFormat = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
-	/** "3:40 PM", or "Tue 3:40 PM" when it isn't today. */
-	function fireTime(at: number): string {
-		const sameDay = new Date(at).toDateString() === new Date().toDateString();
-		return sameDay ? timeFormat.format(at) : `${dayFormat.format(at)} ${timeFormat.format(at)}`;
-	}
 
 	// Each item paired with whether it opens a new sender's run. `undefined`
 	// as the starting sender makes the first text always differ from it.
@@ -135,19 +124,7 @@
 	{#each rows as { item, header }, i (i)}
 		{#if item.kind === 'later'}
 			{#if checkIn}
-				{@const pending = checkIn}
-				<div class="flex items-center gap-1.5 px-1 pt-0.5 text-xs text-fg-muted">
-					<Clock class="size-3.5 shrink-0" aria-hidden="true" />
-					<span>Will check in around {fireTime(pending.fireAt)}</span>
-					<span aria-hidden="true">·</span>
-					<button
-						type="button"
-						onclick={() => pending.onCancel()}
-						class="underline-offset-2 transition hover:text-fg-secondary hover:underline"
-					>
-						Cancel
-					</button>
-				</div>
+				<CheckInNote {checkIn} />
 			{/if}
 		{:else if item.kind === 'blocks'}
 			<div class="w-full min-w-0 rounded-2xl bg-surface-raised px-4 pt-2 pb-3">

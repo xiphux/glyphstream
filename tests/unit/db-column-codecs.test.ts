@@ -41,9 +41,12 @@ import { getMcpCredential, setMcpCredential } from '#lib/server/db/queries/mcp-c
 import { findCredentialById, insertCredential } from '#lib/server/db/queries/passkey.js';
 import { decodeVector, encodeVector } from '#lib/server/retrieval/vector.js';
 import { createScheduledTask, getScheduledTask } from '#lib/server/db/queries/scheduled-tasks.js';
+import { createCustomModel, getCustomModelForUser } from '#lib/server/db/queries/custom-models.js';
 
 const COVERED = [
+	'conversations.check_ins',
 	'conversations.private',
+	'custom_models.check_ins',
 	'mcp_credentials.secret_ciphertext',
 	'media.embedding',
 	'memories.embedding',
@@ -175,6 +178,39 @@ describe('conversations.private', () => {
 			v: isPrivate ? 1 : 0,
 		});
 		expect(getConversationMeta(id, userId)!.private).toBe(isPrivate);
+	});
+});
+
+describe('check_ins', () => {
+	it.each([true, false])('check_ins=%s is stored as 0/1 and read back as a boolean', (on) => {
+		const { id } = createConversation({
+			userId,
+			endpointId: 'e',
+			modelId: 'm',
+			modelKind: null,
+			checkIns: on,
+		});
+		expect(raw('conversations', 'check_ins', `id = '${id}'`)).toEqual({
+			t: 'integer',
+			v: on ? 1 : 0,
+		});
+		expect(getConversationMeta(id, userId)!.checkIns).toBe(on);
+
+		const cm = createCustomModel({
+			userId,
+			name: `preset-${on}`,
+			description: null,
+			baseEndpointId: 'e',
+			baseModelId: 'm',
+			systemPrompt: null,
+			parameters: null,
+			checkIns: on,
+		});
+		expect(raw('custom_models', 'check_ins', `id = '${cm.id}'`)).toEqual({
+			t: 'integer',
+			v: on ? 1 : 0,
+		});
+		expect(getCustomModelForUser(cm.id, userId)!.checkIns).toBe(on);
 	});
 });
 

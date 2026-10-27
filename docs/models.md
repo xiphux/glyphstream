@@ -75,19 +75,21 @@ stay as descriptions. A photo is shown but never sent back to the model, which
 already has its description. To make a character send more or fewer photos, say
 so in the preset's prompt ("loves sending selfies").
 
-#### Check-ins
+### Check-ins
 
-A texting partner can also text you first. When the model says it'll text you
-later, it ends its reply with `[later 2h: …]`: how long to wait (up to a day),
-and a note to itself about what it meant to say. That line isn't shown as a
-text. Instead, a note under the reply says when it will check in, with a
-**Cancel** link.
+A custom model can get back to you on its own. Turn on **Can check in** in the
+preset (it's on by default for a texting preset and off for a standard one,
+which is more often a tool than a character). Then, when the model says it'll
+get back to you later, it ends its reply with `[later 2h: …]`: how long to wait
+(up to a day), and a note to itself about what it meant to say. That line isn't
+shown. Instead, a note under the reply says when it will check in, with a
+**Cancel** link. Chats without a preset never check in.
 
 If the reply is still the latest thing in the thread when the time comes,
 Glyphstream sends the model a reminder in your place. The reminder says what
 time it is, how long it's been, and what the model meant to do. The model then
-texts you, and you get a notification as if it had texted out of the blue. The
-reminder shows in the thread as a "checked in" divider, not as a message from
+writes to you, and you get a notification as if it had reached out on its own.
+The reminder shows in the thread as a "checked in" divider, not as a message from
 you. If the moment has passed, the model can decline, and the check-in leaves no
 trace.
 
@@ -97,7 +99,12 @@ conversation, and is dropped if that makes it more than half an hour late (or a
 quarter of its delay, for a long one) — after a restart, say. A model can follow
 up on its own check-in once; after two in a row with no answer from you, it
 stops until you reply. Each conversation has at most one pending check-in.
-Operators can turn the feature off with `[check_ins] enabled = false`.
+
+Like the rest of a preset, the setting is copied into each chat when it starts,
+so changing it later doesn't affect chats already under way. For something on a
+timetable — a morning summary, say — use a
+[scheduled task](scheduled-tasks.md) instead. Operators can turn check-ins off
+entirely with `[check_ins] enabled = false`.
 
 ## Sharing hardware
 

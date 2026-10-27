@@ -68,6 +68,9 @@ export interface ChatToolContextInput {
 	/** The conversation's reply style; a non-standard one adds its formatting
 	 *  instructions right after `baseSystemPrompt`. Omitted = 'standard'. */
 	replyStyle?: ReplyStyle;
+	/** Whether the conversation may check in — adds the check-in marker's
+	 *  instruction alongside the style's. Omitted = off. */
+	checkIns?: boolean;
 	/**
 	 * The active branch AFTER any synthetic skill-activation exchange, used to
 	 * seed cross-turn deferred-tool activations.
@@ -140,7 +143,10 @@ export async function buildChatToolContext(input: ChatToolContextInput): Promise
 	const environmentBlock = composeEnvironmentBlock(new Date(), input.timeZone);
 	// The reply style's instructions sit right after the prompt they shape the
 	// output of. Fixed per conversation, so they never move the prefix.
-	const styleInstructions = replyStyleInstructions(input.replyStyle ?? 'standard');
+	const styleInstructions = replyStyleInstructions(
+		input.replyStyle ?? 'standard',
+		input.checkIns ?? false,
+	);
 	let systemPrompt: string | null = [environmentBlock, baseSystemPrompt, styleInstructions]
 		.filter(Boolean)
 		.join('\n\n');

@@ -4,7 +4,7 @@ import { getConversationMeta } from '#lib/server/db/queries/conversations.js';
 import type { RequestHandler } from './$types';
 
 /**
- * Cancel the conversation's pending texting check-in. Idempotent — one that
+ * Cancel the conversation's pending check-in. Idempotent — one that
  * already fired (or was never set) is gone either way, so it succeeds quietly.
  */
 export const DELETE: RequestHandler = ({ locals, params }) => {

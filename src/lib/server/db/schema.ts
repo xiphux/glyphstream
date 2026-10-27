@@ -322,6 +322,10 @@ export const conversations = sqliteTable(
 		replyStyle: text('reply_style', { enum: ['standard', 'texting'] })
 			.notNull()
 			.default('standard'),
+		// Whether the assistant may set itself a check-in (`#lib/check-ins.ts`),
+		// snapshotted from the custom model at create time; always off for a chat
+		// with no preset. Gates the instruction in the system prompt and the runner.
+		checkIns: integer('check_ins', { mode: 'boolean' }).notNull().default(false),
 		// Forward FK to messages.id; nullable until first message exists.
 		// SQLite resolves the cyclic FK fine because both sides are nullable
 		// at the right moments (active_leaf is null at conversation creation;
@@ -558,6 +562,10 @@ export const customModels = sqliteTable(
 		replyStyle: text('reply_style', { enum: ['standard', 'texting'] })
 			.notNull()
 			.default('standard'),
+		// Copied onto each conversation created from this preset (see
+		// `conversations.check_ins`). Off unless set; the editor defaults it on
+		// for a texting preset.
+		checkIns: integer('check_ins', { mode: 'boolean' }).notNull().default(false),
 		// The preset's avatar — a media row shown beside the model name above
 		// each of its replies, so a preset roleplaying a character reads as a
 		// someone rather than a name. NULL = no avatar (the label renders alone,
@@ -1392,7 +1400,7 @@ export const scheduledRuns = sqliteTable(
 );
 
 /**
- * A texting check-in the assistant has set for itself: `[later 1h: …]` at the
+ * A check-in the assistant has set for itself: `[later 1h: …]` at the
  * end of a reply (see `#lib/check-ins.ts`). Pending only — a row is deleted the
  * moment it fires, is cancelled, or turns out to be stale, since what happened
  * is recorded in the conversation itself (the check-in message) or, for one

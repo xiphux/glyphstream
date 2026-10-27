@@ -129,6 +129,18 @@ describe('validateCreateInput', () => {
 		);
 	});
 
+	it('defaults checkIns with the style, and refuses a non-boolean', () => {
+		expect(validateCreateInput(valid).checkIns).toBe(false);
+		expect(validateCreateInput({ ...valid, replyStyle: 'texting' }).checkIns).toBe(true);
+		expect(validateCreateInput({ ...valid, replyStyle: 'texting', checkIns: false }).checkIns).toBe(
+			false,
+		);
+		expect(validateCreateInput({ ...valid, checkIns: true }).checkIns).toBe(true);
+		expect(() => validateCreateInput({ ...valid, checkIns: 'yes' } as never)).toThrow(
+			expect.objectContaining({ status: 400 }),
+		);
+	});
+
 	it('rejects empty name', () => {
 		expect(() => validateCreateInput({ ...valid, name: '   ' })).toThrow();
 	});

@@ -85,6 +85,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 		supportsTools,
 		baseSystemPrompt,
 		replyStyle: meta.replyStyle,
+		checkIns: meta.checkIns,
 		branch,
 		trustedMcpTools: prefs?.trustedMcpTools ?? [],
 		timeZone: prefs?.timezone ?? null,

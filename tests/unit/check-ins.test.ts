@@ -8,7 +8,7 @@ import {
 	parseDelay,
 } from '#lib/check-ins.js';
 import { checkInSetBy, replyCheckIn } from '#lib/texting-check-ins.js';
-import { textingItems } from '#lib/texting.js';
+import { textingItems, withoutCheckInMarkers } from '#lib/texting.js';
 import type { ChatMessage, MessagePart } from '#lib/types/api.js';
 
 const MIN = 60_000;
@@ -148,5 +148,21 @@ describe('textingItems', () => {
 			{ kind: 'later', delayMs: HOUR, note: 'ask' },
 			{ kind: 'photo', speaker: null, description: 'a cat', index: 0 },
 		]);
+	});
+});
+
+describe('withoutCheckInMarkers', () => {
+	it('drops the marker from a standard reply, rendered or live', () => {
+		expect(
+			withoutCheckInMarkers([{ type: 'html', html: '<p>Good luck!</p>\n<p>[later 1h: ask]</p>' }]),
+		).toEqual([{ type: 'html', html: '<p>Good luck!</p>' }]);
+		expect(
+			withoutCheckInMarkers([{ type: 'plain-text', text: 'Good luck!\n\n[later 1h: ask]' }]),
+		).toEqual([{ type: 'plain-text', text: 'Good luck!' }]);
+	});
+
+	it('leaves a reply without one untouched', () => {
+		const blocks = [{ type: 'html' as const, html: '<p>see you [later], maybe</p>' }];
+		expect(withoutCheckInMarkers(blocks)).toEqual(blocks);
 	});
 });
