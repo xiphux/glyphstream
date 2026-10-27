@@ -27,7 +27,7 @@ import {
 	type MediaRelaySink,
 } from './media-relay';
 import { errorMessage, isAbortError, CANCELLED_MESSAGE } from './sse-transport';
-import type { StreamErrorEvent, StreamProgressEvent } from '#lib/types/api.js';
+import type { PhotoOrigin, StreamErrorEvent, StreamProgressEvent } from '#lib/types/api.js';
 import { createLogger } from '../log';
 
 const log = createLogger('image-relay');
@@ -74,6 +74,9 @@ export interface ImageRelayParams extends MediaRelayParams {
 	 * See the `displayOnly` note on the image MessagePart.
 	 */
 	displayOnly?: boolean;
+	/** The texting photo marker this draws, stamped on the image part so the
+	 *  reply knows the photo arrived — see `PhotoOrigin`. */
+	photo?: PhotoOrigin;
 }
 
 export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8Array> {
@@ -184,6 +187,7 @@ function buildImageRelay(params: ImageRelayParams): [MediaRelayScaffoldParams, M
 					type: 'image',
 					mediaId,
 					...(params.displayOnly ? { displayOnly: true } : {}),
+					...(params.photo ? { photo: params.photo } : {}),
 					...(result.aspect_ratio && parseRatio(result.aspect_ratio) !== null
 						? { aspectRatio: result.aspect_ratio }
 						: {}),

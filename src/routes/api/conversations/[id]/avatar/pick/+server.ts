@@ -17,6 +17,9 @@
  * The single-model draw never comes through here — it applies server-side from
  * the relay (see ../generate), precisely so it survives a client that doesn't.
  * A comparison can't: there is no winner until someone says so.
+ *
+ * A texting photo's comparison is picked here as well (see ../generate): the
+ * same branch move, without the avatar.
  */
 
 import { error } from '@sveltejs/kit';
@@ -69,6 +72,17 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// ../generate already make about their own anchors, made at the third door.
 	if (getFanoutParent(params.id, locals.user.id) !== message.parentMessageId) {
 		error(409, 'That comparison is no longer open.');
+	}
+
+	// A texting photo's comparison resolves here too, and picking a photo only
+	// chooses which one was sent: it never touches the face. Told apart by the
+	// image part, which is what every candidate the generate route drew carries.
+	if (image.photo) {
+		const picked = selectBranch(params.id, body.messageId);
+		if (!picked) error(404, 'Message not found');
+		// A comparison of image models like any media fan-out, not an avatar choice.
+		recordComparisonPick(params.id, message, 'fanout');
+		return Response.json({ ok: true, newActiveLeaf: picked.newActiveLeaf });
 	}
 
 	// Avatar before branch. Both orders leave the same state on success; this one

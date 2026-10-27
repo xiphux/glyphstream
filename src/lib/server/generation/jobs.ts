@@ -79,7 +79,7 @@ import {
 	type PreparedPrompt,
 } from '../streaming/media-relay';
 import { errorMessage, sseWriter, CANCELLED_MESSAGE } from '../streaming/sse-transport';
-import type { StreamErrorEvent } from '#lib/types/api.js';
+import type { PhotoOrigin, StreamErrorEvent } from '#lib/types/api.js';
 import { createLogger } from '../log';
 import { appendErrorSibling } from '../streaming/error-sibling';
 import { recordModelEvent } from '../stats/model-stats';
@@ -98,7 +98,12 @@ const avatarLog = createLogger('avatar');
  *  - `avatar`: a background portrait draw. Advances the leaf only if the user
  *    hasn't moved on, and applies the portrait as the conversation's avatar.
  *  - `avatar_fanout`: one portrait of an avatar comparison — a pinned sibling
- *    like `fanout`; the pick applies the winner, not the relay.
+ *    like `fanout`; the pick applies the winner, not the relay. A texting
+ *    photo's comparison uses it too: its candidates are the same kind of thing,
+ *    and the pick tells them apart by the `photo` on their image part.
+ *  - `photo`: a background draw of a texting photo — an `avatar` draw in every
+ *    respect except that nothing is applied: the photo itself, arriving in the
+ *    thread, is the whole result.
  */
 export type JobOrigin = GenerationJobRow['origin'];
 
@@ -123,6 +128,16 @@ export interface GenerationJobParams {
 	promptHint: string | null;
 	/** Persist as display-only (avatar portraits) — see the image relay. */
 	displayOnly?: boolean;
+	/** The texting photo this draws — carried onto the image part. */
+	photo?: PhotoOrigin;
+	/**
+	 * The leaf a background draw advances from, when it isn't the anchor: a
+	 * photo re-developed (or retried after a failure) is a SIBLING of the one on
+	 * screen, so the leaf sits on that one, not on their shared parent. Without
+	 * it the compare-and-swap would find the branch "moved on" and leave the new
+	 * photo hidden behind the old one's arrows.
+	 */
+	expectLeafMessageId?: string;
 	/** The client's dispatched grid size, for the aggregate notification. */
 	fanoutSize?: number;
 }
@@ -333,13 +348,13 @@ function register(row: GenerationJobRow, endpoint: LoadedEndpoint): InFlightEntr
 		// A single send takes the conversation's default slot and an avatar draw
 		// its own — both supersede their predecessor, as they always have. Grid
 		// branches coexist, so each is keyed by its job.
-		row.origin === 'send' ? DEFAULT_BRANCH : row.origin === 'avatar' ? AVATAR_BRANCH : row.id,
+		row.origin === 'send' ? DEFAULT_BRANCH : isBackgroundDraw(row.origin) ? AVATAR_BRANCH : row.id,
 		row.kind,
 		row.modelId,
 		parseParams(row).sourceMediaId,
 		// A background portrait isn't part of the conversation's turn: recovery,
 		// the grid and the aggregate notification must not count it.
-		row.origin !== 'avatar',
+		!isBackgroundDraw(row.origin),
 	);
 	// A reattached video is rendering on the bridge from the moment it's back in
 	// flight — not only once it regains its slot, which is when the relay would
@@ -367,6 +382,27 @@ function isReattachable(row: GenerationJobRow): boolean {
 function endpointFor(row: GenerationJobRow): LoadedEndpoint | undefined {
 	const parsed = parseModelId(row.modelId);
 	return parsed ? getEndpoint(parsed.endpointId) : undefined;
+}
+
+/**
+ * A draw the user backgrounds rather than waits on — an avatar portrait or a
+ * texting photo. One per conversation, in the avatar slot (so starting one
+ * supersedes the last, and neither is ever killed by a chat send), and not a
+ * turn: recovery, the grid and the aggregate notification must not count it.
+ */
+function isBackgroundDraw(origin: JobOrigin): boolean {
+	return origin === 'avatar' || origin === 'photo';
+}
+
+/** The compare-and-swap guard for a background draw's leaf advance: it takes
+ *  the leaf only if the user hasn't moved on. Undefined (advance
+ *  unconditionally) for everything else. */
+function backgroundDrawLeaf(
+	row: GenerationJobRow,
+	params: GenerationJobParams,
+): string | undefined {
+	if (!isBackgroundDraw(row.origin)) return undefined;
+	return params.expectLeafMessageId ?? row.anchorMessageId;
 }
 
 function parseParams(row: GenerationJobRow): GenerationJobParams {
@@ -443,7 +479,7 @@ async function runJob(
 			fanoutIndex: row.fanoutIndex,
 			// An avatar draw anchors on a reply that already existed and can take
 			// minutes, so it only advances the leaf if the user hasn't moved on.
-			advanceActiveLeafIfCurrent: row.origin === 'avatar' ? row.anchorMessageId : undefined,
+			advanceActiveLeafIfCurrent: backgroundDrawLeaf(row, params),
 			// A grid runs the title task once, from /prepare; an avatar draw is a
 			// side errand in a conversation that already has a title.
 			suppressTitleTask: row.origin !== 'send',
@@ -498,6 +534,7 @@ async function runJob(
 					enhancementEnabled: params.enhancementEnabled,
 					aspectRatio: params.aspectRatio,
 					displayOnly: params.displayOnly,
+					photo: params.photo,
 				},
 				sink,
 			);
@@ -646,7 +683,7 @@ function persistFailure(
 			sourceMediaId: params.sourceMediaId,
 			modelUsed: row.modelId,
 			advanceActiveLeaf: !isFanoutOrigin(row.origin),
-			advanceActiveLeafIfCurrent: row.origin === 'avatar' ? row.anchorMessageId : undefined,
+			advanceActiveLeafIfCurrent: backgroundDrawLeaf(row, params),
 			fanoutIndex: row.fanoutIndex,
 			inTransaction: (tx) => {
 				if (!consumeGenerationJob(tx, row.id)) throw new GenerationDiscardedError();

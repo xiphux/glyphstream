@@ -123,6 +123,8 @@ const targets = walk(ROUTES)
 const UNREACHED_BODY_FIELDS: Record<string, string> = {
 	'/api/conversations/[id]/messages POST inputMediaIds':
 		'read only for a fanoutBranch dispatch; the shared user message is checked first',
+	'/api/conversations/[id]/avatar/generate POST expectLeafMessageId':
+		'read only for a photo draw, after sourceMessageId resolves; a foreign id is a 404 there',
 };
 
 interface Victim {

@@ -1256,7 +1256,9 @@ export const generationJobs = sqliteTable(
 		kind: text('kind', { enum: ['image', 'video'] }).notNull(),
 		// What the generation is for, which decides how it registers in flight
 		// and what happens on completion (see `JobOrigin`).
-		origin: text('origin', { enum: ['send', 'fanout', 'avatar', 'avatar_fanout'] }).notNull(),
+		origin: text('origin', {
+			enum: ['send', 'fanout', 'avatar', 'avatar_fanout', 'photo'],
+		}).notNull(),
 		// Conversation-facing `endpoint::model` id.
 		modelId: text('model_id').notNull(),
 		fanoutIndex: integer('fanout_index'),
