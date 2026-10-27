@@ -41,10 +41,10 @@ export const CHECK_IN_SKIP = '[no text]';
 
 const UNIT_MS: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000 };
 const DELAY_PART =
-	/\s*(\d+(?:\.\d+)?)\s*(minutes?|mins?|m|hours?|hrs?|h|days?|d)\b\s*(?:,\s*|and\s+)?/iy;
+	/\s*(\d+(?:\.\d+)?)\s*(minutes?|mins?|m|hours?|hrs?|h|days?|d)(?![a-z])\s*(?:,\s*|and\s+)?/iy;
 
 /**
- * A delay such as `1h`, `90m`, `1h 30m`, `2 hours` or `1.5h`, in ms, clamped to
+ * A delay such as `1h`, `90m`, `1h 30m`, `1h30m`, `2 hours` or `1.5h`, in ms, clamped to
  * the allowed range. Null when it isn't one.
  */
 export function parseDelay(input: string): number | null {

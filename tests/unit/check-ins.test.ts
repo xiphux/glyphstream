@@ -19,6 +19,8 @@ describe('parseDelay', () => {
 		['1h', HOUR],
 		['90m', 90 * MIN],
 		['1h 30m', 90 * MIN],
+		['1h30m', 90 * MIN],
+		['2h15min', 135 * MIN],
 		['1 hour and 30 minutes', 90 * MIN],
 		['2 hours', 2 * HOUR],
 		['1.5h', 90 * MIN],
