@@ -1405,6 +1405,45 @@ describe('FanoutController — avatar comparisons', () => {
 		expect(fc.isPhoto).toBe(true);
 	});
 
+	it('labels an avatar comparison as one even when it seeds a developed photo', async () => {
+		// The seeds are every image under the anchor, and a texting reply's first
+		// developed photo hangs there too. What the comparison draws decides.
+		const photo = mediaSibling('p0', 'bridge::sdxl', null, [
+			{ type: 'image', mediaId: 'p0-out', photo: { sourceMessageId: 'desc', index: 0 } },
+		]);
+		stubDraw([photo]);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		await fc.sendAvatarDraw({
+			sourceMessageId: 'desc',
+			prompt: 'p',
+			enhance: false,
+			branches: TWO_MODELS,
+		});
+		expect(fc.isAvatar).toBe(true);
+		expect(fc.isPhoto).toBe(false);
+	});
+
+	it('reads a recovered grid by its newest column, not an older seed', () => {
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		const olderPhoto = mediaSibling('p0', 'bridge::sdxl', null, [
+			{ type: 'image', mediaId: 'p0-out', photo: { sourceMessageId: 'desc', index: 0 } },
+		]);
+		const portrait = { ...imageSibling('a1', 'bridge::flux', null), fanoutIndex: 0 };
+		fc.syncFromServer({
+			parentMessageId: 'desc',
+			avatar: true,
+			kind: 'image',
+			siblings: [olderPhoto, portrait],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		});
+		expect(fc.isPhoto).toBe(false);
+	});
+
 	it('re-rolls a recovered photo with its marker and shape', async () => {
 		// The marker rides on the candidate's image part and the shape comes off its
 		// media row, so a grid rebuilt after a reload re-develops the same photo.

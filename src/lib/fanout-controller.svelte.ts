@@ -182,20 +182,27 @@ export class FanoutController {
 	/** An avatar comparison: keep-many like any image grid, but ALSO pick-one —
 	 *  the pick adopts a face rather than continuing the thread with that model. */
 	isAvatar = $derived(this.#mode === 'avatar');
+	/** Whether the live avatar comparison is a photo's, from its draw inputs; null
+	 *  for a recovered grid, which has none. See `isPhoto`. */
+	#photoDraw = $state<boolean | null>(null);
 	/**
 	 * The avatar comparison is a texting photo's: its candidates develop a
 	 * `[photo: …]` marker, and the pick sends one rather than adopting a face.
-	 * Read off the columns — the live ones carry it in their draw inputs, a
-	 * recovered one on its image part — and the server decides what the pick does
-	 * on its own from that same part, so a grid that can't tell yet (recovered
-	 * with nothing landed) only mislabels its pick button.
+	 *
+	 * Decided by what the comparison DRAWS, not by whether some column is a
+	 * photo: the seeds are every earlier image under the anchor, so an avatar
+	 * comparison on a reply with a developed photo seeds that photo, and vice
+	 * versa. A live draw knows from its own inputs (`#photoDraw`); a recovered
+	 * grid reads its newest landed column, which belongs to the latest round
+	 * (seeds from earlier rounds sort first). Only the pick button's label rides
+	 * on this — the server decides what a pick does from the picked image itself.
 	 */
-	isPhoto = $derived(
-		this.#mode === 'avatar' &&
-			this.columns.some(
-				(c) => !!c.avatarPrompt?.photo || (!!c.persisted && !!photoOriginOf(c.persisted)),
-			),
-	);
+	isPhoto = $derived.by(() => {
+		if (this.#mode !== 'avatar') return false;
+		if (this.#photoDraw !== null) return this.#photoDraw;
+		const newest = this.columns.findLast((c) => c.persisted && !c.error)?.persisted;
+		return !!newest && !!photoOriginOf(newest);
+	});
 
 	/** Whether `col` can be re-rolled. Always, for a turn fan-out (the server
 	 *  re-derives the prompt from the shared user message); for an avatar column
@@ -591,6 +598,7 @@ export class FanoutController {
 		}
 
 		this.#mode = 'avatar';
+		this.#photoDraw = !!input.photo;
 		const avatarPrompt = {
 			prompt: input.prompt,
 			enhance: input.enhance,
@@ -1152,6 +1160,7 @@ export class FanoutController {
 		// is indistinguishable from an image fan-out by its contents, and getting
 		// this wrong would make "use this face" continue the chat with SDXL.
 		this.#mode = f.avatar ? 'avatar' : 'turn';
+		this.#photoDraw = null;
 		this.columns = this.#buildRecoveredColumns(f.siblings, pendingBranches(f), f.kind);
 	}
 
