@@ -124,13 +124,18 @@ describe('photo markers', () => {
 		]);
 	});
 
-	it.each(['here you go [photo: a cat]', '[photo: ]', '[photo: a cat] and more', 'photo: a cat'])(
-		'leaves %s as a text',
-		async (markdown) => {
-			const [item] = await items(markdown);
-			expect(item.kind).toBe('text');
-		},
-	);
+	it.each([
+		'here you go [photo: a cat]',
+		'[photo: ]',
+		'[photo: a cat] and more',
+		'photo: a cat',
+		// Two markers run into one paragraph: not one photo of "a cat]\n[photo: a dog".
+		'[photo: a cat]\n[photo: a dog]',
+		'[photo: a cat] lol [jk]',
+	])('leaves %s as a text', async (markdown) => {
+		const [item] = await items(markdown);
+		expect(item.kind).toBe('text');
+	});
 
 	it('reads markup out of the description', () => {
 		expect(photoDescription({ html: '<p>[photo: a <em>very</em> &quot;big&quot; dog]</p>' })).toBe(

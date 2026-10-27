@@ -143,10 +143,13 @@ function extractPlainSpeaker(text: string): { speaker: string | null; text: stri
  * A rendered text that is only a photo marker: `[photo: …]`, case-insensitive,
  * optionally italic or bold (models like to set actions in asterisks). The
  * description keeps any inline markup it had, which `htmlToText` then drops.
+ *
+ * The description stops at the first `]`, so two markers run into one
+ * paragraph (no blank line between) stay a text rather than becoming one photo
+ * described as `a]\n[photo: b`.
  */
-const PHOTO_HTML =
-	/^<p>(?:<(?:em|strong)>)?\[photo:\s*([\s\S]+?)\s*\](?:<\/(?:em|strong)>)?<\/p>$/i;
-const PHOTO_TEXT = /^([*_]{0,2})\[photo:\s*([\s\S]+?)\s*\]\1$/i;
+const PHOTO_HTML = /^<p>(?:<(?:em|strong)>)?\[photo:\s*([^\]]+?)\s*\](?:<\/(?:em|strong)>)?<\/p>$/i;
+const PHOTO_TEXT = /^([*_]{0,2})\[photo:\s*([^\]]+?)\s*\]\1$/i;
 
 /** The text of a markdown-it html fragment: tags dropped, the entities its
  *  `escapeHtml` emits decoded. */
