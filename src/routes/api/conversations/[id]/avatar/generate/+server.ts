@@ -269,7 +269,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// lands under a message the leaf isn't on, unrecoverable. Same read the
 	// background path below makes, one branch of the same `if`.
 	if (isFanout && getFanoutParent(params.id, locals.user.id) !== source.id) {
-		error(409, 'No avatar comparison is open here — start one first.');
+		error(409, 'No comparison is open here — start one first.');
 	}
 	// Same ceiling as a chat/media fan-out, and the same reasoning: every branch
 	// holds an SSE connection, a registry entry and a queued waiter, so an
@@ -348,7 +348,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 				(m) => !m.parts.some((p) => p.type === 'error'),
 			) || conversationTurnEntries(params.id).length > 0;
 		if (open) {
-			error(409, 'An avatar comparison is open here — pick one or dismiss it first.');
+			error(409, 'A comparison is open here — pick one or dismiss it first.');
 		}
 	}
 
