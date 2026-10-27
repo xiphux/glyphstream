@@ -98,6 +98,13 @@ export async function runCheckInSweep(now = Date.now()): Promise<number> {
 			for (const row of page) {
 				if (handled >= MAX_FIRES_PER_TICK) break;
 				scanned++;
+				// Too late to fire, however it would go: a restart, or an account
+				// disabled meanwhile, can leave a check-in hours overdue.
+				if (now > row.fireAt + graceFor(row)) {
+					deleteCheckInIfUnchanged(row.id, row.fireAt);
+					handled++;
+					continue;
+				}
 				let result: FireResult;
 				try {
 					result = fireCheckIn(row, now);
@@ -108,7 +115,7 @@ export async function runCheckInSweep(now = Date.now()): Promise<number> {
 				if (result === 'fired') {
 					fired++;
 					handled++;
-				} else if (result === 'drop' || now > row.fireAt + graceFor(row)) {
+				} else if (result === 'drop') {
 					deleteCheckInIfUnchanged(row.id, row.fireAt);
 					handled++;
 				}

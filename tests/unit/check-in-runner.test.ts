@@ -345,6 +345,16 @@ describe('firing', () => {
 		busy.controller.abort();
 	});
 
+	it('is dropped, not fired, when the runner reaches it too late', async () => {
+		const t = thread();
+		const row = scheduled(t);
+		const grace = graceFor({ fireAt: row.fireAt, createdAt: T0 });
+		expect(await runCheckInSweep(row.fireAt + grace + 1)).toBe(0);
+		expect(getCheckIn(t.conversationId, t.userId)).toBeNull();
+		expect(mocks.upstreamBodies).toHaveLength(0);
+		expect(walkActiveBranch(t.conversationId)).toHaveLength(2);
+	});
+
 	it('takes a pass back out, as if it never fired', async () => {
 		const t = thread();
 		scheduled(t);
