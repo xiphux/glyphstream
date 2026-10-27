@@ -44,6 +44,7 @@ export function getCheckIn(conversationId: string, userId: string): PendingCheck
 			sourceMessageId: checkIns.sourceMessageId,
 			fireAt: checkIns.fireAt,
 			note: checkIns.note,
+			createdAt: checkIns.createdAt,
 		})
 		.from(checkIns)
 		.where(and(eq(checkIns.conversationId, conversationId), eq(checkIns.userId, userId)))

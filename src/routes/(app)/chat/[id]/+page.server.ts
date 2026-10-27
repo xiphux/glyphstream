@@ -3,6 +3,7 @@ import { CONVERSATION_MISSING_NOTICE } from '#lib/notices.js';
 import { requireUserPage } from '#lib/server/auth/guard.js';
 import { listActiveCanvases } from '#lib/server/db/queries/artifacts.js';
 import { getCheckIn } from '#lib/server/db/queries/check-ins.js';
+import { getCheckInsConfig } from '#lib/server/endpoints/config.js';
 import { getConversationDetail } from '#lib/server/db/queries/conversations.js';
 import { getScheduledTask } from '#lib/server/db/queries/scheduled-tasks.js';
 import { scheduledPolicyForResume } from '#lib/server/scheduled/runner.js';
@@ -208,10 +209,12 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 					),
 				)?.promptMessageId ?? null);
 	// A check-in waiting to fire, for the note under the reply that set
-	// it and the page's wake-up when it's due.
-	const checkIn = conversation.checkIns
-		? timeDb(locals, () => getCheckIn(conversation.id, locals.user.id))
-		: null;
+	// it and the page's wake-up when it's due. None while the operator has the
+	// feature off: the runner isn't there to fire (or drop) it.
+	const checkIn =
+		conversation.checkIns && getCheckInsConfig().enabled
+			? timeDb(locals, () => getCheckIn(conversation.id, locals.user.id))
+			: null;
 	return {
 		scheduledRunPromptId,
 		checkIn,

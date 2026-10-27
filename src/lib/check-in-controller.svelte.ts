@@ -14,6 +14,7 @@
  */
 import { refreshAll } from '$app/navigation';
 import { errorMessageFromResponse } from './fetch-error';
+import { graceFor } from './check-ins';
 import { checkInSetBy } from './texting-check-ins';
 import type { ChatMessage, PendingCheckIn } from './types/api';
 
@@ -43,7 +44,12 @@ export class CheckInController {
 		if (!reply) return;
 		const marker = checkInSetBy(messages, replyId);
 		this.pending = marker
-			? { sourceMessageId: replyId, fireAt: reply.createdAt + marker.delayMs, note: marker.note }
+			? {
+					sourceMessageId: replyId,
+					fireAt: reply.createdAt + marker.delayMs,
+					note: marker.note,
+					createdAt: reply.createdAt,
+				}
 			: null;
 	}
 
@@ -60,17 +66,21 @@ export class CheckInController {
 	}
 
 	/**
-	 * Reload the page once `checkIn` is due, and again while it stays pending.
-	 * Returns a cleanup for the caller's `$effect`, which re-runs it whenever the
-	 * pending row changes (a reload that brings a new one included).
+	 * Reload the page once `checkIn` is due, and again while it stays pending —
+	 * but not past its grace period, when the runner has dropped it (or, with
+	 * the feature switched off, never will): one last reload then, to clear it,
+	 * and no more. Returns a cleanup for the caller's `$effect`, which re-runs it
+	 * whenever the pending row changes (a reload that brings a new one included).
 	 */
 	wakeWhenDue(checkIn: PendingCheckIn, now = Date.now()): () => void {
 		let timer: ReturnType<typeof setTimeout> | null = null;
+		const giveUpAt = checkIn.fireAt + graceFor(checkIn) + RETRY_WAKE_MS;
 		const arm = (delay: number) => {
 			timer = setTimeout(() => {
+				const last = Date.now() >= giveUpAt;
 				// Hidden: nothing to draw. The next try after it shows again does it.
-				if (globalThis.document?.visibilityState !== 'hidden') void refreshAll();
-				arm(RETRY_WAKE_MS);
+				if (last || globalThis.document?.visibilityState !== 'hidden') void refreshAll();
+				if (!last) arm(RETRY_WAKE_MS);
 			}, delay);
 		};
 		arm(Math.max(0, checkIn.fireAt - now) + FIRST_WAKE_DELAY_MS);

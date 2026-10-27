@@ -26,7 +26,7 @@ function say(id: string, role: ChatMessage['role'], text: string, createdAt = 0)
 	};
 }
 
-const PENDING: PendingCheckIn = { sourceMessageId: 'a', fireAt: 10_000, note: 'ask' };
+const PENDING: PendingCheckIn = { sourceMessageId: 'a', fireAt: 10_000, note: 'ask', createdAt: 0 };
 
 beforeEach(() => refreshAll.mockClear());
 afterEach(() => {
@@ -39,7 +39,12 @@ describe('noteReply', () => {
 		const c = new CheckInController({ convId: () => 'c1' }, null);
 		const msgs = [say('u', 'user', 'hi'), say('a', 'assistant', 'brb\n\n[later 1h: ask]', 500)];
 		c.noteReply(msgs, 'a');
-		expect(c.pending).toEqual({ sourceMessageId: 'a', fireAt: 500 + 3_600_000, note: 'ask' });
+		expect(c.pending).toEqual({
+			sourceMessageId: 'a',
+			fireAt: 500 + 3_600_000,
+			note: 'ask',
+			createdAt: 500,
+		});
 	});
 
 	it('clears it for a reply that sets none', () => {
@@ -76,6 +81,7 @@ describe('cancel', () => {
 describe('wakeWhenDue', () => {
 	it('reloads once due, and again while it stays pending', () => {
 		vi.useFakeTimers();
+		vi.setSystemTime(0);
 		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
 		const stop = c.wakeWhenDue(PENDING, 0);
 		vi.advanceTimersByTime(10_000);
@@ -87,5 +93,17 @@ describe('wakeWhenDue', () => {
 		stop();
 		vi.advanceTimersByTime(60_000);
 		expect(refreshAll).toHaveBeenCalledTimes(2);
+	});
+
+	it('stops once the check-in is past its grace period', () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(0);
+		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
+		c.wakeWhenDue(PENDING, 0);
+		// Grace for a 10s delay is the 30-minute floor.
+		vi.advanceTimersByTime(PENDING.fireAt + 30 * 60_000 + 60_000);
+		const calls = refreshAll.mock.calls.length;
+		vi.advanceTimersByTime(10 * 60_000);
+		expect(refreshAll).toHaveBeenCalledTimes(calls);
 	});
 });

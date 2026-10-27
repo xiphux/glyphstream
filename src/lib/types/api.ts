@@ -587,6 +587,8 @@ export interface PendingCheckIn {
 	sourceMessageId: string;
 	fireAt: number;
 	note: string;
+	/** When it was set — with `fireAt`, how late it may still fire. */
+	createdAt: number;
 }
 
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';

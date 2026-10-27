@@ -25,7 +25,7 @@ import type { ReplyStyle } from '#lib/types/api.js';
 import { friendlyModelName } from '#lib/model-ids.js';
 import { photoChain } from '#lib/texting-photos.js';
 import { extractPlainSpeaker, photoDescription } from '#lib/texting.js';
-import { CHECK_IN_SKIP, checkInMarker, isCheckInSkip } from '#lib/check-ins.js';
+import { CHECK_IN_SKIP, checkInMarker, graceFor, isCheckInSkip } from '#lib/check-ins.js';
 import {
 	listDueCheckIns,
 	deleteCheckInIfUnchanged,
@@ -75,14 +75,6 @@ const MAX_FIRES_PER_TICK = 20;
  *  busy conversations) can't keep everyone else's from being reached. */
 const MAX_SCANNED_PER_TICK = 500;
 const PAGE_SIZE = 50;
-const MIN_GRACE_MS = 30 * 60_000;
-
-/** How late a check-in may still fire: half an hour, or a quarter of its delay
- *  if that's longer — a day's wait can stand to be a few hours late; an
- *  hour's can't. */
-export function graceFor(row: Pick<CheckInRow, 'fireAt' | 'createdAt'>): number {
-	return Math.max(MIN_GRACE_MS, (row.fireAt - row.createdAt) / 4);
-}
 
 let running = false;
 

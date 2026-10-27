@@ -92,9 +92,9 @@ import {
 	registerInFlight,
 	resetInFlight,
 } from '#lib/server/streaming/in-flight.js';
-import { graceFor, reminderText, runCheckInSweep } from '#lib/server/check-ins/runner.js';
+import { reminderText, runCheckInSweep } from '#lib/server/check-ins/runner.js';
 import { scheduleCheckInFromReply } from '#lib/server/check-ins/schedule.js';
-import { isCheckInMessage } from '#lib/check-ins.js';
+import { graceFor, isCheckInMessage } from '#lib/check-ins.js';
 import { getDb } from '#lib/server/db/client.js';
 import { users } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -198,6 +198,7 @@ describe('scheduling', () => {
 			sourceMessageId: t.answer.id,
 			fireAt: T0 + HOUR,
 			note: 'ask how the meeting went',
+			createdAt: T0,
 		});
 	});
 

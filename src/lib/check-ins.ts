@@ -20,6 +20,16 @@ import type { ChatMessage } from './types/api';
 export const MIN_CHECK_IN_DELAY_MS = 5 * 60_000;
 export const MAX_CHECK_IN_DELAY_MS = 24 * 3_600_000;
 
+const MIN_GRACE_MS = 30 * 60_000;
+
+/** How late a check-in may still fire: half an hour, or a quarter of its delay
+ *  if that's longer — a day's wait can stand to be a few hours late; an
+ *  hour's can't. Past it the runner drops the check-in, and the page stops
+ *  waiting for it. */
+export function graceFor(checkIn: { fireAt: number; createdAt: number }): number {
+	return Math.max(MIN_GRACE_MS, (checkIn.fireAt - checkIn.createdAt) / 4);
+}
+
 /** Check-ins that may fire in a row with no answer from the user. A real person
  *  double-texts; they don't keep going all night. */
 export const MAX_UNANSWERED_CHECK_INS = 2;
