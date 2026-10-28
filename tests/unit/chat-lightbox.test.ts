@@ -16,10 +16,9 @@ vi.mock('#lib/toast.svelte.js', () => ({
 	toast: { error: (m: string) => toastError(m), info: (m: string) => toastInfo(m) },
 }));
 
-import { ChatLightbox } from '#lib/chat-lightbox.svelte.js';
+import { ChatLightbox, type TriageSource } from '#lib/chat-lightbox.svelte.js';
 import { MediaFavorites } from '#lib/media-favorites.svelte.js';
 import type { FanoutColumn } from '#lib/fanout.js';
-import type { FanoutController } from '#lib/fanout-controller.svelte.js';
 import type { MediaListItem } from '#lib/types/api.js';
 
 const item = (id: string, extra: Partial<MediaListItem> = {}) =>
@@ -61,7 +60,7 @@ function setup(columns: FanoutColumn[] = []) {
 	const favorites = new MediaFavorites();
 	const lb = new ChatLightbox({
 		conversationId: () => page.conversationId,
-		fanout: fanout as unknown as FanoutController,
+		triage: () => fanout as unknown as TriageSource,
 		favorites,
 		error: () => page.error,
 	});

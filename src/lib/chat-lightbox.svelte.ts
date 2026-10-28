@@ -32,18 +32,37 @@ import {
 import { MediaItemCache } from './media-item-cache.js';
 import type { MediaFavorites } from './media-favorites.svelte.js';
 import { toast } from './toast.svelte.js';
-import type { FanoutController } from './fanout-controller.svelte.js';
+import type { FanoutColumn } from './fanout.js';
 import type { ConversationMediaRef, MediaListItem } from './types/api.js';
 
 /** Same limit as the gallery's `fetchWithTimeout`. */
 const ITEM_FETCH_TIMEOUT_MS = 15_000;
+
+/**
+ * The comparison grid on screen, whose images the lightbox triages: the media
+ * fan-out grid in the thread, or a photo comparison in the develop dialog. The
+ * same columns and the same four reactions either way.
+ */
+export interface TriageSource {
+	columns: readonly FanoutColumn[];
+	/** Whether it's a media grid at all (a text fan-out has nothing to triage). */
+	isMedia: boolean;
+	/** A pick or discard is in flight. */
+	picking: boolean;
+	canRegenerate(col: FanoutColumn): boolean;
+	regenerate(col: FanoutColumn): Promise<void>;
+	pick(col: FanoutColumn): Promise<void>;
+	/** False when refused; the reason is in the page's error banner. */
+	discard(col: FanoutColumn): Promise<boolean>;
+}
 
 /** What the lightbox reads from the host page. Getters, so each read is fresh:
  *  the page is reused across conversations. */
 export interface ChatLightboxDeps {
 	/** The conversation currently on screen. */
 	conversationId(): string;
-	fanout: FanoutController;
+	/** The grid being triaged right now. */
+	triage(): TriageSource;
 	/** The page's stars, shared with the fan-out grid's. */
 	favorites: MediaFavorites;
 	/** The page's error banner, which a refused fan-out discard writes to. */
@@ -96,13 +115,13 @@ export class ChatLightbox {
 	 * outside a fan-out belongs to the gallery.
 	 */
 	readonly #column = $derived.by(() => {
-		const { fanout } = this.#deps;
+		const fanout = this.#deps.triage();
 		return this.media && fanout.isMedia
 			? columnShowingMedia(fanout.columns, this.media.id)
 			: undefined;
 	});
 	readonly discardable = $derived.by(
-		() => !!this.#column && canDiscardColumn(this.#deps.fanout.columns, this.#column),
+		() => !!this.#column && canDiscardColumn(this.#deps.triage().columns, this.#column),
 	);
 
 	/**
@@ -116,10 +135,12 @@ export class ChatLightbox {
 	/** Whether the grid's Regenerate is offered for the open image (an avatar
 	 *  portrait recovered without its prompt has nothing to re-roll from). */
 	readonly canRegenerate = $derived.by(
-		() => !!this.#column && this.#deps.fanout.canRegenerate(this.#column),
+		() => !!this.#column && this.#deps.triage().canRegenerate(this.#column),
 	);
 	/** Re-roll is offered but can't start yet: the grid is at its in-flight cap. */
-	readonly regenerateBlocked = $derived.by(() => atActiveBranchCapacity(this.#deps.fanout.columns));
+	readonly regenerateBlocked = $derived.by(() =>
+		atActiveBranchCapacity(this.#deps.triage().columns),
+	);
 
 	/** Media id whose star is in flight; see `MediaFavorites.pendingId`. */
 	get favoritingId(): string | null {
@@ -169,7 +190,7 @@ export class ChatLightbox {
 			// the grid the tap came from. Re-seated once, here, rather than derived:
 			// the set is only fetched on the initial open, so the carousel's order
 			// stays put for the life of that open session.
-			this.siblings = applyDisplayOrder(body.items, gridMediaIds(this.#deps.fanout.columns));
+			this.siblings = applyDisplayOrder(body.items, gridMediaIds(this.#deps.triage().columns));
 		} catch {
 			// Network blip — leave the set as-is; the lightbox still opens
 			// on the tapped image, just without sibling navigation.
@@ -259,7 +280,7 @@ export class ChatLightbox {
 	 * the lightbox reopens; the toast is what says the tap did something.
 	 */
 	regenerate(mediaId: string): void {
-		const { fanout } = this.#deps;
+		const fanout = this.#deps.triage();
 		const col = columnShowingMedia(fanout.columns, mediaId);
 		if (!col || !fanout.canRegenerate(col) || this.regenerateBlocked || fanout.picking) return;
 		void fanout.regenerate(col);
@@ -272,7 +293,7 @@ export class ChatLightbox {
 	 * leave the user swiping a set whose grid no longer exists.
 	 */
 	pick(mediaId: string): void {
-		const { fanout } = this.#deps;
+		const fanout = this.#deps.triage();
 		const col = columnShowingMedia(fanout.columns, mediaId);
 		if (!col || fanout.picking) return;
 		this.close();
@@ -294,7 +315,7 @@ export class ChatLightbox {
 	 * branch that's the next image.
 	 */
 	async discard(mediaId: string): Promise<void> {
-		const { fanout } = this.#deps;
+		const fanout = this.#deps.triage();
 		const col = columnShowingMedia(fanout.columns, mediaId);
 		// A refused discard (grid busy) must not reach the toast below, which
 		// would repeat whatever stale error the banner last held.

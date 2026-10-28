@@ -44,6 +44,8 @@ export interface PhotoComparison extends PhotoDraw {
 	before: ReadonlySet<string>;
 	/** Models still drawing, one entry per draw. */
 	pending: string[];
+	/** What every draw of it sends, but the model — a re-roll sends it again. */
+	body: Record<string, unknown>;
 }
 
 const photoKey = (replyId: string, index: number) => `${replyId}:${index}`;
@@ -497,6 +499,14 @@ export class AvatarDrawWorkflow {
 		if (models.length === 0) return;
 		const reply = this.#deps.messages().find((m) => m.id === photo.replyId);
 		const compareId = models.length > 1 ? randomUUID() : null;
+		const body = {
+			messageId: photo.replyId,
+			index: photo.index,
+			prompt: this.prompt,
+			enhance: this.enhance,
+			aspectRatio: this.aspectRatio,
+			...(compareId ? { compare: compareId } : {}),
+		};
 		if (compareId) {
 			this.photoComparison = {
 				...photo,
@@ -506,19 +516,27 @@ export class AvatarDrawWorkflow {
 					(reply?.images ?? []).filter((i) => i.markerIndex === photo.index).map((i) => i.id),
 				),
 				pending: [...models],
+				body,
 			};
 			this.compareMode = false;
 			this.compareSelections = [];
 		}
-		const body = {
-			messageId: photo.replyId,
-			index: photo.index,
-			prompt: this.prompt,
-			enhance: this.enhance,
-			aspectRatio: this.aspectRatio,
-			...(compareId ? { compare: compareId } : {}),
-		};
 		for (const modelId of models) void this.#developOne(cid, photo, modelId, body, compareId);
+	}
+
+	/** Another draw in the comparison on show, from `modelId` — a tile's
+	 *  Regenerate. It lands beside the others, and counts with them. */
+	developAgainInComparison(modelId: string): void {
+		const comparison = this.photoComparison;
+		if (!comparison || this.#deps.convId() !== comparison.conversationId) return;
+		this.photoComparison = { ...comparison, pending: [...comparison.pending, modelId] };
+		void this.#developOne(
+			comparison.conversationId,
+			{ replyId: comparison.replyId, index: comparison.index },
+			modelId,
+			comparison.body,
+			comparison.id,
+		);
 	}
 
 	async #developOne(

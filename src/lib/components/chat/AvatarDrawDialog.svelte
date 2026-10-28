@@ -15,8 +15,9 @@
 	Also how a texting photo is developed (`purpose="photo"`): the marker's
 	description as the prompt, and an aspect-ratio picker, since a photo is
 	whatever shape the phone was held. Developing with several models is a
-	comparison the dialog then shows in place of the form (`comparison`): each
-	result as it lands, to pick the one to show. All of them are kept.
+	comparison the dialog then shows in place of the form (`comparison`): the
+	same fan-out grid a media comparison has, each result as it lands, to pick
+	the one to show. All of them are kept.
 -->
 <script lang="ts">
 	import BaseDialog from '#lib/components/BaseDialog.svelte';
@@ -24,7 +25,8 @@
 	import AspectRatioSelector from './AspectRatioSelector.svelte';
 	import { agreedDefault, offeredRatios } from '#lib/aspect-ratio.js';
 	import type { CompareSelection } from '#lib/fanout.js';
-	import type { MessageImage, ModelEntry } from '#lib/types/api.js';
+	import type { Snippet } from 'svelte';
+	import type { ModelEntry } from '#lib/types/api.js';
 
 	interface Props {
 		open: boolean;
@@ -89,11 +91,8 @@
 		/** A photo's shape, or null for each model's default. Bindable; unused for
 		 *  an avatar, which is always square. */
 		aspectRatio?: string | null;
-		/** A photo comparison under way: the versions it has drawn so far (failed
-		 *  ones included), and the models still drawing. Shown instead of the form. */
-		comparison?: { results: MessageImage[]; pending: string[] } | null;
-		/** Pick a comparison's result as the one to show. */
-		onPick?: (image: MessageImage) => void;
+		/** A photo comparison under way: its grid, shown instead of the form. */
+		comparison?: Snippet;
 	}
 
 	let {
@@ -116,11 +115,8 @@
 		onCancel,
 		purpose = 'avatar',
 		aspectRatio = $bindable(null),
-		comparison = null,
-		onPick,
+		comparison,
 	}: Props = $props();
-
-	const modelName = (id: string) => models.find((m) => m.id === id)?.displayName ?? id;
 
 	const isPhoto = $derived(purpose === 'photo');
 
@@ -166,43 +162,9 @@
 		<p class="mt-1 text-xs text-fg-muted">
 			Pick the one to show. The others are kept too — the arrows on the photo reach them.
 		</p>
-		<ul class="mt-3 grid grid-cols-2 gap-2">
-			{#each comparison.results as result (result.id)}
-				<li class="flex flex-col gap-1">
-					{#if result.mediaId}
-						<button
-							type="button"
-							onclick={() => onPick?.(result)}
-							aria-label="Show the one from {modelName(result.modelId)}"
-							class="overflow-hidden rounded-lg p-0 ring-offset-2 transition hover:ring-2 hover:ring-border-focus"
-						>
-							<img
-								src="/api/media/{result.mediaId}/display"
-								alt="The photo, by {modelName(result.modelId)}"
-								class="block aspect-square w-full object-cover"
-							/>
-						</button>
-					{:else}
-						<p
-							class="flex aspect-square items-center justify-center rounded-lg bg-surface-sunken p-2 text-center text-xs text-danger"
-						>
-							{result.error ?? "Couldn't develop"}
-						</p>
-					{/if}
-					<span class="truncate text-xs text-fg-muted">{modelName(result.modelId)}</span>
-				</li>
-			{/each}
-			{#each comparison.pending as modelId, i (`${modelId}:${i}`)}
-				<li class="flex flex-col gap-1">
-					<p
-						class="flex aspect-square animate-pulse items-center justify-center rounded-lg bg-surface-sunken text-xs text-fg-muted"
-					>
-						Developing…
-					</p>
-					<span class="truncate text-xs text-fg-muted">{modelName(modelId)}</span>
-				</li>
-			{/each}
-		</ul>
+		<div class="mt-3 max-h-[65vh] overflow-y-auto">
+			{@render comparison()}
+		</div>
 		<div class="mt-4 flex justify-end">
 			<button
 				type="button"

@@ -71,6 +71,7 @@
 	import { hasCopyableText, partsToText } from '#lib/message-parts.js';
 	import { AvatarDrawController } from '#lib/avatar-draw-controller.svelte.js';
 	import { AvatarDrawWorkflow } from '#lib/avatar-draw-workflow.svelte.js';
+	import { PhotoComparisonGrid } from '#lib/photo-comparison-grid.svelte.js';
 	import { photoMarkers } from '#lib/texting-photos.js';
 	import type { TextingPhotos } from '#lib/texting.js';
 	import { CheckInController } from '#lib/check-in-controller.svelte.js';
@@ -1398,20 +1399,29 @@
 		fanout,
 	});
 
+	// A photo comparison in the develop dialog, as a fan-out grid.
+	const photoGrid = new PhotoComparisonGrid({
+		workflow: avatarWorkflow,
+		messages: () => messages,
+		modelLabel: (id) => modelDisplayName(id),
+	});
+
 	// The inline media lightbox: tap a generated image to open it, swipe through
 	// the conversation's media, star it, or discard its fan-out branch.
 	// The page's stars, shared by the fan-out grid and the lightbox.
 	const favorites = new MediaFavorites();
 	const lightbox = new ChatLightbox({
 		conversationId: () => data.conversation.id,
-		fanout,
+		// The dialog's photo comparison while one is up, over the thread's grid.
+		triage: () => (photoGrid.active ? photoGrid : fanout),
 		favorites,
 		error: () => errorMsg,
 	});
 	// A grid star's seed: what the branch's row said when the grid was rebuilt
 	// from server truth (a live branch has none, and nothing has starred it).
 	function gridFavorite(mediaId: string): boolean {
-		const col = columnShowingMedia(fanout.columns, mediaId);
+		const col =
+			columnShowingMedia(fanout.columns, mediaId) ?? columnShowingMedia(photoGrid.columns, mediaId);
 		return favorites.isFavorite(mediaId, col?.persisted?.favorite ?? false);
 	}
 
@@ -1664,18 +1674,6 @@
 		if (!marker) return;
 		avatarWorkflow.openPhotoDialog({ replyId: reply.id, index }, marker.description);
 	}
-
-	// What a photo comparison in the dialog has drawn so far: the versions of
-	// its photo that weren't there when it started.
-	const photoComparison = $derived.by(() => {
-		const c = avatarWorkflow.photoComparison;
-		if (!c) return null;
-		const reply = messages.find((m) => m.id === c.replyId);
-		const results = (reply?.images ?? []).filter(
-			(i) => i.markerIndex === c.index && !c.before.has(i.id),
-		);
-		return { results, pending: c.pending };
-	});
 
 	// Check-ins, where the conversation's preset allows them: the pending one
 	// shows under the reply that set it, and only while that reply is still the
@@ -2973,6 +2971,22 @@
 	its own (everything is bound to `avatarWorkflow`), so unmounting it on close
 	loses nothing.
 -->
+{#snippet photoComparisonGrid()}
+	<FanoutColumns
+		columns={photoGrid.columns}
+		onPick={(c: FanoutColumn) => void photoGrid.pick(c)}
+		pickLabel="Show this one"
+		pickCaption="Show"
+		onDiscard={(c: FanoutColumn) => void photoGrid.discard(c)}
+		onRegenerate={(c: FanoutColumn) => void photoGrid.regenerate(c)}
+		canRegenerate={(c: FanoutColumn) => photoGrid.canRegenerate(c)}
+		onImageClick={(id: string) => void lightbox.open(id)}
+		busy={photoGrid.picking}
+		onToggleFavorite={(id: string, next: boolean) => void favorites.toggle(id, next)}
+		isFavorite={gridFavorite}
+		favoriteBusy={favorites.pendingId !== null}
+	/>
+{/snippet}
 {#if avatarWorkflow.open}
 	{#await import('#lib/components/chat/AvatarDrawDialog.svelte') then { default: AvatarDrawDialog }}
 		<AvatarDrawDialog
@@ -2985,8 +2999,7 @@
 			canCompare={avatarWorkflow.canCompare}
 			compareBlockedReason="Comparing several models needs the description to be the latest thing in the thread."
 			purpose={avatarWorkflow.photo ? 'photo' : 'avatar'}
-			comparison={photoComparison}
-			onPick={(image: MessageImage) => void avatarWorkflow.showPhoto(image, true)}
+			comparison={photoGrid.active ? photoComparisonGrid : undefined}
 			bind:aspectRatio={avatarWorkflow.aspectRatio}
 			bind:compareSelections={avatarWorkflow.compareSelections}
 			bind:compareMode={avatarWorkflow.compareMode}
@@ -2996,7 +3009,11 @@
 			onEnhanceChange={(v: boolean) => (avatarWorkflow.enhance = v)}
 			onModelChange={(id: string) => avatarWorkflow.setModel(id)}
 			onDraw={() => void avatarWorkflow.generate()}
-			onCancel={() => avatarWorkflow.close()}
+			onCancel={() => {
+				// Escape reaches both; with the lightbox up over the grid, it's the
+				// lightbox's to close.
+				if (!lightbox.media) avatarWorkflow.close();
+			}}
 		/>
 	{/await}
 {/if}
@@ -3026,9 +3043,10 @@
 							? (id: string) => lightbox.regenerate(id)
 							: undefined,
 						regenerateBlocked: lightbox.regenerateBlocked,
-						onPick: fanout.isAvatar ? (id: string) => lightbox.pick(id) : undefined,
-						pickLabel: 'Use this avatar',
-						pickCaption: 'Use avatar',
+						onPick:
+							photoGrid.active || fanout.isAvatar ? (id: string) => lightbox.pick(id) : undefined,
+						pickLabel: photoGrid.active ? 'Show this one' : 'Use this avatar',
+						pickCaption: photoGrid.active ? 'Show' : 'Use avatar',
 						busy: fanout.picking,
 					}
 				: null}
