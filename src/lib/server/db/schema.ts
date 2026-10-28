@@ -1028,6 +1028,54 @@ export const messageMedia = sqliteTable(
 	],
 );
 
+// --- images drawn for a message -------------------------------------------
+//
+// A picture drawn FOR a message rather than as one: a texting photo, developed
+// from a `[photo: …]` the reply wrote. It belongs to the reply, so it hangs off
+// that row instead of being a message of its own — which is what lets it be
+// developed long after the conversation moved on (nothing in the thread
+// changes, and nothing here is ever sent upstream). Each row is one VERSION:
+// developing again, or comparing models, adds rows; the shown one is the row
+// with the latest `shown_at`. A failed attempt is a row with an `error` and no
+// media, until the next attempt replaces it.
+//
+// The image is also linked to the reply through `message_media`, so the ref
+// count, the gallery and branch deletion treat it as the reply's own media.
+//
+// `kind` leaves room for avatar portraits, which are still messages of their
+// own today (an image drawn from a description reply, with no marker).
+export const messageImages = sqliteTable(
+	'message_images',
+	{
+		id: text('id').primaryKey(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		conversationId: text('conversation_id')
+			.notNull()
+			.references(() => conversations.id, { onDelete: 'cascade' }),
+		messageId: text('message_id')
+			.notNull()
+			.references(() => messages.id, { onDelete: 'cascade' }),
+		kind: text('kind', { enum: ['photo', 'portrait'] }).notNull(),
+		// Which `[photo: …]` of the reply, as `textingItems` numbers them — a
+		// persisted numbering (see there). Null for a kind with no marker.
+		markerIndex: integer('marker_index'),
+		// Null for a failed attempt. Purging the media takes its version with it.
+		mediaId: text('media_id').references(() => media.id, { onDelete: 'cascade' }),
+		// Conversation-facing `endpoint::model` id of the model that drew it.
+		modelId: text('model_id').notNull(),
+		error: text('error'),
+		shownAt: integer('shown_at'),
+		createdAt: integer('created_at').notNull(),
+	},
+	(t) => [
+		index('idx_message_images_message').on(t.messageId, t.markerIndex),
+		index('idx_message_images_conversation').on(t.userId, t.conversationId),
+		index('idx_message_images_media').on(t.mediaId),
+	],
+);
+
 // --- per-user MCP credentials --------------------------------------------
 //
 // config.toml is the source of truth for WHICH MCP servers exist and whether

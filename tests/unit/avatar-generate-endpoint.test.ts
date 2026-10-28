@@ -441,9 +441,7 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 	});
 });
 
-describe('POST /avatar/generate — a texting photo', () => {
-	const photo = { sourceMessageId: 'm1', index: 1, speaker: 'Sam' };
-
+describe('POST /avatar/generate — shape', () => {
 	beforeEach(() => {
 		mocks.getFanoutParent.mockReturnValue(null);
 		mocks.listAllModels.mockResolvedValue([
@@ -454,70 +452,10 @@ describe('POST /avatar/generate — a texting photo', () => {
 				aspectRatios: [{ value: '1:1' }, { value: '3:4' }, { value: '9:16' }],
 			},
 		]);
-		// m1 is the reply; p1 an earlier photo of it, hanging under it.
-		mocks.getMessage.mockImplementation((_c: unknown, id: unknown) =>
-			id === 'm1'
-				? { id: 'm1', role: 'assistant', parts: [{ type: 'text', text: '[photo: a dog]' }] }
-				: id === 'p1'
-					? { id: 'p1', role: 'assistant', parentMessageId: 'm1', parts: [] }
-					: null,
-		);
-	});
-
-	it('draws in the background, stamps the marker, and applies nothing', async () => {
-		await call({ photo, aspectRatio: '9:16' });
-		const params = relayParams();
-		expect(params.photo).toEqual(photo);
-		expect(params.aspectRatio).toBe('9:16');
-		// The photo arriving is the whole result — not a new face.
-		expect(params.onMediaPersisted).toBeUndefined();
-		expect(params.advanceActiveLeafIfCurrent).toBe('m1');
-		expect(getAvatarDrawSince('c1')).not.toBeNull();
-	});
-
-	it('takes the nearest shape the model offers', async () => {
-		await call({ photo, aspectRatio: '2:3' });
-		expect(relayParams().aspectRatio).toBe('3:4');
 	});
 
 	it('keeps a portrait square whatever shape is asked for', async () => {
 		await call({ aspectRatio: '9:16' });
 		expect(relayParams().aspectRatio).toBe('1:1');
-	});
-
-	it('advances from the photo it replaces on a re-develop', async () => {
-		// The new photo is p1's sibling, so the leaf is on p1, not on the anchor —
-		// guarding on the anchor would leave the new photo hidden behind p1.
-		await call({ photo, expectLeafMessageId: 'p1' });
-		expect(relayParams().advanceActiveLeafIfCurrent).toBe('p1');
-	});
-
-	it.each([
-		['a message that is not a sibling', { photo, expectLeafMessageId: 'm1' }],
-		['no photo', { expectLeafMessageId: 'p1' }],
-		['a malformed photo', { photo: { sourceMessageId: 'm1', index: -1 } }],
-		['a speaker past the name limit', { photo: { ...photo, speaker: 'x'.repeat(31) } }],
-	])('refuses %s', async (_label, body) => {
-		await expect(call(body)).rejects.toMatchObject({ status: 400 });
-		expect(mocks.runImageRelay).not.toHaveBeenCalled();
-	});
-
-	it('refuses to replace a message that is not in this conversation', async () => {
-		await expect(call({ photo, expectLeafMessageId: 'elsewhere' })).rejects.toMatchObject({
-			status: 404,
-		});
-	});
-
-	it('refuses a photo from a reply that is not in this conversation', async () => {
-		await expect(call({ photo: { sourceMessageId: 'elsewhere', index: 0 } })).rejects.toMatchObject(
-			{ status: 404 },
-		);
-	});
-
-	it('stamps the marker on each branch of a comparison, applying nothing', async () => {
-		mocks.getFanoutParent.mockReturnValue('m1');
-		await call({ photo, fanout: true });
-		expect(relayParams().photo).toEqual(photo);
-		expect(relayParams().onMediaPersisted).toBeUndefined();
 	});
 });

@@ -650,6 +650,16 @@ export interface ChatMessage {
 	siblingPosition?: number;
 	siblingIds?: string[];
 	/**
+	 * Pictures drawn FOR this message rather than as one — a texting reply's
+	 * developed photos, every version of each, oldest first (see
+	 * `message_images`). Set on the chat page's branch window only; absent
+	 * where nothing has been drawn.
+	 */
+	images?: MessageImage[];
+	/** Photos of this reply still being developed — a draw queued or running
+	 *  for one of its `[photo: …]`, each from one model. */
+	developing?: DevelopingImage[];
+	/**
 	 * Compaction summary marker. Non-null ONLY when this assistant message is a
 	 * generated context summary; holds the id of the first message kept verbatim
 	 * after it (the "resume from" point). Drives both the upstream trim
@@ -724,6 +734,33 @@ export interface AvatarDrawPrompt {
 	/** Set when the draw is a texting photo rather than a portrait: the marker it
 	 *  develops, which every candidate carries onto its image part. */
 	photo?: PhotoOrigin;
+}
+
+/** One version of a picture drawn for a message (`ChatMessage.images`). */
+export interface MessageImage {
+	id: string;
+	kind: 'photo' | 'portrait';
+	/** Which of the reply's `[photo: …]` it develops, as `textingItems` numbers
+	 *  them. Null for a kind with no marker. */
+	markerIndex: number | null;
+	/** Null for a failed attempt, which carries `error` instead. */
+	mediaId: string | null;
+	error: string | null;
+	/** Conversation-facing id of the model that drew it. */
+	modelId: string;
+	/** The version on show for its marker: the one last picked, else the
+	 *  newest. Exactly one per marker that has any. */
+	shown: boolean;
+	aspectRatio: string | null;
+	width: number | null;
+	height: number | null;
+	createdAt: number;
+}
+
+/** A draw of one of a reply's photos, queued or running. */
+export interface DevelopingImage {
+	markerIndex: number;
+	modelId: string;
 }
 
 /**

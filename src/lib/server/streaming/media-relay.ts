@@ -33,7 +33,7 @@ import {
 	type PendingWork,
 	type SlotPurpose,
 } from '../endpoints/concurrency';
-import type { Tx } from '../db/client';
+import { getDb, type Tx } from '../db/client';
 import type { InFlightEntry } from './in-flight';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { notifyConversationComplete, type NotifyModality } from '../push/notify';
@@ -187,6 +187,16 @@ export interface MediaRelayParams {
 	 * a cancellation; any other throw rolls it back as a failure.
 	 */
 	persistWith?: (tx: Tx) => void;
+	/**
+	 * Land the result ON `userMessage` rather than as a new row under it: a
+	 * texting photo is a version of the reply's `[photo: …]`, not a message of
+	 * its own (see `message_images`). Called in the transaction that links the
+	 * media to that message and runs `persistWith`; a failure lands here too, as
+	 * a failed attempt, instead of as an error sibling. The thread itself doesn't
+	 * change, so the leaf and fan-out params have nothing to do. `done` carries
+	 * `userMessage` back.
+	 */
+	landOn?: (tx: Tx, outcome: { mediaId: string } | { error: string }) => void;
 	/**
 	 * A prompt-enhancement result from an earlier run of this same generation.
 	 * When present the relay skips enhancement and generates from it — a resumed
@@ -402,21 +412,29 @@ export async function runMediaRelay(
 			// part can carry — the success path reads it off the output media row.
 			let persistedId: string | undefined;
 			try {
-				persistedId = appendErrorSibling({
-					conversationId: params.conversationId,
-					parentMessageId: params.userMessage.id,
-					message: produced.error,
-					sourceMediaId: params.sourceMediaId ?? null,
-					modelUsed: params.storedModelId,
-					genMs: Date.now() - genStartedAt,
-					advanceActiveLeaf: params.advanceActiveLeaf ?? true,
-					advanceActiveLeafIfCurrent: params.advanceActiveLeafIfCurrent,
-					fanoutIndex: params.fanoutIndex,
-					inTransaction: (tx) => {
+				const landOn = params.landOn;
+				if (landOn) {
+					getDb().transaction((tx) => {
 						params.persistWith?.(tx);
+						landOn(tx, { error: produced.error });
 						recordModelEvent(params.storedModelId, 'failed', { userId: params.userId, tx });
-					},
-				});
+					});
+				} else
+					persistedId = appendErrorSibling({
+						conversationId: params.conversationId,
+						parentMessageId: params.userMessage.id,
+						message: produced.error,
+						sourceMediaId: params.sourceMediaId ?? null,
+						modelUsed: params.storedModelId,
+						genMs: Date.now() - genStartedAt,
+						advanceActiveLeaf: params.advanceActiveLeaf ?? true,
+						advanceActiveLeafIfCurrent: params.advanceActiveLeafIfCurrent,
+						fanoutIndex: params.fanoutIndex,
+						inTransaction: (tx) => {
+							params.persistWith?.(tx);
+							recordModelEvent(params.storedModelId, 'failed', { userId: params.userId, tx });
+						},
+					});
 			} catch (e) {
 				// Best-effort durability — the client still gets the error frame
 				// below, just without a handle to the (absent) row. A discarded
@@ -439,33 +457,43 @@ export async function runMediaRelay(
 		}
 
 		let assistantMessage: ChatMessage;
+		// Counted with the result, so a discarded one un-counts too.
+		const recordGenerated = (tx: Tx) => {
+			recordModelEvent(params.storedModelId, 'generated', { userId: params.userId, tx });
+			recordModelEvent(params.storedModelId, 'speed_ms', { sum: Date.now() - genStartedAt, tx });
+		};
 		try {
-			assistantMessage = appendMessage({
-				conversationId: params.conversationId,
-				parentMessageId: params.userMessage.id,
-				role: 'assistant',
-				parts: [produced.part],
-				modelUsed: params.storedModelId,
-				rawResponseJson: produced.rawResponseJson,
-				genMs: Date.now() - genStartedAt,
-				advanceActiveLeaf: params.advanceActiveLeaf ?? true,
-				advanceActiveLeafIfCurrent: params.advanceActiveLeafIfCurrent,
-				fanoutIndex: params.fanoutIndex,
-				// Linked inside the append's transaction, so a crash can't leave
-				// the media row persisted with nothing referencing it — generated
-				// media is never reaped by the purger, so it would sit there for
-				// good.
-				inTransaction: (tx, messageId) => {
-					linkMessageMedia(messageId, produced.mediaId, tx);
+			const landOn = params.landOn;
+			if (landOn) {
+				getDb().transaction((tx) => {
+					linkMessageMedia(params.userMessage.id, produced.mediaId, tx);
 					params.persistWith?.(tx);
-					// In the append's transaction, so a discarded result un-counts too.
-					recordModelEvent(params.storedModelId, 'generated', { userId: params.userId, tx });
-					recordModelEvent(params.storedModelId, 'speed_ms', {
-						sum: Date.now() - genStartedAt,
-						tx,
-					});
-				},
-			});
+					landOn(tx, { mediaId: produced.mediaId });
+					recordGenerated(tx);
+				});
+				assistantMessage = params.userMessage;
+			} else
+				assistantMessage = appendMessage({
+					conversationId: params.conversationId,
+					parentMessageId: params.userMessage.id,
+					role: 'assistant',
+					parts: [produced.part],
+					modelUsed: params.storedModelId,
+					rawResponseJson: produced.rawResponseJson,
+					genMs: Date.now() - genStartedAt,
+					advanceActiveLeaf: params.advanceActiveLeaf ?? true,
+					advanceActiveLeafIfCurrent: params.advanceActiveLeafIfCurrent,
+					fanoutIndex: params.fanoutIndex,
+					// Linked inside the append's transaction, so a crash can't leave
+					// the media row persisted with nothing referencing it — generated
+					// media is never reaped by the purger, so it would sit there for
+					// good.
+					inTransaction: (tx, messageId) => {
+						linkMessageMedia(messageId, produced.mediaId, tx);
+						params.persistWith?.(tx);
+						recordGenerated(tx);
+					},
+				});
 		} catch (e) {
 			if (e instanceof GenerationDiscardedError) {
 				// The result has nowhere to land, but `generate` already stored it —

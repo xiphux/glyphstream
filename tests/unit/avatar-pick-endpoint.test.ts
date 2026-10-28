@@ -142,27 +142,3 @@ describe('POST /avatar/pick', () => {
 		await expect(call('nope')).rejects.toMatchObject({ status: 404 });
 	});
 });
-
-describe('POST /avatar/pick — a texting photo', () => {
-	it('moves the thread onto the photo and leaves the face alone', async () => {
-		mocks.getMessage.mockImplementation((_c: unknown, id: unknown) =>
-			id === 'p1'
-				? {
-						...PORTRAIT,
-						parts: [
-							{
-								type: 'image',
-								mediaId: 'media-42',
-								photo: { sourceMessageId: 'desc', index: 0 },
-							},
-						],
-					}
-				: null,
-		);
-		const res = await call();
-		expect(await res.json()).toEqual({ ok: true, newActiveLeaf: 'p1' });
-		expect(mocks.selectBranch.mock.calls).toEqual([['c1', 'p1']]);
-		expect(mocks.setConversationAvatar).not.toHaveBeenCalled();
-		expect(mocks.recordMediaEvent).not.toHaveBeenCalled();
-	});
-});

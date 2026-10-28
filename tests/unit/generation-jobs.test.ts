@@ -102,6 +102,7 @@ import { appendMessage, getSiblingAssistants } from '#lib/server/db/queries/mess
 import { conversations, generationJobs, media } from '#lib/server/db/schema.js';
 import { insertMedia } from '#lib/server/db/queries/media.js';
 import { insertGenerationJob } from '#lib/server/db/queries/generation-jobs.js';
+import { listImagesForMessages, showMessageImage } from '#lib/server/db/queries/message-images.js';
 import {
 	resetEndpointGatesForTests,
 	setResourceGroupPaused,
@@ -1034,5 +1035,154 @@ describe('a resumed avatar draw', () => {
 		resumeGenerationJobs();
 		expect(getAvatarDrawSince(s.conv.id)).not.toBeNull();
 		expect(getInFlightSince(s.conv.id)).toBeNull();
+	});
+});
+
+describe('a texting photo', () => {
+	let mediaSeq = 0;
+	function seedReply(text = 'look!\n\n[photo: me at the beach]\n\n[photo: the dog]') {
+		const s = seed();
+		const reply = appendMessage({
+			conversationId: s.conv.id,
+			parentMessageId: s.userMessage.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text }],
+		});
+		mocks.persistGeneratedImage.mockImplementation(async () => ({
+			id: insertMedia({
+				userId: s.user.id,
+				storagePath: `generated/photo-${++mediaSeq}.png`,
+				contentType: 'image/png',
+				byteSize: 16,
+				kind: 'image',
+				sourceEndpointId: 'bridge',
+				sourceModel: 'bridge::sdxl',
+				promptExcerpt: 'a photo',
+			}).id,
+			dimensions: null,
+		}));
+		return { ...s, reply };
+	}
+
+	function photoJob(
+		s: ReturnType<typeof seedReply>,
+		index = 0,
+		over: Partial<SubmitGenerationJob['params']> = {},
+		modelId = 'bridge::sdxl',
+	): SubmitGenerationJob {
+		return job(s, {
+			anchorMessageId: s.reply.id,
+			origin: 'photo',
+			modelId,
+			params: {
+				...job(s).params,
+				displayOnly: true,
+				photo: { sourceMessageId: s.reply.id, index },
+				...over,
+			},
+		});
+	}
+
+	const versions = (s: ReturnType<typeof seedReply>) =>
+		listImagesForMessages(s.conv.id, [s.reply.id]).get(s.reply.id) ?? [];
+
+	it('lands on the reply as a version, leaving the thread as it was', async () => {
+		const s = seedReply();
+		// The conversation has moved on; the photo can still develop.
+		const later = appendMessage({
+			conversationId: s.conv.id,
+			parentMessageId: s.reply.id,
+			role: 'user',
+			parts: [{ type: 'text', text: 'cute' }],
+		});
+		const events = await drain(submitGenerationJob(photoJob(s, 1)));
+		expect(events.map((e) => e.type)).toEqual(['start', 'done']);
+		expect(versions(s)).toMatchObject([
+			{ kind: 'photo', markerIndex: 1, modelId: 'bridge::sdxl', error: null, shown: true },
+		]);
+		// No message of its own, and the leaf stays on what the user wrote.
+		expect(getSiblingAssistants(s.conv.id, s.reply.id)).toEqual([]);
+		expect(
+			mocks.testDb
+				.select({ leaf: conversations.activeLeafMessageId })
+				.from(conversations)
+				.where(eq(conversations.id, s.conv.id))
+				.get()!.leaf,
+		).toBe(later.id);
+		expect(mocks.linkMessageMedia).toHaveBeenCalledWith(
+			s.reply.id,
+			versions(s)[0].mediaId,
+			expect.anything(),
+		);
+		expect(jobRows()).toEqual([]);
+		// One notification, for the reply.
+		expect(mocks.notify).toHaveBeenCalledWith(
+			expect.objectContaining({ assistantMessageId: s.reply.id, modality: 'image' }),
+		);
+	});
+
+	it('keeps a failure on the photo until the next attempt lands', async () => {
+		const s = seedReply();
+		mocks.imageGeneration.mockRejectedValueOnce(new Error('upstream exploded'));
+		await drain(submitGenerationJob(photoJob(s)));
+		expect(versions(s)).toMatchObject([{ mediaId: null, error: 'upstream exploded' }]);
+		expect(getSiblingAssistants(s.conv.id, s.reply.id)).toEqual([]);
+
+		await drain(submitGenerationJob(photoJob(s)));
+		expect(versions(s)).toMatchObject([{ error: null, shown: true }]);
+	});
+
+	it('puts a new version on show when developed again', async () => {
+		const s = seedReply();
+		await drain(submitGenerationJob(photoJob(s)));
+		await drain(submitGenerationJob(photoJob(s)));
+		const [first, second] = versions(s);
+		expect([first.shown, second.shown]).toEqual([false, true]);
+		// Picking the first again (the arrows) puts it back.
+		expect(showMessageImage(s.user.id, s.conv.id, first.id)).toBe(true);
+		expect(versions(s).map((v) => v.shown)).toEqual([true, false]);
+	});
+
+	it('lets every photo of a reply develop at once, outside the turn', () => {
+		const s = seedReply();
+		setResourceGroupPaused(endpoint(), true);
+		const a = submitGenerationJob(photoJob(s, 0));
+		const b = submitGenerationJob(photoJob(s, 1));
+		const entries = getInFlightEntries(s.conv.id);
+		expect(entries).toHaveLength(2);
+		expect(entries.every((e) => !e.isTurn && !e.controller.signal.aborted)).toBe(true);
+		expect(getInFlightSince(s.conv.id)).toBeNull();
+		expect(getAvatarDrawSince(s.conv.id)).toBeNull();
+		void a.cancel();
+		void b.cancel();
+	});
+
+	it('shows the first of a comparison, keeps the rest, and notifies once', async () => {
+		const s = seedReply();
+		mocks.endpoint = endpoint(2);
+		await Promise.all([
+			drain(submitGenerationJob(photoJob(s, 0, { compare: true }, 'bridge::sdxl'))),
+			drain(submitGenerationJob(photoJob(s, 0, { compare: true }, 'bridge::flux'))),
+		]);
+		const all = versions(s);
+		expect(all).toHaveLength(2);
+		// Whichever landed first; the other waits to be picked.
+		expect(all.filter((v) => v.shown)).toHaveLength(1);
+		expect(mocks.notify).toHaveBeenCalledTimes(1);
+		expect(mocks.notify).toHaveBeenCalledWith(
+			expect.objectContaining({ assistantMessageId: s.reply.id, summary: '2 photos ready' }),
+		);
+	});
+
+	it('comes back after a restart and lands on the reply', async () => {
+		const s = seedReply();
+		leftover(s, {
+			origin: 'photo',
+			anchorMessageId: s.reply.id,
+			paramsJson: JSON.stringify(photoJob(s, 1).params),
+		});
+		resumeGenerationJobs();
+		await until(() => jobRows().length === 0, 'the photo to land');
+		expect(versions(s)).toMatchObject([{ markerIndex: 1, shown: true }]);
 	});
 });

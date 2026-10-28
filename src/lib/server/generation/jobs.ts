@@ -83,6 +83,13 @@ import type { PhotoOrigin, StreamErrorEvent } from '#lib/types/api.js';
 import { createLogger } from '../log';
 import { appendErrorSibling } from '../streaming/error-sibling';
 import { recordModelEvent } from '../stats/model-stats';
+import { getDb, type Tx } from '../db/client';
+import {
+	hasShownImage,
+	insertMessageImage,
+	listImagesForMessages,
+} from '../db/queries/message-images';
+import { notifyConversationComplete } from '../push/notify';
 
 const log = createLogger('generation-jobs');
 const avatarLog = createLogger('avatar');
@@ -98,12 +105,12 @@ const avatarLog = createLogger('avatar');
  *  - `avatar`: a background portrait draw. Advances the leaf only if the user
  *    hasn't moved on, and applies the portrait as the conversation's avatar.
  *  - `avatar_fanout`: one portrait of an avatar comparison — a pinned sibling
- *    like `fanout`; the pick applies the winner, not the relay. A texting
- *    photo's comparison uses it too: its candidates are the same kind of thing,
- *    and the pick tells them apart by the `photo` on their image part.
- *  - `photo`: a background draw of a texting photo — an `avatar` draw in every
- *    respect except that nothing is applied: the photo itself, arriving in the
- *    thread, is the whole result.
+ *    like `fanout`; the pick applies the winner, not the relay.
+ *  - `photo`: a texting photo, developed from one of a reply's `[photo: …]`.
+ *    It lands ON the reply as a version (`message_images`), not as a message,
+ *    so the thread never changes: no leaf to advance, nothing to supersede.
+ *    Each is its own side errand, so several can draw at once — a comparison
+ *    is just several, and notifies once, when the last one settles.
  */
 export type JobOrigin = GenerationJobRow['origin'];
 
@@ -128,8 +135,11 @@ export interface GenerationJobParams {
 	promptHint: string | null;
 	/** Persist as display-only (avatar portraits) — see the image relay. */
 	displayOnly?: boolean;
-	/** The texting photo this draws — carried onto the image part. */
+	/** The texting photo this draws: the reply (also the job's anchor) and
+	 *  which of its markers. */
 	photo?: PhotoOrigin;
+	/** One of a comparison's draws: they notify once, together. */
+	compare?: boolean;
 	/**
 	 * The leaf a background draw advances from, when it isn't the anchor: a
 	 * photo re-developed (or retried after a failure) is a SIBLING of the one on
@@ -337,6 +347,7 @@ export function stopGenerationJobResume(): void {
 /** Test-only: forget that this process has resumed. */
 export function resetGenerationJobsForTests(): void {
 	stopGenerationJobResume();
+	comparing.clear();
 	shuttingDown = false;
 	processState[RESUMED] = false;
 }
@@ -348,14 +359,22 @@ function register(row: GenerationJobRow, endpoint: LoadedEndpoint): InFlightEntr
 		// A single send takes the conversation's default slot and an avatar draw
 		// its own — both supersede their predecessor, as they always have. Grid
 		// branches coexist, so each is keyed by its job.
-		row.origin === 'send' ? DEFAULT_BRANCH : isBackgroundDraw(row.origin) ? AVATAR_BRANCH : row.id,
+		row.origin === 'send'
+			? DEFAULT_BRANCH
+			: row.origin === 'avatar'
+				? AVATAR_BRANCH
+				: row.origin === 'photo'
+					? `photo:${row.id}`
+					: row.id,
 		row.kind,
 		row.modelId,
 		parseParams(row).sourceMediaId,
-		// A background portrait isn't part of the conversation's turn: recovery,
-		// the grid and the aggregate notification must not count it.
+		// A background portrait or photo isn't part of the conversation's turn:
+		// recovery, the grid and the aggregate notification must not count it.
 		!isBackgroundDraw(row.origin),
 	);
+	const key = row.origin === 'photo' ? comparisonKey(parseParams(row)) : null;
+	if (key) comparing.set(key, (comparing.get(key) ?? 0) + 1);
 	// A reattached video is rendering on the bridge from the moment it's back in
 	// flight — not only once it regains its slot, which is when the relay would
 	// otherwise report the id. Stop and conversation delete cancel the bridge job
@@ -386,23 +405,52 @@ function endpointFor(row: GenerationJobRow): LoadedEndpoint | undefined {
 
 /**
  * A draw the user backgrounds rather than waits on — an avatar portrait or a
- * texting photo. One per conversation, in the avatar slot (so starting one
- * supersedes the last, and neither is ever killed by a chat send), and not a
- * turn: recovery, the grid and the aggregate notification must not count it.
+ * texting photo. Never killed by a chat send, and not a turn: recovery, the
+ * grid and the aggregate notification must not count it. A portrait takes the
+ * conversation's one avatar slot, so starting one supersedes the last; photos
+ * each take their own.
  */
 function isBackgroundDraw(origin: JobOrigin): boolean {
 	return origin === 'avatar' || origin === 'photo';
 }
 
-/** The compare-and-swap guard for a background draw's leaf advance: it takes
- *  the leaf only if the user hasn't moved on. Undefined (advance
- *  unconditionally) for everything else. */
+/** The compare-and-swap guard for a portrait's leaf advance: it takes the leaf
+ *  only if the user hasn't moved on. Undefined (advance unconditionally) for
+ *  everything else — a photo never touches the leaf at all. */
 function backgroundDrawLeaf(
 	row: GenerationJobRow,
 	params: GenerationJobParams,
 ): string | undefined {
-	if (!isBackgroundDraw(row.origin)) return undefined;
+	if (row.origin !== 'avatar') return undefined;
 	return params.expectLeafMessageId ?? row.anchorMessageId;
+}
+
+/** Where a photo lands: as a version of its marker on the reply, or — for a
+ *  failure — as the failed attempt shown until the next one. A single draw
+ *  goes on show; a comparison's only takes the stage if nothing holds it. */
+function landPhoto(
+	tx: Tx,
+	row: GenerationJobRow,
+	params: GenerationJobParams,
+	outcome: { mediaId: string } | { error: string },
+): void {
+	const markerIndex = params.photo!.index;
+	const messageId = params.photo!.sourceMessageId;
+	const now = Date.now();
+	const landed = 'mediaId' in outcome;
+	insertMessageImage(tx, {
+		id: generateId(),
+		userId: row.userId,
+		conversationId: row.conversationId,
+		messageId,
+		kind: 'photo',
+		markerIndex,
+		mediaId: landed ? outcome.mediaId : null,
+		modelId: row.modelId,
+		error: landed ? null : outcome.error,
+		shownAt: landed && (!params.compare || !hasShownImage(tx, messageId, markerIndex)) ? now : null,
+		createdAt: now,
+	});
 }
 
 function parseParams(row: GenerationJobRow): GenerationJobParams {
@@ -432,6 +480,7 @@ async function runJob(
 		settled = true;
 		try {
 			clearInFlight(row.conversationId, entry);
+			if (row.origin === 'photo') notifyComparisonIfLast(row, params);
 			if (isFanoutOrigin(row.origin)) {
 				notifyFanoutCompleteIfLast({
 					conversationId: row.conversationId,
@@ -483,8 +532,9 @@ async function runJob(
 			// A grid runs the title task once, from /prepare; an avatar draw is a
 			// side errand in a conversation that already has a title.
 			suppressTitleTask: row.origin !== 'send',
-			// A grid fires one aggregate notification instead of one per branch.
-			suppressNotify: isFanoutOrigin(row.origin),
+			// A grid fires one aggregate notification instead of one per branch,
+			// and so does a photo comparison.
+			suppressNotify: isFanoutOrigin(row.origin) || !!params.compare,
 			inFlight: entry,
 			preparedPrompt: row.preparedJson
 				? (JSON.parse(row.preparedJson) as PreparedPrompt)
@@ -503,6 +553,8 @@ async function runJob(
 			persistWith: (tx) => {
 				if (!consumeGenerationJob(tx, row.id)) throw new GenerationDiscardedError();
 			},
+			landOn:
+				row.origin === 'photo' ? (tx, outcome) => landPhoto(tx, row, params, outcome) : undefined,
 			onMediaPersisted:
 				row.origin === 'avatar'
 					? (mediaId) => {
@@ -676,6 +728,14 @@ function persistFailure(
 	message: string,
 ): string | undefined {
 	try {
+		if (row.origin === 'photo') {
+			getDb().transaction((tx) => {
+				if (!consumeGenerationJob(tx, row.id)) throw new GenerationDiscardedError();
+				landPhoto(tx, row, params, { error: message });
+				recordModelEvent(row.modelId, 'failed', { userId: row.userId, tx });
+			});
+			return undefined;
+		}
 		return appendErrorSibling({
 			conversationId: row.conversationId,
 			parentMessageId: row.anchorMessageId,
@@ -697,4 +757,49 @@ function persistFailure(
 		deleteGenerationJob(row.id);
 		return undefined;
 	}
+}
+
+/**
+ * The draws of each photo comparison still to settle, by `reply:marker` — so
+ * the last one to settle sends the comparison's one notification. In memory
+ * and synchronous: a draw counts itself in when it registers (at submit or at
+ * resume) and out when it settles, so two finishing together can't both
+ * believe they were last, as reading the job table after the fact would.
+ */
+const comparing = new Map<string, number>();
+
+function comparisonKey(params: GenerationJobParams): string | null {
+	return params.compare && params.photo
+		? `${params.photo.sourceMessageId}:${params.photo.index}`
+		: null;
+}
+
+/**
+ * The one notification for a photo comparison, from whichever of its draws
+ * settles last. Says nothing if none of them produced a photo.
+ */
+function notifyComparisonIfLast(row: GenerationJobRow, params: GenerationJobParams): void {
+	const key = comparisonKey(params);
+	if (!key) return;
+	const left = (comparing.get(key) ?? 1) - 1;
+	if (left > 0) {
+		comparing.set(key, left);
+		return;
+	}
+	comparing.delete(key);
+	const { sourceMessageId, index } = params.photo!;
+	const developed = (
+		listImagesForMessages(row.conversationId, [sourceMessageId]).get(sourceMessageId) ?? []
+	).filter((i) => i.markerIndex === index && i.mediaId !== null && i.createdAt >= row.createdAt);
+	if (developed.length === 0) return;
+	void notifyConversationComplete({
+		userId: row.userId,
+		conversationId: row.conversationId,
+		assistantMessageId: sourceMessageId,
+		conversationTitle:
+			getConversationMeta(row.conversationId, row.userId)?.title ?? 'New conversation',
+		previewText: '',
+		modality: 'image',
+		summary: developed.length === 1 ? '1 photo ready' : `${developed.length} photos ready`,
+	}).catch((e: unknown) => log.warn('notify failed:', errorMessage(e)));
 }

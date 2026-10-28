@@ -123,8 +123,6 @@ const targets = walk(ROUTES)
 const UNREACHED_BODY_FIELDS: Record<string, string> = {
 	'/api/conversations/[id]/messages POST inputMediaIds':
 		'read only for a fanoutBranch dispatch; the shared user message is checked first',
-	'/api/conversations/[id]/avatar/generate POST expectLeafMessageId':
-		'read only for a photo draw, after sourceMessageId resolves; a foreign id is a 404 there',
 };
 
 interface Victim {
@@ -194,6 +192,8 @@ function bodyFor(route: string, method: string): unknown {
 		attachedMediaIds: [victim.mediaId],
 		inputMediaIds: [victim.mediaId],
 		toolCallId: 'call_1',
+		// A texting photo's number, which its route validates first.
+		index: 0,
 		decision: 'deny',
 		approved: false,
 		text: 'pwned',
@@ -216,7 +216,7 @@ function crossBody(field: string): Record<string, unknown> {
 		: field === 'mediaId'
 			? victim.mediaId
 			: victim.messageId;
-	return { text: 'hello', modelId: 'e::m', [field]: value };
+	return { text: 'hello', modelId: 'e::m', index: 0, [field]: value };
 }
 
 /** Every row of every table as JSON, keyed by table, so "the victim's data didn't

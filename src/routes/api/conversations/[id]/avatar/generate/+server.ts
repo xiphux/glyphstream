@@ -35,14 +35,6 @@
  * .../messages/prepare decides them for a turn fan-out. A branch request only
  * streams.
  *
- * TEXTING PHOTOS come through here too (`photo` in the body). A `[photo: …]`
- * marker is developed exactly the way a portrait is drawn — same dialog, same
- * single-model background draw, same comparison — because it IS the same
- * thing: an image hung under an assistant reply. Three differences: the prompt
- * comes from the marker rather than an appearance description, the shape is
- * the user's (the photo isn't cropped into a circle), and nothing is applied.
- * The photo arriving in the thread is the whole result.
- *
  * It used to be the client that applied it, on `done`, on the theory that a
  * disconnect mid-generation degrades to "the portrait is in the thread, set it
  * from the lightbox". In practice that theory had the failure backwards. iOS
@@ -63,7 +55,7 @@ import { getMessage, getSiblingAssistants } from '#lib/server/db/queries/message
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
 import { parseModelId } from '#lib/server/endpoints/model-id.js';
 import { listAllModels } from '#lib/server/endpoints/list-models.js';
-import type { ModelEntry, PhotoOrigin } from '#lib/types/api.js';
+import type { ModelEntry } from '#lib/types/api.js';
 import { submitGenerationJob } from '#lib/server/generation/jobs.js';
 import { nearestOffered } from '#lib/aspect-ratio.js';
 import {
@@ -121,44 +113,6 @@ interface GenerateAvatarBody {
 	 * which keeps the endpoint honest on its own.
 	 */
 	enhance?: unknown;
-	/** Draw a texting photo instead of a portrait: the marker it develops (see
-	 *  `PhotoOrigin`). The anchor is then the reply or the photo before it. */
-	photo?: unknown;
-	/** A photo's shape, `W:H`. Ignored for a portrait, which is pinned square. */
-	aspectRatio?: unknown;
-	/** A photo's background draw: the leaf it replaces, when that is a sibling
-	 *  rather than the anchor (a re-develop) — see `expectLeafMessageId`. */
-	expectLeafMessageId?: unknown;
-}
-
-/** The longest speaker name `#lib/texting.ts` reads. */
-const MAX_SPEAKER_CHARS = 30;
-
-function parsePhoto(raw: unknown, conversationId: string): PhotoOrigin | undefined {
-	if (raw === undefined || raw === null) return undefined;
-	const p = raw as Record<string, unknown>;
-	if (
-		typeof raw !== 'object' ||
-		typeof p.sourceMessageId !== 'string' ||
-		typeof p.index !== 'number' ||
-		!Number.isInteger(p.index) ||
-		p.index < 0 ||
-		p.index > 1000 ||
-		(p.speaker !== undefined &&
-			(typeof p.speaker !== 'string' || !p.speaker || p.speaker.length > MAX_SPEAKER_CHARS))
-	) {
-		error(400, "'photo' must be { sourceMessageId, index, speaker? }");
-	}
-	// The reply that sent it, in this conversation — so a photo can't be stamped
-	// as having come from someone else's thread.
-	if (getMessage(conversationId, p.sourceMessageId)?.role !== 'assistant') {
-		error(404, 'The reply that sent this photo was not found');
-	}
-	return {
-		sourceMessageId: p.sourceMessageId,
-		index: p.index,
-		...(typeof p.speaker === 'string' ? { speaker: p.speaker } : {}),
-	};
 }
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
@@ -190,26 +144,6 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	const supplied = typeof body.prompt === 'string' ? body.prompt.trim() : '';
 	const prompt = supplied || partsToText(source.parts).trim();
 	if (!prompt) error(400, 'That message has no text to draw from');
-
-	const photo = parsePhoto(body.photo, params.id);
-	if (photo && source.role !== 'assistant') {
-		error(400, 'A photo must anchor on an assistant message');
-	}
-	let expectLeafMessageId: string | undefined;
-	if (body.expectLeafMessageId !== undefined && body.expectLeafMessageId !== null) {
-		if (!photo || typeof body.expectLeafMessageId !== 'string') {
-			error(400, "'expectLeafMessageId' is a photo's, and must be a message id");
-		}
-		// Scoped to this conversation, like the source.
-		const replaced = getMessage(params.id, body.expectLeafMessageId);
-		if (!replaced) error(404, 'Message not found');
-		// Only a sibling of the draw-to-be can be what it replaces; anything else
-		// would let the leaf be pulled across the thread.
-		if (replaced.parentMessageId !== source.id) {
-			error(400, "'expectLeafMessageId' must be a sibling under the same message");
-		}
-		expectLeafMessageId = replaced.id;
-	}
 
 	const parsed = parseModelId(body.modelId);
 	const endpoint = parsed ? getEndpoint(parsed.endpointId) : null;
@@ -365,12 +299,6 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 			? body.fanoutSize
 			: undefined;
 
-	const requestedRatio = photo
-		? typeof body.aspectRatio === 'string'
-			? body.aspectRatio
-			: null
-		: '1:1';
-
 	// A durable job, like any image generation (see server/generation/jobs.ts).
 	// Its origin carries what this route used to wire up by hand: a comparison's
 	// branches coexist as pinned siblings under this anchor and fold into one
@@ -386,7 +314,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		// The anchor: the portrait is appended as this message's child.
 		anchorMessageId: source.id,
 		kind: 'image',
-		origin: isFanout ? 'avatar_fanout' : photo ? 'photo' : 'avatar',
+		origin: isFanout ? 'avatar_fanout' : 'avatar',
 		// Recorded as the row's `modelUsed`: the portrait was drawn by the image
 		// model, not by the conversation's. The row merges into the description's
 		// bubble, so this never surfaces as a mismatched label.
@@ -405,11 +333,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 			// would be centre-cropped down to the middle sliver of the image.
 			// Nearest, not exact, for a model whose menu has no 1:1: that's the least
 			// cropping available. A model advertising no ratios gets nothing.
-			//
-			// A photo takes the shape the user (or the model, in its description) asked
-			// for, by the same nearest-offered rule — a comparison sends one shape to
-			// models whose menus differ.
-			aspectRatio: nearestOffered(requestedRatio, modelEntry?.aspectRatios ?? [])?.value,
+			aspectRatio: nearestOffered('1:1', modelEntry?.aspectRatios ?? [])?.value,
 			// The description is prose, not a formatted image prompt, so the enhancer
 			// earns its keep here more than anywhere: it restyles into whatever this
 			// model prefers.
@@ -417,8 +341,6 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 			promptStyle: modelEntry?.promptStyle ?? null,
 			promptHint: modelEntry?.promptHint ?? null,
 			displayOnly: true,
-			...(photo ? { photo } : {}),
-			...(expectLeafMessageId ? { expectLeafMessageId } : {}),
 			fanoutSize,
 		},
 	});

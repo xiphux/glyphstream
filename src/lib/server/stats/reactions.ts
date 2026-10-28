@@ -110,6 +110,21 @@ export function recordComparisonPick(
 }
 
 /**
+ * The same for a photo comparison, whose candidates are versions of one photo
+ * rather than sibling messages: `models` drew the candidates, `winnerModel`
+ * the one picked. Same rules — once per model, no loss, nothing for a
+ * comparison of one model against itself.
+ */
+export function recordPhotoComparisonPick(winnerModel: string, models: string[]): void {
+	bestEffort('photo pick', () => {
+		const all = new Set([...models, winnerModel]);
+		if (all.size < 2) return;
+		for (const m of all) recordModelEvent(m, 'fanout_shown');
+		recordModelEvent(winnerModel, 'fanout_win');
+	});
+}
+
+/**
  * The reply a `/select?pick=1` is picking, when it resolves the comparison
  * actually parked on the conversation — else null, and nothing is counted.
  * Read BEFORE `selectBranch`, which clears the parked marker.

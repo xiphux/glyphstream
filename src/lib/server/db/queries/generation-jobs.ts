@@ -7,7 +7,7 @@
  * `user_id` anyway (it is user-owned data, and the FK cascade on user delete
  * needs it); the runner acts as that user when it resumes the row.
  */
-import { asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { getDb, type Tx } from '../client';
 import { generationJobs } from '../schema';
 
@@ -103,4 +103,33 @@ export function consumeGenerationJob(tx: Tx, id: string): boolean {
 /** Idempotent cleanup for every exit that doesn't persist an outcome. */
 export function deleteGenerationJob(id: string): void {
 	getDb().delete(generationJobs).where(eq(generationJobs.id, id)).run();
+}
+
+/**
+ * The photo draws queued or running for `messageIds` (texting replies), as
+ * `[messageId, params_json]` — the caller reads which marker each develops.
+ * Read for the chat page, which resolved the conversation for its user first.
+ */
+export function listPhotoJobsForMessages(
+	conversationId: string,
+	messageIds: string[],
+): Array<{ id: string; anchorMessageId: string; modelId: string; paramsJson: string }> {
+	if (messageIds.length === 0) return [];
+	return getDb()
+		.select({
+			id: generationJobs.id,
+			anchorMessageId: generationJobs.anchorMessageId,
+			modelId: generationJobs.modelId,
+			paramsJson: generationJobs.paramsJson,
+		})
+		.from(generationJobs)
+		.where(
+			and(
+				eq(generationJobs.conversationId, conversationId),
+				eq(generationJobs.origin, 'photo'),
+				inArray(generationJobs.anchorMessageId, messageIds),
+			),
+		)
+		.orderBy(asc(generationJobs.createdAt), asc(sql`rowid`))
+		.all();
 }

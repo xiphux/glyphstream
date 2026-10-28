@@ -1,7 +1,9 @@
+import { listImagesForMessages } from './message-images';
+import { listPhotoJobsForMessages } from './generation-jobs';
 import { eq, and, asc, inArray, isNotNull, isNull, getTableColumns } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import type { CompareSelection } from '#lib/fanout.js';
-import type { ChatMessage, MessagePart, MessageRole } from '#lib/types/api.js';
+import type { ChatMessage, DevelopingImage, MessagePart, MessageRole } from '#lib/types/api.js';
 import { isReactionTool } from '#lib/chat-render.js';
 import { parseDispatchedModels, parseMessageParts } from './json-columns';
 import { getDb, type DB, type Tx } from '../client';
@@ -407,6 +409,30 @@ function hydrateBranch(
 	return ordered.reverse();
 }
 
+/** The pictures drawn for each message, and the ones still drawing — a
+ *  texting reply's photos. The chat page's window only: none of it goes
+ *  upstream, so nothing else needs it. */
+function attachImages(conversationId: string, msgs: ChatMessage[]): void {
+	const ids = msgs.filter((m) => m.role === 'assistant').map((m) => m.id);
+	if (ids.length === 0) return;
+	const images = listImagesForMessages(conversationId, ids);
+	const developing = new Map<string, DevelopingImage[]>();
+	for (const job of listPhotoJobsForMessages(conversationId, ids)) {
+		const params = JSON.parse(job.paramsJson) as { photo?: { index?: unknown } };
+		const markerIndex = params.photo?.index;
+		if (typeof markerIndex !== 'number') continue;
+		let list = developing.get(job.anchorMessageId);
+		if (!list) developing.set(job.anchorMessageId, (list = []));
+		list.push({ markerIndex, modelId: job.modelId });
+	}
+	for (const m of msgs) {
+		const own = images.get(m.id);
+		if (own) m.images = own;
+		const drawing = developing.get(m.id);
+		if (drawing) m.developing = drawing;
+	}
+}
+
 /**
  * Walk the active branch root → leaf and return messages in order.
  *
@@ -529,8 +555,10 @@ export function walkActiveBranchWindow(
 	const bounds = branchWindowBounds(skeleton.branch, options);
 	if (!bounds) return null;
 	const ids = skeleton.branch.slice(bounds.start, bounds.end).map((r) => r.id);
+	const hydrated = hydrateBranch(conversationId, ids, skeleton.byParent, { columns: 'all' });
+	attachImages(conversationId, hydrated);
 	return {
-		messages: hydrateBranch(conversationId, ids, skeleton.byParent, { columns: 'all' }),
+		messages: hydrated,
 		hasEarlier: bounds.end < skeleton.branch.length,
 	};
 }
