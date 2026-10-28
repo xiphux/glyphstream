@@ -189,6 +189,24 @@ describe('wakeWhenDue', () => {
 		stop();
 	});
 
+	it('arms nothing more when cleaned up during a reload', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(0);
+		let finish: () => void = () => {};
+		refreshAll.mockImplementationOnce(() => new Promise<void>((r) => (finish = r)));
+		const fetchMock = probe(() => ({ checkIn: null }));
+		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
+		const stop = c.wakeWhenDue(PENDING, 0);
+		await vi.advanceTimersByTimeAsync(15_000);
+		// The reload brought no row: the page's effect cleans this up before the
+		// reload's promise settles.
+		stop();
+		finish();
+		await vi.advanceTimersByTimeAsync(5 * 60_000);
+		expect(fetchMock).toHaveBeenCalledOnce();
+		expect(refreshAll).toHaveBeenCalledOnce();
+	});
+
 	it('stops once the check-in is past its grace period, with one last reload', async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(0);
