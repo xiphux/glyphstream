@@ -10,7 +10,7 @@
  * after the conversation moved on, or while another reply is still streaming.
  * The image is never sent upstream; the model already has its description.
  *
- * A comparison is just several of these (`compare: true` on each): every
+ * A comparison is just several of these, sharing an id (`compare`): every
  * result is kept as a version, the first to land goes on show unless one
  * already is, and the user picks with PATCH ./[photoId]. They notify once,
  * together.
@@ -53,7 +53,8 @@ interface DevelopPhotoBody {
 	enhance?: unknown;
 	/** The photo's shape, `W:H`; the nearest the model offers is used. */
 	aspectRatio?: unknown;
-	/** One draw of a comparison. */
+	/** One draw of a comparison: an id its draws share, made up by the client.
+	 *  Only ever matched against versions of this same reply. */
 	compare?: unknown;
 }
 
@@ -71,6 +72,13 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	}
 	if (typeof body.modelId !== 'string' || !body.modelId) {
 		error(400, "'modelId' is required");
+	}
+	const compareId = body.compare;
+	if (
+		compareId !== undefined &&
+		(typeof compareId !== 'string' || !/^[\w-]{1,64}$/.test(compareId))
+	) {
+		error(400, "'compare' must be an id");
 	}
 
 	const meta = getConversationMeta(params.id, locals.user.id);
@@ -142,7 +150,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 				index: marker.index,
 				...(marker.speaker ? { speaker: marker.speaker } : {}),
 			},
-			...(body.compare === true ? { compare: true } : {}),
+			...(compareId ? { compareId } : {}),
 		},
 	});
 	return sseResponse(stream);

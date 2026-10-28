@@ -138,8 +138,9 @@ export interface GenerationJobParams {
 	/** The texting photo this draws: the reply (also the job's anchor) and
 	 *  which of its markers. */
 	photo?: PhotoOrigin;
-	/** One of a comparison's draws: they notify once, together. */
-	compare?: boolean;
+	/** One of a comparison's draws, by the id they share: they notify once,
+	 *  together, and the pick counts their models (see `comparison_id`). */
+	compareId?: string;
 	/**
 	 * The leaf a background draw advances from, when it isn't the anchor: a
 	 * photo re-developed (or retried after a failure) is a SIBLING of the one on
@@ -448,7 +449,9 @@ function landPhoto(
 		mediaId: landed ? outcome.mediaId : null,
 		modelId: row.modelId,
 		error: landed ? null : outcome.error,
-		shownAt: landed && (!params.compare || !hasShownImage(tx, messageId, markerIndex)) ? now : null,
+		shownAt:
+			landed && (!params.compareId || !hasShownImage(tx, messageId, markerIndex)) ? now : null,
+		comparisonId: landed ? (params.compareId ?? null) : null,
 		createdAt: now,
 	});
 }
@@ -534,7 +537,7 @@ async function runJob(
 			suppressTitleTask: row.origin !== 'send',
 			// A grid fires one aggregate notification instead of one per branch,
 			// and so does a photo comparison.
-			suppressNotify: isFanoutOrigin(row.origin) || !!params.compare,
+			suppressNotify: isFanoutOrigin(row.origin) || !!params.compareId,
 			inFlight: entry,
 			preparedPrompt: row.preparedJson
 				? (JSON.parse(row.preparedJson) as PreparedPrompt)
@@ -760,7 +763,7 @@ function persistFailure(
 }
 
 /**
- * The draws of each photo comparison still to settle, by `reply:marker` — so
+ * The draws of each photo comparison still to settle, by `reply:comparison` — so
  * the last one to settle sends the comparison's one notification. In memory
  * and synchronous: a draw counts itself in when it registers (at submit or at
  * resume) and out when it settles, so two finishing together can't both
@@ -769,8 +772,8 @@ function persistFailure(
 const comparing = new Map<string, number>();
 
 function comparisonKey(params: GenerationJobParams): string | null {
-	return params.compare && params.photo
-		? `${params.photo.sourceMessageId}:${params.photo.index}`
+	return params.compareId && params.photo
+		? `${params.photo.sourceMessageId}:${params.compareId}`
 		: null;
 }
 

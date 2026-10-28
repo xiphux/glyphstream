@@ -1161,8 +1161,8 @@ describe('a texting photo', () => {
 		const s = seedReply();
 		mocks.endpoint = endpoint(2);
 		await Promise.all([
-			drain(submitGenerationJob(photoJob(s, 0, { compare: true }, 'bridge::sdxl'))),
-			drain(submitGenerationJob(photoJob(s, 0, { compare: true }, 'bridge::flux'))),
+			drain(submitGenerationJob(photoJob(s, 0, { compareId: 'cmp-1' }, 'bridge::sdxl'))),
+			drain(submitGenerationJob(photoJob(s, 0, { compareId: 'cmp-1' }, 'bridge::flux'))),
 		]);
 		const all = versions(s);
 		expect(all).toHaveLength(2);

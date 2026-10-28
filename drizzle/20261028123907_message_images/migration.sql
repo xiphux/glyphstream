@@ -9,6 +9,7 @@ CREATE TABLE `message_images` (
 	`model_id` text NOT NULL,
 	`error` text,
 	`shown_at` integer,
+	`comparison_id` text,
 	`created_at` integer NOT NULL,
 	CONSTRAINT `fk_message_images_user_id_users_id_fk` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
 	CONSTRAINT `fk_message_images_conversation_id_conversations_id_fk` FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON DELETE CASCADE,

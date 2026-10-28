@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "60d4c9f8-b2c3-44e2-a755-85300479b6d4",
+  "id": "d0f37c57-b08d-4545-920c-9675306e2872",
   "prevIds": [
     "fce7c758-2e3f-4c47-ab53-2a06ed80c127"
   ],
@@ -1453,6 +1453,16 @@
       "default": null,
       "generated": null,
       "name": "shown_at",
+      "entityType": "columns",
+      "table": "message_images"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "comparison_id",
       "entityType": "columns",
       "table": "message_images"
     },

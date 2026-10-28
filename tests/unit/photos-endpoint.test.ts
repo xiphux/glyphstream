@@ -110,7 +110,9 @@ function pick(photoId: string, body: Record<string, unknown> = { shown: true }) 
 const submitted = () => mocks.submit.mock.calls.at(-1)![0];
 
 let seq = 0;
-function version(over: { modelId?: string; mediaId?: string | null; error?: string } = {}) {
+function version(
+	over: { modelId?: string; mediaId?: string | null; error?: string; comparisonId?: string } = {},
+) {
 	const id = `v${++seq}`;
 	const mediaId =
 		over.mediaId === undefined
@@ -137,6 +139,7 @@ function version(over: { modelId?: string; mediaId?: string | null; error?: stri
 			modelId: over.modelId ?? 'ep::sdxl',
 			error: over.error ?? null,
 			shownAt: null,
+			comparisonId: over.comparisonId ?? null,
 			createdAt: seq,
 		}),
 	);
@@ -158,15 +161,19 @@ describe('POST /photos', () => {
 				photo: { sourceMessageId: replyId, index: 1, speaker: 'Sam' },
 			},
 		});
-		expect(submitted().params.compare).toBeUndefined();
+		expect(submitted().params.compareId).toBeUndefined();
 	});
 
 	it('draws the prompt the user left, in the nearest shape the model offers', async () => {
-		await develop({ prompt: 'me at the beach, golden hour', aspectRatio: '2:3', compare: true });
+		await develop({
+			prompt: 'me at the beach, golden hour',
+			aspectRatio: '2:3',
+			compare: 'cmp-1',
+		});
 		expect(submitted().params).toMatchObject({
 			prompt: 'me at the beach, golden hour',
 			aspectRatio: '3:4',
-			compare: true,
+			compareId: 'cmp-1',
 		});
 	});
 
@@ -182,6 +189,7 @@ describe('POST /photos', () => {
 		['a chat model', { modelId: 'local::chat' }, 400],
 		['an unknown endpoint', { modelId: 'gone::x' }, 400],
 		['a malformed index', { index: -1 }, 400],
+		['a malformed comparison id', { compare: 'a b' }, 400],
 	])('refuses %s', async (_label, body, status) => {
 		await expect(develop(body)).rejects.toMatchObject({ status });
 		expect(mocks.submit).not.toHaveBeenCalled();
@@ -211,24 +219,45 @@ describe('PATCH /photos/:id', () => {
 		await expect(pick(failed)).rejects.toMatchObject({ status: 404 });
 	});
 
-	it('counts a comparison pick for every model in it, the winner once more', async () => {
-		const a = version({ modelId: 'ep::sdxl' });
-		const b = version({ modelId: 'ep::flux' });
-		await pick(b, { shown: true, comparedWith: [a, b] });
-		const tally = Object.fromEntries(
+	const tally = () =>
+		Object.fromEntries(
 			db
 				.select()
 				.from(modelStatsDaily)
 				.all()
 				.map((r) => [`${r.modelId} ${r.metric}`, r.count]),
 		);
-		expect(tally).toEqual({ 'sdxl fanout_shown': 1, 'flux fanout_shown': 1, 'flux fanout_win': 1 });
+
+	it('counts a comparison pick for every model in it, the winner once more', async () => {
+		version({ modelId: 'ep::sdxl', comparisonId: 'cmp-1' });
+		const b = version({ modelId: 'ep::flux', comparisonId: 'cmp-1' });
+		// Not in this comparison, so not counted.
+		version({ modelId: 'ep::other' });
+		await pick(b, { shown: true, pick: true });
+		expect(tally()).toEqual({
+			'sdxl fanout_shown': 1,
+			'flux fanout_shown': 1,
+			'flux fanout_win': 1,
+		});
 	});
 
-	it('counts nothing for an ordinary switch between versions', async () => {
+	it('counts a comparison once, however often it is picked from', async () => {
+		const a = version({ modelId: 'ep::sdxl', comparisonId: 'cmp-1' });
+		const b = version({ modelId: 'ep::flux', comparisonId: 'cmp-1' });
+		await pick(b, { shown: true, pick: true });
+		await pick(b, { shown: true, pick: true });
+		await pick(a, { shown: true, pick: true });
+		expect(tally()).toEqual({
+			'sdxl fanout_shown': 1,
+			'flux fanout_shown': 1,
+			'flux fanout_win': 1,
+		});
+	});
+
+	it('counts nothing for versions that were not drawn as a comparison', async () => {
 		const a = version({ modelId: 'ep::sdxl' });
 		version({ modelId: 'ep::flux' });
-		await pick(a);
+		await pick(a, { shown: true, pick: true });
 		expect(db.select().from(modelStatsDaily).all()).toEqual([]);
 	});
 });

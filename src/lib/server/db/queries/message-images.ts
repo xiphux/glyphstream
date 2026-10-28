@@ -60,43 +60,42 @@ export function hasShownImage(tx: Tx, messageId: string, markerIndex: number | n
 }
 
 /**
- * The models that drew `ids` — the versions of one photo a comparison showed
- * alongside `of` — keyed to the user, the conversation and that same photo, so
- * a pick can't count models from anywhere else. `of`'s own model first.
+ * Resolve the comparison `id` was drawn in, if it is still open: the models
+ * that drew its versions, `id`'s first, and the comparison closed in the same
+ * transaction — so a pick is counted once, however often it is sent, and only
+ * for versions the server drew together. Null when there's nothing to count.
  */
-export function comparedModels(
+export function resolveComparison(
 	userId: string,
 	conversationId: string,
-	of: string,
-	ids: string[],
+	id: string,
 ): { winner: string; models: string[] } | null {
-	const db = getDb();
-	const picked = db
-		.select()
-		.from(messageImages)
-		.where(
-			and(
-				eq(messageImages.id, of),
-				eq(messageImages.userId, userId),
-				eq(messageImages.conversationId, conversationId),
-			),
-		)
-		.get();
-	if (!picked?.mediaId || ids.length === 0) return null;
-	const models = db
-		.select({ modelId: messageImages.modelId })
-		.from(messageImages)
-		.where(
-			and(
-				inArray(messageImages.id, ids),
-				eq(messageImages.messageId, picked.messageId),
-				markerIs(picked.markerIndex),
-				isNotNull(messageImages.mediaId),
-			),
-		)
-		.all()
-		.map((r) => r.modelId);
-	return { winner: picked.modelId, models };
+	return getDb().transaction((tx) => {
+		const picked = tx
+			.select()
+			.from(messageImages)
+			.where(
+				and(
+					eq(messageImages.id, id),
+					eq(messageImages.userId, userId),
+					eq(messageImages.conversationId, conversationId),
+				),
+			)
+			.get();
+		if (!picked?.mediaId || !picked.comparisonId) return null;
+		const inComparison = and(
+			eq(messageImages.messageId, picked.messageId),
+			eq(messageImages.comparisonId, picked.comparisonId),
+		);
+		const models = tx
+			.select({ modelId: messageImages.modelId })
+			.from(messageImages)
+			.where(and(inComparison, isNotNull(messageImages.mediaId)))
+			.all()
+			.map((r) => r.modelId);
+		tx.update(messageImages).set({ comparisonId: null }).where(inComparison).run();
+		return { winner: picked.modelId, models };
+	});
 }
 
 /**

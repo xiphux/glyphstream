@@ -1067,6 +1067,10 @@ export const messageImages = sqliteTable(
 		modelId: text('model_id').notNull(),
 		error: text('error'),
 		shownAt: integer('shown_at'),
+		// The comparison this version was drawn in, until the user picks from it:
+		// the pick counts the comparison's models in model stats once, then clears
+		// this on every version it drew, so picking again counts nothing.
+		comparisonId: text('comparison_id'),
 		createdAt: integer('created_at').notNull(),
 	},
 	(t) => [
