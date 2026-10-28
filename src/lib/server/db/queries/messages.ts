@@ -438,14 +438,14 @@ export function photoStateFor(
 		if (entry) entry.images = images;
 	}
 	for (const job of listPhotoJobsForMessages(conversationId, messageIds)) {
-		let params: { photo?: { index?: unknown } };
+		let params: { photo?: { index?: unknown } } | null;
 		try {
 			params = JSON.parse(job.paramsJson) as typeof params;
 		} catch {
 			// One bad row must not take the whole chat page down with it.
 			continue;
 		}
-		const markerIndex = params.photo?.index;
+		const markerIndex = params?.photo?.index;
 		if (typeof markerIndex !== 'number') continue;
 		out.get(job.anchorMessageId)?.developing.push({ markerIndex, modelId: job.modelId });
 	}
