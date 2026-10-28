@@ -278,8 +278,12 @@ function settleCheckIn(
 		const reply = getMessage(conversationId, outcome.assistantMessageId);
 		if (reply && !isPass(reply.parts)) {
 			// A reply that only put the check-in off again ([later …] and nothing
-			// else) stays, so its new check-in does, but there's nothing to notify.
-			if (!withoutCheckInText(partsToText(reply.parts)).trim()) return;
+			// else) stays, so its new check-in does. It has nothing to notify of
+			// itself, but a line the turn wrote before a tool call does.
+			if (!withoutCheckInText(partsToText(reply.parts)).trim()) {
+				notifyTurn(row, turnRows(conversationId, reply.id, reminderId));
+				return;
+			}
 			void notifyCheckIn(row, reply.id, replyText(reply.parts)).catch((e: unknown) =>
 				log.warn('notify failed:', errorMessage(e)),
 			);
@@ -311,28 +315,32 @@ function settleCheckIn(
 		}
 		if (bare > 0) {
 			restoreActiveLeafIfUnchanged(conversationId, leaf, rows[bare].id);
-			deleteBranch(conversationId, rows[bare - 1].id, userId);
+			deleteBranch(conversationId, rows[bare - 1].id, userId, { recordRejection: false });
 		}
-		// Oldest first. A Stop was pressed by someone reading it, but a pass at
-		// the end of a turn that said something first said it to nobody watching.
-		const said = rows.filter((m) => m.role === 'assistant' && !isPass(m.parts)).reverse();
-		const latest = said.at(-1);
-		if (outcome.kind === 'done' && latest) {
-			const text = said
-				.map((m) => replyText(m.parts))
-				.filter(Boolean)
-				.join('\n\n');
-			void notifyCheckIn(row, latest.id, text).catch((e: unknown) =>
-				log.warn('notify failed:', errorMessage(e)),
-			);
-		}
+		// A Stop was pressed by someone reading it, but a pass at the end of a
+		// turn that said something first said it to nobody watching.
+		if (outcome.kind === 'done') notifyTurn(row, rows);
 		return;
 	}
 	restoreActiveLeafIfUnchanged(conversationId, leaf, previousLeafId);
-	deleteBranch(conversationId, reminderId, userId);
+	deleteBranch(conversationId, reminderId, userId, { recordRejection: false });
 	if (previousUpdatedAt !== null) {
 		restoreConversationUpdatedAt(conversationId, userId, previousUpdatedAt);
 	}
+}
+
+/** Notify of what a turn said along the way (`rows` newest first, as
+ *  `turnRows` gives them), if it said anything. */
+function notifyTurn(row: CheckInRow, rows: ChatMessage[]): void {
+	const said = rows
+		.filter((m) => m.role === 'assistant' && !isPass(m.parts) && replyText(m.parts))
+		.reverse();
+	const latest = said.at(-1);
+	if (!latest) return;
+	const text = said.map((m) => replyText(m.parts)).join('\n\n');
+	void notifyCheckIn(row, latest.id, text).catch((e: unknown) =>
+		log.warn('notify failed:', errorMessage(e)),
+	);
 }
 
 /** The rows from `leaf` up to (not including) the reminder: one turn's

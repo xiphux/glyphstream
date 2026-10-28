@@ -1075,6 +1075,9 @@ export function deleteBranch(
 	conversationId: string,
 	messageId: string,
 	userId: string,
+	/** False when no user rejected anything — the check-in runner taking back
+	 *  a model's own pass — so the model's stats don't count it as one. */
+	opts: { recordRejection?: boolean } = {},
 ):
 	| {
 			deletedIds: string[];
@@ -1094,7 +1097,10 @@ export function deleteBranch(
 	// failed lookup can't disturb the delete — a SQLite I/O or memory error
 	// inside it may roll the transaction back under the statements after it.
 	// Nothing awaits between here and the delete, so the row can't change.
-	const rejected = bestEffort('branch_deleted', () => getMessage(conversationId, messageId, db));
+	const rejected =
+		opts.recordRejection === false
+			? null
+			: bestEffort('branch_deleted', () => getMessage(conversationId, messageId, db));
 	return db.transaction((tx) => {
 		// One-shot fetch of every row in the conversation: cheap (conversation
 		// scoped) and lets us do parent/child lookups in memory without

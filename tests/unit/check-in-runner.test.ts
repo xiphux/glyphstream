@@ -109,7 +109,7 @@ import { reminderText, runCheckInSweep } from '#lib/server/check-ins/runner.js';
 import { scheduleCheckInFromReply } from '#lib/server/check-ins/schedule.js';
 import { graceFor, isCheckInMessage } from '#lib/check-ins.js';
 import { getDb } from '#lib/server/db/client.js';
-import { users } from '#lib/server/db/schema.js';
+import { messages, modelStatsDaily, users } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import type { ChatMessage, MessagePart } from '#lib/types/api.js';
 
@@ -415,7 +415,9 @@ describe('firing', () => {
 		expect(notify).not.toHaveBeenCalled();
 	});
 
-	it('keeps what the turn said before a tool call, even if it then passes', async () => {
+	/** A turn that writes a line and calls a tool (run inline) in its first
+	 *  round; what it says after the result is up to the test. */
+	function lineThenTool(line = 'hey, one sec') {
 		mocks.tools = true;
 		register({
 			definition: {
@@ -424,11 +426,9 @@ describe('firing', () => {
 			},
 			execute: () => ({ content: '{"iso":"2026-10-27T16:00:00Z"}' }),
 		});
-		const t = thread();
-		scheduled(t);
 		mocks.upstream.push(() =>
 			sse([
-				{ choices: [{ delta: { content: 'hey, one sec' }, finish_reason: null }] },
+				{ choices: [{ delta: { content: line }, finish_reason: null }] },
 				{
 					choices: [
 						{
@@ -449,16 +449,100 @@ describe('firing', () => {
 				{ choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
 			]),
 		);
+	}
+
+	const messageCount = (conversationId: string) =>
+		getDb()
+			.select({ id: messages.id })
+			.from(messages)
+			.where(eq(messages.conversationId, conversationId))
+			.all().length;
+
+	it('keeps what the turn said before a tool call, even if it then passes', async () => {
+		const t = thread();
+		scheduled(t);
+		lineThenTool();
 		mocks.upstream.push(reply('[no text]'));
 		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
 		await idle(t.conversationId);
 		const branch = walkActiveBranch(t.conversationId);
-		// The line and its tool call stay; the pass after them doesn't.
+		// The line and its tool call stay; the pass after them is deleted, not
+		// just left off the branch.
 		expect(roles(branch)).toEqual(['user', 'assistant', 'check-in', 'assistant', 'tool']);
+		expect(messageCount(t.conversationId)).toBe(5);
 		expect(text(branch[3])).toBe('hey, one sec');
+		expect(notify).toHaveBeenCalledOnce();
 		expect(notify).toHaveBeenCalledWith(
 			expect.objectContaining({ assistantMessageId: branch[3].id, previewText: 'hey, one sec' }),
 		);
+		// The model took its own pass back: nobody rejected a reply.
+		const rejections = getDb()
+			.select()
+			.from(modelStatsDaily)
+			.all()
+			.filter((r) => r.metric === 'branch_deleted');
+		expect(rejections).toEqual([]);
+	});
+
+	it('notifies of a line written before a reply that only puts it off again', async () => {
+		const t = thread();
+		scheduled(t);
+		lineThenTool();
+		mocks.upstream.push(reply('[later 2h: try again]'));
+		await runCheckInSweep(T0 + HOUR);
+		await idle(t.conversationId);
+		const branch = walkActiveBranch(t.conversationId);
+		expect(roles(branch)).toEqual([
+			'user',
+			'assistant',
+			'check-in',
+			'assistant',
+			'tool',
+			'assistant',
+		]);
+		expect(getCheckIn(t.conversationId, t.userId)?.note).toBe('try again');
+		expect(notify).toHaveBeenCalledOnce();
+		expect(notify).toHaveBeenCalledWith(
+			expect.objectContaining({ assistantMessageId: branch[3].id, previewText: 'hey, one sec' }),
+		);
+	});
+
+	it('trims a stopped turn back to what it said, without notifying', async () => {
+		const t = thread();
+		scheduled(t);
+		lineThenTool();
+		// The second round hangs, and is stopped before it says anything.
+		let finish: () => void = () => {};
+		mocks.upstream.push(
+			() =>
+				new Response(
+					new ReadableStream<Uint8Array>({
+						start(c) {
+							finish = () => c.close();
+						},
+					}),
+					{ status: 200 },
+				),
+		);
+		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
+		for (let i = 0; i < 100 && mocks.upstreamBodies.length < 2; i++) {
+			await new Promise((r) => setTimeout(r, 5));
+		}
+		getInFlightEntries(t.conversationId)[0].controller.abort();
+		finish();
+		await idle(t.conversationId);
+		const branch = walkActiveBranch(t.conversationId);
+		expect(roles(branch).slice(0, 5)).toEqual([
+			'user',
+			'assistant',
+			'check-in',
+			'assistant',
+			'tool',
+		]);
+		expect(roles(branch)).toHaveLength(5);
+		expect(messageCount(t.conversationId)).toBe(5);
+		expect(text(branch[3])).toBe('hey, one sec');
+		expect(notify).not.toHaveBeenCalled();
 	});
 
 	it('keeps a reply the user stopped partway, like any stopped reply', async () => {
