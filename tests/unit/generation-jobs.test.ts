@@ -1050,6 +1050,19 @@ describe('a resumed portrait draw', () => {
 		expect(conv(s.conv.id).avatar).toBe(face);
 	});
 
+	it('leaves the face to the pick, even when its comparison takes the stage', async () => {
+		const s = seedDescription();
+		const face = conv(s.conv.id).avatar;
+		const params = JSON.stringify({ ...job(s).params, displayOnly: true, compareId: 'cmp' });
+		// Nothing on show yet, so the first result to land takes the stage.
+		leftover(s, { origin: 'portrait', anchorMessageId: s.description.id, paramsJson: params });
+		resumeGenerationJobs();
+		await until(() => jobRows().length === 0, 'the compared portrait to land');
+
+		expect(portraits().map((p) => p.shownAt !== null)).toEqual([true]);
+		expect(conv(s.conv.id).avatar).toBe(face);
+	});
+
 	it('is not counted as part of the conversation’s turn', () => {
 		const s = seedDescription();
 		leftover(s, { origin: 'portrait', anchorMessageId: s.description.id });

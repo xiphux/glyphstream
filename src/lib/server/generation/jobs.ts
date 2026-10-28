@@ -555,11 +555,17 @@ async function runJob(
 			},
 			landOn: drawsOntoReply(row.origin)
 				? (tx, outcome) => {
-						faceOnLand = landOnReply(tx, row, params, outcome) && row.origin === 'portrait';
+						// A comparison's portrait may take the stage on its reply but
+						// never the face: that's the pick's to set (the photos PATCH).
+						faceOnLand =
+							landOnReply(tx, row, params, outcome) &&
+							row.origin === 'portrait' &&
+							!params.compareId;
 					}
 				: undefined,
-			// A portrait that went on show is the conversation's face — after the
-			// commit, so a face never points at a version that rolled back.
+			// A single portrait that went on show is the conversation's face —
+			// after the commit, so a face never points at a version that rolled
+			// back.
 			onMediaPersisted:
 				row.origin === 'portrait'
 					? (mediaId) => {
