@@ -129,8 +129,9 @@ function classify(held: string, ended: boolean): Verdict {
 	const typed = classifyTypedCall(body, ended);
 	if (typed) return typed;
 	const [first, second] = firstTwoGraphemes(body);
-	// Plain text: decided on the first character, so ordinary replies are held
-	// for one delta at most.
+	// Plain text: decided on the first character (or, for one that opens like
+	// the call typed out, as soon as it stops spelling it), so ordinary replies
+	// are held for a delta or two at most.
 	if (!PICTOGRAPHIC.test(first)) return { kind: 'release' };
 	// The grapheme can still grow (a variation selector, skin tone or ZWJ arriving
 	// in the next token) until something follows it.
