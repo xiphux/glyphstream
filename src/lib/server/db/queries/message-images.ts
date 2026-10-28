@@ -93,9 +93,10 @@ export function countComparisonResults(
 
 /**
  * Resolve the comparison `id` was drawn in, if it is still open: the models
- * that drew its versions, `id`'s first, and the comparison closed in the same
- * transaction — so a pick is counted once, however often it is sent, and only
- * for versions the server drew together. Null when there's nothing to count.
+ * that drew its versions, `id`'s first, and the comparison closed (its failed
+ * draws dropped) in the same transaction — so a pick is counted once, however
+ * often it is sent, and only for versions the server drew together. Null when
+ * there's nothing to count.
  */
 export function resolveComparison(
 	userId: string,
@@ -125,6 +126,11 @@ export function resolveComparison(
 			.where(and(inComparison, isNotNull(messageImages.mediaId)))
 			.all()
 			.map((r) => r.modelId);
+		// Its failed draws were results to compare, not news about the photo:
+		// once one is picked they'd only read as the photo failing.
+		tx.delete(messageImages)
+			.where(and(inComparison, isNull(messageImages.mediaId)))
+			.run();
 		tx.update(messageImages).set({ comparisonId: null }).where(inComparison).run();
 		return {
 			winner: picked.modelId,

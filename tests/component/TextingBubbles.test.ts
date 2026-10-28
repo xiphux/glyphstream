@@ -308,7 +308,13 @@ describe('texting reply style', () => {
 					message: reply(PHOTOS),
 					textingPhotos: photos({
 						versions: new Map([
-							[1, [version('a', { shown: true }), version('f', { mediaId: null, error: 'oom' })]],
+							[
+								1,
+								[
+									version('a', { shown: true }),
+									version('f', { mediaId: null, error: 'oom', createdAt: 5 }),
+								],
+							],
 						]),
 						onDevelop: vi.fn(),
 					}),
@@ -316,6 +322,27 @@ describe('texting reply style', () => {
 			});
 			expect(screen.getByRole('img', { name: 'the dog' })).toBeInTheDocument();
 			expect(screen.getByText(/Couldn't develop again: oom/)).toBeInTheDocument();
+		});
+
+		it('says nothing of a failure from before the version on show', () => {
+			render(MessageBubble, {
+				props: {
+					...bubbleProps,
+					message: reply(PHOTOS),
+					textingPhotos: photos({
+						versions: new Map([
+							[
+								1,
+								[
+									version('f', { mediaId: null, error: 'oom', createdAt: 1 }),
+									version('a', { shown: true, createdAt: 2 }),
+								],
+							],
+						]),
+					}),
+				},
+			});
+			expect(screen.queryByText(/Couldn't develop/)).toBeNull();
 		});
 
 		it('keeps a failed attempt on the photo, with a way to try again', async () => {

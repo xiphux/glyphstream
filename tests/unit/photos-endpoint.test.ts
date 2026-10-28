@@ -316,6 +316,18 @@ describe('PATCH /photos/:id', () => {
 		});
 	});
 
+	it('drops the comparison’s failed draws with the pick', async () => {
+		version({ modelId: 'ep::sdxl', comparisonId: 'cmp-1' });
+		version({ modelId: 'ep::flux', mediaId: null, error: 'oom', comparisonId: 'cmp-1' });
+		const b = version({ modelId: 'ep::other', comparisonId: 'cmp-1' });
+		const other = version({ mediaId: null, error: 'outside it' });
+		await pick(b, { shown: true, pick: true });
+		const failures = (listImagesForMessages(convId, [replyId]).get(replyId) ?? []).filter(
+			(v) => !v.mediaId,
+		);
+		expect(failures.map((v) => v.id)).toEqual([other]);
+	});
+
 	it('counts a comparison once, however often it is picked from', async () => {
 		const a = version({ modelId: 'ep::sdxl', comparisonId: 'cmp-1' });
 		const b = version({ modelId: 'ep::flux', comparisonId: 'cmp-1' });

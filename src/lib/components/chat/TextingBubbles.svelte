@@ -117,10 +117,16 @@
 	function photoState(index: number) {
 		const all = photos?.versions.get(index) ?? [];
 		const versions = all.filter((v): v is MessageImage & { mediaId: string } => !!v.mediaId);
+		const shown = versions.find((v) => v.shown) ?? null;
+		const failed = all.findLast((v) => !v.mediaId) ?? null;
 		return {
 			versions,
-			shown: versions.find((v) => v.shown) ?? null,
-			failure: all.find((v) => !v.mediaId)?.error ?? null,
+			shown,
+			failure: failed?.error ?? null,
+			// A failure since the version on show was drawn — developing it again
+			// failed. One from before (a comparison's model that failed beside
+			// the result now showing) is no news about this photo.
+			failedAgain: failed && shown && failed.createdAt > shown.createdAt ? failed.error : null,
 			developing: photos?.developing.has(index) ?? false,
 		};
 	}
@@ -271,8 +277,8 @@
 						</div>
 						<!-- Developing it again failed: the photo on show is the last one
 					     that worked, so say why there's no new one. -->
-						{#if state.failure && !state.developing}
-							<p class="text-xs text-danger">Couldn't develop again: {state.failure}</p>
+						{#if state.failedAgain && !state.developing}
+							<p class="text-xs text-danger">Couldn't develop again: {state.failedAgain}</p>
 						{/if}
 					</div>
 				{:else}
