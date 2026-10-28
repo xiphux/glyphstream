@@ -100,6 +100,10 @@ export class AvatarDrawWorkflow {
 	aspectRatio = $state<string | null>(null);
 	/** The photo comparison on show in the dialog, while it's up. */
 	photoComparison = $state<PhotoComparison | null>(null);
+	/** A single photo draw is on its way to the server: the dialog's Develop
+	 *  is spent until it's accepted (or refused), so a second click can't
+	 *  start a second draw. */
+	photoSubmitting = $state(false);
 	/** Draws THIS client has under way, by photo — the page also has the
 	 *  server's word for it (`ChatMessage.developing`), which a reload keeps. */
 	#drawing = new SvelteMap<string, number>();
@@ -251,6 +255,16 @@ export class AvatarDrawWorkflow {
 	/** Whether this client has a draw of the photo under way. */
 	isDeveloping(replyId: string, index: number): boolean {
 		return (this.#drawing.get(photoKey(replyId, index)) ?? 0) > 0;
+	}
+
+	/** Which of a reply's photos this client has draws under way for. */
+	developingFor(replyId: string): Set<number> {
+		const out = new Set<number>();
+		const prefix = `${replyId}:`;
+		for (const key of this.#drawing.keys()) {
+			if (key.startsWith(prefix)) out.add(Number(key.slice(prefix.length)));
+		}
+		return out;
 	}
 
 	/** Close the dialog. A photo comparison carries on without it: its results
@@ -494,6 +508,7 @@ export class AvatarDrawWorkflow {
 	 * into view, and saying why a draw it asked for was refused.
 	 */
 	#developPhoto(photo: PhotoDraw): void {
+		if (this.photoSubmitting) return;
 		const cid = this.#deps.convId();
 		const models = this.#comparing
 			? this.#compareBranches.map((b) => b.modelId)
@@ -525,6 +540,9 @@ export class AvatarDrawWorkflow {
 			this.compareMode = false;
 			this.compareSelections = [];
 		}
+		// A comparison swaps the form for its grid at once; a single draw holds
+		// the button until the server has it.
+		if (!compareId) this.photoSubmitting = true;
 		for (const modelId of models) void this.#developOne(cid, photo, modelId, body, compareId);
 	}
 
@@ -558,6 +576,7 @@ export class AvatarDrawWorkflow {
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ ...body, modelId }),
 			});
+			if (!compareId) this.photoSubmitting = false;
 			if (!res.ok || !res.body) throw new Error(await errorMessageFromResponse(res));
 			// Accepted. A single draw needs nothing more from the dialog.
 			if (!compareId && this.#deps.convId() === cid && this.photo === photo) this.open = false;
@@ -571,6 +590,7 @@ export class AvatarDrawWorkflow {
 				toast.error(e.message);
 			}
 		} finally {
+			if (!compareId) this.photoSubmitting = false;
 			// What lands goes on show by the data's rules (a new draw, or a
 			// comparison's first result), not by an earlier switch here.
 			this.#shown.delete(key);

@@ -1667,10 +1667,8 @@
 				);
 			}
 		}
-		const developing = new Set((m.developing ?? []).map((d) => d.markerIndex));
-		for (const { index } of photoMarkers(m, assistantLabel)) {
-			if (avatarWorkflow.isDeveloping(m.id, index)) developing.add(index);
-		}
+		const developing = avatarWorkflow.developingFor(m.id);
+		for (const d of m.developing ?? []) developing.add(d.markerIndex);
 		return {
 			versions,
 			developing,
@@ -3030,7 +3028,11 @@
 			bind:compareSelections={avatarWorkflow.compareSelections}
 			bind:compareMode={avatarWorkflow.compareMode}
 			enhance={avatarWorkflow.enhance}
-			status={avatarWorkflow.photo ? null : avatarStatus}
+			status={avatarWorkflow.photo
+				? avatarWorkflow.photoSubmitting
+					? 'Sending…'
+					: null
+				: avatarStatus}
 			onPromptChange={(v: string) => (avatarWorkflow.prompt = v)}
 			onEnhanceChange={(v: boolean) => (avatarWorkflow.enhance = v)}
 			onModelChange={(id: string) => avatarWorkflow.setModel(id)}
@@ -3073,7 +3075,7 @@
 							photoGrid.active || fanout.isAvatar ? (id: string) => lightbox.pick(id) : undefined,
 						pickLabel: photoGrid.active ? 'Show this one' : 'Use this avatar',
 						pickCaption: photoGrid.active ? 'Show' : 'Use avatar',
-						busy: fanout.picking,
+						busy: photoGrid.active ? photoGrid.picking : fanout.picking,
 					}
 				: null}
 		/>

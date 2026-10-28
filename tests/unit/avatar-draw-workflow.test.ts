@@ -283,6 +283,22 @@ describe('developing a texting photo', () => {
 		await vi.waitFor(() => expect(w.isDeveloping('r1', 0)).toBe(false));
 	});
 
+	it('starts one draw however often Develop is pressed before the server answers', async () => {
+		let answer!: () => void;
+		fetchMock.mockImplementationOnce(
+			() => new Promise<Response>((r) => (answer = () => r(new Response('{}')))),
+		);
+		const { w } = setup({ messages: thread });
+		w.openPhotoDialog({ replyId: 'r1', index: 0 }, 'me, 3:4');
+		await w.generate();
+		expect(w.photoSubmitting).toBe(true);
+		expect(w.developingFor('r1')).toEqual(new Set([0]));
+		await w.generate();
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		answer();
+		await vi.waitFor(() => expect(w.photoSubmitting).toBe(false));
+	});
+
 	it('compares in the dialog: a draw per model, sharing an id, results kept apart', async () => {
 		const { w, fanout } = setup({ messages: thread });
 		w.openPhotoDialog({ replyId: 'r1', index: 1 }, 'the view');
