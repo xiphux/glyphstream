@@ -37,7 +37,7 @@ import {
 	insertMessageImage,
 	listImagesForMessages,
 } from '#lib/server/db/queries/message-images.js';
-import { media, modelStatsDaily } from '#lib/server/db/schema.js';
+import { conversations, media, modelStatsDaily } from '#lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { insertGenerationJob } from '#lib/server/db/queries/generation-jobs.js';
 import { getDb } from '#lib/server/db/client.js';
@@ -63,6 +63,7 @@ beforeEach(() => {
 		modelId: 'local::chat',
 		modelKind: 'chat',
 		replyStyle: 'texting',
+		photos: true,
 	}).id;
 	const user = appendMessage({
 		conversationId: convId,
@@ -224,6 +225,12 @@ describe('POST /photos', () => {
 		// …but another photo is.
 		await expect(develop({})).rejects.toMatchObject({ status: 429 });
 		resetInFlight();
+	});
+
+	it('refuses a chat whose preset doesn’t send photos', async () => {
+		db.update(conversations).set({ photos: false }).where(eq(conversations.id, convId)).run();
+		await expect(develop({})).rejects.toMatchObject({ status: 409 });
+		expect(mocks.submit).not.toHaveBeenCalled();
 	});
 
 	it('refuses a reply from someone else’s conversation', async () => {

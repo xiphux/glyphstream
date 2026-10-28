@@ -111,6 +111,9 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// be given a photo here.
 	const reply = getMessage(params.id, body.messageId);
 	if (!reply || reply.role !== 'assistant') error(404, 'Reply not found');
+	// The chat's preset decides whether it sends photos; one that doesn't has
+	// nothing here to develop, whatever text looks like a marker.
+	if (!meta.photos) error(409, "This chat doesn't send photos");
 	// The marker has to be there: the version is stored against its number.
 	// (Speakers don't change the numbering, so the preset's name isn't needed.)
 	const marker = photoMarkers(reply, '').find((m) => m.index === body.index);
