@@ -14,6 +14,10 @@ arrived.
 - A texting reply shows a typing indicator while each text is being written, and the text appears whole once it's done, instead of filling in word by word.
 - A texting preset with no avatar shows a coloured initial beside its texts, as other speakers do.
 
+### Fixed
+
+- An emoji reaction in a check-in's reply shows as the model's own text instead of vanishing onto the hidden reminder.
+
 ## v0.51.0
 
 ### Added

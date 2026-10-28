@@ -15,7 +15,7 @@
  * Client-safe: the marker is parsed here for both the server, which schedules
  * from it, and the bubbles of either reply style, which hide it.
  */
-import type { ChatMessage } from './types/api';
+import type { ChatMessage } from './types/api.ts';
 
 export const MIN_CHECK_IN_DELAY_MS = 5 * 60_000;
 export const MAX_CHECK_IN_DELAY_MS = 24 * 3_600_000;

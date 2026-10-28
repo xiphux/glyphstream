@@ -368,6 +368,64 @@ describe('buildRenderedConversation — reactionsByMessageId', () => {
 	});
 });
 
+describe('buildRenderedConversation — a check-in’s reaction', () => {
+	const reminder = msg('r1', 'user', [{ type: 'text', text: '(Check-in: …)', checkIn: true }]);
+	const result = (id: string, isError = false) =>
+		msg(`t-${id}`, 'tool', [
+			{ type: 'tool_result', toolCallId: id, result: isError ? 'nope' : 'ok', isError },
+		]);
+
+	it('draws the emoji as the model’s own text, not a badge on the hidden reminder', () => {
+		const { reactionsByMessageId, visibleMessages } = buildRenderedConversation([
+			reminder,
+			msg('a1', 'assistant', [{ type: 'text', text: 'how did it go?' }, reactionPart('👋')], {
+				contentHtml: '<p>how did it go?</p>',
+			}),
+			result('call_r'),
+		]);
+		expect(reactionsByMessageId.size).toBe(0);
+		const reply = visibleMessages.find((m) => m.id === 'a1')!;
+		expect(messageToBlocks(reply, new Map())).toEqual([
+			{ type: 'html', html: '<p>how did it go?</p>' },
+			{ type: 'plain-text', text: '👋' },
+		]);
+	});
+
+	it('keeps a reaction-only row, which now has something to draw', () => {
+		const { visibleMessages } = buildRenderedConversation([
+			reminder,
+			msg('a1', 'assistant', [{ type: 'text', text: '' }, reactionPart('😊')]),
+			result('call_r'),
+			msg('a2', 'assistant', [{ type: 'text', text: 'hey!' }]),
+		]);
+		const ids = visibleMessages.map((m) => m.id);
+		expect(ids).toContain('a1');
+		expect(messageToBlocks(visibleMessages[ids.indexOf('a1')], new Map())).toEqual([
+			{ type: 'plain-text', text: '😊' },
+		]);
+	});
+
+	it('draws nothing for one the tool refused', () => {
+		const { visibleMessages } = buildRenderedConversation([
+			reminder,
+			msg('a1', 'assistant', [{ type: 'text', text: 'hey' }, reactionPart('😊')]),
+			result('call_r', true),
+		]);
+		const reply = visibleMessages.find((m) => m.id === 'a1')!;
+		expect(reply.parts.some((p) => p.type === 'text' && p.text === '😊')).toBe(false);
+	});
+
+	it('leaves a reaction to the user’s own message as a badge', () => {
+		const { reactionsByMessageId } = buildRenderedConversation([
+			reminder,
+			msg('a1', 'assistant', [{ type: 'text', text: 'how did it go?' }]),
+			msg('u2', 'user', [{ type: 'text', text: 'great!' }]),
+			msg('a2', 'assistant', [{ type: 'text', text: 'yay' }, reactionPart('🎉', 'call_2')]),
+		]);
+		expect([...reactionsByMessageId]).toEqual([['u2', '🎉']]);
+	});
+});
+
 describe('lastReplyMessage', () => {
 	// A short-circuited reaction leaves the branch leaf on the reaction's tool
 	// row. That row has to stay on the branch — an assistant `tool_calls` with no

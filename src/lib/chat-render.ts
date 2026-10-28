@@ -11,6 +11,7 @@ import { unhandled } from './exhaustive.ts';
 import type { ChatMessage, MessagePart, ModelEntry, PhotoOrigin } from './types/api.ts';
 import { arrangeForDisplay, isCompactionSummary } from './chat-compaction.ts';
 import { friendlyModelName } from './model-ids.ts';
+import { isCheckInMessage } from './check-ins.ts';
 
 /** Who an assistant bubble presents itself as: the name above it, and the
  *  avatar beside that name (null for every message the conversation's own
@@ -542,16 +543,26 @@ export function buildRenderedConversation(
 	// row) and the hide needs to know whether a LATER assistant row in the same
 	// turn will render. So the walk only collects candidates and both are settled
 	// below, once the whole branch has been seen.
-	const candidateReactions: Array<{ userMessageId: string; toolCallId: string; emoji: string }> =
-		[];
+	const candidateReactions: Array<{
+		userMessageId: string;
+		toolCallId: string;
+		emoji: string;
+		/** The reacting row, when the message it reacts to is a check-in
+		 *  reminder: drawn as a divider, it has nowhere to show a badge, so the
+		 *  emoji is drawn as the model's own text instead (see below). */
+		inlineIn?: string;
+	}> = [];
+	let lastUserIsCheckIn = false;
 	const provisional: Array<{ msg: ChatMessage; reactionOnly: boolean }> = [];
 	// Reposition any compaction summaries to their logical spot (just before the
 	// turn they resume from). Real messages stay visible inline; the summary
 	// renders as a collapsed divider. No-op when the thread has no summary.
 	for (const msg of arrangeForDisplay(messages, opts)) {
 		if (msg.role !== 'tool') {
-			if (msg.role === 'user') lastUserMessageId = msg.id;
-			else if (msg.role === 'assistant' && lastUserMessageId) {
+			if (msg.role === 'user') {
+				lastUserMessageId = msg.id;
+				lastUserIsCheckIn = isCheckInMessage(msg);
+			} else if (msg.role === 'assistant' && lastUserMessageId) {
 				for (const p of msg.parts) {
 					if (p.type !== 'tool_call' || !isReactionTool(p.toolName)) continue;
 					const emoji = parseReactionEmoji(p.arguments);
@@ -560,6 +571,7 @@ export function buildRenderedConversation(
 							userMessageId: lastUserMessageId,
 							toolCallId: p.toolCallId,
 							emoji,
+							...(lastUserIsCheckIn ? { inlineIn: msg.id } : {}),
 						});
 					}
 				}
@@ -605,9 +617,14 @@ export function buildRenderedConversation(
 	// is off the ACTIVE BRANCH: parking an avatar comparison rewinds the leaf past
 	// it, and a portrait attaching as a sibling takes the leaf with it. The
 	// reaction really did run; only its answer is out of view.
+	const inlineReactions = new Map<string, Map<string, string>>();
 	for (const r of candidateReactions) {
 		if (toolResultsByCallId.get(r.toolCallId)?.isError) continue;
-		reactionsByMessageId.set(r.userMessageId, r.emoji);
+		if (r.inlineIn) {
+			let calls = inlineReactions.get(r.inlineIn);
+			if (!calls) inlineReactions.set(r.inlineIn, (calls = new Map<string, string>()));
+			calls.set(r.toolCallId, r.emoji);
+		} else reactionsByMessageId.set(r.userMessageId, r.emoji);
 	}
 
 	// Hide a reaction-only row only when a LATER assistant row in the same turn
@@ -634,8 +651,9 @@ export function buildRenderedConversation(
 		// prevent. `computeMergeFlags` skips summaries for the same reason.
 		if (isCompactionSummary(msg)) continue;
 		if (msg.role !== 'assistant') continue;
-		if (reactionOnly && laterVisibleAssistantInTurn) hidden.add(msg.id);
-		else laterVisibleAssistantInTurn = true;
+		if (reactionOnly && !inlineReactions.has(msg.id) && laterVisibleAssistantInTurn) {
+			hidden.add(msg.id);
+		} else laterVisibleAssistantInTurn = true;
 	}
 	// A hidden row's reasoning is carried onto the next row that renders, rather
 	// than dropped with it. Live, the reaction opens no segment, so the next
@@ -647,7 +665,9 @@ export function buildRenderedConversation(
 	// was every reaction it made. The hide guarantees a later visible assistant
 	// row in the turn, so nothing is lost.
 	let carriedReasoning: string | null = null;
-	for (const { msg } of provisional) {
+	for (const { msg: stored } of provisional) {
+		const inline = inlineReactions.get(stored.id);
+		const msg = inline ? withInlineReactions(stored, inline) : stored;
 		if (hidden.has(msg.id)) {
 			if (msg.reasoningText) {
 				carriedReasoning = [carriedReasoning, msg.reasoningText].filter(Boolean).join('\n\n');
@@ -666,6 +686,19 @@ export function buildRenderedConversation(
 	}
 
 	return { visibleMessages, toolResultsByCallId, pendingApprovals, reactionsByMessageId };
+}
+
+/** A check-in reply's reactions as the emoji themselves, after its text: as
+ *  if the model had texted the emoji rather than reacted to the reminder. Only
+ *  the drawing changes — the model's history keeps the call and its result. */
+function withInlineReactions(msg: ChatMessage, emojiByCall: Map<string, string>): ChatMessage {
+	const emoji: MessagePart[] = [];
+	const parts = msg.parts.filter((p) => {
+		if (p.type !== 'tool_call' || !emojiByCall.has(p.toolCallId)) return true;
+		emoji.push({ type: 'text', text: emojiByCall.get(p.toolCallId)! });
+		return false;
+	});
+	return { ...msg, parts: [...parts, ...emoji] };
 }
 
 // --- bubble-merge flags -------------------------------------------------
