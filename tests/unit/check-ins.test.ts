@@ -171,6 +171,14 @@ describe('withoutCheckInMarkers', () => {
 		).toEqual([{ type: 'plain-text', text: 'Good luck!' }]);
 	});
 
+	it("keeps a standard reply's dividers", () => {
+		expect(
+			withoutCheckInMarkers([
+				{ type: 'html', html: '<p>One.</p>\n<hr>\n<p>Two.</p>\n<p>[later 1h: ask]</p>' },
+			]),
+		).toEqual([{ type: 'html', html: '<p>One.</p>\n<hr>\n<p>Two.</p>' }]);
+	});
+
 	it('leaves a reply without one untouched', () => {
 		const blocks = [{ type: 'html' as const, html: '<p>see you [later], maybe</p>' }];
 		expect(withoutCheckInMarkers(blocks)).toEqual(blocks);

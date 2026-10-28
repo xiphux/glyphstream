@@ -247,7 +247,8 @@ export function withoutCheckInMarkers(blocks: RenderBlock[]): RenderBlock[] {
 	return blocks.flatMap((block): RenderBlock[] => {
 		if (!mayHoldMarker(block)) return [block];
 		if (block.type === 'html') {
-			const kept = splitTopLevelHtml(block.html).filter(
+			// Dividers kept: in a standard reply they're part of what was written.
+			const kept = splitTopLevelHtml(block.html, true).filter(
 				(chunk) => !checkInMarker(extractSpeaker(chunk)),
 			);
 			return kept.length ? [{ ...block, html: kept.join('\n') }] : [];
