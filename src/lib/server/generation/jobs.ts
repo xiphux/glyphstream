@@ -142,11 +142,11 @@ export interface GenerationJobParams {
 	 *  together, and the pick counts their models (see `comparison_id`). */
 	compareId?: string;
 	/**
-	 * The leaf a background draw advances from, when it isn't the anchor: a
-	 * photo re-developed (or retried after a failure) is a SIBLING of the one on
-	 * screen, so the leaf sits on that one, not on their shared parent. Without
-	 * it the compare-and-swap would find the branch "moved on" and leave the new
-	 * photo hidden behind the old one's arrows.
+	 * Legacy, and no longer written: the leaf a photo draw advanced from back
+	 * when a photo was a message of its own, re-developed as a sibling of the
+	 * one on screen. Kept because the field is persisted; the migration turns
+	 * those jobs into photo draws, which ignore it, so only a portrait reads it
+	 * now — and none sets it.
 	 */
 	expectLeafMessageId?: string;
 	/** The client's dispatched grid size, for the aggregate notification. */
