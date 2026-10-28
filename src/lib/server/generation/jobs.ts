@@ -86,9 +86,9 @@ import { appendErrorSibling } from '../streaming/error-sibling';
 import { recordModelEvent } from '../stats/model-stats';
 import { getDb, type Tx } from '../db/client';
 import {
+	countComparisonResults,
 	hasShownImage,
 	insertMessageImage,
-	listImagesForMessages,
 } from '../db/queries/message-images';
 import { notifyConversationComplete } from '../push/notify';
 
@@ -791,11 +791,12 @@ function notifyComparisonIfLast(row: GenerationJobRow, params: GenerationJobPara
 		return;
 	}
 	comparing.delete(key);
-	const { sourceMessageId, index } = params.photo!;
-	const developed = (
-		listImagesForMessages(row.conversationId, [sourceMessageId]).get(sourceMessageId) ?? []
-	).filter((i) => i.markerIndex === index && i.mediaId !== null && i.createdAt >= row.createdAt);
-	if (developed.length === 0) return;
+	const { sourceMessageId } = params.photo!;
+	// The comparison's own results, by its id — not by timing, which a re-roll
+	// started after others had landed would get wrong. None once it's been
+	// picked from: the user has seen them.
+	const developed = countComparisonResults(row.userId, sourceMessageId, params.compareId!);
+	if (developed === 0) return;
 	void notifyConversationComplete({
 		userId: row.userId,
 		conversationId: row.conversationId,
@@ -804,6 +805,6 @@ function notifyComparisonIfLast(row: GenerationJobRow, params: GenerationJobPara
 			getConversationMeta(row.conversationId, row.userId)?.title ?? 'New conversation',
 		previewText: '',
 		modality: 'image',
-		summary: developed.length === 1 ? '1 photo ready' : `${developed.length} photos ready`,
+		summary: developed === 1 ? '1 photo ready' : `${developed} photos ready`,
 	}).catch((e: unknown) => log.warn('notify failed:', errorMessage(e)));
 }

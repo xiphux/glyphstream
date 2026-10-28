@@ -71,6 +71,26 @@ export function hasShownImage(tx: Tx, messageId: string, markerIndex: number | n
 		.get();
 }
 
+/** How many results with an image a comparison still open has drawn. */
+export function countComparisonResults(
+	userId: string,
+	messageId: string,
+	comparisonId: string,
+): number {
+	return getDb()
+		.select({ id: messageImages.id })
+		.from(messageImages)
+		.where(
+			and(
+				eq(messageImages.userId, userId),
+				eq(messageImages.messageId, messageId),
+				eq(messageImages.comparisonId, comparisonId),
+				isNotNull(messageImages.mediaId),
+			),
+		)
+		.all().length;
+}
+
 /**
  * Resolve the comparison `id` was drawn in, if it is still open: the models
  * that drew its versions, `id`'s first, and the comparison closed in the same

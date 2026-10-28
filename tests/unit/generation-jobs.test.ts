@@ -1188,6 +1188,19 @@ describe('a texting photo', () => {
 		expect(versions(s).some((v) => v.error)).toBe(false);
 	});
 
+	it('counts every result of a comparison in its notification, a late re-roll too', async () => {
+		const s = seedReply();
+		await drain(submitGenerationJob(photoJob(s, 0, { compareId: 'cmp-1' })));
+		expect(mocks.notify).toHaveBeenLastCalledWith(
+			expect.objectContaining({ summary: '1 photo ready' }),
+		);
+		// A re-roll started after the first had landed.
+		await drain(submitGenerationJob(photoJob(s, 0, { compareId: 'cmp-1' }, 'bridge::flux')));
+		expect(mocks.notify).toHaveBeenLastCalledWith(
+			expect.objectContaining({ summary: '2 photos ready' }),
+		);
+	});
+
 	it('comes back after a restart and lands on the reply', async () => {
 		const s = seedReply();
 		leftover(s, {
