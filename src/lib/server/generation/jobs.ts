@@ -350,6 +350,7 @@ export function stopGenerationJobResume(): void {
 export function resetGenerationJobsForTests(): void {
 	stopGenerationJobResume();
 	comparing.clear();
+	closedComparisons.clear();
 	shuttingDown = false;
 	processState[RESUMED] = false;
 }
@@ -440,6 +441,9 @@ function landPhoto(
 	const messageId = params.photo!.sourceMessageId;
 	const now = Date.now();
 	const landed = 'mediaId' in outcome;
+	const key = comparisonKey(params);
+	// Already picked from: a plain version, not a contender.
+	const compareId = key && !closedComparisons.has(key) ? params.compareId! : null;
 	insertMessageImage(tx, {
 		id: generateId(),
 		userId: row.userId,
@@ -451,9 +455,9 @@ function landPhoto(
 		modelId: row.modelId,
 		error: landed ? null : outcome.error,
 		shownAt:
-			landed && (!params.compareId || !hasShownImage(tx, messageId, markerIndex)) ? now : null,
+			landed && (!key || (compareId && !hasShownImage(tx, messageId, markerIndex))) ? now : null,
 		// On a failure too, so the comparison's other results don't clear it.
-		comparisonId: params.compareId ?? null,
+		comparisonId: compareId,
 		createdAt: now,
 	});
 }
@@ -772,10 +776,25 @@ function persistFailure(
  */
 const comparing = new Map<string, number>();
 
+/**
+ * Comparisons picked from while some of their draws were still out. Those
+ * land afterwards as plain versions — off the stage the pick set, out of the
+ * closed comparison (a later pick must not count it again), and without a
+ * "ready" notification for a comparison the user has already resolved.
+ * Cleared when the last of them settles.
+ */
+const closedComparisons = new Set<string>();
+
 function comparisonKey(params: GenerationJobParams): string | null {
 	return params.compareId && params.photo
 		? `${params.photo.sourceMessageId}:${params.compareId}`
 		: null;
+}
+
+/** A photo comparison was picked from (see `closedComparisons`). */
+export function closePhotoComparison(messageId: string, compareId: string): void {
+	const key = `${messageId}:${compareId}`;
+	if (comparing.has(key)) closedComparisons.add(key);
 }
 
 /**
@@ -791,10 +810,11 @@ function notifyComparisonIfLast(row: GenerationJobRow, params: GenerationJobPara
 		return;
 	}
 	comparing.delete(key);
+	// Picked from already: the user has what they came for.
+	if (closedComparisons.delete(key)) return;
 	const { sourceMessageId } = params.photo!;
 	// The comparison's own results, by its id — not by timing, which a re-roll
-	// started after others had landed would get wrong. None once it's been
-	// picked from: the user has seen them.
+	// started after others had landed would get wrong.
 	const developed = countComparisonResults(row.userId, sourceMessageId, params.compareId!);
 	if (developed === 0) return;
 	void notifyConversationComplete({

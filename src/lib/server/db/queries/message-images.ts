@@ -101,7 +101,7 @@ export function resolveComparison(
 	userId: string,
 	conversationId: string,
 	id: string,
-): { winner: string; models: string[] } | null {
+): { winner: string; models: string[]; messageId: string; comparisonId: string } | null {
 	return getDb().transaction((tx) => {
 		const picked = tx
 			.select()
@@ -126,7 +126,12 @@ export function resolveComparison(
 			.all()
 			.map((r) => r.modelId);
 		tx.update(messageImages).set({ comparisonId: null }).where(inComparison).run();
-		return { winner: picked.modelId, models };
+		return {
+			winner: picked.modelId,
+			models,
+			messageId: picked.messageId,
+			comparisonId: picked.comparisonId,
+		};
 	});
 }
 

@@ -99,16 +99,21 @@ import {
 } from '#lib/server/db/queries/conversations.js';
 import { getFanoutRecoveryState } from '#lib/server/messages/fanout-recovery.js';
 import { appendMessage, getSiblingAssistants } from '#lib/server/db/queries/messages.js';
-import { conversations, generationJobs, media } from '#lib/server/db/schema.js';
+import { conversations, generationJobs, media, messageImages } from '#lib/server/db/schema.js';
 import { insertMedia } from '#lib/server/db/queries/media.js';
 import { insertGenerationJob } from '#lib/server/db/queries/generation-jobs.js';
-import { listImagesForMessages, showMessageImage } from '#lib/server/db/queries/message-images.js';
+import {
+	listImagesForMessages,
+	resolveComparison,
+	showMessageImage,
+} from '#lib/server/db/queries/message-images.js';
 import {
 	resetEndpointGatesForTests,
 	setResourceGroupPaused,
 } from '#lib/server/endpoints/concurrency.js';
 import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 import {
+	closePhotoComparison,
 	resetGenerationJobsForTests,
 	resumeGenerationJobs,
 	scheduleGenerationJobResume,
@@ -1199,6 +1204,36 @@ describe('a texting photo', () => {
 		expect(mocks.notify).toHaveBeenLastCalledWith(
 			expect.objectContaining({ summary: '2 photos ready' }),
 		);
+	});
+
+	it('lands a draw that finishes after the pick as a plain version, quietly', async () => {
+		const s = seedReply();
+		mocks.endpoint = endpoint(2);
+		let finishSlow!: () => void;
+		mocks.imageGeneration
+			.mockImplementationOnce(
+				() =>
+					new Promise((r) => (finishSlow = () => r({ data: [{ url: 'http://img/slow.png' }] }))),
+			)
+			.mockResolvedValueOnce({ data: [{ url: 'http://img/fast.png' }] });
+		const slow = drain(submitGenerationJob(photoJob(s, 0, { compareId: 'cmp-1' }, 'bridge::flux')));
+		await until(() => finishSlow !== undefined, 'the slow draw to start');
+		await drain(submitGenerationJob(photoJob(s, 0, { compareId: 'cmp-1' })));
+		const [fast] = versions(s);
+		// The user picks while the slow one is still drawing.
+		const picked = resolveComparison(s.user.id, s.conv.id, fast.id)!;
+		closePhotoComparison(picked.messageId, picked.comparisonId);
+		showMessageImage(s.user.id, s.conv.id, fast.id);
+		finishSlow();
+		await slow;
+
+		const rows = mocks.testDb.select().from(messageImages).all();
+		expect(rows.map((r) => [r.modelId, r.comparisonId])).toEqual([
+			['bridge::sdxl', null],
+			['bridge::flux', null],
+		]);
+		expect(versions(s).find((v) => v.shown)?.id).toBe(fast.id);
+		expect(mocks.notify).not.toHaveBeenCalled();
 	});
 
 	it('comes back after a restart and lands on the reply', async () => {

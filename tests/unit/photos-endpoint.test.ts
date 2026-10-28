@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('#lib/server/generation/jobs.js', () => ({
 	submitGenerationJob: (job: SubmitGenerationJob) => mocks.submit(job),
+	closePhotoComparison: () => {},
 }));
 vi.mock('#lib/server/endpoints/registry.js', () => ({
 	getEndpoint: (id: string) => (id === 'ep' || id === 'local' ? { id } : undefined),

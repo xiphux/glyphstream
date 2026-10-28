@@ -15,6 +15,7 @@ import { requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import { resolveComparison, showMessageImage } from '#lib/server/db/queries/message-images.js';
 import { recordPhotoComparisonPick } from '#lib/server/stats/reactions.js';
+import { closePhotoComparison } from '#lib/server/generation/jobs.js';
 import type { RequestHandler } from './$types';
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
@@ -26,7 +27,10 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	}
 	if (body.pick === true) {
 		const compared = resolveComparison(locals.user.id, params.id, params.photoId);
-		if (compared) recordPhotoComparisonPick(compared.winner, compared.models);
+		if (compared) {
+			recordPhotoComparisonPick(compared.winner, compared.models);
+			closePhotoComparison(compared.messageId, compared.comparisonId);
+		}
 	}
 	return new Response(null, { status: 204 });
 };
