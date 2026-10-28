@@ -9,7 +9,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import MessageBubble from '#lib/components/chat/MessageBubble.svelte';
 import InFlightBubble from '#lib/components/chat/InFlightBubble.svelte';
-import type { ChatMessage } from '#lib/types/api.js';
+import type { ChatMessage, MessageImage } from '#lib/types/api.js';
+import type { TextingPhotos } from '#lib/texting.js';
 
 function reply(contentHtml: string): ChatMessage {
 	return {
@@ -198,63 +199,123 @@ describe('texting reply style', () => {
 
 	describe('photos', () => {
 		const PHOTOS = '<p>look</p>\n<p>[photo: me at the beach]</p>\n<p>Sam: [photo: the dog]</p>';
+		const version = (id: string, over: Partial<MessageImage> = {}): MessageImage => ({
+			id,
+			kind: 'photo',
+			markerIndex: 1,
+			mediaId: `media-${id}`,
+			error: null,
+			modelId: 'ep::sdxl',
+			shown: false,
+			aspectRatio: '3:4',
+			width: null,
+			height: null,
+			createdAt: 0,
+			...over,
+		});
+		const photos = (over: Partial<TextingPhotos> = {}): TextingPhotos => ({
+			versions: new Map(),
+			developing: new Set(),
+			...over,
+		});
 
 		it('shows an undeveloped marker as a photo to develop', async () => {
 			const onDevelop = vi.fn();
 			render(MessageBubble, {
-				props: {
-					...bubbleProps,
-					message: reply(PHOTOS),
-					textingPhotos: { developed: new Set([1]), onDevelop },
-				},
+				props: { ...bubbleProps, message: reply(PHOTOS), textingPhotos: photos({ onDevelop }) },
 			});
 			expect(screen.getByText('me at the beach')).toBeInTheDocument();
-			// The developed one has arrived as a photo below, so it isn't shown here.
-			expect(screen.queryByText('the dog')).toBeNull();
-			await fireEvent.click(screen.getByRole('button', { name: 'Develop' }));
-			expect(onDevelop).toHaveBeenCalledWith(0);
+			expect(screen.getByText('the dog')).toBeInTheDocument();
+			await fireEvent.click(screen.getAllByRole('button', { name: 'Develop' })[1]);
+			expect(onDevelop).toHaveBeenCalledWith(1);
 		});
 
 		it('offers no Develop where nothing can develop it', () => {
 			render(MessageBubble, {
-				props: {
-					...bubbleProps,
-					message: reply(PHOTOS),
-					textingPhotos: { developed: new Set<number>() },
-				},
+				props: { ...bubbleProps, message: reply(PHOTOS), textingPhotos: photos() },
 			});
 			expect(screen.getByText('the dog')).toBeInTheDocument();
 			expect(screen.queryByRole('button', { name: 'Develop' })).toBeNull();
 		});
 
-		it('draws a developed photo bare, under its sender, with a way to develop it again', async () => {
-			const onRedevelop = vi.fn();
+		it('draws the version on show in the marker’s place, under its sender', async () => {
 			const onImageClick = vi.fn();
 			render(MessageBubble, {
 				props: {
 					...bubbleProps,
 					onImageClick,
-					mergeWithPrev: true,
-					message: {
-						...reply(''),
-						contentHtml: null,
-						parts: [
-							{
-								type: 'image',
-								mediaId: 'media-1',
-								aspectRatio: '3:4',
-								photo: { sourceMessageId: 'm-0', index: 1, speaker: 'Sam' },
-							},
-						],
-					},
-					textingPhotos: { developed: new Set<number>(), onRedevelop },
+					message: reply(PHOTOS),
+					textingPhotos: photos({
+						versions: new Map([[1, [version('a'), version('b', { shown: true })]]]),
+					}),
 				},
 			});
+			expect(screen.queryByText('the dog')).toBeNull();
 			expect(screen.getByText('Sam')).toBeInTheDocument();
+			expect(screen.getByRole('img', { name: 'the dog' })).toHaveAttribute(
+				'src',
+				'/api/media/media-b/display',
+			);
 			await fireEvent.click(screen.getByRole('button', { name: 'Open photo' }));
-			expect(onImageClick).toHaveBeenCalledWith('media-1');
+			expect(onImageClick).toHaveBeenCalledWith('media-b');
+			// The other marker is still waiting.
+			expect(screen.getByText('me at the beach')).toBeInTheDocument();
+		});
+
+		it('steps between versions, develops again, and removes one', async () => {
+			const onShow = vi.fn();
+			const onDevelop = vi.fn();
+			const onRemove = vi.fn();
+			const a = version('a');
+			const b = version('b', { shown: true });
+			render(MessageBubble, {
+				props: {
+					...bubbleProps,
+					message: reply(PHOTOS),
+					textingPhotos: photos({
+						versions: new Map([[1, [a, b, version('c')]]]),
+						onShow,
+						onDevelop,
+						onRemove,
+					}),
+				},
+			});
+			expect(screen.getByText('2/3')).toBeInTheDocument();
+			await fireEvent.click(screen.getByRole('button', { name: 'Previous version' }));
+			expect(onShow).toHaveBeenCalledWith(a);
 			await fireEvent.click(screen.getByRole('button', { name: 'Develop again' }));
-			expect(onRedevelop).toHaveBeenCalled();
+			expect(onDevelop).toHaveBeenCalledWith(1);
+			await fireEvent.click(screen.getByRole('button', { name: 'Remove this photo' }));
+			expect(onRemove).toHaveBeenCalledWith(b);
+		});
+
+		it('says a photo is developing, rather than offering to develop it', () => {
+			render(MessageBubble, {
+				props: {
+					...bubbleProps,
+					message: reply(PHOTOS),
+					textingPhotos: photos({ developing: new Set([0]), onDevelop: vi.fn() }),
+				},
+			});
+			expect(screen.getByText('Developing…')).toBeInTheDocument();
+			expect(screen.getAllByRole('button', { name: 'Develop' })).toHaveLength(1);
+		});
+
+		it('keeps a failed attempt on the photo, with a way to try again', async () => {
+			const onDevelop = vi.fn();
+			render(MessageBubble, {
+				props: {
+					...bubbleProps,
+					message: reply(PHOTOS),
+					textingPhotos: photos({
+						versions: new Map([[1, [version('f', { mediaId: null, error: 'out of memory' })]]]),
+						onDevelop,
+					}),
+				},
+			});
+			expect(screen.getByText(/Couldn't develop: out of memory/)).toBeInTheDocument();
+			await fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+			expect(onDevelop).toHaveBeenCalledWith(1);
 		});
 	});
 });

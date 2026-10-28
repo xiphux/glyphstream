@@ -317,28 +317,21 @@ describe('firing', () => {
 		expect(disabledFeatures).toEqual(expect.arrayContaining(['personalization', 'web']));
 	});
 
-	it('fires under a photo the reply sent', async () => {
+	// A photo is kept on its reply, not in the thread, so developing one moves
+	// nothing a check-in has to wait for.
+	it('fires while one of the reply’s photos is developing', async () => {
 		const t = thread();
 		scheduled(t);
-		const photo = appendMessage({
-			conversationId: t.conversationId,
-			parentMessageId: t.answer.id,
-			role: 'assistant',
-			parts: [
-				{
-					type: 'image',
-					mediaId: 'media-1',
-					displayOnly: true,
-					photo: { sourceMessageId: t.answer.id, index: 0 },
-				},
-			],
-		});
+		registerInFlight(t.conversationId, ENDPOINT, 'photo:job-1', 'image', 'mock::sdxl', null, false);
 		mocks.upstream.push(reply('hey'));
 		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
 		await idle(t.conversationId);
-		const branch = walkActiveBranch(t.conversationId);
-		expect(branch[2].id).toBe(photo.id);
-		expect(roles(branch).slice(3)).toEqual(['check-in', 'assistant']);
+		expect(roles(walkActiveBranch(t.conversationId))).toEqual([
+			'user',
+			'assistant',
+			'check-in',
+			'assistant',
+		]);
 	});
 
 	it('waits while something else runs, then gives up once too late', async () => {

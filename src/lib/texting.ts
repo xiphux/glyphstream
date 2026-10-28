@@ -11,15 +11,16 @@
  * has the server's cached `content_html`, and the live one split identically.
  *
  * A text that is nothing but `[photo: description]` is a photo the sender took:
- * it shows as a placeholder until the user develops it into an image, which
- * then arrives as its own message after the reply (see `texting-photos.ts`).
+ * it shows as a placeholder until the user develops it into an image, which is
+ * then kept on the reply and shows in the placeholder's place (see
+ * `message_images`).
  *
  * A text that is nothing but `[later 1h: …]` sets a check-in (see
  * `check-ins.ts`). It isn't a text anyone sent, so it never shows as one.
  */
 import { checkInMarker, type CheckInMarker } from './check-ins';
 import type { RenderBlock } from './chat-render';
-import type { PhotoOrigin } from './types/api';
+import type { MessageImage } from './types/api';
 
 export type TextingItem =
 	| {
@@ -35,34 +36,29 @@ export type TextingItem =
 			text: string;
 	  }
 	/** A `[photo: …]` marker. `index` is its position among the reply's photos,
-	 *  which is what a developed photo's `PhotoOrigin.index` points back at. */
+	 *  which is what its developed versions are stored against. */
 	| { kind: 'photo'; speaker: string | null; description: string; index: number }
 	/** A `[later …]` check-in marker, shown (if at all) as a note, not a text. */
 	| ({ kind: 'later' } & CheckInMarker)
-	/** A developed photo: an image carrying a `PhotoOrigin`, from its sender. */
-	| {
-			kind: 'sent-photo';
-			speaker: string | null;
-			block: Extract<RenderBlock, { type: 'image' }> & { photo: PhotoOrigin };
-	  }
 	/** Everything else in the reply (tool calls, images, reasoning…), rendered
 	 *  as it would be in a standard bubble. Consecutive ones are grouped. */
 	| { kind: 'blocks'; blocks: RenderBlock[] };
 
-/** What this row's photos can do. Absent for a live reply, whose markers
- *  can't be developed until it has finished. */
+/** This reply's photos, and what can be done with them. Absent for a live
+ *  reply, whose markers can't be developed until it has finished. */
 export interface TextingPhotos {
-	/** Which of this reply's markers have arrived as photos (by index). */
-	developed: ReadonlySet<number>;
-	/** Develop a marker. Present only while this reply's photos can be
-	 *  developed — it's the latest thing in the thread and nothing is running. */
+	/** Every version of each developed photo, by marker index, oldest first —
+	 *  and a failed attempt, until the next one lands. */
+	versions: ReadonlyMap<number, readonly MessageImage[]>;
+	/** The markers a draw is under way for. */
+	developing: ReadonlySet<number>;
+	/** Open the develop dialog for a marker: first time, again, or after a
+	 *  failure. Absent where nothing can draw. */
 	onDevelop?: (index: number) => void;
-	/** Develop this row's photo again. Present only on the latest photo,
-	 *  under the same conditions. */
-	onRedevelop?: () => void;
-	/** The marker being developed right now, which says so instead of offering
-	 *  the button. */
-	developing?: number | null;
+	/** Put a version on show (the arrows). */
+	onShow?: (image: MessageImage) => void;
+	/** Move a version's image to the trash. */
+	onRemove?: (image: MessageImage) => void;
 }
 
 /** The void elements markdown-it and shiki emit: these never get a close tag. */
@@ -191,10 +187,10 @@ export function textingItems(blocks: RenderBlock[], defaultName: string): Textin
 	const self = defaultName.trim().toLowerCase();
 	const items: TextingItem[] = [];
 	let speaker: string | null = null;
-	// A marker's number is PERSISTED: a developed photo's `PhotoOrigin.index`
-	// names the marker it came from. Changing what counts as a marker (or the
-	// order they're counted in) renumbers every stored reply, and the wrong
-	// placeholders then show as developed.
+	// A marker's number is PERSISTED: a developed photo's versions are stored
+	// against it (`message_images.marker_index`). Changing what counts as a
+	// marker (or the order they're counted in) renumbers every stored reply,
+	// and the wrong photos then show in the wrong places.
 	let photos = 0;
 	const resolve = (named: string | null): string | null => {
 		if (named !== null) speaker = named.toLowerCase() === self ? null : named;
@@ -228,11 +224,6 @@ export function textingItems(blocks: RenderBlock[], defaultName: string): Textin
 				const { speaker: named, text } = extractPlainSpeaker(trimmed);
 				push(resolve(named), { text });
 			}
-		} else if (block.type === 'image' && block.photo) {
-			// From whoever the marker named, which the photo carries with it: it
-			// arrives in a row of its own, after texts that may have changed sender.
-			const from = block.photo.speaker ?? null;
-			items.push({ kind: 'sent-photo', speaker: from, block: { ...block, photo: block.photo } });
 		} else {
 			const last = items.at(-1);
 			if (last?.kind === 'blocks') last.blocks.push(block);

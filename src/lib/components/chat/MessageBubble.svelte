@@ -52,8 +52,8 @@
 		/** The conversation's 'texting' reply style: an assistant row renders as
 		 *  a run of text bubbles (TextingBubbles) instead of one bubble. */
 		texting?: boolean;
-		/** Texting only: what this row's photo markers (or delivered photo) can
-		 *  do — see TextingBubbles. */
+		/** Texting only: this reply's photos, and what can be done with them —
+		 *  see TextingBubbles. */
 		textingPhotos?: TextingPhotos;
 		/** This reply's pending check-in, if it set one: a note under it. */
 		checkIn?: PendingCheckInNote;

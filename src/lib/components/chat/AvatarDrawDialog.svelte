@@ -12,9 +12,11 @@
 	A dialog rather than more of the popover menu: a popover dismisses on any
 	outside click, which is a bad place to be editing a paragraph.
 
-	Also how a texting photo is developed (`purpose="photo"`): the same draw, so
-	the same dialog, with the marker's description as the prompt and an
-	aspect-ratio picker, since a photo is whatever shape the phone was held.
+	Also how a texting photo is developed (`purpose="photo"`): the marker's
+	description as the prompt, and an aspect-ratio picker, since a photo is
+	whatever shape the phone was held. Developing with several models is a
+	comparison the dialog then shows in place of the form (`comparison`): each
+	result as it lands, to pick the one to show. All of them are kept.
 -->
 <script lang="ts">
 	import BaseDialog from '#lib/components/BaseDialog.svelte';
@@ -22,7 +24,7 @@
 	import AspectRatioSelector from './AspectRatioSelector.svelte';
 	import { agreedDefault, offeredRatios } from '#lib/aspect-ratio.js';
 	import type { CompareSelection } from '#lib/fanout.js';
-	import type { ModelEntry } from '#lib/types/api.js';
+	import type { MessageImage, ModelEntry } from '#lib/types/api.js';
 
 	interface Props {
 		open: boolean;
@@ -87,6 +89,11 @@
 		/** A photo's shape, or null for each model's default. Bindable; unused for
 		 *  an avatar, which is always square. */
 		aspectRatio?: string | null;
+		/** A photo comparison under way: the versions it has drawn so far (failed
+		 *  ones included), and the models still drawing. Shown instead of the form. */
+		comparison?: { results: MessageImage[]; pending: string[] } | null;
+		/** Pick a comparison's result as the one to show. */
+		onPick?: (image: MessageImage) => void;
 	}
 
 	let {
@@ -109,7 +116,11 @@
 		onCancel,
 		purpose = 'avatar',
 		aspectRatio = $bindable(null),
+		comparison = null,
+		onPick,
 	}: Props = $props();
+
+	const modelName = (id: string) => models.find((m) => m.id === id)?.displayName ?? id;
 
 	const isPhoto = $derived(purpose === 'photo');
 
@@ -151,106 +162,158 @@
 	titleId="avatar-draw-title"
 	title={isPhoto ? 'Develop the photo' : 'Draw the avatar'}
 >
-	<p class="mt-1 text-xs text-fg-muted">
-		{#if isPhoto}
-			This is what gets sent to the image model — the photo as it was described.
-		{:else}
-			This is what gets sent to the image model. Trim anything the model said in character.
-		{/if}
-	</p>
+	{#if comparison}
+		<p class="mt-1 text-xs text-fg-muted">
+			Pick the one to show. The others are kept too — the arrows on the photo reach them.
+		</p>
+		<ul class="mt-3 grid grid-cols-2 gap-2">
+			{#each comparison.results as result (result.id)}
+				<li class="flex flex-col gap-1">
+					{#if result.mediaId}
+						<button
+							type="button"
+							onclick={() => onPick?.(result)}
+							aria-label="Show the one from {modelName(result.modelId)}"
+							class="overflow-hidden rounded-lg p-0 ring-offset-2 transition hover:ring-2 hover:ring-border-focus"
+						>
+							<img
+								src="/api/media/{result.mediaId}/display"
+								alt="The photo, by {modelName(result.modelId)}"
+								class="block aspect-square w-full object-cover"
+							/>
+						</button>
+					{:else}
+						<p
+							class="flex aspect-square items-center justify-center rounded-lg bg-surface-sunken p-2 text-center text-xs text-danger"
+						>
+							{result.error ?? "Couldn't develop"}
+						</p>
+					{/if}
+					<span class="truncate text-xs text-fg-muted">{modelName(result.modelId)}</span>
+				</li>
+			{/each}
+			{#each comparison.pending as modelId, i (`${modelId}:${i}`)}
+				<li class="flex flex-col gap-1">
+					<p
+						class="flex aspect-square animate-pulse items-center justify-center rounded-lg bg-surface-sunken text-xs text-fg-muted"
+					>
+						Developing…
+					</p>
+					<span class="truncate text-xs text-fg-muted">{modelName(modelId)}</span>
+				</li>
+			{/each}
+		</ul>
+		<div class="mt-4 flex justify-end">
+			<button
+				type="button"
+				onclick={onCancel}
+				class="rounded-md border border-border px-3 py-1.5 text-sm transition hover:bg-surface-sunken"
+			>
+				Done
+			</button>
+		</div>
+	{:else}
+		<p class="mt-1 text-xs text-fg-muted">
+			{#if isPhoto}
+				This is what gets sent to the image model — the photo as it was described.
+			{:else}
+				This is what gets sent to the image model. Trim anything the model said in character.
+			{/if}
+		</p>
 
-	<label class="mt-3 block text-xs font-medium" for="avatar-prompt">Image prompt</label>
-	<textarea
-		id="avatar-prompt"
-		value={prompt}
-		oninput={(e) => onPromptChange(e.currentTarget.value)}
-		rows="6"
-		disabled={!!status}
-		class="mt-1 w-full resize-y rounded-md border border-border bg-surface-panel px-3 py-2 text-sm shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50"
-	></textarea>
-
-	<div class="mt-3">
-		<span class="mb-1 block text-xs font-medium">Image model</span>
-		<ModelPicker
-			{models}
-			{loading}
-			{loadError}
-			filterKinds={['image']}
-			value={modelId}
-			onChange={onModelChange}
+		<label class="mt-3 block text-xs font-medium" for="avatar-prompt">Image prompt</label>
+		<textarea
+			id="avatar-prompt"
+			value={prompt}
+			oninput={(e) => onPromptChange(e.currentTarget.value)}
+			rows="6"
 			disabled={!!status}
-			allowCompare={canCompare}
-			bind:compareSelections
-			bind:compareMode
-		/>
-		{#if !canCompare && compareBlockedReason}
-			<p class="mt-1 text-xs text-fg-muted">{compareBlockedReason}</p>
-		{/if}
-		{#if comparing}
-			<p class="mt-1 text-xs text-fg-muted">
-				Each model draws its own version; you pick the one to keep.
-			</p>
-		{/if}
-	</div>
+			class="mt-1 w-full resize-y rounded-md border border-border bg-surface-panel px-3 py-2 text-sm shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50"
+		></textarea>
 
-	{#if isPhoto && ratioOptions.length > 0}
-		<div class="mt-3 flex items-center gap-2">
-			<span class="text-xs font-medium">Shape</span>
-			<AspectRatioSelector
-				bind:this={ratioRef}
-				options={ratioOptions}
-				defaultValue={ratioDefault}
-				promptText={prompt}
-				bind:value={aspectRatio}
-				bind:dismissedRatio
+		<div class="mt-3">
+			<span class="mb-1 block text-xs font-medium">Image model</span>
+			<ModelPicker
+				{models}
+				{loading}
+				{loadError}
+				filterKinds={['image']}
+				value={modelId}
+				onChange={onModelChange}
 				disabled={!!status}
+				allowCompare={canCompare}
+				bind:compareSelections
+				bind:compareMode
 			/>
+			{#if !canCompare && compareBlockedReason}
+				<p class="mt-1 text-xs text-fg-muted">{compareBlockedReason}</p>
+			{/if}
+			{#if comparing}
+				<p class="mt-1 text-xs text-fg-muted">
+					Each model draws its own version; you pick the one to keep.
+				</p>
+			{/if}
+		</div>
+
+		{#if isPhoto && ratioOptions.length > 0}
+			<div class="mt-3 flex items-center gap-2">
+				<span class="text-xs font-medium">Shape</span>
+				<AspectRatioSelector
+					bind:this={ratioRef}
+					options={ratioOptions}
+					defaultValue={ratioDefault}
+					promptText={prompt}
+					bind:value={aspectRatio}
+					bind:dismissedRatio
+					disabled={!!status}
+				/>
+			</div>
+		{/if}
+
+		<label class="mt-3 flex items-start gap-2 text-xs">
+			<input
+				type="checkbox"
+				checked={enhance}
+				disabled={!!status}
+				onchange={(e) => onEnhanceChange(e.currentTarget.checked)}
+				class="mt-0.5"
+			/>
+			<span>
+				Rewrite for this model
+				<span class="block text-fg-muted">
+					Restyles the prompt into the model's preferred format. Turn off to send exactly what's
+					above.
+				</span>
+			</span>
+		</label>
+
+		{#if status}
+			<p class="mt-3 text-xs text-fg-secondary">{status}</p>
+		{/if}
+
+		<div class="mt-4 flex justify-end gap-2">
+			<button
+				type="button"
+				onclick={onCancel}
+				disabled={!!status}
+				class="rounded-md border border-border px-3 py-1.5 text-sm transition hover:bg-surface-sunken disabled:opacity-50"
+			>
+				Cancel
+			</button>
+			<button
+				type="button"
+				onclick={draw}
+				disabled={!!status || !prompt.trim() || (!comparing && !modelId)}
+				class="rounded-md bg-surface-inverse px-4 py-1.5 text-sm font-medium text-fg-inverse transition hover:opacity-90 disabled:opacity-50"
+			>
+				{#if status}
+					{isPhoto ? 'Developing…' : 'Drawing…'}
+				{:else if comparing}
+					{isPhoto ? 'Develop' : 'Draw'} with {compareTotal} models
+				{:else}
+					{isPhoto ? 'Develop' : 'Draw'}
+				{/if}
+			</button>
 		</div>
 	{/if}
-
-	<label class="mt-3 flex items-start gap-2 text-xs">
-		<input
-			type="checkbox"
-			checked={enhance}
-			disabled={!!status}
-			onchange={(e) => onEnhanceChange(e.currentTarget.checked)}
-			class="mt-0.5"
-		/>
-		<span>
-			Rewrite for this model
-			<span class="block text-fg-muted">
-				Restyles the prompt into the model's preferred format. Turn off to send exactly what's
-				above.
-			</span>
-		</span>
-	</label>
-
-	{#if status}
-		<p class="mt-3 text-xs text-fg-secondary">{status}</p>
-	{/if}
-
-	<div class="mt-4 flex justify-end gap-2">
-		<button
-			type="button"
-			onclick={onCancel}
-			disabled={!!status}
-			class="rounded-md border border-border px-3 py-1.5 text-sm transition hover:bg-surface-sunken disabled:opacity-50"
-		>
-			Cancel
-		</button>
-		<button
-			type="button"
-			onclick={draw}
-			disabled={!!status || !prompt.trim() || (!comparing && !modelId)}
-			class="rounded-md bg-surface-inverse px-4 py-1.5 text-sm font-medium text-fg-inverse transition hover:opacity-90 disabled:opacity-50"
-		>
-			{#if status}
-				{isPhoto ? 'Developing…' : 'Drawing…'}
-			{:else if comparing}
-				{isPhoto ? 'Develop' : 'Draw'} with {compareTotal} models
-			{:else}
-				{isPhoto ? 'Develop' : 'Draw'}
-			{/if}
-		</button>
-	</div>
 </BaseDialog>

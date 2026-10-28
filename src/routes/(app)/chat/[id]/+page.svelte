@@ -54,6 +54,7 @@
 		buildRenderedConversation,
 		CANVAS_TOOLS,
 		computeMergeFlags,
+		lastReplyMessage,
 		messageToBlocks,
 		parseCanvasAck,
 		splitCanvasCards,
@@ -70,7 +71,7 @@
 	import { hasCopyableText, partsToText } from '#lib/message-parts.js';
 	import { AvatarDrawController } from '#lib/avatar-draw-controller.svelte.js';
 	import { AvatarDrawWorkflow } from '#lib/avatar-draw-workflow.svelte.js';
-	import { developedPhotos, photoChain, photoMarkers, photoOriginOf } from '#lib/texting-photos.js';
+	import { photoMarkers } from '#lib/texting-photos.js';
 	import type { TextingPhotos } from '#lib/texting.js';
 	import { CheckInController } from '#lib/check-in-controller.svelte.js';
 	import { isCheckInMessage, type PendingCheckInNote } from '#lib/check-ins.js';
@@ -93,6 +94,7 @@
 		ChatMessage,
 		EarlierMessagesResponse,
 		FeatureCategory,
+		MessageImage,
 		ModelKind,
 	} from '#lib/types/api.js';
 
@@ -1631,44 +1633,59 @@
 			fanout.comparing,
 	);
 
-	// Texting photos: which markers have arrived, and which reply (if any) can
-	// develop one now — see texting-photos.ts. Developing goes through the
-	// avatar draw dialog above.
-	const photosByReply = $derived(
-		texting ? developedPhotos(messages) : new Map<string, Set<number>>(),
-	);
-	const developableChain = $derived(texting ? photoChain(messages) : null);
-	// Nothing else may be running: a draw holds the one background slot, a turn
-	// or a comparison would move the thread out from under the photo.
-	const photosIdle = $derived(!generating && !avatarStatus);
-	const NO_PHOTOS: ReadonlySet<number> = new Set();
-
+	// Texting photos: each reply's developed versions, and the draws under way —
+	// the server's word (which a reload keeps) and this tab's own. A photo is
+	// kept on its reply, so it can be developed at any time, whatever else is
+	// running; the dialog above does the drawing.
 	function textingPhotosFor(m: ChatMessage, assistantLabel: string): TextingPhotos | undefined {
 		if (!texting || m.role !== 'assistant') return undefined;
-		const chain = photosIdle ? developableChain : null;
-		const developing = avatarWorkflow.developing;
+		const versions = new Map<number, MessageImage[]>();
+		for (const image of m.images ?? []) {
+			if (image.markerIndex === null) continue;
+			const list = versions.get(image.markerIndex);
+			if (list) list.push(image);
+			else versions.set(image.markerIndex, [image]);
+		}
+		const developing = new Set((m.developing ?? []).map((d) => d.markerIndex));
+		for (const { index } of photoMarkers(m, assistantLabel)) {
+			if (avatarWorkflow.isDeveloping(m.id, index)) developing.add(index);
+		}
 		return {
-			developed: photosByReply.get(m.id) ?? NO_PHOTOS,
-			onDevelop:
-				chain?.replyId === m.id
-					? (index: number) => developPhoto(m, index, assistantLabel)
-					: undefined,
-			onRedevelop:
-				chain?.leafPhoto?.id === m.id ? () => redevelopPhoto(m, assistantLabel) : undefined,
-			developing: developing?.sourceMessageId === m.id ? developing.index : null,
+			versions,
+			developing,
+			onDevelop: (index: number) => developPhoto(m, index, assistantLabel),
+			onShow: (image: MessageImage) => void avatarWorkflow.showPhoto(image),
+			onRemove: (image: MessageImage) => void avatarWorkflow.removePhoto(image),
 		};
 	}
 
+	function developPhoto(reply: ChatMessage, index: number, assistantLabel: string) {
+		const marker = photoMarkers(reply, assistantLabel).find((p) => p.index === index);
+		if (!marker) return;
+		avatarWorkflow.openPhotoDialog({ replyId: reply.id, index }, marker.description);
+	}
+
+	// What a photo comparison in the dialog has drawn so far: the versions of
+	// its photo that weren't there when it started.
+	const photoComparison = $derived.by(() => {
+		const c = avatarWorkflow.photoComparison;
+		if (!c) return null;
+		const reply = messages.find((m) => m.id === c.replyId);
+		const results = (reply?.images ?? []).filter(
+			(i) => i.markerIndex === c.index && !c.before.has(i.id),
+		);
+		return { results, pending: c.pending };
+	});
+
 	// Check-ins, where the conversation's preset allows them: the pending one
-	// shows under the reply that set it, and only while that reply (or a photo it
-	// sent) is still the end of the thread — the moment the user answers, it's as
-	// good as gone (the server drops it when it comes due).
+	// shows under the reply that set it, and only while that reply is still the
+	// end of the thread — the moment the user answers, it's as good as gone (the
+	// server drops it when it comes due).
 	const checkInsOn = $derived(data.checkInsOn);
 	const liveCheckIn = $derived.by(() => {
 		const pending = checkInsOn ? checkIns.pending : null;
 		if (!pending) return null;
-		const chain = texting ? developableChain : photoChain(messages);
-		return chain?.replyId === pending.sourceMessageId ? pending : null;
+		return lastReplyMessage(messages)?.id === pending.sourceMessageId ? pending : null;
 	});
 
 	// A plain turn doesn't reload the page, so read what the reply that just
@@ -1699,52 +1716,6 @@
 	}
 
 	const checkInTime = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
-
-	/**
-	 * Whose name and face a row goes under. A photo is drawn by an image model,
-	 * which is what labels it by default — but it was SENT by the reply's
-	 * character, so it takes the reply's identity.
-	 */
-	function photoSenderOf(m: ChatMessage): ChatMessage {
-		const origin = texting ? photoOriginOf(m) : null;
-		return (origin && messages.find((x) => x.id === origin.sourceMessageId)) || m;
-	}
-
-	function developPhoto(reply: ChatMessage, index: number, assistantLabel: string) {
-		const chain = developableChain;
-		const marker = photoMarkers(reply, assistantLabel).find((p) => p.index === index);
-		if (!chain || chain.replyId !== reply.id || !marker) return;
-		avatarWorkflow.openPhotoDialog(
-			{
-				origin: {
-					sourceMessageId: reply.id,
-					index,
-					...(marker.speaker ? { speaker: marker.speaker } : {}),
-				},
-				anchorId: chain.anchorId,
-				...(chain.failedLeafId ? { replacesId: chain.failedLeafId } : {}),
-			},
-			marker.description,
-		);
-	}
-
-	/** Develop the latest photo again: a sibling of it, under its own parent —
-	 *  the message before it on the branch. */
-	function redevelopPhoto(photo: ChatMessage, assistantLabel: string) {
-		const origin = photoOriginOf(photo);
-		const at = messages.indexOf(photo);
-		const parent = at > 0 ? messages[at - 1] : undefined;
-		const reply = messages.find((x) => x.id === origin?.sourceMessageId);
-		const marker =
-			reply && origin
-				? photoMarkers(reply, assistantLabel).find((p) => p.index === origin.index)
-				: undefined;
-		if (!origin || !parent || !marker) return;
-		avatarWorkflow.openPhotoDialog(
-			{ origin, anchorId: parent.id, replacesId: photo.id },
-			marker.description,
-		);
-	}
 
 	// The subset of `generating` where THIS tab actually OWNS a live stream (or
 	// a recovery poll) it will render the completion into — as opposed to a
@@ -2727,7 +2698,7 @@
 									</div>
 								{/await}
 							{:else}
-								{@const identity = assistantIdentityFor(photoSenderOf(m))}
+								{@const identity = assistantIdentityFor(m)}
 								<MessageBubble
 									message={m}
 									{toolResultsByCallId}
@@ -2818,16 +2789,8 @@
 							onPick={fanout.isMedia && !fanout.isAvatar
 								? undefined
 								: (c: FanoutColumn) => void fanout.pick(c)}
-							pickLabel={fanout.isPhoto
-								? 'Send this photo'
-								: fanout.isAvatar
-									? 'Use this avatar'
-									: 'Continue with this'}
-							pickCaption={fanout.isPhoto
-								? 'Use photo'
-								: fanout.isAvatar
-									? 'Use avatar'
-									: undefined}
+							pickLabel={fanout.isAvatar ? 'Use this avatar' : 'Continue with this'}
+							pickCaption={fanout.isAvatar ? 'Use avatar' : undefined}
 							onDiscard={fanout.isMedia ? (c: FanoutColumn) => void fanout.discard(c) : undefined}
 							onRegenerate={fanout.isMedia
 								? (c: FanoutColumn) => void fanout.regenerate(c)
@@ -3020,20 +2983,20 @@
 			loadError={catalogue.loadFailed}
 			modelId={avatarWorkflow.modelId}
 			canCompare={avatarWorkflow.canCompare}
-			compareBlockedReason={avatarWorkflow.photo
-				? 'Comparing several models needs the photo to be the latest thing in the thread.'
-				: 'Comparing several models needs the description to be the latest thing in the thread.'}
+			compareBlockedReason="Comparing several models needs the description to be the latest thing in the thread."
 			purpose={avatarWorkflow.photo ? 'photo' : 'avatar'}
+			comparison={photoComparison}
+			onPick={(image: MessageImage) => void avatarWorkflow.showPhoto(image, true)}
 			bind:aspectRatio={avatarWorkflow.aspectRatio}
 			bind:compareSelections={avatarWorkflow.compareSelections}
 			bind:compareMode={avatarWorkflow.compareMode}
 			enhance={avatarWorkflow.enhance}
-			status={avatarStatus}
+			status={avatarWorkflow.photo ? null : avatarStatus}
 			onPromptChange={(v: string) => (avatarWorkflow.prompt = v)}
 			onEnhanceChange={(v: boolean) => (avatarWorkflow.enhance = v)}
 			onModelChange={(id: string) => avatarWorkflow.setModel(id)}
 			onDraw={() => void avatarWorkflow.generate()}
-			onCancel={() => (avatarWorkflow.open = false)}
+			onCancel={() => avatarWorkflow.close()}
 		/>
 	{/await}
 {/if}
@@ -3064,8 +3027,8 @@
 							: undefined,
 						regenerateBlocked: lightbox.regenerateBlocked,
 						onPick: fanout.isAvatar ? (id: string) => lightbox.pick(id) : undefined,
-						pickLabel: fanout.isPhoto ? 'Send this photo' : 'Use this avatar',
-						pickCaption: fanout.isPhoto ? 'Use photo' : 'Use avatar',
+						pickLabel: 'Use this avatar',
+						pickCaption: 'Use avatar',
 						busy: fanout.picking,
 					}
 				: null}

@@ -22,10 +22,9 @@ export const TEXTING_INSTRUCTIONS =
 	'Never otherwise begin a text with a word followed by a colon. ' +
 	// The photo marker `#lib/texting.ts` reads. The image model that develops it
 	// sees only this description, hence "completely"; the ratio is picked up by
-	// the draw dialog's aspect-ratio detection. "After your other texts" because
-	// that is where a developed photo shows up: it arrives as a message of its
-	// own after the reply, so a marker mid-reply would read out of order.
-	'To send a photo, when it fits the moment, write it as its own text after your other texts: ' +
+	// the draw dialog's aspect-ratio detection. A developed photo shows where
+	// its marker is, so it can go anywhere among the texts.
+	'To send a photo, when it fits the moment, write it as a text of its own: ' +
 	'[photo: what it shows]. ' +
 	"The camera can't see this chat, so describe the picture completely, including how anyone in it looks, " +
 	'and give its aspect ratio: 3:4, 2:3 or 9:16 upright; 4:3, 3:2 or 16:9 sideways.';

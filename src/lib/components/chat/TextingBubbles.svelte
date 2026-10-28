@@ -8,10 +8,9 @@
 	header off would show its text under whoever spoke last above.
 
 	A `[photo: …]` text is a photo the sender took. Until it's developed it shows
-	as a placeholder with its description (and, while the reply is the latest
-	thing in the thread, a Develop button); once developed it disappears from
-	here, because the photo itself arrives as a row of its own after the reply —
-	which this component also draws, as the bare picture a phone shows.
+	as a placeholder with its description and a Develop button; once developed,
+	the photo shows right there, as the bare picture a phone shows — with arrows
+	between its versions, and buttons to develop it again or remove this one.
 
 	While the reply is still arriving (`typing`), the text being written shows
 	as a typing indicator and appears whole once the next one starts. Partial
@@ -28,7 +27,7 @@
 	one split the same way.
 -->
 <script lang="ts">
-	import { Camera, RefreshCw } from '@lucide/svelte';
+	import { Camera, ChevronLeft, ChevronRight, RefreshCw, Trash2 } from '@lucide/svelte';
 	import RenderBlocks from './RenderBlocks.svelte';
 	import CheckInNote from './CheckInNote.svelte';
 	import AssistantAvatar from './AssistantAvatar.svelte';
@@ -39,6 +38,7 @@
 	import { codeCopyClicks, withCodeCopyButtons } from '#lib/code-copy.js';
 	import { speakerHue, textingItems, type TextingItem, type TextingPhotos } from '#lib/texting.js';
 	import type { PendingCheckInNote } from '#lib/check-ins.js';
+	import type { MessageImage } from '#lib/types/api.js';
 
 	interface Props {
 		blocks: RenderBlock[];
@@ -84,7 +84,6 @@
 		let prev: string | null | undefined = undefined;
 		// Without the successful canvas edits, which the caller renders as cards
 		// at the bottom: left in, a canvas-only reply would draw an empty bubble.
-		// Without the photos that have arrived, too, which show further down.
 		// Only the last marker sets the check-in, and only while it's pending.
 		const all: Array<TextingItem | { kind: 'typing'; speaker: string | null }> = textingItems(
 			splitCanvasCards(blocks).body,
@@ -95,30 +94,36 @@
 		// finished check-in marker has no sender and is never shown, so typing
 		// it would flash the preset's name under someone else's run.
 		const last = all.at(-1);
-		if (
-			typing &&
-			last &&
-			last.kind !== 'blocks' &&
-			last.kind !== 'sent-photo' &&
-			last.kind !== 'later'
-		) {
+		if (typing && last && last.kind !== 'blocks' && last.kind !== 'later') {
 			all[all.length - 1] = { kind: 'typing', speaker: 'speaker' in last ? last.speaker : null };
 		}
-		const items = all.filter((item, i, all) =>
-			item.kind === 'later'
-				? !!checkIn && !all.slice(i + 1).some((x) => x.kind === 'later')
-				: item.kind !== 'photo' || !photos?.developed.has(item.index),
+		const items = all.filter(
+			(item, i, all) =>
+				item.kind !== 'later' || (!!checkIn && !all.slice(i + 1).some((x) => x.kind === 'later')),
 		);
 		if (items.length === 0 && pending) items.push({ kind: 'text', speaker: null, text: '' });
 		return items.map((item) => {
 			if (item.kind === 'blocks' || item.kind === 'later') return { item, header: false };
-			// A delivered photo is a row of its own, after texts that may have
-			// changed sender, so it always says who it's from.
-			const header = item.kind === 'sent-photo' || item.speaker !== prev;
+			const header = item.speaker !== prev;
 			prev = item.speaker;
 			return { item, header };
 		});
 	});
+
+	const photoButton = 'rounded-full bg-black/55 p-1.5 text-white transition hover:bg-black/70';
+
+	/** A marker's developed versions (with an image), the one on show, and
+	 *  whether its latest attempt failed. */
+	function photoState(index: number) {
+		const all = photos?.versions.get(index) ?? [];
+		const versions = all.filter((v): v is MessageImage & { mediaId: string } => !!v.mediaId);
+		return {
+			versions,
+			shown: versions.find((v) => v.shown) ?? null,
+			failure: all.find((v) => !v.mediaId)?.error ?? null,
+			developing: photos?.developing.has(index) ?? false,
+		};
+	}
 </script>
 
 {#snippet senderHeader(speaker: string | null, first: boolean)}
@@ -182,57 +187,114 @@
 					></span>
 				</div>
 			{:else if item.kind === 'photo'}
-				<div
-					class="flex w-60 max-w-[85%] flex-col gap-1.5 rounded-2xl border border-dashed border-border-strong bg-surface-raised px-3.5 py-2.5"
-				>
-					<div class="flex items-center gap-1.5 text-xs font-medium text-fg-muted">
-						<Camera class="size-3.5" aria-hidden="true" />
-						Photo
+				{@const index = item.index}
+				{@const state = photoState(index)}
+				{#if state.shown}
+					{@const shown = state.shown}
+					{@const at = state.versions.indexOf(shown)}
+					<div class="relative w-64 max-w-[75%]">
+						<button
+							type="button"
+							onclick={() => onImageClick(shown.mediaId)}
+							aria-label="Open photo"
+							disabled={openingLightboxFor === shown.mediaId}
+							class="block w-full overflow-hidden rounded-2xl p-0 transition disabled:opacity-60"
+						>
+							<img
+								src="/api/media/{shown.mediaId}/display"
+								alt={item.description}
+								loading="lazy"
+								style:aspect-ratio={cssAspectRatio({
+									width: shown.width ?? undefined,
+									height: shown.height ?? undefined,
+									aspectRatio: shown.aspectRatio ?? undefined,
+								})}
+								class="block h-auto max-h-[70vh] w-full object-cover"
+							/>
+						</button>
+						<div class="absolute top-2 right-2 flex gap-1">
+							{#if photos?.onDevelop && !state.developing}
+								<button
+									type="button"
+									onclick={() => photos?.onDevelop?.(index)}
+									aria-label="Develop again"
+									title="Develop again"
+									class={photoButton}
+								>
+									<RefreshCw class="size-3.5" aria-hidden="true" />
+								</button>
+							{/if}
+							{#if photos?.onRemove}
+								<button
+									type="button"
+									onclick={() => photos?.onRemove?.(shown)}
+									aria-label="Remove this photo"
+									title="Remove this photo"
+									class={photoButton}
+								>
+									<Trash2 class="size-3.5" aria-hidden="true" />
+								</button>
+							{/if}
+						</div>
+						{#if state.developing}
+							<p
+								class="absolute bottom-2 left-2 rounded-full bg-black/55 px-2 py-0.5 text-xs text-white"
+							>
+								Developing…
+							</p>
+						{:else if state.versions.length > 1}
+							<div
+								class="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/55 px-1 text-xs text-white"
+							>
+								<button
+									type="button"
+									onclick={() => photos?.onShow?.(state.versions[at - 1])}
+									disabled={at === 0 || !photos?.onShow}
+									aria-label="Previous version"
+									class="rounded-full p-1 transition hover:bg-black/40 disabled:opacity-40"
+								>
+									<ChevronLeft class="size-3.5" aria-hidden="true" />
+								</button>
+								<span class="tabular-nums">{at + 1}/{state.versions.length}</span>
+								<button
+									type="button"
+									onclick={() => photos?.onShow?.(state.versions[at + 1])}
+									disabled={at === state.versions.length - 1 || !photos?.onShow}
+									aria-label="Next version"
+									class="rounded-full p-1 transition hover:bg-black/40 disabled:opacity-40"
+								>
+									<ChevronRight class="size-3.5" aria-hidden="true" />
+								</button>
+							</div>
+						{/if}
 					</div>
-					<p class="line-clamp-4 text-sm italic text-fg-secondary">{item.description}</p>
-					{#if photos?.developing === item.index}
-						<p class="text-xs text-fg-muted">Developing…</p>
-					{:else if photos?.onDevelop}
-						{@const index = item.index}
-						<button
-							type="button"
-							onclick={() => photos?.onDevelop?.(index)}
-							class="self-start rounded-md bg-surface-inverse px-3 py-1 text-xs font-medium text-fg-inverse transition hover:opacity-90"
-						>
-							Develop
-						</button>
-					{/if}
-				</div>
-			{:else if item.kind === 'sent-photo'}
-				{@const mediaId = item.block.mediaId}
-				<div class="relative w-64 max-w-[75%]">
-					<button
-						type="button"
-						onclick={() => onImageClick(mediaId)}
-						aria-label="Open photo"
-						disabled={openingLightboxFor === mediaId}
-						class="block w-full overflow-hidden rounded-2xl p-0 transition disabled:opacity-60"
+				{:else}
+					<div
+						class="flex w-60 max-w-[85%] flex-col gap-1.5 rounded-2xl border border-dashed border-border-strong bg-surface-raised px-3.5 py-2.5"
 					>
-						<img
-							src="/api/media/{mediaId}/display"
-							alt={item.block.alt ?? 'Photo'}
-							loading="lazy"
-							style:aspect-ratio={cssAspectRatio(item.block)}
-							class="block h-auto max-h-[70vh] w-full object-cover"
-						/>
-					</button>
-					{#if photos?.onRedevelop}
-						<button
-							type="button"
-							onclick={() => photos?.onRedevelop?.()}
-							aria-label="Develop again"
-							title="Develop again"
-							class="absolute top-2 right-2 rounded-full bg-black/55 p-1.5 text-white transition hover:bg-black/70"
-						>
-							<RefreshCw class="size-3.5" aria-hidden="true" />
-						</button>
-					{/if}
-				</div>
+						<div class="flex items-center gap-1.5 text-xs font-medium text-fg-muted">
+							<Camera class="size-3.5" aria-hidden="true" />
+							Photo
+						</div>
+						<p class="line-clamp-4 text-sm italic text-fg-secondary">{item.description}</p>
+						{#if state.developing}
+							<p class="text-xs text-fg-muted">Developing…</p>
+						{:else}
+							{#if state.failure}
+								<p class="text-xs text-danger">Couldn't develop: {state.failure}</p>
+							{/if}
+							{#if photos?.onDevelop}
+								<button
+									type="button"
+									onclick={() => photos?.onDevelop?.(index)}
+									class="self-start rounded-md bg-surface-inverse px-3 py-1 text-xs font-medium text-fg-inverse transition hover:opacity-90"
+								>
+									{state.failure ? 'Try again' : 'Develop'}
+								</button>
+							{/if}
+						{/if}
+					</div>
+				{/if}
 			{:else}
 				<div class="max-w-[85%] min-w-0 rounded-2xl bg-surface-raised px-3.5 py-2">
 					{#if pending && blocks.length === 0}

@@ -4,17 +4,18 @@
  * and the draw itself (one model in the background, or several as a fan-out
  * comparison).
  *
- * It also develops texting photos (`openPhotoDialog`), which go through the
- * same draw end to end — see the generate route. The differences are confined
- * to what's sent: the marker the photo develops, its shape, and the message it
- * hangs under, which for a photo is the reply (or the photo before it) rather
- * than the latest reply with text.
+ * The same dialog develops texting photos (`openPhotoDialog`), which go their
+ * own way once Develop is pressed: a photo is kept on the reply as a version
+ * (POST /photos), not drawn into the thread, so there's no ring, no parked
+ * comparison and nothing to recover — a comparison is several draws whose
+ * results the dialog shows as they land, for the user to pick from.
  *
  * Lifted out of the chat page, which hosts it. The recovery half (the ring,
  * the interruption latches, the reconcile) is `AvatarDrawController`; this is
  * the half that starts a draw, and it reports progress through that controller.
  */
 import { refreshAll } from '$app/navigation';
+import { SvelteMap } from 'svelte/reactivity';
 import { lastReplyMessage } from './chat-render.js';
 import { consumeChatStream } from './consume-chat-stream.js';
 import { errorMessageFromResponse } from './fetch-error.js';
@@ -22,22 +23,30 @@ import { expandCompareSelections, type CompareSelection } from './fanout.js';
 import { partsToText } from './message-parts.js';
 import { extractAvatarPrompt } from './avatar-prompt.js';
 import { toast } from './toast.svelte.js';
+import { randomUUID } from './uuid.js';
 import type { AvatarDrawController } from './avatar-draw-controller.svelte.js';
 import type { FanoutController } from './fanout-controller.svelte.js';
 import type { ModelCatalogue } from './model-catalogue.svelte.js';
-import type { ChatMessage, PhotoOrigin } from './types/api.js';
+import type { ChatMessage, MessageImage } from './types/api.js';
 
-/** A texting photo the dialog is developing. */
+/** A texting photo the dialog is developing: which reply, which of its
+ *  `[photo: …]`. */
 export interface PhotoDraw {
-	/** The marker, as every candidate will carry it. */
-	origin: PhotoOrigin;
-	/** What the photo hangs under — see `PhotoChain.anchorId`. */
-	anchorId: string;
-	/** The message this draw replaces at the end of the thread: the photo being
-	 *  developed again, or a failed attempt. Its sibling-to-be, so the leaf moves
-	 *  over to the new photo when it lands. */
-	replacesId?: string;
+	replyId: string;
+	index: number;
 }
+
+/** A photo comparison the dialog is showing: its draws, and the versions the
+ *  photo already had, so the ones it adds can be told apart. */
+export interface PhotoComparison extends PhotoDraw {
+	conversationId: string;
+	id: string;
+	before: ReadonlySet<string>;
+	/** Models still drawing, one entry per draw. */
+	pending: string[];
+}
+
+const photoKey = (replyId: string, index: number) => `${replyId}:${index}`;
 
 /** What the workflow reads from the host page. Getters, so each read is fresh:
  *  the page reassigns `convId` and `messages` on an in-place navigation. */
@@ -87,10 +96,11 @@ export class AvatarDrawWorkflow {
 	/** A photo's shape, `W:H` or null for each model's default — bound to the
 	 *  dialog's aspect-ratio picker. A portrait is always square. */
 	aspectRatio = $state<string | null>(null);
-	/** The marker a background photo draw THIS client started is developing, so
-	 *  its placeholder can say so. Null otherwise (including after a reload: the
-	 *  header ring still shows the draw, it just can't say which photo). */
-	developing = $state<PhotoOrigin | null>(null);
+	/** The photo comparison on show in the dialog, while it's up. */
+	photoComparison = $state<PhotoComparison | null>(null);
+	/** Draws THIS client has under way, by photo — the page also has the
+	 *  server's word for it (`ChatMessage.developing`), which a reload keeps. */
+	#drawing = new SvelteMap<string, number>();
 	#modelOverride = $state<string | null>(null);
 
 	/** The image models this user can draw with. */
@@ -135,13 +145,13 @@ export class AvatarDrawWorkflow {
 	);
 
 	/**
-	 * The message the draw hangs under: the photo's anchor when developing one,
-	 * else the avatar's source reply.
+	 * The message the draw is for: the reply when developing a photo, else the
+	 * avatar's source reply.
 	 */
 	readonly #anchor = $derived.by(() => {
 		const photo = this.photo;
 		if (!photo) return this.sourceMessage;
-		return this.#deps.messages().find((m) => m.id === photo.anchorId);
+		return this.#deps.messages().find((m) => m.id === photo.replyId);
 	});
 
 	/**
@@ -184,6 +194,8 @@ export class AvatarDrawWorkflow {
 	 * contain) and 409s; this is the affordance, not the rule.
 	 */
 	readonly canCompare = $derived.by(() => {
+		// A photo's comparison changes nothing in the thread, so it's always on offer.
+		if (this.photo) return true;
 		const source = this.#anchor;
 		// Past a reaction's tool row, matching the server's parkable rule — the two
 		// must agree, or we offer a comparison the server then refuses.
@@ -217,17 +229,30 @@ export class AvatarDrawWorkflow {
 	}
 
 	/**
-	 * Open the dialog to develop a texting photo: the marker's description is
-	 * the prompt, already the thing to draw — no in-character prose to trim, and
-	 * any aspect ratio the model wrote into it is picked up by the dialog's
-	 * ratio picker.
+	 * Open the dialog to develop a texting photo — for the first time, again,
+	 * or after a failure: the marker's description is the prompt, already the
+	 * thing to draw — no in-character prose to trim, and any aspect ratio the
+	 * model wrote into it is picked up by the dialog's ratio picker.
 	 */
 	openPhotoDialog(photo: PhotoDraw, description: string): void {
 		void this.#deps.catalogue.ensureAll();
 		this.photo = photo;
+		this.photoComparison = null;
 		this.prompt = description;
 		this.aspectRatio = null;
 		this.#openFresh();
+	}
+
+	/** Whether this client has a draw of the photo under way. */
+	isDeveloping(replyId: string, index: number): boolean {
+		return (this.#drawing.get(photoKey(replyId, index)) ?? 0) > 0;
+	}
+
+	/** Close the dialog. A photo comparison carries on without it: its results
+	 *  land as versions, and the arrows reach them. */
+	close(): void {
+		this.open = false;
+		this.photoComparison = null;
 	}
 
 	#openFresh(): void {
@@ -249,6 +274,7 @@ export class AvatarDrawWorkflow {
 		this.open = false;
 		this.prompt = '';
 		this.photo = null;
+		this.photoComparison = null;
 	}
 
 	setModel(id: string): void {
@@ -274,7 +300,6 @@ export class AvatarDrawWorkflow {
 	async #drawComparison(): Promise<void> {
 		const source = this.#anchor;
 		if (!source) return;
-		const photo = this.photo;
 		const branches = this.#compareBranches;
 		if (branches.length < 2) return;
 		// Close first: past this point the grid reports progress, and a dialog left
@@ -288,7 +313,6 @@ export class AvatarDrawWorkflow {
 			prompt: this.prompt,
 			enhance: this.enhance,
 			branches,
-			...(photo ? { photo: photo.origin, aspectRatio: this.aspectRatio } : {}),
 		});
 	}
 
@@ -305,6 +329,10 @@ export class AvatarDrawWorkflow {
 	 * progress ring, and pulling the result into view.
 	 */
 	async generate(): Promise<void> {
+		if (this.photo) {
+			this.#developPhoto(this.photo);
+			return;
+		}
 		// Two or more models is a comparison, which is a different mechanism end to
 		// end — see #drawComparison. One is the background draw below.
 		if (this.#comparing) {
@@ -314,10 +342,6 @@ export class AvatarDrawWorkflow {
 		const avatarDraw = this.#deps.draw;
 		const source = this.#anchor;
 		if (!source || !this.modelId || avatarDraw.status) return;
-		// Snapshotted with the conversation below, for the same reason: the dialog
-		// can be reopened for something else while this draw runs.
-		const photo = this.photo;
-		const aspectRatio = this.aspectRatio;
 		// Snapshot the conversation ONCE. Everything below runs across awaits that
 		// span the whole generation, and `convId` is reassigned when the user
 		// navigates to another chat — reading it again afterwards is how A's
@@ -332,7 +356,6 @@ export class AvatarDrawWorkflow {
 		// the two places that know. See the catch for what it decides.
 		let serverReported = false;
 		avatarDraw.begin(cid);
-		if (photo) this.developing = photo.origin;
 		try {
 			const res = await fetch(`/api/conversations/${cid}/avatar/generate`, {
 				method: 'POST',
@@ -342,13 +365,6 @@ export class AvatarDrawWorkflow {
 					modelId: this.modelId,
 					prompt: this.prompt,
 					enhance: this.enhance,
-					...(photo
-						? {
-								photo: photo.origin,
-								aspectRatio,
-								...(photo.replacesId ? { expectLeafMessageId: photo.replacesId } : {}),
-							}
-						: {}),
 				}),
 			});
 			// A rejection (bad model, message gone) lands here with the dialog still
@@ -415,8 +431,7 @@ export class AvatarDrawWorkflow {
 			// thread. Navigating back re-runs the load anyway.
 			if (this.#deps.convId() === cid) {
 				await refreshAll();
-				// A photo announces itself by arriving in the thread.
-				if (drew && !photo) toast.success('Avatar updated');
+				if (drew) toast.success('Avatar updated');
 			}
 		} catch (e) {
 			if (this.#deps.convId() !== cid) return;
@@ -454,17 +469,134 @@ export class AvatarDrawWorkflow {
 			const suppress = !serverReported && avatarDraw.wasInterrupted(cid);
 			avatarDraw.reportFailure(
 				cid,
-				suppress
-					? undefined
-					: e instanceof Error
-						? e.message
-						: photo
-							? 'Photo generation failed'
-							: 'Avatar generation failed',
+				suppress ? undefined : e instanceof Error ? e.message : 'Avatar generation failed',
 			);
 		} finally {
 			avatarDraw.end(cid);
-			if (photo && this.developing === photo.origin) this.developing = null;
 		}
+	}
+
+	/**
+	 * Develop a texting photo: one draw per model picked, each kept on the reply
+	 * as a version when it lands. One model closes the dialog once the server
+	 * has the draw, and the photo shows in the thread when it arrives. Several
+	 * are a comparison: the dialog stays up and shows each result as it lands,
+	 * for the user to pick from (`pickPhoto`).
+	 *
+	 * The server owns the outcome either way — a failure is stored on the photo
+	 * and shows there — so all that's left to a live client is pulling results
+	 * into view, and saying why a draw it asked for was refused.
+	 */
+	#developPhoto(photo: PhotoDraw): void {
+		const cid = this.#deps.convId();
+		const models = this.#comparing
+			? this.#compareBranches.map((b) => b.modelId)
+			: this.modelId
+				? [this.modelId]
+				: [];
+		if (models.length === 0) return;
+		const reply = this.#deps.messages().find((m) => m.id === photo.replyId);
+		const compareId = models.length > 1 ? randomUUID() : null;
+		if (compareId) {
+			this.photoComparison = {
+				...photo,
+				conversationId: cid,
+				id: compareId,
+				before: new Set(
+					(reply?.images ?? []).filter((i) => i.markerIndex === photo.index).map((i) => i.id),
+				),
+				pending: [...models],
+			};
+			this.compareMode = false;
+			this.compareSelections = [];
+		}
+		const body = {
+			messageId: photo.replyId,
+			index: photo.index,
+			prompt: this.prompt,
+			enhance: this.enhance,
+			aspectRatio: this.aspectRatio,
+			...(compareId ? { compare: compareId } : {}),
+		};
+		for (const modelId of models) void this.#developOne(cid, photo, modelId, body, compareId);
+	}
+
+	async #developOne(
+		cid: string,
+		photo: PhotoDraw,
+		modelId: string,
+		body: Record<string, unknown>,
+		compareId: string | null,
+	): Promise<void> {
+		const key = photoKey(photo.replyId, photo.index);
+		this.#drawing.set(key, (this.#drawing.get(key) ?? 0) + 1);
+		try {
+			const res = await fetch(`/api/conversations/${cid}/photos`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ ...body, modelId }),
+			});
+			if (!res.ok || !res.body) throw new Error(await errorMessageFromResponse(res));
+			// Accepted. A single draw needs nothing more from the dialog.
+			if (!compareId && this.#deps.convId() === cid && this.photo === photo) this.open = false;
+			// Every outcome — a version, or a failure kept on the photo — is the
+			// server's to store; the stream only says when to look.
+			await consumeChatStream(res.body, {});
+		} catch (e) {
+			// Refused, or the connection went. A refusal is worth saying; a lost
+			// connection isn't — the draw carries on, and the photo says so.
+			if (this.#deps.convId() === cid && e instanceof Error && !(e instanceof TypeError)) {
+				toast.error(e.message);
+			}
+		} finally {
+			const left = (this.#drawing.get(key) ?? 1) - 1;
+			if (left > 0) this.#drawing.set(key, left);
+			else this.#drawing.delete(key);
+			const comparison = this.photoComparison;
+			if (comparison?.id === compareId) {
+				const at = comparison.pending.indexOf(modelId);
+				if (at !== -1) {
+					this.photoComparison = {
+						...comparison,
+						pending: comparison.pending.filter((_, i) => i !== at),
+					};
+				}
+			}
+			if (this.#deps.convId() === cid) await refreshAll();
+		}
+	}
+
+	/**
+	 * Put a version of a photo on show — the arrows, or a comparison's pick,
+	 * which also counts toward the models' stats and closes the dialog.
+	 */
+	async showPhoto(image: MessageImage, pick = false): Promise<void> {
+		const cid = this.#deps.convId();
+		try {
+			const res = await fetch(`/api/conversations/${cid}/photos/${image.id}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ shown: true, ...(pick ? { pick: true } : {}) }),
+			});
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
+			if (pick) this.close();
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : String(e));
+		}
+		if (this.#deps.convId() === cid) await refreshAll();
+	}
+
+	/** Move a version's image to the trash, which takes it off the photo
+	 *  (restoring the image brings it back). */
+	async removePhoto(image: MessageImage): Promise<void> {
+		if (!image.mediaId) return;
+		const cid = this.#deps.convId();
+		try {
+			const res = await fetch(`/api/media/${image.mediaId}`, { method: 'DELETE' });
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : String(e));
+		}
+		if (this.#deps.convId() === cid) await refreshAll();
 	}
 }

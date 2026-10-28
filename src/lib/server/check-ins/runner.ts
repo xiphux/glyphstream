@@ -9,11 +9,11 @@
  * notification is what makes it feel like one.
  *
  * A check-in only fires if the thread is still where the reply that set it left
- * it: that reply, or a photo it sent, is the end of the active branch. Anything
- * else — the user answered, regenerated, switched branches, deleted the reply —
- * means the moment has passed, and the row is dropped. While something else is
- * running in the conversation (a turn, a photo being developed, an open
- * comparison) it waits, up to a grace period; a check-in hours late after a
+ * it: that reply is the end of the active branch. Anything else — the user
+ * answered, regenerated, switched branches, deleted the reply — means the
+ * moment has passed, and the row is dropped. While something else is running
+ * in the conversation (a turn, an avatar being drawn, an open comparison) it
+ * waits, up to a grace period; a check-in hours late after a
  * restart would arrive at the wrong moment, so past that it's dropped too.
  *
  * The model may also decline: the reminder tells it to answer `[no text]` if
@@ -23,10 +23,9 @@
  * is left in place, error and all; a reply stopped partway stays as it is.
  */
 import { partsToText } from '#lib/message-parts.js';
-import { isReactionTool, parseReactionEmoji } from '#lib/chat-render.js';
+import { isReactionTool, lastReplyMessage, parseReactionEmoji } from '#lib/chat-render.js';
 import type { ChatMessage, ReplyStyle } from '#lib/types/api.js';
 import { friendlyModelName } from '#lib/model-ids.js';
-import { photoChain } from '#lib/texting-photos.js';
 import { withoutCheckInText } from '#lib/texting-check-ins.js';
 import { extractPlainSpeaker, photoDescription } from '#lib/texting.js';
 import { CHECK_IN_SKIP, checkInMarker, graceFor, isCheckInSkip } from '#lib/check-ins.js';
@@ -156,7 +155,7 @@ function fireCheckIn(row: CheckInRow, now: number): FireResult {
 	}
 	const branch = walkActiveBranch(conversationId, { columns: 'serialization' });
 	const leaf = branch.at(-1);
-	if (!leaf || photoChain(branch)?.replyId !== row.sourceMessageId) return 'drop';
+	if (!leaf || lastReplyMessage(branch)?.id !== row.sourceMessageId) return 'drop';
 	const model = parseModelId(meta.modelId);
 	const endpoint = model && getEndpoint(model.endpointId);
 	if (!model || !endpoint) return 'drop';

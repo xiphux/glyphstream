@@ -500,9 +500,6 @@ export type MessagePart =
 			 */
 			width?: number;
 			height?: number;
-			/** Set on a photo developed from a texting reply's `[photo: …]` marker —
-			 *  see `PhotoOrigin`. Display only, like the fields above. */
-			photo?: PhotoOrigin;
 	  }
 	| { type: 'video'; mediaId: string }
 	| {
@@ -731,9 +728,6 @@ export interface ChatMessage {
 export interface AvatarDrawPrompt {
 	prompt: string;
 	enhance: boolean;
-	/** Set when the draw is a texting photo rather than a portrait: the marker it
-	 *  develops, which every candidate carries onto its image part. */
-	photo?: PhotoOrigin;
 }
 
 /** One version of a picture drawn for a message (`ChatMessage.images`). */
@@ -764,13 +758,14 @@ export interface DevelopingImage {
 }
 
 /**
- * Which `[photo: …]` marker a developed photo came from: the texting reply that
- * sent it, and the marker's position among that reply's photos (0-based, in
- * reading order — `textingItems` numbers them). Persisted on the photo's image
- * part, so the reply knows which of its markers have arrived, and the pick knows
- * a candidate is a photo rather than a portrait.
+ * Which `[photo: …]` a photo draw develops: the texting reply that wrote it,
+ * and its position among that reply's photos (0-based, in reading order —
+ * `textingItems` numbers them). Carried by the generation job, which lands the
+ * result on that reply (`message_images`).
  *
- * A PERSISTED shape: add fields as optional.
+ * A PERSISTED shape (a queued job's params): add fields as optional. Older
+ * releases also stamped it on the photo's own image part, when a photo was a
+ * message of its own; the photo migration reads those.
  */
 export interface PhotoOrigin {
 	sourceMessageId: string;

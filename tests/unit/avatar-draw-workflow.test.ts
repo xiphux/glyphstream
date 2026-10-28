@@ -219,67 +219,114 @@ describe('drawing across a conversation switch', () => {
 });
 
 describe('developing a texting photo', () => {
-	// A texting reply with a photo marker, then the first photo developed from it.
-	const reply = msg('r1', 'assistant', 'u1', text('[photo: me, 3:4]\n\n[photo: the view]'));
-	const p0 = msg('p0', 'assistant', 'r1', [
-		{ type: 'image', mediaId: 'img', photo: { sourceMessageId: 'r1', index: 0 } },
-	]);
-	const thread = [msg('u1', 'user', null, text('send pics')), reply, p0];
-	const origin = { sourceMessageId: 'r1', index: 1 };
-	const sentBody = () =>
-		JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string) as Record<
-			string,
-			unknown
-		>;
+	// A texting reply with two photo markers, the first developed once already.
+	const reply = {
+		...msg('r1', 'assistant', 'u1', text('[photo: me, 3:4]\n\n[photo: the view]')),
+		images: [
+			{
+				id: 'v0',
+				kind: 'photo',
+				markerIndex: 1,
+				mediaId: 'img',
+				error: null,
+				modelId: 'img-1',
+				shown: true,
+				aspectRatio: null,
+				width: null,
+				height: null,
+				createdAt: 0,
+			},
+		],
+	} as ChatMessage;
+	// The conversation has moved on since; photos don't care.
+	const thread = [
+		msg('u1', 'user', null, text('send pics')),
+		reply,
+		msg('u2', 'user', 'r1', text('cute')),
+	];
+	const bodies = () =>
+		fetchMock.mock.calls.map(
+			([, init]) => JSON.parse((init as RequestInit).body as string) as Record<string, unknown>,
+		);
 
-	it('hangs the photo under its anchor and sends the marker, the shape and no avatar', async () => {
-		const { w } = setup({ messages: thread });
-		w.openPhotoDialog({ origin, anchorId: 'p0' }, 'the view');
+	it('develops on the reply, with the marker and the shape, and closes once accepted', async () => {
+		const { w, draw } = setup({ messages: thread });
+		w.openPhotoDialog({ replyId: 'r1', index: 1 }, 'the view');
 		expect(w.prompt).toBe('the view');
 		w.aspectRatio = '16:9';
 		await w.generate();
-		const body = sentBody();
-		expect(body).toEqual({
-			sourceMessageId: 'p0',
+		await vi.waitFor(() => expect(w.open).toBe(false));
+		expect(fetchMock.mock.calls[0][0]).toBe('/api/conversations/A/photos');
+		expect(bodies()[0]).toEqual({
+			messageId: 'r1',
+			index: 1,
 			modelId: 'img-1',
 			prompt: 'the view',
 			enhance: false,
-			photo: origin,
 			aspectRatio: '16:9',
 		});
+		// No avatar ring: nothing in the thread is waiting on this.
+		expect(draw.begin).not.toHaveBeenCalled();
 	});
 
-	it('names the photo it replaces when developing one again', async () => {
-		const { w } = setup({ messages: thread });
-		w.openPhotoDialog(
-			{ origin: { sourceMessageId: 'r1', index: 0 }, anchorId: 'r1', replacesId: 'p0' },
-			'me, 3:4',
+	it('says the photo is developing until its draw is done', async () => {
+		let finish!: () => void;
+		fetchMock.mockImplementationOnce(
+			() => new Promise<Response>((r) => (finish = () => r(new Response('{}')))),
 		);
-		// p0 is the leaf and a child of the anchor, so its siblings can be compared.
-		expect(w.canCompare).toBe(true);
+		const { w } = setup({ messages: thread });
+		w.openPhotoDialog({ replyId: 'r1', index: 0 }, 'me, 3:4');
 		await w.generate();
-		const body = sentBody();
-		expect(body).toMatchObject({ sourceMessageId: 'r1', expectLeafMessageId: 'p0' });
+		expect(w.isDeveloping('r1', 0)).toBe(true);
+		expect(w.isDeveloping('r1', 1)).toBe(false);
+		finish();
+		await vi.waitFor(() => expect(w.isDeveloping('r1', 0)).toBe(false));
 	});
 
-	it('compares photos with the marker and shape on every branch', async () => {
+	it('compares in the dialog: a draw per model, sharing an id, results kept apart', async () => {
 		const { w, fanout } = setup({ messages: thread });
-		w.openPhotoDialog({ origin, anchorId: 'p0' }, 'the view');
-		w.aspectRatio = '4:3';
+		w.openPhotoDialog({ replyId: 'r1', index: 1 }, 'the view');
+		// Always on offer — the thread having moved on doesn't matter.
+		expect(w.canCompare).toBe(true);
 		w.compareMode = true;
 		w.compareSelections = [
 			{ modelId: 'img-1', count: 1 },
 			{ modelId: 'img-2', count: 1 },
 		];
 		await w.generate();
-		expect(fanout.sendAvatarDraw).toHaveBeenCalledWith(
-			expect.objectContaining({ sourceMessageId: 'p0', photo: origin, aspectRatio: '4:3' }),
+		expect(w.open).toBe(true);
+		expect(w.photoComparison).toMatchObject({ replyId: 'r1', index: 1, conversationId: 'A' });
+		// What the photo had before, so the dialog shows only what this adds.
+		expect([...w.photoComparison!.before]).toEqual(['v0']);
+		await vi.waitFor(() => expect(w.photoComparison?.pending).toEqual([]));
+		const [a, b] = bodies();
+		expect([a.modelId, b.modelId]).toEqual(['img-1', 'img-2']);
+		expect(a.compare).toBeTypeOf('string');
+		expect(b.compare).toBe(a.compare);
+		expect(fanout.sendAvatarDraw).not.toHaveBeenCalled();
+	});
+
+	it('picks a comparison’s result, counting it, and closes the dialog', async () => {
+		const { w } = setup({ messages: thread });
+		w.openPhotoDialog({ replyId: 'r1', index: 1 }, 'the view');
+		await w.showPhoto(reply.images![0], true);
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/api/conversations/A/photos/v0',
+			expect.objectContaining({ method: 'PATCH' }),
 		);
+		expect(bodies()[0]).toEqual({ shown: true, pick: true });
+		expect(w.open).toBe(false);
+	});
+
+	it('removes a version by moving its image to the trash', async () => {
+		const { w } = setup({ messages: thread });
+		await w.removePhoto(reply.images![0]);
+		expect(fetchMock).toHaveBeenCalledWith('/api/media/img', { method: 'DELETE' });
 	});
 
 	it('goes back to drawing the avatar when the avatar dialog is opened', () => {
 		const { w } = setup();
-		w.openPhotoDialog({ origin, anchorId: 'a1' }, 'x');
+		w.openPhotoDialog({ replyId: 'a1', index: 0 }, 'x');
 		w.openDialog();
 		expect(w.photo).toBe(null);
 		expect(w.prompt).toBe('a red fox');

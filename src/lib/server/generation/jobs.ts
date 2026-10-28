@@ -589,7 +589,6 @@ async function runJob(
 					enhancementEnabled: params.enhancementEnabled,
 					aspectRatio: params.aspectRatio,
 					displayOnly: params.displayOnly,
-					photo: params.photo,
 				},
 				sink,
 			);

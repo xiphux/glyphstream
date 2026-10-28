@@ -155,12 +155,4 @@ describe('photo markers', () => {
 			'a very "big" dog',
 		);
 	});
-
-	it('gives a developed photo to the speaker it carries', () => {
-		const photo = { sourceMessageId: 'r1', index: 0, speaker: 'Sam' };
-		const blocks: RenderBlock[] = [{ type: 'image', mediaId: 'm1', photo }];
-		expect(textingItems(blocks, 'Chloe')).toEqual([
-			{ kind: 'sent-photo', speaker: 'Sam', block: blocks[0] },
-		]);
-	});
 });
