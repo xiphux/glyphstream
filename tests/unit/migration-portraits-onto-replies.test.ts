@@ -87,12 +87,14 @@ function portrait(modelUsed = 'ep::sdxl', parentId = descriptionId) {
 	return { id, mediaId };
 }
 
-function failedDraw() {
+/** A failed draw, as an image generation wrote it: its error part names the
+ *  (absent) source image. */
+function failedDraw(parentId = descriptionId) {
 	const id = appendMessage({
 		conversationId: convId,
-		parentMessageId: descriptionId,
+		parentMessageId: parentId,
 		role: 'assistant',
-		parts: [{ type: 'error', message: 'out of memory' } as MessagePart],
+		parts: [{ type: 'error', message: 'out of memory', sourceMediaId: null } as MessagePart],
 		modelUsed: 'ep::sdxl',
 	}).id;
 	stamp(id);
@@ -202,6 +204,35 @@ describe('portraits onto replies', () => {
 		expect(ids()).not.toContain(failed);
 		expect(conv().activeLeafMessageId).toBe(descriptionId);
 		expect(versions()).toHaveLength(1);
+	});
+
+	it('keeps a failure that was not a draw, like an interrupted scheduled run', () => {
+		portrait();
+		const notice = appendMessage({
+			conversationId: convId,
+			parentMessageId: descriptionId,
+			role: 'assistant',
+			parts: [{ type: 'error', message: 'The server restarted before this run finished' }],
+			modelUsed: 'ep::chat',
+		}).id;
+		setActiveLeafMessageId(convId, notice);
+
+		migrate();
+
+		expect(ids()).toContain(notice);
+		expect(parentOf(notice)).toBe(descriptionId);
+		expect(conv().activeLeafMessageId).toBe(notice);
+	});
+
+	it('drops a failed draw hung under a portrait, moving what was below it to the description', () => {
+		const p = portrait();
+		const failed = failedDraw(p.id);
+		setActiveLeafMessageId(convId, failed);
+
+		migrate();
+
+		expect(ids()).not.toContain(failed);
+		expect(conv().activeLeafMessageId).toBe(descriptionId);
 	});
 
 	it('moves a leaf on a portrait to its description', () => {

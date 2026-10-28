@@ -32,16 +32,24 @@ WHERE m.role = 'assistant'
 	AND json_extract(m.content_json, '$[0].displayOnly') = 1
 	AND json_extract(m.content_json, '$[0].photo') IS NULL;
 --> statement-breakpoint
--- Failed draws: an error-only reply under a reply. Nothing else hangs an
--- assistant message under an assistant message (photos having moved already).
+-- Failed draws: an error-only reply under a reply, from an image draw. Other
+-- failures can sit there too — a scheduled run interrupted by a restart leaves
+-- its notice under whatever the leaf was — and stay. What marks a draw's is the
+-- `sourceMediaId` key: an image generation's error part always carries one
+-- (null for a portrait), a chat or scheduled run's never does. One hung under a
+-- portrait goes to that portrait's description, since the portrait goes too.
 CREATE TEMP TABLE _failed AS
-SELECT m.id, m.parent_message_id AS reply_id
+SELECT
+	m.id,
+	coalesce((SELECT p.reply_id FROM _portrait p WHERE p.id = m.parent_message_id), m.parent_message_id)
+		AS reply_id
 FROM messages m
 JOIN messages r ON r.id = m.parent_message_id AND r.role = 'assistant'
 WHERE m.role = 'assistant'
 	AND json_valid(m.content_json)
 	AND json_array_length(m.content_json) = 1
-	AND json_extract(m.content_json, '$[0].type') = 'error';
+	AND json_extract(m.content_json, '$[0].type') = 'error'
+	AND json_type(m.content_json, '$[0].sourceMediaId') IS NOT NULL;
 --> statement-breakpoint
 -- Each removed message, and the description it was drawn from.
 CREATE TEMP TABLE _removed AS
