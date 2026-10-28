@@ -16,7 +16,7 @@ arrived.
 
 ### Fixed
 
-- An emoji reaction in a check-in's reply shows as the model's own text instead of vanishing onto the hidden reminder.
+- An emoji reaction in a check-in's reply shows as the model's own text instead of vanishing onto the hidden reminder, and a check-in that only reacts (a wave, say) is kept and notified like any other.
 
 ## v0.51.0
 

@@ -92,7 +92,8 @@ Glyphstream sends the model a reminder in your place. The reminder says what
 time it is, how long it's been, and what the model meant to do. The model then
 writes to you, and you get a notification as if it had reached out on its own.
 The reminder shows in the thread as a "checked in" divider, not as a message from
-you. If the moment has passed, the model can decline, and the check-in leaves no
+you. A check-in can also be just an emoji, which shows as the model's own text.
+If the moment has passed, the model can decline, and the check-in leaves no
 trace.
 
 A check-in is called off when you answer, regenerate the reply, or switch to

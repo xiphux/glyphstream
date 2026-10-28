@@ -23,6 +23,7 @@
  * is left in place, error and all; a reply stopped partway stays as it is.
  */
 import { partsToText } from '#lib/message-parts.js';
+import { isReactionTool, parseReactionEmoji } from '#lib/chat-render.js';
 import type { ChatMessage, ReplyStyle } from '#lib/types/api.js';
 import { friendlyModelName } from '#lib/model-ids.js';
 import { photoChain } from '#lib/texting-photos.js';
@@ -296,12 +297,12 @@ function settleCheckIn(
 	// reminder too.
 	const leaf = getActiveLeafMessageId(conversationId, userId);
 	if (!leaf || findUserMessageAncestor(conversationId, leaf)?.id !== reminderId) return;
-	// Anything the turn said or made on the way stays, like any stopped reply:
+	// Anything the turn said, reacted or made on the way stays, like any stopped reply:
 	// the user pressed Stop on a reply they were reading, or the model wrote a
 	// line before a tool call and only then passed. Only the pass after it goes
 	// (a `[no text]` bubble would show, and be re-sent, as written).
 	const rows = turnRows(conversationId, leaf, reminderId);
-	if (rows.some((m) => !isPass(m.parts))) {
+	if (rows.some((m) => !isPass(m.parts)) || reactions(rows).length > 0) {
 		// Trailing replies that are only a pass, with no tool call a result
 		// would answer: the rest of the turn ends where they began.
 		let bare = 0;
@@ -336,11 +337,48 @@ function notifyTurn(row: CheckInRow, rows: ChatMessage[]): void {
 		.filter((m) => m.role === 'assistant' && !isPass(m.parts) && replyText(m.parts))
 		.reverse();
 	const latest = said.at(-1);
-	if (!latest) return;
+	if (!latest) {
+		// Only a reaction — a wave, a face: that's what it said.
+		const emoji = reactions(rows);
+		const reacted = rows.find((m) => m.role === 'assistant' && hasReaction(m.parts));
+		if (emoji.length > 0 && reacted) {
+			void notifyCheckIn(row, reacted.id, emoji.join(' ')).catch((e: unknown) =>
+				log.warn('notify failed:', errorMessage(e)),
+			);
+		}
+		return;
+	}
 	const text = said.map((m) => replyText(m.parts)).join('\n\n');
 	void notifyCheckIn(row, latest.id, text).catch((e: unknown) =>
 		log.warn('notify failed:', errorMessage(e)),
 	);
+}
+
+/** The emoji a turn reacted with (`rows` newest first, as `turnRows` gives
+ *  them), oldest first. A check-in can answer with nothing else, which says as
+ *  much as a text would, so a turn that reacted isn't a pass. One the tool
+ *  refused never happened; one whose result is missing did (the thread draws
+ *  it the same way — see `buildRenderedConversation`). */
+function reactions(rows: ChatMessage[]): string[] {
+	const refused = new Set(
+		rows.flatMap((m) =>
+			m.parts.flatMap((p) => (p.type === 'tool_result' && p.isError ? [p.toolCallId] : [])),
+		),
+	);
+	return rows
+		.filter((m) => m.role === 'assistant')
+		.reverse()
+		.flatMap((m) =>
+			m.parts.flatMap((p) => {
+				if (p.type !== 'tool_call' || !isReactionTool(p.toolName)) return [];
+				if (refused.has(p.toolCallId)) return [];
+				return parseReactionEmoji(p.arguments) ?? [];
+			}),
+		);
+}
+
+function hasReaction(parts: ChatMessage['parts']): boolean {
+	return parts.some((p) => p.type === 'tool_call' && isReactionTool(p.toolName));
 }
 
 /** The rows from `leaf` up to (not including) the reminder: one turn's

@@ -99,6 +99,7 @@ import {
 	resetEndpointGatesForTests,
 } from '#lib/server/endpoints/concurrency.js';
 import { _resetForTests, register } from '#lib/server/tools/registry.js';
+import { reactToMessageTool } from '#lib/server/tools/react.js';
 import {
 	getInFlightEntries,
 	getInFlightSince,
@@ -408,6 +409,61 @@ describe('firing', () => {
 				{ choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
 			]),
 		);
+		mocks.upstream.push(reply('[no text]'));
+		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
+		await idle(t.conversationId);
+		expect(roles(walkActiveBranch(t.conversationId))).toEqual(['user', 'assistant']);
+		expect(notify).not.toHaveBeenCalled();
+	});
+
+	/** A first round that only reacts, as a check-in can: a wave, a face. */
+	function reactOnly(emoji = '👋') {
+		mocks.tools = true;
+		register(reactToMessageTool);
+		mocks.upstream.push(() =>
+			sse([
+				{
+					choices: [
+						{
+							delta: {
+								tool_calls: [
+									{
+										index: 0,
+										id: 'call_r',
+										type: 'function',
+										function: { name: 'react_to_message', arguments: JSON.stringify({ emoji }) },
+									},
+								],
+							},
+							finish_reason: null,
+						},
+					],
+				},
+				{ choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+			]),
+		);
+	}
+
+	it('keeps a reply that only reacts, and notifies of the emoji', async () => {
+		const t = thread();
+		scheduled(t);
+		reactOnly();
+		mocks.upstream.push(reply('[no text]'));
+		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
+		await idle(t.conversationId);
+		const branch = walkActiveBranch(t.conversationId);
+		// The reaction and its result stay; the pass after them goes.
+		expect(roles(branch)).toEqual(['user', 'assistant', 'check-in', 'assistant', 'tool']);
+		expect(notify).toHaveBeenCalledOnce();
+		expect(notify).toHaveBeenCalledWith(
+			expect.objectContaining({ assistantMessageId: branch[3].id, previewText: '👋' }),
+		);
+	});
+
+	it('takes a reply back out when the only reaction was refused', async () => {
+		const t = thread();
+		scheduled(t);
+		reactOnly('not an emoji');
 		mocks.upstream.push(reply('[no text]'));
 		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
 		await idle(t.conversationId);
