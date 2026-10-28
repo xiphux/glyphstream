@@ -13,6 +13,7 @@ arrived.
 
 - A texting reply shows a typing indicator while each text is being written, and the text appears whole once it's done, instead of filling in word by word.
 - A texting preset with no avatar shows a coloured initial beside its texts, as other speakers do.
+- A texting photo now shows where it was sent and can be developed at any time, even after the conversation has moved on. Each photo keeps its versions, with arrows to switch between them and a button to remove one, and comparing models happens in the develop dialog. Existing photos are moved over when you upgrade.
 
 ### Fixed
 

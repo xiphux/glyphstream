@@ -65,17 +65,21 @@ aspect ratio. That text shows as a photo placeholder with the description and a
 
 **Develop** opens the same dialog as drawing an avatar, with the description
 already filled in. You can edit the prompt, pick a shape (a ratio named in the
-description is preselected), and choose an image model. Pick several models to
-compare their versions side by side and send the one you like. The photo arrives
-as its own message after the reply, the way a picture often lands after the texts
-around it. Use the button on the photo to develop it again, and the arrows under
-it to switch between versions.
+description is preselected), and choose an image model. The draw runs in the
+background, and the photo appears in place of its placeholder, where it was
+sent, when it's done. Developing doesn't change the conversation, so you can develop any
+photo at any time: after you've replied, or while another reply is arriving.
 
-You can develop photos only while the reply is the latest thing in the thread,
-with nothing after it but its own photos. Once you answer, its undeveloped photos
-stay as descriptions. A photo is shown but never sent back to the model, which
-already has its description. To make a character send more or fewer photos, say
-so in the preset's prompt ("loves sending selfies").
+Each photo keeps every version you develop. The button on the photo develops it
+again, the arrows along its bottom switch between versions, and the bin removes the
+one on show (its image goes to Recently deleted, and restoring it puts it back).
+Pick several models in the dialog to compare: their versions appear in the
+dialog as they finish, and you pick the one to show. The others are kept too.
+If a draw fails, the photo says so, with a button to try again.
+
+A photo is shown but never sent back to the model, which already has its
+description. To make a character send more or fewer photos, say so in the
+preset's prompt ("loves sending selfies").
 
 ### Check-ins
 

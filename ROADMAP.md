@@ -861,18 +861,9 @@ read before anyone re-optimizes from an estimate.
   - _Photos._
     - _"Auto-develop with model X" per preset._ The preset presses Develop for
       you; rerolls still work from the bubble.
-    - _Developing after the conversation moves on._ Develop is offered only
-      while the reply is still the end of the thread (bar its own photos),
-      matching the avatar comparison, which parks on the reply and hides what's
-      below it.
     - _Photo markers outside texting mode._ Check-ins went to the standard
       style; photos stayed texting-only.
-    - _The picked photo inline at its marker, with no branch arrows._ Preferred,
-      but it needs two mechanisms the tree fights: every generation is persisted
-      as a child message, and the losing candidates would vanish from history.
-      So a photo arrives after the texts, and its versions are siblings.
-    - _Smaller known limits._ The "Developing…" label survives a reload only in
-      the tab that started the draw. The photo dialog's shape picker shares (and
+    - _Smaller known limits._ The photo dialog's shape picker shares (and
       overwrites) the composer's remembered shape.
   - _Check-ins._
     - _A restart mid-turn strands the reminder._ The row is deleted before the
