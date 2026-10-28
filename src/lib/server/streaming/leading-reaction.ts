@@ -215,8 +215,12 @@ export function catchLeadingReaction(
 				}
 				// Reasoning precedes the reply and doesn't decide anything. A tool
 				// call does: the reply's opening is over, so let it go first to
-				// keep the order.
-				if (d.type !== 'reasoning') release();
+				// keep the order — or, if it was the call typed out, react first.
+				if (d.type !== 'reasoning') {
+					const v = classifyLeadingText(held, true);
+					if (v.kind === 'react') react(v.emoji, v.rest);
+					else release();
+				}
 			}
 			if (state === 'reacted') {
 				if (d.type === 'tool_call_start' && isReactionTool(d.toolName)) {

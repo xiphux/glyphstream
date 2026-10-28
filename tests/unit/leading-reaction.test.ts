@@ -305,6 +305,33 @@ describe('catchLeadingReaction — the call typed out', () => {
 		expect(r.finish).toBe('tool_calls');
 	});
 
+	it('takes a call standing alone before a real tool call, ahead of it', () => {
+		const search = {
+			type: 'tool_call_start' as const,
+			toolCallId: 'c1',
+			toolName: 'web_search',
+			index: 0,
+		};
+		const norm = catchLeadingReaction(
+			scripted([
+				{ deltas: [text('react_to_message(emoji="🤔")')] },
+				{ deltas: [search], finishReason: 'tool_calls' },
+			]),
+			'call_x',
+		);
+		const out = [...norm.process(record).deltas, ...norm.process(record).deltas];
+		expect(out).toEqual([
+			{ type: 'tool_call_start', toolCallId: 'call_x', toolName: 'react_to_message', index: -1 },
+			{
+				type: 'tool_call_args_delta',
+				toolCallId: 'call_x',
+				index: -1,
+				argumentsDelta: '{"emoji":"🤔"}',
+			},
+			search,
+		]);
+	});
+
 	it('leaves a call with something that is not an emoji alone', () => {
 		const r = run(['react_to_message(emoji="hello")\n\nhi']);
 		expect(r.emoji).toBeNull();
