@@ -91,9 +91,17 @@
 			assistantLabel,
 		);
 		// Still being written: a text (or a marker, half-typed) at the end of a
-		// live reply. Tool calls and the like show as they go, as ever.
+		// live reply. Tool calls and the like show as they go, as ever. A
+		// finished check-in marker has no sender and is never shown, so typing
+		// it would flash the preset's name under someone else's run.
 		const last = all.at(-1);
-		if (typing && last && last.kind !== 'blocks' && last.kind !== 'sent-photo') {
+		if (
+			typing &&
+			last &&
+			last.kind !== 'blocks' &&
+			last.kind !== 'sent-photo' &&
+			last.kind !== 'later'
+		) {
 			all[all.length - 1] = { kind: 'typing', speaker: 'speaker' in last ? last.speaker : null };
 		}
 		const items = all.filter((item, i, all) =>

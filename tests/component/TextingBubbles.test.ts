@@ -153,6 +153,25 @@ describe('texting reply style', () => {
 		expect(screen.getByRole('status', { name: 'Chloe is typing' })).toBeInTheDocument();
 	});
 
+	it('stops typing once a check-in marker is finished, keeping its sender', () => {
+		render(InFlightBubble, {
+			props: {
+				assistantLabel: 'Chloe',
+				label: 'Thinking',
+				status: null,
+				progress: null,
+				elapsedSeconds: 0,
+				onImageClick: vi.fn(),
+				texting: true,
+				blocks: [{ type: 'plain-text', text: 'hey\n\nSam: yo\n\n[later 1h: ask about work]' }],
+			},
+		});
+		expect(screen.getByText('yo')).toBeInTheDocument();
+		expect(screen.queryByRole('status')).toBeNull();
+		// Only the opening header: nothing claims the marker for Chloe.
+		expect(screen.getAllByText('Chloe')).toHaveLength(1);
+	});
+
 	it('types nothing in a stored reply', () => {
 		render(MessageBubble, { props: { ...bubbleProps, message: reply(GROUP) } });
 		expect(screen.queryByRole('status')).toBeNull();
