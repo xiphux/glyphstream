@@ -861,8 +861,6 @@ read before anyone re-optimizes from an estimate.
   - _Photos._
     - _"Auto-develop with model X" per preset._ The preset presses Develop for
       you; rerolls still work from the bubble.
-    - _Photo markers outside texting mode._ Check-ins went to the standard
-      style; photos stayed texting-only.
     - _Smaller known limits._ The photo dialog's shape picker shares (and
       overwrites) the composer's remembered shape.
   - _Check-ins._

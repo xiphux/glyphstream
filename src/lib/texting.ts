@@ -192,7 +192,9 @@ export function textingItems(blocks: RenderBlock[], defaultName: string): Textin
 	// A marker's number is PERSISTED: a developed photo's versions are stored
 	// against it (`message_images.marker_index`). Changing what counts as a
 	// marker (or the order they're counted in) renumbers every stored reply,
-	// and the wrong photos then show in the wrong places.
+	// and the wrong photos then show in the wrong places. A standard reply
+	// numbers its photos too (`splitAtPhotos` in texting-photos.ts), and must
+	// count exactly as this does.
 	let photos = 0;
 	const resolve = (named: string | null): string | null => {
 		if (named !== null) speaker = named.toLowerCase() === self ? null : named;

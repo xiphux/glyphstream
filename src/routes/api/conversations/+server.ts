@@ -65,7 +65,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	let resolvedCustomModelId: string | null = null;
 	let resolvedReplyStyle: ReplyStyle = 'standard';
 	let resolvedCheckIns = false;
-
 	let resolvedPhotos = false;
 
 	// modelKind is optional and validated identically whether a custom

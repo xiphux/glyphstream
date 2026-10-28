@@ -11,7 +11,7 @@ arrived.
 
 ### Added
 
-- Photos work in the standard reply style too, through a new **Can send photos** preset setting: on by default for texting presets (and existing ones), off for standard ones.
+- Photos work in the standard reply style too, through a new **Can send photos** preset setting: on by default for texting presets (existing texting presets and chats keep theirs), off for standard ones.
 
 ### Changed
 
