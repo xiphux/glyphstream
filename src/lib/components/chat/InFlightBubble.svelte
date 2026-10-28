@@ -218,10 +218,11 @@
 				<CanvasCard result={block.result} onOpen={onOpenCanvas} />
 			{/if}
 		{/each}
-		{#if split.body.length === 0 && split.cards.length === 0}
+		{#if (split.body.length === 0 || segments.length === 0) && split.cards.length === 0}
 			<!-- Pre-first-token placeholder: thinking dots + optional
 			     progress/elapsed indicators. Once any text, tool_call, or canvas
-			     card lands, RenderBlocks (+ the cards above) takes over. -->
+			     card lands, RenderBlocks (+ the cards above) takes over — or
+			     once a reply that opened with a photo finishes typing it. -->
 			{@render placeholder()}
 		{/if}
 	</article>

@@ -92,6 +92,13 @@ describe('InFlightBubble — with blocks', () => {
 		expect(screen.queryByText('Thinking')).toBeNull();
 	});
 
+	it('keeps the placeholder while a reply that opens with a photo is still typing it', () => {
+		const blocks: RenderBlock[] = [{ type: 'html', html: '<p>[photo: a dog on</p>' }];
+		render(InFlightBubble, { props: { ...base, blocks, photos: true } });
+		expect(screen.getByText('Thinking')).toBeInTheDocument();
+		expect(screen.queryByText(/a dog on/)).toBeNull();
+	});
+
 	it('renders a tool_call block via RenderBlocks', () => {
 		const blocks: RenderBlock[] = [
 			{
