@@ -287,6 +287,12 @@ describe('catchLeadingReaction — the call typed out', () => {
 		expect(r.text).toBe('omg');
 	});
 
+	it('assembles a CRLF split across tokens', () => {
+		const r = run(['react_to_message(emoji="😳")\r', '\nomg']);
+		expect(r.emoji).toBe('😳');
+		expect(r.text).toBe('omg');
+	});
+
 	it('takes a single line break, an unnamed argument and single quotes', () => {
 		expect(run(["react_to_message('🙈')\nhi"]).emoji).toBe('🙈');
 		expect(run(['react_to_message(emoji: "🙈")\nhi']).emoji).toBe('🙈');

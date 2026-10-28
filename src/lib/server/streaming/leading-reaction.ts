@@ -117,7 +117,7 @@ function classifyTypedCall(body: string, ended: boolean): Verdict | null {
 	if (!emoji) return { kind: 'release' };
 	const after = body.slice(call[0].length);
 	const line = LINE_AFTER.exec(after);
-	if (!line && !/^[ \t]*$/.test(after)) return { kind: 'release' };
+	if (!line && !/^[ \t]*\r?$/.test(after)) return { kind: 'release' };
 	// Nothing after it yet (the reply may still come, or this was all of it):
 	// wait for the reply's first words, so no line break is left leading it.
 	const rest = line ? after.slice(line[0].length) : '';
