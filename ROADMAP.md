@@ -836,3 +836,67 @@ read before anyone re-optimizes from an estimate.
   killed is Chromium-only — iOS WebKit has never supported it. On iOS it'd degrade
   to an in-page outbox that only flushes while the tab is alive, which buys little
   over the draft that already survives the kill. Low priority.
+
+- **Texting, photos and check-ins — what v1 left out.** The texting reply
+  style, developed `[photo: …]` markers and check-ins (`[later 1h: …]`) all
+  shipped (see `docs/models.md`). Deferred, each with why:
+  - _Texting._
+    - _Avatars for extra group-chat characters._ A speaker other than the
+      preset gets a coloured initial hued from its name. Uploading one per
+      character can come later as an optional extra without changing the
+      format.
+    - _Texting style on scheduled runs._ A scheduled task built on a texting
+      preset creates a standard chat (no instructions, one bubble). Fixing it is
+      a `reply_style` on `scheduled_tasks`, or reading the preset's at run time;
+      out of scope as an unlikely use case.
+    - _A "…" typing indicator, and an optional pause, between bubbles._ In the
+      first design, never built. Only the "· · ·" before a reply's first bubble
+      exists.
+    - _An initial for a preset with no avatar._ Its texts show just the name,
+      while other speakers get initials.
+    - _A stoplist for false speaker names._ Speaker matching is deliberately
+      loose and prompt-guided, so an opener like "Fun fact: …" reads as a
+      speaker and carries over to the rest of the reply. A stoplist of common
+      words, or not carrying a speaker over, would close it.
+    - _An explicit bubble-split marker._ Bubbles split on blank lines, so one
+      bubble can't hold two paragraphs. Easy to switch to if that ever bothers.
+  - _Photos._
+    - _"Auto-develop with model X" per preset._ The preset presses Develop for
+      you; rerolls still work from the bubble.
+    - _Developing after the conversation moves on._ Develop is offered only
+      while the reply is still the end of the thread (bar its own photos),
+      matching the avatar comparison, which parks on the reply and hides what's
+      below it.
+    - _Photo markers outside texting mode._ Check-ins went to the standard
+      style; photos stayed texting-only.
+    - _The picked photo inline at its marker, with no branch arrows._ Preferred,
+      but it needs two mechanisms the tree fights: every generation is persisted
+      as a child message, and the losing candidates would vanish from history.
+      So a photo arrives after the texts, and its versions are siblings.
+    - _Smaller known limits._ The "Developing…" label survives a reload only in
+      the tab that started the draw. The photo dialog's shape picker shares (and
+      overwrites) the composer's remembered shape.
+  - _Check-ins._
+    - _A restart mid-turn strands the reminder._ The row is deleted before the
+      turn runs and turns are tracked in memory, so a crash or deploy leaves the
+      "checked in" divider with no reply under it, and the user's next message
+      follows two user turns in a row. Wants a boot-time sweep, or appending the
+      reminder only once the slot is granted — a design choice.
+    - _A failed turn leaves its divider over the error._ Same two-user-turns
+      shape. Left alone because any failed turn leaves its error in place.
+    - _A one-off error while firing drops the check-in_ rather than leaving it
+      for the next tick's retry. A judgement call between a duplicate fire and a
+      lost one.
+    - _Summaries and search read the reminder as the user's words._ It's a
+      user-role row flagged `checkIn`; only the thread's divider reads the flag.
+      The summarizer, memory transcripts and the search index should skip it or
+      word it neutrally.
+    - _An explicit reaction-tool call lands on the hidden reminder._ The typed
+      leading emoji is already kept as text. The tool stays in `tools[]` (prefix
+      stability), so the fix is to make it a no-op when its target is a
+      reminder.
+    - _No per-user cap._ Check-in turns start unattended and don't count toward
+      `[limits]`, as scheduled runs don't. One pending per conversation is the
+      only bound.
+    - _A comparison never sets one,_ even from the reply you pick:
+      `onFinalReply` runs only for a turn that advances the active leaf.
