@@ -1657,6 +1657,16 @@
 			if (list) list.push(image);
 			else versions.set(image.markerIndex, [image]);
 		}
+		// A version just put on show here, ahead of the data saying so.
+		for (const [index, list] of versions) {
+			const shown = avatarWorkflow.shownVersion(m.id, index);
+			if (shown && list.some((v) => v.id === shown && v.mediaId)) {
+				versions.set(
+					index,
+					list.map((v) => (v.shown === (v.id === shown) ? v : { ...v, shown: v.id === shown })),
+				);
+			}
+		}
 		const developing = new Set((m.developing ?? []).map((d) => d.markerIndex));
 		for (const { index } of photoMarkers(m, assistantLabel)) {
 			if (avatarWorkflow.isDeveloping(m.id, index)) developing.add(index);
@@ -1665,7 +1675,7 @@
 			versions,
 			developing,
 			onDevelop: (index: number) => developPhoto(m, index, assistantLabel),
-			onShow: (image: MessageImage) => void avatarWorkflow.showPhoto(image),
+			onShow: (image: MessageImage) => void avatarWorkflow.showPhoto(m.id, image),
 			onRemove: (image: MessageImage) => void avatarWorkflow.removePhoto(image),
 		};
 	}

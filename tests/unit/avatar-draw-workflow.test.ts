@@ -309,13 +309,25 @@ describe('developing a texting photo', () => {
 	it('picks a comparison’s result, counting it, and closes the dialog', async () => {
 		const { w } = setup({ messages: thread });
 		w.openPhotoDialog({ replyId: 'r1', index: 1 }, 'the view');
-		await w.showPhoto(reply.images![0], true);
+		await w.showPhoto('r1', reply.images![0], true);
 		expect(fetchMock).toHaveBeenCalledWith(
 			'/api/conversations/A/photos/v0',
 			expect.objectContaining({ method: 'PATCH' }),
 		);
 		expect(bodies()[0]).toEqual({ shown: true, pick: true });
 		expect(w.open).toBe(false);
+	});
+
+	it('switches versions at once, and back if the server refuses', async () => {
+		const { w } = setup({ messages: thread });
+		const other = { ...reply.images![0], id: 'v1' };
+		await w.showPhoto('r1', other);
+		expect(w.shownVersion('r1', 1)).toBe('v1');
+		expect(bodies()[0]).toEqual({ shown: true });
+
+		fetchMock.mockResolvedValueOnce(new Response('{"message":"nope"}', { status: 404 }));
+		await w.showPhoto('r1', reply.images![0]);
+		expect(w.shownVersion('r1', 1)).toBe('v1');
 	});
 
 	it('removes a version by moving its image to the trash', async () => {

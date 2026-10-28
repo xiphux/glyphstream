@@ -103,6 +103,9 @@ export class AvatarDrawWorkflow {
 	/** Draws THIS client has under way, by photo — the page also has the
 	 *  server's word for it (`ChatMessage.developing`), which a reload keeps. */
 	#drawing = new SvelteMap<string, number>();
+	/** Versions this tab put on show, by photo, ahead of the page's data —
+	 *  see `shownVersion`. A draw of the photo landing supersedes it. */
+	#shown = new SvelteMap<string, string>();
 	#modelOverride = $state<string | null>(null);
 
 	/** The image models this user can draw with. */
@@ -277,6 +280,7 @@ export class AvatarDrawWorkflow {
 		this.prompt = '';
 		this.photo = null;
 		this.photoComparison = null;
+		this.#shown.clear();
 	}
 
 	setModel(id: string): void {
@@ -567,6 +571,9 @@ export class AvatarDrawWorkflow {
 				toast.error(e.message);
 			}
 		} finally {
+			// What lands goes on show by the data's rules (a new draw, or a
+			// comparison's first result), not by an earlier switch here.
+			this.#shown.delete(key);
 			const left = (this.#drawing.get(key) ?? 1) - 1;
 			if (left > 0) this.#drawing.set(key, left);
 			else this.#drawing.delete(key);
@@ -585,11 +592,27 @@ export class AvatarDrawWorkflow {
 	}
 
 	/**
+	 * The version a photo shows, where this tab has just put one on show and
+	 * the page's data may not say so yet. Undefined to go by the data.
+	 */
+	shownVersion(replyId: string, index: number): string | undefined {
+		return this.#shown.get(photoKey(replyId, index));
+	}
+
+	/**
 	 * Put a version of a photo on show — the arrows, or a comparison's pick,
 	 * which also counts toward the models' stats and closes the dialog.
+	 *
+	 * The switch shows at once, and the arrows don't reload the page for it:
+	 * nothing else on the page reads which version is on show, and a reload of
+	 * this route re-sends the whole window. A pick does reload, as the end of a
+	 * comparison whose results may still be landing.
 	 */
-	async showPhoto(image: MessageImage, pick = false): Promise<void> {
+	async showPhoto(replyId: string, image: MessageImage, pick = false): Promise<void> {
 		const cid = this.#deps.convId();
+		const key = image.markerIndex === null ? null : photoKey(replyId, image.markerIndex);
+		const before = key ? this.#shown.get(key) : undefined;
+		if (key) this.#shown.set(key, image.id);
 		try {
 			const res = await fetch(`/api/conversations/${cid}/photos/${image.id}`, {
 				method: 'PATCH',
@@ -599,9 +622,15 @@ export class AvatarDrawWorkflow {
 			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			if (pick) this.close();
 		} catch (e) {
+			// Back to what was showing, unless a later switch has moved on since.
+			if (key && this.#shown.get(key) === image.id) {
+				if (before === undefined) this.#shown.delete(key);
+				else this.#shown.set(key, before);
+			}
 			toast.error(e instanceof Error ? e.message : String(e));
+			return;
 		}
-		if (this.#deps.convId() === cid) await refreshAll();
+		if (pick && this.#deps.convId() === cid) await refreshAll();
 	}
 
 	/** Move a version's image to the trash, which takes it off the photo
