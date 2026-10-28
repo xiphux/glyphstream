@@ -841,6 +841,9 @@ read before anyone re-optimizes from an estimate.
   style, developed `[photo: …]` markers and check-ins (`[later 1h: …]`) all
   shipped (see `docs/models.md`). Deferred, each with why:
   - _Texting._
+    - _A pause before each bubble._ The typing indicator shipped without one,
+      so nothing that has arrived is held back. Add it if replies feel too
+      fast.
     - _Avatars for extra group-chat characters._ A speaker other than the
       preset gets a coloured initial hued from its name. Uploading one per
       character can come later as an optional extra without changing the
@@ -849,11 +852,6 @@ read before anyone re-optimizes from an estimate.
       preset creates a standard chat (no instructions, one bubble). Fixing it is
       a `reply_style` on `scheduled_tasks`, or reading the preset's at run time;
       out of scope as an unlikely use case.
-    - _A "…" typing indicator, and an optional pause, between bubbles._ In the
-      first design, never built. Only the "· · ·" before a reply's first bubble
-      exists.
-    - _An initial for a preset with no avatar._ Its texts show just the name,
-      while other speakers get initials.
     - _A stoplist for false speaker names._ Speaker matching is deliberately
       loose and prompt-guided, so an opener like "Fun fact: …" reads as a
       speaker and carries over to the rest of the reply. A stoplist of common
@@ -891,10 +889,6 @@ read before anyone re-optimizes from an estimate.
       user-role row flagged `checkIn`; only the thread's divider reads the flag.
       The summarizer, memory transcripts and the search index should skip it or
       word it neutrally.
-    - _An explicit reaction-tool call lands on the hidden reminder._ The typed
-      leading emoji is already kept as text. The tool stays in `tools[]` (prefix
-      stability), so the fix is to make it a no-op when its target is a
-      reminder.
     - _No per-user cap._ Check-in turns start unattended and don't count toward
       `[limits]`, as scheduled runs don't. One pending per conversation is the
       only bound.
