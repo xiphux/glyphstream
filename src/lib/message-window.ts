@@ -13,7 +13,10 @@ import type { ChatMessage } from '#lib/types/api.js';
  *
  * When the fresh window's first message is one the page already has, the
  * messages before it are that message's ancestors — the branch is a parent
- * chain, so they are the same rows — and are kept. Otherwise the branch
+ * chain, so they are the same rows — and are kept. Their texting photos are
+ * the one part of them that can still change, so the page patches those in
+ * place when they do (see the chat page's `applyPhotoState`) rather than
+ * relying on this. Otherwise the branch
  * changed above the window (a switch or an edit far up the thread) and the
  * fresh window replaces the list. `keptEarlier` says which happened, so the
  * caller knows whose "has earlier" flag still applies.

@@ -504,7 +504,7 @@ export class AvatarDrawWorkflow {
 	 * as a version when it lands. One model closes the dialog once the server
 	 * has the draw, and the photo shows in the thread when it arrives. Several
 	 * are a comparison: the dialog stays up and shows each result as it lands,
-	 * for the user to pick from (`pickPhoto`).
+	 * for the user to pick from (`showPhoto` with `pick`).
 	 *
 	 * The server owns the outcome either way — a failure is stored on the photo
 	 * and shows there — so all that's left to a live client is pulling results

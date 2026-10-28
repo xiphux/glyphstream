@@ -1471,9 +1471,8 @@ export const checkIns = sqliteTable(
 		conversationId: text('conversation_id')
 			.notNull()
 			.references(() => conversations.id, { onDelete: 'cascade' }),
-		// The reply that set it. It fires only while that reply (or a photo it
-		// sent) is still the end of the active branch, and goes with it when the
-		// reply is deleted.
+		// The reply that set it. It fires only while that reply is still the end
+		// of the active branch, and goes with it when the reply is deleted.
 		sourceMessageId: text('source_message_id')
 			.notNull()
 			.references(() => messages.id, { onDelete: 'cascade' }),
