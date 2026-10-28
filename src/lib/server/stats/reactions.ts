@@ -89,13 +89,12 @@ export function recordModelSwitch(
 export function recordComparisonPick(
 	conversationId: string,
 	winner: ChatMessage & { parentMessageId?: string | null },
-	kind: 'fanout' | 'avatar',
 ): void {
 	const parentId = winner.parentMessageId;
 	const winnerModel = winner.modelUsed;
 	// A failed column isn't a reply anyone preferred, whatever was clicked.
 	if (!parentId || !winnerModel || isFailure(winner)) return;
-	bestEffort(`${kind} pick`, () => {
+	bestEffort('fanout pick', () => {
 		const models = new Set(
 			getSiblingAssistants(conversationId, parentId)
 				.filter((m) => !isFailure(m) && m.modelUsed)
@@ -103,24 +102,32 @@ export function recordComparisonPick(
 		);
 		models.add(winnerModel);
 		if (models.size < 2) return;
-		for (const m of models)
-			recordModelEvent(m, kind === 'fanout' ? 'fanout_shown' : 'avatar_shown');
-		recordModelEvent(winnerModel, kind === 'fanout' ? 'fanout_win' : 'avatar_win');
+		for (const m of models) recordModelEvent(m, 'fanout_shown');
+		recordModelEvent(winnerModel, 'fanout_win');
 	});
 }
 
 /**
- * The same for a photo comparison, whose candidates are versions of one photo
- * rather than sibling messages: `models` drew the candidates, `winnerModel`
- * the one picked. Same rules — once per model, no loss, nothing for a
- * comparison of one model against itself.
+ * The same for a photo or portrait comparison, whose candidates are versions
+ * of one picture rather than sibling messages: `models` drew the candidates,
+ * `winnerModel` the one picked. Same rules — once per model, no loss, nothing
+ * for a comparison of one model against itself. A portrait counts as an avatar
+ * comparison, as it did when its candidates were messages.
  */
-export function recordPhotoComparisonPick(winnerModel: string, models: string[]): void {
-	bestEffort('photo pick', () => {
+export function recordPhotoComparisonPick(
+	winnerModel: string,
+	models: string[],
+	kind: 'photo' | 'portrait' = 'photo',
+): void {
+	bestEffort(`${kind} pick`, () => {
 		const all = new Set([...models, winnerModel]);
 		if (all.size < 2) return;
-		for (const m of all) recordModelEvent(m, 'fanout_shown');
-		recordModelEvent(winnerModel, 'fanout_win');
+		const [shown, win] =
+			kind === 'portrait'
+				? (['avatar_shown', 'avatar_win'] as const)
+				: (['fanout_shown', 'fanout_win'] as const);
+		for (const m of all) recordModelEvent(m, shown);
+		recordModelEvent(winnerModel, win);
 	});
 }
 

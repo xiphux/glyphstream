@@ -80,10 +80,9 @@ export interface MediaRelayParams {
 	 * as its child, and it's echoed on the `start` frame so the client can
 	 * render the turn optimistically.
 	 *
-	 * Normally the user message that prompted the generation. Avatar generation
-	 * passes the ASSISTANT message holding the appearance description instead —
-	 * the portrait belongs under the description it was drawn from, and the two
-	 * then merge into one bubble (see computeMergeFlags).
+	 * Normally the user message that prompted the generation. A photo or
+	 * portrait passes the reply it's drawn onto instead, and lands there
+	 * (`landOn`) rather than as a child.
 	 */
 	userMessage: ChatMessage;
 	/** Split-attachments provenance: the (first) input image this generation
@@ -101,10 +100,6 @@ export interface MediaRelayParams {
 	 *  non-fan-out generation. Recorded on BOTH the result and the durable error
 	 *  sibling, so a failed column holds its place too. */
 	fanoutIndex?: number | null;
-	/** Compare-and-swap guard for the leaf advance — see `appendMessage`. Set by
-	 *  avatar generation, whose anchor is an existing reply that the user may
-	 *  have moved past during the minutes a draw takes. */
-	advanceActiveLeafIfCurrent?: string;
 	/** Skip the first-exchange title task (a fan-out runs it once in /prepare). */
 	suppressTitleTask?: boolean;
 	/** Skip this branch's own completion notification. An initial fan-out branch
@@ -142,7 +137,7 @@ export interface MediaRelayParams {
 	/**
 	 * Fires once the produced media is durably the conversation's — row appended,
 	 * media linked — and BEFORE `done` goes out. For a caller whose generation
-	 * exists to be applied somewhere (avatar generation: the portrait becomes the
+	 * exists to be applied somewhere (a portrait on show becomes the
 	 * conversation's face), this is where the apply belongs.
 	 *
 	 * It belongs on the SERVER side of the relay because the relay deliberately
@@ -428,7 +423,6 @@ export async function runMediaRelay(
 						modelUsed: params.storedModelId,
 						genMs: Date.now() - genStartedAt,
 						advanceActiveLeaf: params.advanceActiveLeaf ?? true,
-						advanceActiveLeafIfCurrent: params.advanceActiveLeafIfCurrent,
 						fanoutIndex: params.fanoutIndex,
 						inTransaction: (tx) => {
 							params.persistWith?.(tx);
@@ -487,7 +481,6 @@ export async function runMediaRelay(
 					rawResponseJson: produced.rawResponseJson,
 					genMs: Date.now() - genStartedAt,
 					advanceActiveLeaf: params.advanceActiveLeaf ?? true,
-					advanceActiveLeafIfCurrent: params.advanceActiveLeafIfCurrent,
 					fanoutIndex: params.fanoutIndex,
 					// Linked inside the append's transaction, so a crash can't leave
 					// the media row persisted with nothing referencing it — generated

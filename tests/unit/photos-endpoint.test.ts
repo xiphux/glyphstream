@@ -1,7 +1,7 @@
 /**
- * The texting photo routes: POST /api/conversations/:id/photos (develop one
- * of a reply's `[photo: …]`) and PATCH …/photos/:photoId (put a version on
- * show, or pick one from a comparison).
+ * The photo routes: POST /api/conversations/:id/photos (develop one of a
+ * reply's `[photo: …]`, or draw the avatar portrait from a reply) and PATCH
+ * …/photos/:photoId (put a version on show, or pick one from a comparison).
  *
  * Real in-memory DB; the job runner is mocked at `submitGenerationJob` — what
  * it does with the job is generation-jobs.test.ts's business. Here: what the
@@ -122,7 +122,13 @@ const submitted = () => mocks.submit.mock.calls.at(-1)![0];
 
 let seq = 0;
 function version(
-	over: { modelId?: string; mediaId?: string | null; error?: string; comparisonId?: string } = {},
+	over: {
+		modelId?: string;
+		mediaId?: string | null;
+		error?: string;
+		comparisonId?: string;
+		kind?: 'photo' | 'portrait';
+	} = {},
 ) {
 	const id = `v${++seq}`;
 	const mediaId =
@@ -144,8 +150,8 @@ function version(
 			userId,
 			conversationId: convId,
 			messageId: replyId,
-			kind: 'photo',
-			markerIndex: 0,
+			kind: over.kind ?? 'photo',
+			markerIndex: over.kind === 'portrait' ? null : 0,
 			mediaId,
 			modelId: over.modelId ?? 'ep::sdxl',
 			error: over.error ?? null,
@@ -268,13 +274,14 @@ describe('GET /photos', () => {
 			replies: {
 				[replyId]: {
 					images: [{ id: v, markerIndex: 0, shown: true }],
-					developing: [{ markerIndex: 0, modelId: 'ep::sdxl' }],
+					developing: [{ kind: 'photo', markerIndex: 0, modelId: 'ep::sdxl' }],
 				},
 			},
 		});
 		// Every reply asked about has an entry, empty where there's nothing.
 		expect(await status('other').json()).toEqual({
 			developing: 0,
+			avatarMediaId: null,
 			replies: { other: { images: [], developing: [] } },
 		});
 	});
@@ -367,5 +374,76 @@ describe('PATCH /photos/:id', () => {
 		version({ modelId: 'ep::flux' });
 		await pick(a, { shown: true, pick: true });
 		expect(db.select().from(modelStatsDaily).all()).toEqual([]);
+	});
+});
+
+describe('portraits', () => {
+	const face = () =>
+		db.select().from(conversations).where(eq(conversations.id, convId)).get()!.avatarMediaId;
+	const tally = () =>
+		Object.fromEntries(
+			db
+				.select()
+				.from(modelStatsDaily)
+				.all()
+				.map((r) => [`${r.modelId} ${r.metric}`, r.count]),
+		);
+
+	it('draws one from any reply, square, from its text by default', async () => {
+		// A chat that doesn't send photos still has a face.
+		db.update(conversations).set({ photos: false }).where(eq(conversations.id, convId)).run();
+		await develop({ kind: 'portrait', index: undefined, aspectRatio: '9:16' });
+		expect(submitted()).toMatchObject({
+			anchorMessageId: replyId,
+			origin: 'portrait',
+			params: { aspectRatio: '1:1', displayOnly: true },
+		});
+		expect(submitted().params.prompt).toContain('me at the beach');
+		expect(submitted().params.photo).toBeUndefined();
+	});
+
+	it('draws the prompt the user left', async () => {
+		await develop({ kind: 'portrait', prompt: 'a red fox, smiling' });
+		expect(submitted().params.prompt).toBe('a red fox, smiling');
+	});
+
+	it('refuses a kind it doesn’t know', async () => {
+		await expect(develop({ kind: 'selfie' })).rejects.toMatchObject({ status: 400 });
+	});
+
+	it('makes the version put on show the face', async () => {
+		const a = version({ kind: 'portrait' });
+		const b = version({ kind: 'portrait' });
+		await pick(b);
+		const mediaOf = (id: string) =>
+			listImagesForMessages(convId, [replyId])
+				.get(replyId)!
+				.find((v) => v.id === id)!.mediaId;
+		expect(face()).toBe(mediaOf(b));
+		await pick(a);
+		expect(face()).toBe(mediaOf(a));
+	});
+
+	it('counts a picked comparison as an avatar comparison', async () => {
+		version({ kind: 'portrait', modelId: 'ep::sdxl', comparisonId: 'cmp-1' });
+		const b = version({ kind: 'portrait', modelId: 'ep::flux', comparisonId: 'cmp-1' });
+		await pick(b, { shown: true, pick: true });
+		expect(tally()).toMatchObject({
+			'sdxl avatar_shown': 1,
+			'flux avatar_shown': 1,
+			'flux avatar_win': 1,
+		});
+	});
+
+	it('reports the face with the photo state', async () => {
+		const a = version({ kind: 'portrait' });
+		await pick(a);
+		const url = new URL(`http://x/api/conversations/${convId}/photos?messages=${replyId}`);
+		const res = GET({
+			locals: { user: { id: userId } },
+			params: { id: convId },
+			url,
+		} as unknown as Parameters<typeof GET>[0]) as Response;
+		expect(((await res.json()) as { avatarMediaId: string | null }).avatarMediaId).toBe(face());
 	});
 });

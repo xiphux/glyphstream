@@ -44,14 +44,15 @@
 		/** False when there's no assistant reply to draw from yet — step 2 is
 		 *  offered but disabled, so the sequence stays legible. */
 		hasSource: boolean;
-		/** The reply step 2 would draw has already been drawn on this branch, so
-		 *  the action is a re-roll rather than a first attempt. Only changes the
-		 *  wording: the call is identical either way, and the new portrait lands
-		 *  beside the old one as a sibling. */
+		/** The reply step 2 would draw already has a portrait, so the action is
+		 *  another version rather than a first attempt. Only changes the wording:
+		 *  the call is identical either way, and the new portrait lands beside the
+		 *  old one as a version. */
 		alreadyDrawn: boolean;
-		/** Non-null while a generation is running: 'Queued…', 'Drawing…'. */
+		/** Non-null while a portrait is drawing: 'Drawing…'. */
 		status: string | null;
-		/** True while any turn is in flight — both steps are unavailable. */
+		/** True while any turn is in flight — step 1 needs the composer, so it
+		 *  waits. Drawing doesn't: it changes nothing in the thread. */
 		busy: boolean;
 		onDescribe: () => void;
 		onGenerate: () => void;
@@ -139,7 +140,7 @@
 				</li>
 				<li>
 					<Popover.Close
-						disabled={busy || !hasSource || !hasImageModel}
+						disabled={!hasSource || !hasImageModel}
 						onclick={onGenerate}
 						class="w-full rounded-md bg-surface-inverse px-3 py-1.5 text-xs font-medium text-fg-inverse transition hover:opacity-90 disabled:opacity-50"
 					>
@@ -151,8 +152,8 @@
 						{:else if !hasSource}
 							Send the description request first.
 						{:else if alreadyDrawn}
-							Same description again — the new one becomes the avatar, and the ‹ › arrows on the
-							bubble compare them.
+							Same description again — the new one becomes the avatar, and the arrows on the
+							portrait switch between them.
 						{:else}
 							Shows the image prompt for review, then draws it and makes it this conversation's
 							avatar.

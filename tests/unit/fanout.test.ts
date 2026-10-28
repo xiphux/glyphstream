@@ -11,7 +11,6 @@ import {
 	canDiscardColumn,
 	columnMediaIds,
 	columnShowingMedia,
-	nextDispatchIndex,
 	survivorInSlot,
 	rerollInsertIndex,
 	collapseToCompareSelections,
@@ -142,7 +141,6 @@ describe('allColumnsSettled', () => {
 		error: null,
 		aspectRatio: null,
 		errorMessageId: null,
-		avatarPrompt: null,
 	});
 
 	it('is false while any column is queued or streaming', () => {
@@ -219,7 +217,6 @@ describe('gridMediaIds + applyDisplayOrder', () => {
 		error: null,
 		aspectRatio: null,
 		errorMessageId: null,
-		avatarPrompt: null,
 	});
 	const pending = (branchId: string): FanoutColumn => ({
 		...shot(branchId),
@@ -299,7 +296,6 @@ describe('lightbox discard helpers', () => {
 		error: null,
 		aspectRatio: null,
 		errorMessageId: null,
-		avatarPrompt: null,
 	});
 	const ref = (id: string) => ({ id, kind: 'image' as const });
 	const ids = (...xs: string[]) => new Set(xs);
@@ -365,22 +361,6 @@ describe('dispatch-index placement', () => {
 		error: null,
 		aspectRatio: null,
 		errorMessageId: null,
-		avatarPrompt: null,
-	});
-
-	describe('nextDispatchIndex', () => {
-		it('starts at 0 for a fresh grid (every turn fan-out)', () => {
-			expect(nextDispatchIndex([])).toBe(0);
-		});
-
-		it('continues past what the anchor already holds (a second avatar round)', () => {
-			expect(nextDispatchIndex([at('a', 0), at('b', 1)])).toBe(2);
-		});
-
-		it('ignores un-indexed columns, so seeded legacy portraits don’t hold it back', () => {
-			expect(nextDispatchIndex([at('legacy', null), at('a', 0)])).toBe(1);
-			expect(nextDispatchIndex([at('legacy', null)])).toBe(0);
-		});
 	});
 
 	describe('rerollInsertIndex', () => {

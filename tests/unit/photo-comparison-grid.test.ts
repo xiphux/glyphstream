@@ -10,8 +10,6 @@ vi.mock('#lib/toast.svelte.js', () => ({ toast: { success: () => {}, error: () =
 
 import { AvatarDrawWorkflow } from '#lib/avatar-draw-workflow.svelte.js';
 import { PhotoComparisonGrid } from '#lib/photo-comparison-grid.svelte.js';
-import type { AvatarDrawController } from '#lib/avatar-draw-controller.svelte.js';
-import type { FanoutController } from '#lib/fanout-controller.svelte.js';
 import type { ModelCatalogue } from '#lib/model-catalogue.svelte.js';
 import type { ChatMessage, MessageImage, ModelEntry } from '#lib/types/api.js';
 
@@ -53,8 +51,7 @@ function setup() {
 		} as unknown as ModelCatalogue,
 		savedModelId: () => 'img-1',
 		enhanceByDefault: () => false,
-		draw: {} as AvatarDrawController,
-		fanout: {} as FanoutController,
+		avatarMediaId: () => null,
 		refreshPhotos: async () => {},
 	});
 	const grid = new PhotoComparisonGrid({
@@ -70,7 +67,7 @@ function setup() {
 			{ modelId: 'img-1', count: 1 },
 			{ modelId: 'img-2', count: 1 },
 		];
-		await workflow.generate();
+		workflow.generate();
 		page.messages = [{ ...reply, images: [...reply.images!, ...landed] }];
 	}
 	return { workflow, grid, compare, page };

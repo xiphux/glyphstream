@@ -7,7 +7,7 @@
  */
 
 import type { InFlightSegment } from './chat-render.ts';
-import type { AvatarDrawPrompt, ChatMessage, ModelKind } from './types/api.ts';
+import type { ChatMessage, ModelKind } from './types/api.ts';
 
 /**
  * Hard ceiling on concurrent fan-out branches per conversation. Each branch
@@ -204,8 +204,8 @@ export interface FanoutColumn {
 	 * and nothing renders from the live one. Don't key new live-phase UI off it
 	 * without re-deriving that.
 	 *
-	 * Null once settled for: a model that offered no ratios, an avatar column
-	 * (pinned square server-side), a still-generating recovered placeholder (no
+	 * Null once settled for: a model that offered no ratios, a still-generating
+	 * recovered placeholder (no
 	 * media row yet, and the in-flight registry doesn't carry the request), and
 	 * media that predates the column.
 	 */
@@ -221,10 +221,9 @@ export interface FanoutColumn {
 	 * live grid inserts it at. So an index is NOT unique across columns: a shared
 	 * one means "same variation group".
 	 *
-	 * Null on a column with no grid position to report. For the two PERSISTED
-	 * cases — an avatar comparison's seeded portraits (drawn before this grid
-	 * existed) and anything persisted before the column shipped — that means
-	 * sorting ahead of every indexed column, chronologically, via
+	 * Null on a column with no grid position to report. For a PERSISTED one —
+	 * anything persisted before the column shipped — that means sorting ahead of
+	 * every indexed column, chronologically, via
 	 * `getSiblingAssistants`. A recovered placeholder for a still-generating
 	 * branch is null too but isn't subject to that sort at all: it has no row
 	 * yet, and `#buildRecoveredColumns` appends every placeholder AFTER every
@@ -232,22 +231,6 @@ export interface FanoutColumn {
 	 * to its index once it lands.
 	 */
 	dispatchIndex: number | null;
-	/**
-	 * Avatar comparisons only: what drew this portrait, which a re-roll re-sends.
-	 * The dialog's reviewed prompt for a live branch; off the media row
-	 * (`ChatMessage.avatarPrompt`) for one rebuilt from server truth, so a grid
-	 * recovered after a reload can still re-roll.
-	 *
-	 * Per column rather than per grid because one anchor collects several draw
-	 * rounds, each possibly from a different prompt — "try again with this model"
-	 * means this portrait's prompt, not the latest round's. Null in a turn fan-out
-	 * (the server re-derives that prompt), and for a recovered avatar column with
-	 * nothing to read one from: a failed branch, or one still generating. Those
-	 * can't re-roll — see `FanoutController.canRegenerate` — though the generating
-	 * one shows its Regenerate disabled until it settles, since landing with an
-	 * image may give it a prompt.
-	 */
-	avatarPrompt: AvatarDrawPrompt | null;
 	/** The persisted assistant message, set on the branch's `done` event (or
 	 *  hydrated from getSiblingAssistants on reload). */
 	persisted: ChatMessage | null;
@@ -271,24 +254,6 @@ export interface FanoutColumn {
 }
 
 /**
- * The grid position a fresh batch of branches should start numbering at: one
- * past the highest index already in the grid, or 0 when nothing is indexed.
- *
- * A turn fan-out always gets 0 (its anchor is a brand-new user message, so
- * there are no prior siblings). An avatar comparison anchors on a REUSED
- * assistant message, so a second draw round's portraits are siblings of the
- * first round's — numbered from 0 again they'd interleave with them in a grid
- * rebuilt from server truth instead of following them.
- */
-export function nextDispatchIndex(columns: readonly FanoutColumn[]): number {
-	let max = -1;
-	for (const c of columns) {
-		if (c.dispatchIndex !== null && c.dispatchIndex > max) max = c.dispatchIndex;
-	}
-	return max + 1;
-}
-
-/**
  * Where a re-roll of `source` belongs in the live grid: directly after it and
  * after any re-rolls it already has, so a variation and its re-rolls read as
  * one run. Columns of a group share `dispatchIndex` (a re-roll inherits its
@@ -308,8 +273,7 @@ export function nextDispatchIndex(columns: readonly FanoutColumn[]): number {
  * Closing that would need a minor key under the shared index; a run is a
  * couple of columns wide, so it isn't worth one.
  *
- * An un-indexed source (an avatar comparison's seeded portrait, or a column
- * predating the index) can't name a run, so its re-roll just goes immediately
+ * An un-indexed source (a column predating the index) can't name a run, so its re-roll just goes immediately
  * after it. Live and recovered part company here whenever there are two or
  * more un-indexed columns: the re-roll sends no index of its own, so the
  * server sorts it chronologically at the END of the null bucket rather than

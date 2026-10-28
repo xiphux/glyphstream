@@ -132,7 +132,7 @@ import {
 	registerInFlight,
 	getInFlightEntries,
 	getInFlightGeneratingSince,
-	getAvatarDrawSince,
+	photoDrawsInFlight,
 	getInFlightSince,
 	resetInFlight,
 } from '#lib/server/streaming/in-flight.js';
@@ -969,7 +969,8 @@ describe('what a page load sees after a restart', () => {
 	});
 });
 
-describe('a resumed avatar draw', () => {
+describe('a resumed portrait draw', () => {
+	let mediaSeq = 0;
 	function seedDescription() {
 		const s = seed();
 		const description = appendMessage({
@@ -982,7 +983,7 @@ describe('a resumed avatar draw', () => {
 			return {
 				id: insertMedia({
 					userId: s.user.id,
-					storagePath: 'generated/portrait.png',
+					storagePath: `generated/portrait-${++mediaSeq}.png`,
 					contentType: 'image/png',
 					byteSize: 16,
 					kind: 'image',
@@ -996,55 +997,66 @@ describe('a resumed avatar draw', () => {
 		return { ...s, description };
 	}
 
-	function avatarOf(convId: string) {
+	function conv(convId: string) {
 		return mocks.testDb
 			.select({ avatar: conversations.avatarMediaId, leaf: conversations.activeLeafMessageId })
 			.from(conversations)
 			.where(eq(conversations.id, convId))
 			.get()!;
 	}
+	const portraits = () =>
+		mocks.testDb
+			.select()
+			.from(messageImages)
+			.all()
+			.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
 
-	it('applies the portrait as the conversation’s avatar', async () => {
+	it('lands as a version on the description, and becomes the face', async () => {
 		const s = seedDescription();
+		const leafBefore = conv(s.conv.id).leaf;
 		leftover(s, {
-			origin: 'avatar',
+			origin: 'portrait',
 			anchorMessageId: s.description.id,
 			paramsJson: JSON.stringify({ ...job(s).params, displayOnly: true }),
 		});
 
 		resumeGenerationJobs();
 		await until(() => jobRows().length === 0, 'the portrait to land');
-		const [portrait] = getSiblingAssistants(s.conv.id, s.description.id);
 		const [stored] = mocks.testDb.select({ id: media.id }).from(media).all();
-		expect(portrait.parts).toEqual([{ type: 'image', mediaId: stored.id, displayOnly: true }]);
-		expect(avatarOf(s.conv.id)).toEqual({ avatar: stored.id, leaf: portrait.id });
+		expect(portraits()).toMatchObject([
+			{ messageId: s.description.id, kind: 'portrait', markerIndex: null, mediaId: stored.id },
+		]);
+		expect(portraits()[0].shownAt).not.toBeNull();
+		// The thread is untouched: no message, and the leaf where it was.
+		expect(getSiblingAssistants(s.conv.id, s.description.id)).toEqual([]);
+		expect(conv(s.conv.id)).toEqual({ avatar: stored.id, leaf: leafBefore });
 	});
 
-	it('leaves the thread where the user took it while it was down', async () => {
+	it('takes the face only with its version on show, in a comparison', async () => {
 		const s = seedDescription();
-		leftover(s, { origin: 'avatar', anchorMessageId: s.description.id });
-		// The user carried on before the restart; the draw must not rewind them.
-		const later = appendMessage({
-			conversationId: s.conv.id,
-			parentMessageId: s.description.id,
-			role: 'user',
-			parts: [{ type: 'text', text: 'and then?' }],
-		});
-
+		const params = JSON.stringify({ ...job(s).params, displayOnly: true, compareId: 'cmp' });
+		// Something is on show already: a comparison's results wait for the pick.
+		leftover(s, { origin: 'portrait', anchorMessageId: s.description.id });
 		resumeGenerationJobs();
-		await until(() => jobRows().length === 0, 'the portrait to land');
-		expect(avatarOf(s.conv.id).leaf).toBe(later.id);
-		// Still applied: the face isn't a thread position.
-		expect(avatarOf(s.conv.id).avatar).not.toBeNull();
+		await until(() => jobRows().length === 0, 'the first portrait to land');
+		const face = conv(s.conv.id).avatar;
+		resetGenerationJobsForTests();
+
+		leftover(s, { origin: 'portrait', anchorMessageId: s.description.id, paramsJson: params });
+		resumeGenerationJobs();
+		await until(() => jobRows().length === 0, 'the compared portrait to land');
+
+		expect(portraits().map((p) => p.shownAt !== null)).toEqual([true, false]);
+		expect(conv(s.conv.id).avatar).toBe(face);
 	});
 
 	it('is not counted as part of the conversation’s turn', () => {
 		const s = seedDescription();
-		leftover(s, { origin: 'avatar', anchorMessageId: s.description.id });
+		leftover(s, { origin: 'portrait', anchorMessageId: s.description.id });
 		setResourceGroupPaused(endpoint(), true);
 
 		resumeGenerationJobs();
-		expect(getAvatarDrawSince(s.conv.id)).not.toBeNull();
+		expect(photoDrawsInFlight(s.conv.id)).toBe(1);
 		expect(getInFlightSince(s.conv.id)).toBeNull();
 	});
 });
@@ -1149,8 +1161,11 @@ describe('a texting photo', () => {
 		await drain(submitGenerationJob(photoJob(s)));
 		const [first, second] = versions(s);
 		expect([first.shown, second.shown]).toEqual([false, true]);
-		// Picking the first again (the arrows) puts it back.
-		expect(showMessageImage(s.user.id, s.conv.id, first.id)).toBe(true);
+		// Picking the first again (the arrows) puts it back. A millisecond on, as a
+		// click always is: the second went on show when it landed, and a tie in
+		// `shown_at` is broken by age.
+		await new Promise((r) => setTimeout(r, 2));
+		expect(showMessageImage(s.user.id, s.conv.id, first.id)).toMatchObject({ kind: 'photo' });
 		expect(versions(s).map((v) => v.shown)).toEqual([true, false]);
 	});
 
@@ -1163,7 +1178,6 @@ describe('a texting photo', () => {
 		expect(entries).toHaveLength(2);
 		expect(entries.every((e) => !e.isTurn && !e.controller.signal.aborted)).toBe(true);
 		expect(getInFlightSince(s.conv.id)).toBeNull();
-		expect(getAvatarDrawSince(s.conv.id)).toBeNull();
 		void a.cancel();
 		void b.cancel();
 	});

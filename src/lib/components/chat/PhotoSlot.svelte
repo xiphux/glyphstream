@@ -5,9 +5,13 @@
 	Develop button. Shared by both reply styles: a texting reply draws it as a
 	text of its own (TextingBubbles), a standard one inside its bubble
 	(`inBubble`).
+
+	`portrait` is the same thing for an avatar portrait drawn from the reply:
+	square, worded as drawing, and nothing to show until a draw exists — it has
+	no marker to stand in for.
 -->
 <script lang="ts">
-	import { Camera, ChevronLeft, ChevronRight, RefreshCw, Trash2 } from '@lucide/svelte';
+	import { Camera, ChevronLeft, ChevronRight, RefreshCw, Trash2, UserRound } from '@lucide/svelte';
 	import { cssAspectRatio } from '#lib/aspect-ratio.js';
 	import type { TextingPhotos } from '#lib/texting.js';
 	import type { MessageImage } from '#lib/types/api.js';
@@ -23,6 +27,8 @@
 		openingLightboxFor?: string | null;
 		/** Inside a standard reply's bubble, rather than a text of its own. */
 		inBubble?: boolean;
+		/** An avatar portrait rather than a photo. */
+		portrait?: boolean;
 	}
 
 	let {
@@ -32,7 +38,12 @@
 		onImageClick,
 		openingLightboxFor = null,
 		inBubble = false,
+		portrait = false,
 	}: Props = $props();
+
+	const noun = $derived(portrait ? 'portrait' : 'photo');
+	const verb = $derived(portrait ? 'draw' : 'develop');
+	const working = $derived(portrait ? 'Drawing…' : 'Developing…');
 
 	const photoButton = 'rounded-full bg-black/55 p-1.5 text-white transition hover:bg-black/70';
 
@@ -63,12 +74,12 @@
 {#if state.shown}
 	{@const shown = state.shown}
 	{@const at = state.versions.indexOf(shown)}
-	<div class={['flex w-64 max-w-[75%] flex-col gap-1', inBubble && 'my-2']}>
+	<div class={['flex max-w-[75%] flex-col gap-1', portrait ? 'w-40' : 'w-64', inBubble && 'my-2']}>
 		<div class="relative">
 			<button
 				type="button"
 				onclick={() => onImageClick(shown.mediaId)}
-				aria-label="Open photo"
+				aria-label="Open {noun}"
 				disabled={openingLightboxFor === shown.mediaId}
 				class="block w-full overflow-hidden rounded-2xl p-0 transition disabled:opacity-60"
 			>
@@ -89,8 +100,8 @@
 					<button
 						type="button"
 						onclick={() => photos?.onDevelop?.(index)}
-						aria-label="Develop again"
-						title="Develop again"
+						aria-label={portrait ? 'Draw again' : 'Develop again'}
+						title={portrait ? 'Draw again' : 'Develop again'}
 						class={photoButton}
 					>
 						<RefreshCw class="size-3.5" aria-hidden="true" />
@@ -100,8 +111,8 @@
 					<button
 						type="button"
 						onclick={() => photos?.onRemove?.(shown)}
-						aria-label="Remove this photo"
-						title="Remove this photo"
+						aria-label="Remove this {noun}"
+						title="Remove this {noun}"
 						class={photoButton}
 					>
 						<Trash2 class="size-3.5" aria-hidden="true" />
@@ -110,7 +121,7 @@
 			</div>
 			{#if state.developing}
 				<p class="absolute bottom-2 left-2 rounded-full bg-black/55 px-2 py-0.5 text-xs text-white">
-					Developing…
+					{working}
 				</p>
 			{:else if state.versions.length > 1}
 				<div
@@ -141,26 +152,34 @@
 		<!-- Developing it again failed: the photo on show is the last one
 	     that worked, so say why there's no new one. -->
 		{#if state.failedAgain && !state.developing}
-			<p class="text-xs text-danger">Couldn't develop again: {state.failedAgain}</p>
+			<p class="text-xs text-danger">Couldn't {verb} again: {state.failedAgain}</p>
 		{/if}
 	</div>
-{:else}
+{:else if !portrait || state.developing || state.failure}
 	<div
 		class={[
-			'flex w-60 max-w-[85%] flex-col gap-1.5 rounded-2xl border border-dashed border-border-strong px-3.5 py-2.5',
+			'flex max-w-[85%] flex-col gap-1.5 rounded-2xl border border-dashed border-border-strong px-3.5 py-2.5',
+			portrait ? 'w-40' : 'w-60',
 			inBubble ? 'my-2 bg-surface-sunken' : 'bg-surface-raised',
 		]}
 	>
 		<div class="flex items-center gap-1.5 text-xs font-medium text-fg-muted">
-			<Camera class="size-3.5" aria-hidden="true" />
-			Photo
+			{#if portrait}
+				<UserRound class="size-3.5" aria-hidden="true" />
+				Portrait
+			{:else}
+				<Camera class="size-3.5" aria-hidden="true" />
+				Photo
+			{/if}
 		</div>
-		<p class="line-clamp-4 text-sm italic text-fg-secondary">{description}</p>
+		{#if !portrait}
+			<p class="line-clamp-4 text-sm italic text-fg-secondary">{description}</p>
+		{/if}
 		{#if state.developing}
-			<p class="text-xs text-fg-muted">Developing…</p>
+			<p class="text-xs text-fg-muted">{working}</p>
 		{:else}
 			{#if state.failure}
-				<p class="text-xs text-danger">Couldn't develop: {state.failure}</p>
+				<p class="text-xs text-danger">Couldn't {verb}: {state.failure}</p>
 			{/if}
 			{#if photos?.onDevelop}
 				<button

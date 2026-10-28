@@ -6,6 +6,12 @@
  * on the reply itself (see `message_images`). Streams the generation's events,
  * like any draw.
  *
+ * `kind: 'portrait'` draws the conversation's avatar instead, from a reply
+ * describing how the assistant looks (any reply: the header menu's "describe
+ * yourself" turn is an ordinary one). Same everything, but no marker, always
+ * square — an avatar renders in a circle — and a version that goes on show
+ * becomes the conversation's face.
+ *
  * Nothing in the thread changes — no message is added and the leaf stays
  * where it is — so a photo can be developed whenever the reply is on screen:
  * after the conversation moved on, or while another reply is still streaming.
@@ -44,13 +50,16 @@ import { photoDrawsInFlight } from '#lib/server/streaming/in-flight.js';
 import { nearestOffered } from '#lib/aspect-ratio.js';
 import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '#lib/fanout.js';
 import { photoMarkers } from '#lib/texting-photos.js';
+import { partsToText } from '#lib/message-parts.js';
 import type { ModelEntry, PhotoStateResponse } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
 
 interface DevelopPhotoBody {
-	/** The reply that wrote the `[photo: …]`. */
+	/** `'portrait'` for the avatar; omitted for a photo. */
+	kind?: unknown;
+	/** The reply that wrote the `[photo: …]`, or that describes the assistant. */
 	messageId?: unknown;
-	/** Which of its photos, as `textingItems` numbers them. */
+	/** Which of its photos, as `textingItems` numbers them. Not for a portrait. */
 	index?: unknown;
 	/** Composite `endpoint::model` of the image model to draw with. */
 	modelId?: unknown;
@@ -59,7 +68,8 @@ interface DevelopPhotoBody {
 	prompt?: unknown;
 	/** May only turn the image-prompt enhancer off — see the portrait route. */
 	enhance?: unknown;
-	/** The photo's shape, `W:H`; the nearest the model offers is used. */
+	/** The photo's shape, `W:H`; the nearest the model offers is used. A
+	 *  portrait is square whatever this says. */
 	aspectRatio?: unknown;
 	/** One draw of a comparison: an id its draws share, made up by the client.
 	 *  Only ever matched against versions of this same reply. */
@@ -71,11 +81,16 @@ const MAX_WATCHED = 200;
 
 export const GET: RequestHandler = ({ locals, params, url }) => {
 	requireUser(locals);
-	if (!getConversationMeta(params.id, locals.user.id)) error(404, 'Conversation not found');
+	const meta = getConversationMeta(params.id, locals.user.id);
+	if (!meta) error(404, 'Conversation not found');
 	const ids = (url.searchParams.get('messages') ?? '').split(',').filter(Boolean);
 	if (ids.length > MAX_WATCHED) error(400, 'Too many messages');
 	const state = photoStateFor(params.id, ids);
-	const body: PhotoStateResponse = { developing: 0, replies: {} };
+	const body: PhotoStateResponse = {
+		developing: 0,
+		avatarMediaId: meta.avatarMediaId,
+		replies: {},
+	};
 	for (const [id, entry] of state) {
 		body.replies[id] = entry;
 		body.developing += entry.developing.length;
@@ -89,10 +104,15 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	enforceGenerationCap(locals.user);
 
 	const body = await parseJsonBody<DevelopPhotoBody>(request);
+	if (body.kind !== undefined && body.kind !== 'portrait') error(400, "'kind' must be 'portrait'");
+	const portrait = body.kind === 'portrait';
 	if (typeof body.messageId !== 'string' || !body.messageId) {
 		error(400, "'messageId' is required");
 	}
-	if (typeof body.index !== 'number' || !Number.isInteger(body.index) || body.index < 0) {
+	if (
+		!portrait &&
+		(typeof body.index !== 'number' || !Number.isInteger(body.index) || body.index < 0)
+	) {
 		error(400, "'index' must be a photo's number");
 	}
 	if (typeof body.modelId !== 'string' || !body.modelId) {
@@ -112,16 +132,22 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// be given a photo here.
 	const reply = getMessage(params.id, body.messageId);
 	if (!reply || reply.role !== 'assistant') error(404, 'Reply not found');
-	// The chat's preset decides whether it sends photos; one that doesn't has
-	// nothing here to develop, whatever text looks like a marker.
-	if (!meta.photos) error(409, "This chat doesn't send photos");
-	// The marker has to be there: the version is stored against its number.
-	// (Speakers don't change the numbering, so the preset's name isn't needed.)
-	const marker = photoMarkers(reply, '').find((m) => m.index === body.index);
-	if (!marker) error(404, 'That reply has no such photo');
+	let marker: ReturnType<typeof photoMarkers>[number] | null = null;
+	if (!portrait) {
+		// The chat's preset decides whether it sends photos; one that doesn't has
+		// nothing here to develop, whatever text looks like a marker.
+		if (!meta.photos) error(409, "This chat doesn't send photos");
+		// The marker has to be there: the version is stored against its number.
+		// (Speakers don't change the numbering, so the preset's name isn't needed.)
+		marker = photoMarkers(reply, '').find((m) => m.index === body.index) ?? null;
+		if (!marker) error(404, 'That reply has no such photo');
+	}
 
+	// What drew it ends up on the media row as `promptFull`, so the lightbox
+	// shows what actually drew it. A portrait falls back to the whole reply.
 	const supplied = typeof body.prompt === 'string' ? body.prompt.trim() : '';
-	const prompt = supplied || marker.description;
+	const prompt = supplied || (marker ? marker.description : partsToText(reply.parts).trim());
+	if (!prompt) error(400, 'That reply has no text to draw from');
 
 	const parsed = parseModelId(body.modelId);
 	const endpoint = parsed ? getEndpoint(parsed.endpointId) : null;
@@ -145,19 +171,19 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// fan-out has, counted separately from it. Synchronous with the job's
 	// registration below.
 	if (photoDrawsInFlight(params.id) >= MAX_FANOUT_BRANCHES_PER_CONVERSATION) {
-		error(429, 'Too many photos developing in this conversation');
+		error(429, 'Too many pictures drawing in this conversation');
 	}
 
 	// A new attempt replaces the failed one on screen — except within a
 	// comparison, whose failures are among the results it's showing.
-	clearImageFailures(reply.id, marker.index, compareId ?? null);
+	clearImageFailures(reply.id, marker?.index ?? null, compareId ?? null);
 
 	const stream = submitGenerationJob({
 		userId: locals.user.id,
 		conversationId: params.id,
 		anchorMessageId: reply.id,
 		kind: 'image',
-		origin: 'photo',
+		origin: portrait ? 'portrait' : 'photo',
 		// The version's model, not the conversation's.
 		modelId: body.modelId,
 		fanoutIndex: null,
@@ -166,18 +192,22 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 			dispatchMediaIds: [],
 			sourceMediaId: null,
 			aspectRatio: nearestOffered(
-				typeof body.aspectRatio === 'string' ? body.aspectRatio : null,
+				portrait ? '1:1' : typeof body.aspectRatio === 'string' ? body.aspectRatio : null,
 				modelEntry?.aspectRatios ?? [],
 			)?.value,
 			enhancementEnabled,
 			promptStyle: modelEntry?.promptStyle ?? null,
 			promptHint: modelEntry?.promptHint ?? null,
 			displayOnly: true,
-			photo: {
-				sourceMessageId: reply.id,
-				index: marker.index,
-				...(marker.speaker ? { speaker: marker.speaker } : {}),
-			},
+			...(marker
+				? {
+						photo: {
+							sourceMessageId: reply.id,
+							index: marker.index,
+							...(marker.speaker ? { speaker: marker.speaker } : {}),
+						},
+					}
+				: {}),
 			...(compareId ? { compareId } : {}),
 		},
 	});

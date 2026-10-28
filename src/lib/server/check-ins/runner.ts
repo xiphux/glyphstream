@@ -12,7 +12,7 @@
  * it: that reply is the end of the active branch. Anything else — the user
  * answered, regenerated, switched branches, deleted the reply — means the
  * moment has passed, and the row is dropped. While something else is running
- * in the conversation (a turn, an avatar being drawn, an open comparison) it
+ * in the conversation (a turn, an open comparison) it
  * waits, up to a grace period; a check-in hours late after a
  * restart would arrive at the wrong moment, so past that it's dropped too.
  *
@@ -59,12 +59,7 @@ import { buildPreview, notifyConversationComplete } from '../push/notify';
 import { startChatTurn } from '../chat/start-turn';
 import { resolveDisabledFeatures } from '../chat/private-seal';
 import { resolveTimeZone } from '../chat/environment-context';
-import {
-	clearInFlight,
-	getAvatarDrawSince,
-	getInFlightSince,
-	registerInFlight,
-} from '../streaming/in-flight';
+import { clearInFlight, getInFlightSince, registerInFlight } from '../streaming/in-flight';
 import type { TurnOutcome } from '../streaming/relay';
 import { errorMessage } from '../streaming/sse-transport';
 import { createLogger } from '../log';
@@ -148,7 +143,6 @@ function fireCheckIn(row: CheckInRow, now: number): FireResult {
 	if (!meta || !meta.checkIns) return 'drop';
 	if (
 		getInFlightSince(conversationId) !== null ||
-		getAvatarDrawSince(conversationId) !== null ||
 		getFanoutParent(conversationId, userId) !== null
 	) {
 		return 'wait';

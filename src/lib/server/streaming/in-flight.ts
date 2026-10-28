@@ -30,19 +30,9 @@ import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '#lib/fanout.js';
 export const DEFAULT_BRANCH = 'default';
 
 /**
- * Key for an avatar generation — a side errand, not part of the conversation's
- * turn. Distinct from DEFAULT_BRANCH so an ordinary send doesn't abort a
- * drawing (and vice versa), and stable rather than per-call so a second draw
- * supersedes the first.
- *
- * Named here rather than written as a literal at the route because two readers
- * have to agree it isn't a turn — see `conversationTurnEntries`.
- */
-export const AVATAR_BRANCH = 'avatar';
-
-/**
- * Prefix of a texting photo's draw, keyed per job (`photo:<jobId>`): photos
- * draw side by side, so none supersedes another, and none is a turn.
+ * Prefix of a picture drawn onto a reply — a texting photo or an avatar
+ * portrait — keyed per job (`photo:<jobId>`): they draw side by side, so none
+ * supersedes another, and none is a turn.
  */
 export const PHOTO_BRANCH_PREFIX = 'photo:';
 
@@ -183,9 +173,9 @@ export function getInFlightEntries(conversationId: string): InFlightEntry[] {
 /** True when the conversation already has the maximum number of concurrent
  *  generations in flight — the dispatch handler 429s a further fan-out branch
  *  past this, bounding the standing queue of held-open connections + registry
- *  entries that an unbounded fan-out would otherwise pile up. Texting photos
- *  aren't counted: they have their own bound (the photos route), and a few
- *  photos developing on old replies mustn't refuse the next comparison. */
+ *  entries that an unbounded fan-out would otherwise pile up. Photos and
+ *  portraits aren't counted: they have their own bound (the photos route), and
+ *  a few developing on old replies mustn't refuse the next comparison. */
 export function conversationFanoutAtCapacity(conversationId: string): boolean {
 	return (
 		getInFlightEntries(conversationId).filter((e) => !e.branchKey.startsWith(PHOTO_BRANCH_PREFIX))
@@ -193,7 +183,7 @@ export function conversationFanoutAtCapacity(conversationId: string): boolean {
 	);
 }
 
-/** How many texting photos are developing in the conversation. */
+/** How many photos and portraits are developing in the conversation. */
 export function photoDrawsInFlight(conversationId: string): number {
 	return getInFlightEntries(conversationId).filter((e) =>
 		e.branchKey.startsWith(PHOTO_BRANCH_PREFIX),
@@ -289,21 +279,6 @@ export function getInFlightGeneratingSince(conversationId: string): number | nul
 			earliest = e.generationStartedAt;
 	}
 	return earliest;
-}
-
-/**
- * When the conversation's avatar draw started, or null when none is running.
- *
- * The mirror image of `getInFlightSince`, which deliberately EXCLUDES this
- * entry: a draw isn't a turn, so it must not raise the recovered-turn bubble or
- * wedge that poll. But it is still minutes of server-side work whose client
- * connection iOS will happily kill, and the header ring is the only thing that
- * reports it — so the client needs its own truth for it, kept separate for the
- * same reason the registry entry is.
- */
-export function getAvatarDrawSince(conversationId: string): number | null {
-	const entry = inFlight.get(conversationId)?.get(AVATAR_BRANCH);
-	return entry ? entry.startedAt : null;
 }
 
 /** Test/dev only. */

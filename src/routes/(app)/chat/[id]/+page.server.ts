@@ -16,11 +16,7 @@ import { friendlyModelName } from '#lib/model-ids.js';
 import { parseModelId } from '#lib/server/endpoints/model-id.js';
 import { listAllModelsWithErrors } from '#lib/server/endpoints/list-models.js';
 import { getFanoutRecoveryState } from '#lib/server/messages/fanout-recovery.js';
-import {
-	getAvatarDrawSince,
-	getInFlightGeneratingSince,
-	getInFlightSince,
-} from '#lib/server/streaming/in-flight.js';
+import { getInFlightGeneratingSince, getInFlightSince } from '#lib/server/streaming/in-flight.js';
 import { timeDb } from '#lib/server/util/db-timing.js';
 import type { PageServerLoad } from './$types';
 
@@ -70,12 +66,6 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	// elapsed timer counts from — registration time would count the queue wait.
 	const inFlightGeneratingSince = getInFlightGeneratingSince(params.id);
 
-	// The same question for an avatar draw, which `getInFlightSince` deliberately
-	// excludes (it isn't a turn — see the note there). Reported separately so the
-	// header ring can come back after a suspension instead of the draw silently
-	// becoming invisible for the minutes it has left to run.
-	const avatarDrawSince = getAvatarDrawSince(params.id);
-
 	// Friendly identity for the assistant in message bubbles. Custom models
 	// win because the user named them; otherwise we strip the verbose
 	// "endpoint::owner/model" prefix down to just the recognizable slug.
@@ -108,7 +98,6 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 			presetAvatarMediaId = cm.avatarMediaId;
 		}
 	}
-	const assistantAvatarMediaId = conversation.avatarMediaId ?? presetAvatarMediaId;
 
 	// Multi-model fan-out recovery: a conversation with an unresolved fan-out
 	// carries an explicit marker (fanout_parent_message_id, set by .../prepare,
@@ -225,10 +214,11 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 		answeredModelIds,
 		hasImageModel,
 		assistantLabel,
-		assistantAvatarMediaId,
+		// The face falls back to it where the conversation has none of its own —
+		// the page combines the two, since a portrait changes only the latter.
+		presetAvatarMediaId,
 		inFlightSince,
 		inFlightGeneratingSince,
-		avatarDrawSince,
 		fanout,
 		canvases,
 	};

@@ -13,11 +13,7 @@ import {
 	unarchiveConversation,
 } from '#lib/server/db/queries/conversations.js';
 import { getFanoutRecoveryState } from '#lib/server/messages/fanout-recovery.js';
-import {
-	getAvatarDrawSince,
-	getInFlightGeneratingSince,
-	getInFlightSince,
-} from '#lib/server/streaming/in-flight.js';
+import { getInFlightGeneratingSince, getInFlightSince } from '#lib/server/streaming/in-flight.js';
 import { cancelInFlightGenerations } from '#lib/server/streaming/cancel.js';
 import { validateDisabledFeaturesOrThrow400 } from '#lib/server/util/validate-features.js';
 import type { ChatMessage, ConversationRecoveryPoll } from '#lib/types/api.js';
@@ -37,9 +33,8 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 	// controller's 4s poll reads `fanout` (+ inFlightSince) to rebuild the compare
 	// grid as branches land; the single-turn recovery poll reads ONLY
 	// `inFlightSince` (+ `inFlightGeneratingSince`, to flip a recovered bubble
-	// from Queued to generating when the gate hands over); and the chat page's
-	// `reconcileAvatarDraw` — called from its avatar poll, its visibility/online
-	// handlers and a draw's own catch — reads ONLY `avatarDrawSince`. None wants the message list, so skip
+	// from Queued to generating when the gate hands over). Neither wants the
+	// message list, so skip
 	// getConversationDetail's walkActiveBranch (+ content_html serialization)
 	// entirely here; a poll over a long thread would otherwise re-fetch the whole
 	// thing each tick. getConversationMeta is the light, ownership-checked fetch
@@ -66,7 +61,6 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 		const body: ConversationRecoveryPoll = {
 			inFlightSince: getInFlightSince(params.id),
 			inFlightGeneratingSince: getInFlightGeneratingSince(params.id),
-			avatarDrawSince: getAvatarDrawSince(params.id),
 			fanout: { ...fanout, siblings: keyed.filter((k) => !have.has(k.key)).map((k) => k.m) },
 			siblingKeys: keyed.map((k) => k.key),
 		};
@@ -82,13 +76,11 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 	// finished (it needs the message list to see the assistant row land).
 	const inFlightSince = getInFlightSince(params.id);
 	const inFlightGeneratingSince = getInFlightGeneratingSince(params.id);
-	const avatarDrawSince = getAvatarDrawSince(params.id);
 	const fanout = getFanoutRecoveryState(params.id, locals.user.id, conv.activeLeafMessageId);
 	return Response.json({
 		conversation: conv,
 		inFlightSince,
 		inFlightGeneratingSince,
-		avatarDrawSince,
 		fanout,
 	});
 };

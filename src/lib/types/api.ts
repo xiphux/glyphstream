@@ -700,34 +700,12 @@ export interface ChatMessage {
 	 */
 	fanoutIndex?: number | null;
 	/**
-	 * What drew this portrait, as the inputs a re-roll re-sends. Populated by
-	 * `getSiblingAssistants` for an AVATAR comparison only (a turn fan-out's
-	 * re-roll re-derives its prompt server-side from the shared user message),
-	 * so a grid rebuilt from server truth can offer Regenerate. Undefined
-	 * elsewhere, and on a branch that failed (no media row to read it off).
-	 */
-	avatarPrompt?: AvatarDrawPrompt | null;
-	/**
 	 * Whether this branch's generated media is starred. Populated by
 	 * `getSiblingAssistants` only, so a fan-out grid rebuilt from server truth
 	 * shows its stars; set only when true, so absent means "not starred" (and
 	 * a branch fresh off the stream, which has none, reads correctly too).
 	 */
 	favorite?: boolean;
-}
-
-/**
- * The inputs an avatar portrait was drawn from: the prompt the user reviewed
- * in the draw dialog and whether the enhancer ran on it. Recovered from the
- * media row as `original_prompt ?? prompt_full` — `prompt_full` alone would be
- * the ENHANCER's output for an enhanced draw, and re-rolling from that would
- * enhance an already-enhanced prompt. `enhance` is true exactly when the
- * enhancer rewrote it (`original_prompt` set); a draw it passed through
- * unchanged re-rolls verbatim, which is what that portrait was drawn from.
- */
-export interface AvatarDrawPrompt {
-	prompt: string;
-	enhance: boolean;
 }
 
 /** One version of a picture drawn for a message (`ChatMessage.images`). */
@@ -759,13 +737,18 @@ export interface MessageImage {
 export interface PhotoStateResponse {
 	/** Draws still out across them. */
 	developing: number;
+	/** The conversation's own avatar now (null: its preset's, if any) — a
+	 *  portrait going on show changes it. */
+	avatarMediaId: string | null;
 	/** By reply id; every one asked about, empty where there's nothing. */
 	replies: Record<string, { images: MessageImage[]; developing: DevelopingImage[] }>;
 }
 
-/** A draw of one of a reply's photos, queued or running. */
+/** A draw of one of a reply's photos, or of its portrait, queued or running. */
 export interface DevelopingImage {
-	markerIndex: number;
+	kind: 'photo' | 'portrait';
+	/** Which of the reply's photos; null for a portrait. */
+	markerIndex: number | null;
 	modelId: string;
 }
 
@@ -1297,7 +1280,7 @@ export interface SendMessageRequest {
 	 * shape, which is what lets one selection serve a fan-out across models with
 	 * different menus. A model advertising none receives nothing.
 	 *
-	 * Ignored for a chat model, and for the avatar route, which pins 1:1 —
+	 * Ignored for a chat model, and for an avatar portrait, which is pinned 1:1 —
 	 * avatars render inside a circle, so any other shape is centre-cropped away.
 	 */
 	aspectRatio?: string;
@@ -1331,26 +1314,6 @@ export interface PrepareFanoutResponse {
 	userMessage: ChatMessage;
 }
 
-/** POST .../avatar/prepare request — opens an avatar comparison on an existing
- *  appearance description. No text or attachments: unlike a turn fan-out there's
- *  no message to create, only a marker to park. */
-export interface PrepareAvatarDrawRequest {
-	sourceMessageId: string;
-}
-
-/**
- * POST .../avatar/prepare response — the portraits already hanging off that
- * description.
- *
- * The client seeds them into the grid as settled columns, because the recovery
- * rebuild does the same for a grid reloaded mid-comparison and the two have to
- * agree. It can't compute the list itself: the page renders the ACTIVE branch,
- * which holds at most one of these siblings.
- */
-export interface PrepareAvatarDrawResponse {
-	siblings: ChatMessage[];
-}
-
 /**
  * Server-truth state for recovering a parked multi-model fan-out after the
  * client disconnects (reload / iOS suspend). The single wire contract for both
@@ -1361,22 +1324,8 @@ export interface PrepareAvatarDrawResponse {
  * parentMessageId=null with empty arrays / pending=0.
  */
 export interface FanoutRecoveryState {
-	/** The message the parked fan-out hangs off, or null when none. A shared user
-	 *  message for a turn fan-out; the appearance description, an assistant
-	 *  message, for an avatar comparison — which is what `avatar` below reports. */
+	/** The shared user message the parked fan-out hangs off, or null when none. */
 	parentMessageId: string | null;
-	/**
-	 * Whether this is an avatar comparison rather than an ordinary turn fan-out —
-	 * i.e. the anchor is an assistant message (the appearance description) and the
-	 * branches are candidate portraits.
-	 *
-	 * On the wire rather than inferred client-side from the anchor's role, even
-	 * though the two agree today: it decides what "pick" DOES (adopt this face vs.
-	 * continue the thread with this model), and a rule that has to be re-derived
-	 * from message shape is one an unrelated change to message shape can silently
-	 * flip.
-	 */
-	avatar: boolean;
 	/** The fan-out's modality, from the still-generating branches — lets the
 	 *  client render the right (media vs chat) grid even when no branch has
 	 *  persisted yet. Null when none are in flight (the client then infers from
@@ -1406,8 +1355,7 @@ export interface FanoutRecoveryState {
 /**
  * `GET /api/conversations/:id?fanout=1` — the recovery polls' light read, with
  * no message walk. Each poller reads its own field: the turn poll
- * `inFlightSince` / `inFlightGeneratingSince`, the avatar draw `avatarDrawSince`,
- * the fan-out grid `fanout`.
+ * `inFlightSince` / `inFlightGeneratingSince`, the fan-out grid `fanout`.
  *
  * `siblingKeys` names every persisted branch, in order, as `<message id>.<hash
  * of its content>`. `fanout.siblings` leaves out any branch whose key was sent
@@ -1418,7 +1366,6 @@ export interface FanoutRecoveryState {
 export interface ConversationRecoveryPoll {
 	inFlightSince: number | null;
 	inFlightGeneratingSince: number | null;
-	avatarDrawSince: number | null;
 	fanout: FanoutRecoveryState;
 	siblingKeys: string[];
 }

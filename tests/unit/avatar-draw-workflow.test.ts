@@ -1,21 +1,19 @@
 /**
- * Unit tests for the avatar draw dialog's workflow, lifted out of the chat page.
+ * Unit tests for the draw dialog's workflow — avatar portraits and texting
+ * photos — lifted out of the chat page.
  *
  * The workflow runs its real runes (the sveltekit() vitest plugin compiles the
- * .svelte.ts module). The catalogue, the recovery controller and the fan-out
- * controller are stubs: the first is a list, and the other two are where the
- * workflow hands work off, so the stubs record what it handed them.
+ * .svelte.ts module). The catalogue is a stub list, and the page's photo
+ * refresh a recorded call.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('$app/navigation', () => ({ refreshAll: async () => {} }));
-vi.mock('#lib/toast.svelte.js', () => ({ toast: { success: () => {}, error: () => {} } }));
+const toasts = vi.hoisted(() => ({ error: vi.fn() }));
+vi.mock('#lib/toast.svelte.js', () => ({ toast: { success: () => {}, error: toasts.error } }));
 
 import { AvatarDrawWorkflow } from '#lib/avatar-draw-workflow.svelte.js';
-import type { AvatarDrawController } from '#lib/avatar-draw-controller.svelte.js';
-import type { FanoutController } from '#lib/fanout-controller.svelte.js';
 import type { ModelCatalogue } from '#lib/model-catalogue.svelte.js';
-import type { ChatMessage, ModelEntry } from '#lib/types/api.js';
+import type { ChatMessage, MessageImage, ModelEntry } from '#lib/types/api.js';
 
 const model = (id: string, kind: ModelEntry['kind'] = 'image') =>
 	({ id, kind, displayName: id.toUpperCase() }) as ModelEntry;
@@ -28,9 +26,32 @@ const msg = (
 ) => ({ id, role, parentMessageId, parts }) as ChatMessage;
 
 const text = (t: string): ChatMessage['parts'] => [{ type: 'text', text: t }];
-const image = [{ type: 'image', mediaId: 'img' }] as unknown as ChatMessage['parts'];
 
-function setup(opts: { saved?: string | null; status?: string; messages?: ChatMessage[] } = {}) {
+/** A portrait version on a reply. */
+const portrait = (id: string, over: Partial<MessageImage> = {}): MessageImage => ({
+	id,
+	kind: 'portrait',
+	markerIndex: null,
+	mediaId: `media-${id}`,
+	error: null,
+	inComparison: false,
+	modelId: 'img-1',
+	shown: false,
+	aspectRatio: null,
+	width: null,
+	height: null,
+	createdAt: 0,
+	...over,
+});
+
+function setup(
+	opts: {
+		saved?: string | null;
+		status?: string;
+		messages?: ChatMessage[];
+		face?: string | null;
+	} = {},
+) {
 	const page = {
 		convId: 'A',
 		messages: opts.messages ?? [
@@ -43,16 +64,6 @@ function setup(opts: { saved?: string | null; status?: string; messages?: ChatMe
 		status: opts.status ?? 'full',
 		ensureAll: vi.fn(async () => {}),
 	} as unknown as ModelCatalogue;
-	const draw = {
-		status: null as string | null,
-		begin: vi.fn(),
-		setStatus: vi.fn(),
-		completed: vi.fn(),
-		wasInterrupted: vi.fn(() => false),
-		reportFailure: vi.fn(),
-		end: vi.fn(),
-	};
-	const fanout = { sendAvatarDraw: vi.fn(async () => {}) };
 	const refreshPhotos = vi.fn(async (_ids: string[]) => {});
 	const w = new AvatarDrawWorkflow({
 		convId: () => page.convId,
@@ -60,15 +71,15 @@ function setup(opts: { saved?: string | null; status?: string; messages?: ChatMe
 		catalogue,
 		savedModelId: () => opts.saved,
 		enhanceByDefault: () => false,
-		draw: draw as unknown as AvatarDrawController,
-		fanout: fanout as unknown as FanoutController,
+		avatarMediaId: () => opts.face ?? null,
 		refreshPhotos,
 	});
-	return { w, page, catalogue, draw, fanout, refreshPhotos };
+	return { w, page, catalogue, refreshPhotos };
 }
 
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
+	toasts.error.mockReset();
 	fetchMock = vi.fn(async () => new Response('{}'));
 	vi.stubGlobal('fetch', fetchMock);
 });
@@ -101,28 +112,12 @@ describe('the source reply', () => {
 		const { w } = setup();
 		expect(w.sourceMessage?.id).toBe('a1');
 		expect(w.alreadyDrawn).toBe(false);
-		expect(w.canCompare).toBe(true);
 	});
 
-	it('counts a portrait under it as drawn, and still allows a comparison', () => {
-		const { w } = setup({
-			messages: [...setup().page.messages, msg('p1', 'assistant', 'a1', image)],
-		});
-		expect(w.sourceMessage?.id).toBe('a1');
+	it('counts a portrait on it as drawn', () => {
+		const [u1, a1] = setup().page.messages;
+		const { w } = setup({ messages: [u1, { ...a1, images: [portrait('p1', { shown: true })] }] });
 		expect(w.alreadyDrawn).toBe(true);
-		expect(w.canCompare).toBe(true);
-	});
-
-	it('refuses a comparison once the thread has moved past the description', () => {
-		const { w } = setup({
-			messages: [
-				...setup().page.messages,
-				msg('p1', 'assistant', 'a1', image),
-				msg('u2', 'user', 'p1', text('Nice')),
-			],
-		});
-		expect(w.sourceMessage?.id).toBe('a1');
-		expect(w.canCompare).toBe(false);
 	});
 });
 
@@ -133,6 +128,7 @@ describe('the dialog', () => {
 		w.compareSelections = [{ modelId: 'img-1', count: 2 }];
 		w.openDialog();
 		expect(w.open).toBe(true);
+		expect(w.photo).toEqual({ replyId: 'a1', index: null });
 		expect(w.prompt).toBe('a red fox');
 		expect(w.enhance).toBe(false);
 		expect(w.compareMode).toBe(false);
@@ -155,52 +151,139 @@ describe('the dialog', () => {
 	});
 });
 
-describe('drawing', () => {
-	it('sends two or more models as a fan-out comparison, not a single draw', async () => {
-		const { w, fanout } = setup();
+describe('drawing the avatar', () => {
+	const bodies = () =>
+		fetchMock.mock.calls.map(
+			([, init]) => JSON.parse((init as RequestInit).body as string) as Record<string, unknown>,
+		);
+
+	it('draws a portrait onto the source reply, and closes once accepted', async () => {
+		const { w, refreshPhotos } = setup();
+		w.openDialog();
+		w.generate();
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/api/conversations/A/photos',
+			expect.objectContaining({ method: 'POST' }),
+		);
+		// No marker, and no shape: a portrait is square.
+		expect(bodies()[0]).toEqual({
+			messageId: 'a1',
+			kind: 'portrait',
+			prompt: 'a red fox',
+			enhance: false,
+			modelId: 'img-1',
+		});
+		await vi.waitFor(() => expect(w.open).toBe(false));
+		await vi.waitFor(() => expect(refreshPhotos).toHaveBeenCalledWith(['a1']));
+	});
+
+	it('says a portrait is drawing until its draw is done', async () => {
+		let answer!: () => void;
+		fetchMock.mockImplementationOnce(
+			() =>
+				new Promise<Response>(
+					(r) => (answer = () => r(new Response(new ReadableStream({ start: (c) => c.close() })))),
+				),
+		);
+		const { w } = setup();
+		w.openDialog();
+		w.generate();
+		expect(w.portraitStatus).toBe('Drawing…');
+		answer();
+		await vi.waitFor(() => expect(w.portraitStatus).toBeNull());
+	});
+
+	it('says so for a draw the server reports, too', () => {
+		const [u1, a1] = setup().page.messages;
+		const { w } = setup({
+			messages: [
+				u1,
+				{ ...a1, developing: [{ kind: 'portrait', markerIndex: null, modelId: 'img-1' }] },
+			],
+		});
+		expect(w.portraitStatus).toBe('Drawing…');
+	});
+
+	it('compares in the dialog, any time: a draw per model, sharing an id', async () => {
+		const { w } = setup();
 		w.openDialog();
 		w.compareMode = true;
 		w.compareSelections = [
 			{ modelId: 'img-1', count: 1 },
 			{ modelId: 'img-2', count: 1 },
 		];
-		await w.generate();
-		expect(fanout.sendAvatarDraw).toHaveBeenCalledWith({
-			sourceMessageId: 'a1',
-			prompt: 'a red fox',
-			enhance: false,
-			branches: [
-				{ modelId: 'img-1', modelKind: 'image', displayName: 'IMG-1' },
-				{ modelId: 'img-2', modelKind: 'image', displayName: 'IMG-2' },
-			],
-		});
-		expect(w.open).toBe(false);
-		expect(w.compareSelections).toEqual([]);
-		expect(fetchMock).not.toHaveBeenCalled();
+		w.generate();
+		expect(w.open).toBe(true);
+		expect(w.photoComparison).toMatchObject({ replyId: 'a1', index: null });
+		await vi.waitFor(() => expect(w.photoComparison?.pending).toEqual([]));
+		const [a, b] = bodies();
+		expect([a.modelId, b.modelId]).toEqual(['img-1', 'img-2']);
+		expect(a.kind).toBe('portrait');
+		expect(a.compare).toBeTypeOf('string');
+		expect(b.compare).toBe(a.compare);
 	});
 
-	it('keeps the dialog up and reports the server reason when a draw is refused', async () => {
+	it('keeps the dialog up and says why when a draw is refused', async () => {
 		fetchMock.mockResolvedValueOnce(
 			new Response(JSON.stringify({ message: 'model gone' }), { status: 400 }),
 		);
-		const { w, draw } = setup();
+		const { w } = setup();
 		w.openDialog();
-		await w.generate();
-		expect(fetchMock).toHaveBeenCalledWith(
-			'/api/conversations/A/avatar/generate',
-			expect.objectContaining({ method: 'POST' }),
-		);
+		w.generate();
+		await vi.waitFor(() => expect(toasts.error).toHaveBeenCalledWith('model gone'));
 		expect(w.open).toBe(true);
-		expect(draw.reportFailure).toHaveBeenCalledWith('A', 'model gone');
-		expect(draw.end).toHaveBeenCalledWith('A');
+	});
+});
+
+describe('removing a portrait', () => {
+	const thread = (images: MessageImage[]) => [
+		msg('u1', 'user', null, text('Describe yourself')),
+		{ ...msg('a1', 'assistant', 'u1', text('a red fox')), images },
+	];
+	const urls = () =>
+		fetchMock.mock.calls.map(
+			([url, init]) => [url as string, (init as RequestInit | undefined)?.method] as const,
+		);
+
+	it('moves the face to the version now on show when it was the face', async () => {
+		const page = { images: [portrait('p1', { shown: true }), portrait('p2')] };
+		const {
+			w,
+			page: p,
+			refreshPhotos,
+		} = setup({
+			messages: thread(page.images),
+			face: 'media-p1',
+		});
+		// The page's refresh: p1 has gone to the trash, p2 shows in its place.
+		refreshPhotos.mockImplementation(async () => {
+			p.messages = thread([portrait('p2', { shown: true })]);
+		});
+		await w.removePhoto('a1', page.images[0]);
+		expect(urls()).toEqual([
+			['/api/media/media-p1', 'DELETE'],
+			['/api/conversations/A/photos/p2', 'PATCH'],
+		]);
 	});
 
-	it('does not start a second draw over one already running', async () => {
-		const { w, draw } = setup();
-		draw.status = 'Drawing…';
-		w.openDialog();
-		await w.generate();
-		expect(fetchMock).not.toHaveBeenCalled();
+	it('goes back to the preset’s face when none is left', async () => {
+		const only = portrait('p1', { shown: true });
+		const { w, page, refreshPhotos } = setup({ messages: thread([only]), face: 'media-p1' });
+		refreshPhotos.mockImplementation(async () => {
+			page.messages = thread([]);
+		});
+		await w.removePhoto('a1', only);
+		expect(urls()).toEqual([
+			['/api/media/media-p1', 'DELETE'],
+			['/api/conversations/A/avatar', 'DELETE'],
+		]);
+	});
+
+	it('leaves the face alone when the version removed wasn’t it', async () => {
+		const images = [portrait('p1', { shown: true }), portrait('p2')];
+		const { w } = setup({ messages: thread(images), face: 'media-elsewhere' });
+		await w.removePhoto('a1', images[0]);
+		expect(urls()).toEqual([['/api/media/media-p1', 'DELETE']]);
 	});
 });
 
@@ -215,7 +298,8 @@ describe('drawing across a conversation switch', () => {
 			w.openDialog();
 			return new Response(new ReadableStream({ start: (c) => c.close() }));
 		});
-		await w.generate();
+		w.generate();
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
 		expect(w.open).toBe(true);
 	});
 });
@@ -253,11 +337,11 @@ describe('developing a texting photo', () => {
 		);
 
 	it('develops on the reply, with the marker and the shape, and closes once accepted', async () => {
-		const { w, draw, refreshPhotos } = setup({ messages: thread });
+		const { w, refreshPhotos } = setup({ messages: thread });
 		w.openPhotoDialog({ replyId: 'r1', index: 1 }, 'the view');
 		expect(w.prompt).toBe('the view');
 		w.aspectRatio = '16:9';
-		await w.generate();
+		w.generate();
 		await vi.waitFor(() => expect(w.open).toBe(false));
 		expect(fetchMock.mock.calls[0][0]).toBe('/api/conversations/A/photos');
 		expect(bodies()[0]).toEqual({
@@ -268,8 +352,8 @@ describe('developing a texting photo', () => {
 			enhance: false,
 			aspectRatio: '16:9',
 		});
-		// No avatar ring: nothing in the thread is waiting on this.
-		expect(draw.begin).not.toHaveBeenCalled();
+		// A photo isn't the avatar: the header says nothing of it.
+		expect(w.portraitStatus).toBeNull();
 		await vi.waitFor(() => expect(refreshPhotos).toHaveBeenCalledWith(['r1']));
 	});
 
@@ -280,7 +364,7 @@ describe('developing a texting photo', () => {
 		);
 		const { w } = setup({ messages: thread });
 		w.openPhotoDialog({ replyId: 'r1', index: 0 }, 'me, 3:4');
-		await w.generate();
+		w.generate();
 		expect(w.isDeveloping('r1', 0)).toBe(true);
 		expect(w.isDeveloping('r1', 1)).toBe(false);
 		finish();
@@ -294,26 +378,25 @@ describe('developing a texting photo', () => {
 		);
 		const { w } = setup({ messages: thread });
 		w.openPhotoDialog({ replyId: 'r1', index: 0 }, 'me, 3:4');
-		await w.generate();
+		w.generate();
 		expect(w.photoSubmitting).toBe(true);
 		expect(w.developingFor('r1')).toEqual(new Set([0]));
-		await w.generate();
+		w.generate();
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		answer();
 		await vi.waitFor(() => expect(w.photoSubmitting).toBe(false));
 	});
 
 	it('compares in the dialog: a draw per model, sharing an id, results kept apart', async () => {
-		const { w, fanout } = setup({ messages: thread });
+		const { w } = setup({ messages: thread });
 		w.openPhotoDialog({ replyId: 'r1', index: 1 }, 'the view');
 		// Always on offer — the thread having moved on doesn't matter.
-		expect(w.canCompare).toBe(true);
 		w.compareMode = true;
 		w.compareSelections = [
 			{ modelId: 'img-1', count: 1 },
 			{ modelId: 'img-2', count: 1 },
 		];
-		await w.generate();
+		w.generate();
 		expect(w.open).toBe(true);
 		expect(w.photoComparison).toMatchObject({ replyId: 'r1', index: 1, conversationId: 'A' });
 		// What the photo had before, so the dialog shows only what this adds.
@@ -323,7 +406,6 @@ describe('developing a texting photo', () => {
 		expect([a.modelId, b.modelId]).toEqual(['img-1', 'img-2']);
 		expect(a.compare).toBeTypeOf('string');
 		expect(b.compare).toBe(a.compare);
-		expect(fanout.sendAvatarDraw).not.toHaveBeenCalled();
 	});
 
 	it('picks a comparison’s result, counting it, and closes the dialog', async () => {
@@ -377,7 +459,7 @@ describe('developing a texting photo', () => {
 		const { w } = setup();
 		w.openPhotoDialog({ replyId: 'a1', index: 0 }, 'x');
 		w.openDialog();
-		expect(w.photo).toBe(null);
+		expect(w.photo).toEqual({ replyId: 'a1', index: null });
 		expect(w.prompt).toBe('a red fox');
 	});
 });

@@ -980,10 +980,11 @@ export async function serializeBranchForUpstream(
  *     alongside a call. The relay breaks before executing anything, so the call
  *     is persisted with no answer and stays that way. This predates reactions
  *     and applies to every tool.
- *   - A row whose answering `tool` message is off the active branch. Parking an
- *     avatar comparison rewinds the leaf past it; a portrait attaches as a
- *     sibling and takes the leaf with it. The assistant row stays, its `tool`
- *     child doesn't.
+ *   - A row whose answering `tool` message is off the active branch. Before
+ *     portraits moved onto their reply, one attached as a sibling of that row
+ *     and took the leaf with it (and parking an avatar comparison rewound the
+ *     leaf past it); conversations from then keep that shape. The assistant row
+ *     stays, its `tool` child doesn't.
  *
  * Dropping is the right repair rather than synthesizing a placeholder result:
  * the tool genuinely didn't run, and inventing an answer would teach the model

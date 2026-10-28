@@ -17,8 +17,7 @@ import {
 	filterInFlight,
 	getInFlightEntries,
 	conversationTurnEntries,
-	AVATAR_BRANCH,
-	getAvatarDrawSince,
+	PHOTO_BRANCH_PREFIX,
 	getInFlightGeneratingSince,
 	getInFlightSince,
 	registerInFlight,
@@ -42,6 +41,9 @@ function endpoint(id: string): LoadedEndpoint {
 afterEach(() => {
 	resetInFlight();
 });
+
+/** A portrait or photo drawing onto a reply: a side errand, never a turn. */
+const DRAW = `${PHOTO_BRANCH_PREFIX}job1`;
 
 describe('registerInFlight', () => {
 	it('returns an entry with a fresh AbortController and current start time', () => {
@@ -169,9 +171,9 @@ describe('getInFlightGeneratingSince', () => {
 		expect(getInFlightGeneratingSince('c1')).toBe(2000);
 	});
 
-	it('ignores an avatar draw holding the GPU while the turn itself queues', () => {
+	it('ignores a portrait draw holding the GPU while the turn itself queues', () => {
 		registerInFlight('c1', endpoint('a'));
-		const draw = registerInFlight('c1', endpoint('a'), AVATAR_BRANCH, null, null, null, false);
+		const draw = registerInFlight('c1', endpoint('a'), DRAW, null, null, null, false);
 		draw.generationStartedAt = 5000;
 		expect(getInFlightGeneratingSince('c1')).toBeNull();
 	});
@@ -230,10 +232,10 @@ describe('filterFullyQueued', () => {
 		expect(filterFullyQueued(['c1'])).toEqual([]);
 	});
 
-	it('counts an avatar draw like any other branch', () => {
+	it('counts a portrait draw like any other branch', () => {
 		// Matches filterInFlight, which deliberately includes side errands: the
 		// row it marks is the same row, and a draw waiting at the gate is queued.
-		registerInFlight('c1', endpoint('a'), AVATAR_BRANCH, null, null, null, false);
+		registerInFlight('c1', endpoint('a'), DRAW, null, null, null, false);
 		expect(filterFullyQueued(['c1'])).toEqual(['c1']);
 	});
 
@@ -274,31 +276,23 @@ describe('resetInFlight', () => {
 });
 
 describe('conversationTurnEntries', () => {
-	it("excludes an avatar draw from the conversation's turn", () => {
+	it("excludes a portrait draw from the conversation's turn", () => {
 		// Two consumers ask "is the turn done": the fan-out recovery grid and the
 		// aggregate notification. Counting a side errand makes the grid grow a
 		// phantom column that blocks picking, and makes the notification never
 		// fire — no branch ever finds the registry empty.
 		const branch = registerInFlight('c1', endpoint('a'), 'br0', 'chat', 'e::m');
-		// Registered exactly as the avatar route does: its own key AND isTurn=false.
+		// Registered exactly as a portrait draw is: its own key AND isTurn=false.
 		// The key alone is not what excludes it — the flag is, so the next side
 		// errand is excluded by default rather than silently readmitted.
-		const avatar = registerInFlight(
-			'c1',
-			endpoint('a'),
-			AVATAR_BRANCH,
-			'image',
-			'e::img',
-			null,
-			false,
-		);
+		const portrait = registerInFlight('c1', endpoint('a'), DRAW, 'image', 'e::img', null, false);
 
-		expect(new Set(getInFlightEntries('c1'))).toEqual(new Set([branch, avatar]));
+		expect(new Set(getInFlightEntries('c1'))).toEqual(new Set([branch, portrait]));
 		expect(conversationTurnEntries('c1')).toEqual([branch]);
 	});
 
-	it('is empty once only the avatar draw remains', () => {
-		registerInFlight('c1', endpoint('a'), AVATAR_BRANCH, 'image', 'e::img', null, false);
+	it('is empty once only the portrait draw remains', () => {
+		registerInFlight('c1', endpoint('a'), DRAW, 'image', 'e::img', null, false);
 		expect(conversationTurnEntries('c1')).toEqual([]);
 	});
 
@@ -307,78 +301,5 @@ describe('conversationTurnEntries', () => {
 		// makes something a side errand.
 		const branch = registerInFlight('c1', endpoint('a'), 'br7', 'chat', 'e::m');
 		expect(conversationTurnEntries('c1')).toEqual([branch]);
-	});
-});
-
-describe('getAvatarDrawSince', () => {
-	// The two readings are complementary by design and the pair is the contract:
-	// a draw must be invisible to the turn machinery (or it raises a phantom
-	// "Generating…" bubble and wedges that poll) and visible to the header ring
-	// (or a suspended draw silently disappears for the minutes it has left).
-	it('reports a draw that getInFlightSince deliberately hides', () => {
-		const before = Date.now();
-		registerInFlight('c1', endpoint('a'), AVATAR_BRANCH, 'image', 'e::img', null, false);
-
-		expect(getInFlightSince('c1')).toBeNull();
-		expect(getAvatarDrawSince('c1')).toBeGreaterThanOrEqual(before);
-	});
-
-	it('is null for a conversation whose only work IS a turn', () => {
-		registerInFlight('c1', endpoint('a'));
-		expect(getInFlightSince('c1')).not.toBeNull();
-		expect(getAvatarDrawSince('c1')).toBeNull();
-	});
-
-	it('is null for a conversation with nothing running', () => {
-		expect(getAvatarDrawSince('nope')).toBeNull();
-	});
-
-	it('reports each conversation separately', () => {
-		registerInFlight('c1', endpoint('a'), AVATAR_BRANCH, 'image', 'e::img', null, false);
-		expect(getAvatarDrawSince('c2')).toBeNull();
-	});
-
-	it('goes back to null once the draw is cleared', () => {
-		// The client's poll terminates only on null, so a lingering entry is a
-		// permanently spinning ring and a permanently disabled Draw button.
-		const avatar = registerInFlight(
-			'c1',
-			endpoint('a'),
-			AVATAR_BRANCH,
-			'image',
-			'e::img',
-			null,
-			false,
-		);
-		clearInFlight('c1', avatar);
-		expect(getAvatarDrawSince('c1')).toBeNull();
-	});
-
-	it('follows the superseding draw when a second one takes the slot', () => {
-		const first = registerInFlight(
-			'c1',
-			endpoint('a'),
-			AVATAR_BRANCH,
-			'image',
-			'e::img',
-			null,
-			false,
-		);
-		const second = registerInFlight(
-			'c1',
-			endpoint('a'),
-			AVATAR_BRANCH,
-			'image',
-			'e::img',
-			null,
-			false,
-		);
-		expect(first.controller.signal.aborted).toBe(true);
-		expect(getAvatarDrawSince('c1')).toBe(second.startedAt);
-
-		// And the loser's clear is a no-op — identity-guarded, so the aborted
-		// first draw's `finally` can't switch the ring off on the live second one.
-		clearInFlight('c1', first);
-		expect(getAvatarDrawSince('c1')).toBe(second.startedAt);
 	});
 });

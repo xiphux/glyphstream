@@ -18,14 +18,13 @@ import { tick } from 'svelte';
 import { refreshAll } from '$app/navigation';
 import { isAbortError } from './abort';
 import { appendReasoning, appendText } from './chat-render';
-import { buildAvatarBranchBody, buildFanoutBranchBody } from './chat-send-body';
+import { buildFanoutBranchBody } from './chat-send-body';
 import { consumeChatStream } from './consume-chat-stream';
 import {
 	allColumnsSettled,
 	collapseToCompareSelections,
 	isMediaKind,
 	MAX_FANOUT_BRANCHES_PER_CONVERSATION,
-	nextDispatchIndex,
 	rerollInsertIndex,
 	type FanoutBranchSpec,
 	type FanoutColumn,
@@ -40,8 +39,6 @@ import type {
 	MessagePart,
 	ModelEntry,
 	ModelKind,
-	PrepareAvatarDrawRequest,
-	PrepareAvatarDrawResponse,
 	PrepareFanoutRequest,
 	PrepareFanoutResponse,
 } from './types/api';
@@ -69,12 +66,6 @@ export interface FanoutDeps {
 	/** Clear the suspend/offline flags (turn start + recovery handoff). */
 	clearInterruptedFlags(): void;
 	scrollToBottom(): void;
-}
-
-/** What a dispatch loop's branches ARE, snapshotted when the loop starts rather
- *  than read per branch — see `#dispatchColumns`. */
-interface DispatchMode {
-	mode: 'turn' | 'avatar';
 }
 
 /** branchId prefix for the server-driven "Generating…" placeholder columns of a
@@ -124,10 +115,8 @@ export class FanoutController {
 	/** A pick/dismiss/discard request is in flight. Re-rolls deliberately don't
 	 *  take this lock — they're per-column + additive (see `regenerate`). */
 	picking = $state(false);
-	/** The anchor of the live/parked fan-out — discard/regenerate reparent new
-	 *  branches to it. The shared user message for a turn fan-out; the appearance
-	 *  description, an ASSISTANT message, for an avatar comparison. Null when no
-	 *  comparison is active. (Name kept for the turn case it was written for.) */
+	/** The shared user message of the live/parked fan-out — discard/regenerate
+	 *  reparent new branches to it. Null when no comparison is active. */
 	userMessageId = $state<string | null>(null);
 	/** True while THIS client is driving the fan-out (owns the branch fetches).
 	 *  False once recovered from server truth after a reload / disconnect, so the
@@ -138,18 +127,6 @@ export class FanoutController {
 	/** Monotonic suffix for additive re-roll branchIds, so each new variation
 	 *  column gets a stable, collision-free key for the grid's keyed `{#each}`. */
 	#nextRerollSeq = 0;
-	/**
-	 * What the columns ARE: candidate replies to a shared user message (a turn
-	 * fan-out), or candidate portraits for the conversation's face (an avatar
-	 * comparison, anchored on the appearance description instead).
-	 *
-	 * One controller rather than two because everything between dispatch and
-	 * resolution — streaming, stop, discard, the abort registry, server-truth
-	 * recovery and its poll — is the same machinery. Only the dispatch endpoint
-	 * and what a pick MEANS differ, and both read this.
-	 */
-	#mode = $state<'turn' | 'avatar'>('turn');
-
 	comparing = $derived(this.columns.length > 0);
 	streaming = $derived(this.columns.some((c) => c.status === 'queued' || c.status === 'streaming'));
 	/**
@@ -171,14 +148,10 @@ export class FanoutController {
 	columnsSettled = $derived(this.columns.length > 0 && allColumnsSettled(this.columns));
 	/** Image/video fan-out is keep-many (prune + regenerate); chat is pick-one. */
 	isMedia = $derived(this.columns.some((c) => isMediaKind(c.modelKind)));
-	/** An avatar comparison: keep-many like any image grid, but ALSO pick-one —
-	 *  the pick adopts a face rather than continuing the thread with that model. */
-	isAvatar = $derived(this.#mode === 'avatar');
-	/** Whether `col` can be re-rolled. Always, for a turn fan-out (the server
-	 *  re-derives the prompt from the shared user message); for an avatar column
-	 *  only when it knows what drew it — see `FanoutColumn.avatarPrompt`. */
-	canRegenerate(col: FanoutColumn): boolean {
-		return this.#mode === 'turn' || col.avatarPrompt !== null;
+	/** Whether `col` can be re-rolled: always — the server re-derives the
+	 *  prompt from the shared user message. */
+	canRegenerate(_col: FanoutColumn): boolean {
+		return true;
 	}
 
 	constructor(deps: FanoutDeps) {
@@ -254,9 +227,6 @@ export class FanoutController {
 				// Read back off the row so a re-roll fired from a RECOVERED grid
 				// inherits its source's grid position, exactly as a live one does.
 				dispatchIndex: m.fanoutIndex ?? null,
-				// Set only for an avatar comparison's portraits; a failed one has no
-				// media row to read it off, so it can't be re-rolled once recovered.
-				avatarPrompt: m.avatarPrompt ?? null,
 				persisted: m,
 				error: errPart?.message ?? null,
 				errorMessageId: errPart ? m.id : null,
@@ -291,8 +261,6 @@ export class FanoutController {
 			// already render after the settled columns; see #buildRecoveredColumns'
 			// return.
 			dispatchIndex: null,
-			// No media row yet. It gets one when it lands and the grid rebuilds.
-			avatarPrompt: null,
 			persisted: null,
 			error: null,
 			errorMessageId: null,
@@ -334,12 +302,6 @@ export class FanoutController {
 		}
 		const turnConvId = this.#deps.convId();
 		const isFirstExchange = this.#deps.messageCount() === 0;
-		// Claim the mode, don't assume it. The controller outlives any one
-		// comparison, and a resolved avatar grid leaves `#mode` where it was — so
-		// without this, the first ordinary fan-out after one would post its branches
-		// to the avatar route. Set at every entry point rather than cleared at every
-		// exit, so a new exit can't quietly reintroduce it.
-		this.#mode = 'turn';
 		this.#deps.setBusy(true);
 		this.#deps.setError(null);
 		// Clear the suspend/offline flags for this turn (mirrors ChatTurnController.send()).
@@ -395,7 +357,6 @@ export class FanoutController {
 			startedAt: null,
 			inputMediaId: b.inputMediaId,
 			aspectRatio,
-			avatarPrompt: null,
 			persisted: null,
 			error: null,
 			errorMessageId: null,
@@ -455,31 +416,12 @@ export class FanoutController {
 	 * `acquireEndpointSlot` first wins the line. Granted branches stream in the
 	 * background while the rest dispatch, so this only orders the sub-millisecond
 	 * enqueue, not the generation.
-	 *
-	 * Takes the columns explicitly rather than reading `this.columns`: an avatar
-	 * grid is seeded with the portraits already drawn from this description, and
-	 * those are results, not branches to dispatch.
 	 */
 	async #dispatchColumns(
 		turnConvId: string,
 		parentMessageId: string,
 		cols: readonly FanoutColumn[],
 	): Promise<void> {
-		// Snapshot what these branches ARE, once, instead of letting each read the
-		// live fields. The loop dispatches one at a time — each waits for the prior
-		// to reach the endpoint gate — and a conversation switch runs `teardown()`
-		// in that gap, which resets `#mode`. Read fresh, a
-		// not-yet-dispatched avatar branch would build a TURN body against its
-		// assistant anchor, which /messages refuses with a 400; and nobody would
-		// ever see it, because the resolution below has already bailed on the
-		// conversation change. The user would just get fewer candidates than they
-		// asked for, silently.
-		//
-		// Aborting doesn't save us either: `markEnqueued` is in `#runBranch`'s
-		// `finally` precisely so a branch that dies before its first event still
-		// releases the sequence — so `teardown()`'s aborts ADVANCE this loop rather
-		// than stopping it.
-		const dispatch: DispatchMode = { mode: this.#mode };
 		const branchRuns: Array<Promise<ChatMessage | null>> = [];
 		for (const col of cols) {
 			let signalEnqueued!: () => void;
@@ -490,152 +432,11 @@ export class FanoutController {
 				this.#runBranch(turnConvId, parentMessageId, col, {
 					onEnqueued: signalEnqueued,
 					fanoutSize: cols.length,
-					dispatch,
 				}),
 			);
 			await enqueued;
 		}
 		await Promise.all(branchRuns);
-	}
-
-	/**
-	 * Fan an avatar draw out to N image models: one candidate portrait per branch,
-	 * all hanging off the appearance description, compared in the same grid every
-	 * other fan-out uses.
-	 *
-	 * `../avatar/prepare` stands in for `/messages/prepare`: there's no user
-	 * message to create (the description is the anchor and already exists), but
-	 * the fan-out marker still has to be parked once before any branch, and it
-	 * returns the portraits already drawn from this description. Those are seeded
-	 * as settled columns, so a re-roll compares the new models against what you
-	 * already had — and so the live grid matches what the server-truth rebuild
-	 * produces after a reload, which is every assistant child of the anchor.
-	 *
-	 * The single-model draw does NOT come through here. It stays a background side
-	 * errand that applies its own result server-side (see the generate route);
-	 * asking for a second model is what turns the draw into a decision.
-	 */
-	async sendAvatarDraw(input: {
-		sourceMessageId: string;
-		/** The reviewed prompt from the draw dialog, not the anchor's raw text. */
-		prompt: string;
-		enhance: boolean;
-		branches: readonly FanoutModel[];
-	}): Promise<void> {
-		if (input.branches.length > MAX_FANOUT_BRANCHES_PER_CONVERSATION) {
-			this.#deps.setError(
-				`Too many variations: ${input.branches.length} exceeds the limit of ${MAX_FANOUT_BRANCHES_PER_CONVERSATION}. Reduce the number of models.`,
-			);
-			return;
-		}
-		const turnConvId = this.#deps.convId();
-		this.#deps.setBusy(true);
-		this.#deps.setError(null);
-		// As in `send`: a stale suspend/offline flag from an earlier turn would make
-		// runBranch misclassify a genuine branch failure as "Generating…".
-		this.#deps.clearInterruptedFlags();
-
-		// Park the comparison and collect the portraits already drawn here. A
-		// refusal (the conversation has continued past the description) lands
-		// before anything has been dispatched or shown, so the dialog's caller can
-		// surface it and nothing has moved.
-		let existingPortraits: ChatMessage[];
-		try {
-			const res = await fetch(`/api/conversations/${turnConvId}/avatar/prepare`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					sourceMessageId: input.sourceMessageId,
-				} satisfies PrepareAvatarDrawRequest),
-			});
-			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
-			existingPortraits = ((await res.json()) as PrepareAvatarDrawResponse).siblings;
-		} catch (e) {
-			if (this.#deps.convId() === turnConvId) {
-				this.#deps.setError(e instanceof Error ? e.message : String(e));
-			}
-			this.#deps.setBusy(false);
-			return;
-		}
-		if (this.#deps.convId() !== turnConvId) {
-			this.#deps.setBusy(false);
-			return;
-		}
-
-		this.#mode = 'avatar';
-		const avatarPrompt = { prompt: input.prompt, enhance: input.enhance };
-		this.userMessageId = input.sourceMessageId;
-		this.live = true;
-
-		const seeded = this.#buildRecoveredColumns(existingPortraits, [], 'image');
-		// Continue past whatever's already under this anchor rather than restarting
-		// at 0. An avatar comparison hangs off a REUSED assistant message, so a
-		// second draw round's portraits are siblings of the first round's — numbered
-		// from 0 again they'd interleave with them in a recovered grid instead of
-		// following them. A turn fan-out has a fresh anchor, so its base is always 0.
-		const indexBase = nextDispatchIndex(seeded);
-		const fresh: FanoutColumn[] = input.branches.map((b, i) => ({
-			branchId: `${input.sourceMessageId}:avatar:${i}`,
-			dispatchIndex: indexBase + i,
-			modelId: b.modelId,
-			modelKind: b.modelKind,
-			label: b.displayName,
-			segments: [],
-			status: 'queued' as const,
-			queuedAhead: 0,
-			dispatching: true,
-			progress: null,
-			statusLabel: null,
-			startedAt: null,
-			inputMediaId: null,
-			// Avatar portraits are pinned square server-side, not picked here.
-			aspectRatio: null,
-			avatarPrompt,
-			persisted: null,
-			error: null,
-			errorMessageId: null,
-		}));
-		this.columns = [...seeded, ...fresh];
-		await tick();
-		this.#deps.scrollToBottom();
-		// The grid keeps the composer parked until the user resolves it; the
-		// per-turn `busy` flag can release. (No title spinner: an avatar draw never
-		// names the conversation — the route passes suppressTitleTask.)
-		this.#deps.setBusy(false);
-
-		// Dispatch only the new branches — `seeded` are already-persisted results.
-		//
-		// Drive the PROXIED elements, not the `fresh` objects they were built from.
-		// Assigning the array into `$state` is what makes its elements reactive, and
-		// a branch drives its column by mutating it (status, segments, persisted).
-		// Handed the raw objects, every one of those writes lands somewhere
-		// `this.columns` never sees: the grid stays on "Starting…" forever, and the
-		// resolution below reads back two branches that produced nothing, wipes the
-		// comparison and reports that no model drew anything — for a draw that in
-		// fact succeeded twice. `send` avoids this by iterating `this.columns`, and
-		// `regenerate` says so at its own insertion point.
-		await this.#dispatchColumns(
-			turnConvId,
-			input.sourceMessageId,
-			this.columns.slice(seeded.length),
-		);
-		if (this.#deps.convId() !== turnConvId) return;
-		if (!this.live) return;
-		if (this.columns.some((c) => c.status === 'cancelled')) return;
-		// Nothing survived — including any portrait we seeded, since a failed draw
-		// leaves the grid with only error columns to discard. Drop it and say so;
-		// keep-many means we never auto-promote here the way a chat fan-out does.
-		if (!this.columns.some((c) => c.persisted)) {
-			this.columns = [];
-			this.userMessageId = null;
-			this.live = false;
-			this.#deps.setError('No model produced an image. Try again, or pick another model.');
-			try {
-				await refreshAll();
-			} catch {
-				// Best-effort re-sync; the error is already surfaced above.
-			}
-		}
 	}
 
 	/** Drive one fan-out branch into its column's state. Every kind streams over
@@ -650,9 +451,6 @@ export class FanoutController {
 			reroll?: boolean;
 			onEnqueued?: () => void;
 			fanoutSize?: number;
-			/** The dispatch loop's snapshot. Absent for `regenerate`, which fires a
-			 *  lone branch with no await ahead of it and so wants the live fields. */
-			dispatch?: DispatchMode;
 		},
 	): Promise<ChatMessage | null> {
 		const abort = new AbortController();
@@ -671,40 +469,18 @@ export class FanoutController {
 			opts?.onEnqueued?.();
 		};
 		try {
-			// Two endpoints, one streaming contract: an avatar branch anchors on an
-			// assistant message, which the messages route refuses as a fan-out
-			// parent, so it goes to the avatar route instead. Both speak the same
-			// SSE, which is why everything below this line is shared.
-			const { mode } = opts?.dispatch ?? { mode: this.#mode };
-			const avatar = col.avatarPrompt;
-			// Unreachable through the UI (`canRegenerate` keeps the control disabled
-			// or hidden), but a turn body posted for an avatar branch would anchor on
-			// the description.
-			if (mode === 'avatar' && !avatar) throw new Error('Nothing to draw this portrait from');
-			const url =
-				mode === 'avatar'
-					? `/api/conversations/${turnConvId}/avatar/generate`
-					: `/api/conversations/${turnConvId}/messages?stream=1`;
+			const url = `/api/conversations/${turnConvId}/messages?stream=1`;
 			const body = JSON.stringify(
-				mode === 'avatar' && avatar
-					? buildAvatarBranchBody({
-							sourceMessageId: userMessageId,
-							modelId: col.modelId,
-							prompt: avatar.prompt,
-							enhance: avatar.enhance,
-							fanoutSize: opts?.fanoutSize,
-							branchIndex: col.dispatchIndex,
-						})
-					: buildFanoutBranchBody({
-							parentMessageId: userMessageId,
-							modelId: col.modelId,
-							modelKind: col.modelKind,
-							inputMediaId: col.inputMediaId,
-							aspectRatio: col.aspectRatio ?? undefined,
-							reroll: opts?.reroll,
-							fanoutSize: opts?.fanoutSize,
-							branchIndex: col.dispatchIndex,
-						}),
+				buildFanoutBranchBody({
+					parentMessageId: userMessageId,
+					modelId: col.modelId,
+					modelKind: col.modelKind,
+					inputMediaId: col.inputMediaId,
+					aspectRatio: col.aspectRatio ?? undefined,
+					reroll: opts?.reroll,
+					fanoutSize: opts?.fanoutSize,
+					branchIndex: col.dispatchIndex,
+				}),
 			);
 			const res = await fetch(url, {
 				method: 'POST',
@@ -846,19 +622,12 @@ export class FanoutController {
 	/**
 	 * Promote a column to the active thread: select its branch, drop the compare
 	 * view, and continue the conversation with that model.
-	 *
-	 * In avatar mode it also makes that portrait the conversation's face, and
-	 * doesn't touch the picker — the image model drew a portrait, it didn't become
-	 * the model this chat talks to. Both halves go through one endpoint so a
-	 * half-landed pick can't leave the header wearing a face from a branch the
-	 * thread isn't on.
 	 */
 	async pick(col: FanoutColumn): Promise<void> {
 		if (!col.persisted || this.picking) return;
 		this.picking = true;
 		const convId = this.#deps.convId();
 		const targetId = col.persisted.id;
-		const avatarMode = this.#mode === 'avatar';
 		// Clear optimistically (avoids a flash of columns + linear bubble during
 		// the invalidate), but keep a copy to restore if the select or refetch
 		// fails — otherwise a network error would wipe the compare view with no
@@ -866,17 +635,11 @@ export class FanoutController {
 		const savedColumns = this.columns;
 		this.columns = [];
 		try {
-			const res = avatarMode
-				? await fetch(`/api/conversations/${convId}/avatar/pick`, {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({ messageId: targetId }),
-					})
-				: // `pick=1`: an explicit pick, which the model stats count as a win —
-					// unlike Done and ‹N/M›, which hit the same endpoint without it.
-					await fetch(`/api/conversations/${convId}/messages/${targetId}/select?pick=1`, {
-						method: 'POST',
-					});
+			// `pick=1`: an explicit pick, which the model stats count as a win —
+			// unlike Done and ‹N/M›, which hit the same endpoint without it.
+			const res = await fetch(`/api/conversations/${convId}/messages/${targetId}/select?pick=1`, {
+				method: 'POST',
+			});
 			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			// The user may have opened another conversation while this saved; the
 			// pick still landed server-side, but nothing below belongs on screen.
@@ -884,14 +647,12 @@ export class FanoutController {
 			this.#deps.setStreamedMessageId(targetId);
 			await refreshAll();
 			if (this.#deps.convId() !== convId) return;
-			if (!avatarMode) {
-				// Continue with the chosen model — the picker reflects it now and the
-				// next send persists it. tick() lets the data-sync effect (which resets
-				// modelId from the unchanged conversation row) flush first so this wins.
-				await tick();
-				if (this.#deps.convId() !== convId) return;
-				this.#deps.setActiveModel(col.modelId, col.modelKind);
-			}
+			// Continue with the chosen model — the picker reflects it now and the
+			// next send persists it. tick() lets the data-sync effect (which resets
+			// modelId from the unchanged conversation row) flush first so this wins.
+			await tick();
+			if (this.#deps.convId() !== convId) return;
+			this.#deps.setActiveModel(col.modelId, col.modelKind);
 			this.userMessageId = null;
 			this.live = false;
 		} catch (e) {
@@ -1008,9 +769,6 @@ export class FanoutController {
 		// disables at the active-branch cap) + server-side (429); a click slipping
 		// past is a harmless no-op rather than something to error on here.
 		if (!this.userMessageId || this.picking) return;
-		// An avatar column with no known prompt (a recovered failure) has nothing
-		// to re-roll with; the grid hides the control, and this is the backstop.
-		if (!this.canRegenerate(col)) return;
 		const convId = this.#deps.convId();
 		const newColumn: FanoutColumn = {
 			branchId: `reroll:${this.userMessageId}:${this.#nextRerollSeq++}`,
@@ -1031,8 +789,6 @@ export class FanoutController {
 			inputMediaId: col.inputMediaId,
 			// Inherited from the source column, so a re-roll reproduces its shape.
 			aspectRatio: col.aspectRatio,
-			// Likewise its prompt: "again with this model" means what drew THIS one.
-			avatarPrompt: col.avatarPrompt,
 			persisted: null,
 			error: null,
 			errorMessageId: null,
@@ -1085,10 +841,6 @@ export class FanoutController {
 		this.columns = [];
 		this.userMessageId = null;
 		this.live = false;
-		// The comparison we're leaving belongs to a conversation we're no longer
-		// on. The next rebuild re-establishes `#mode` anyway; this just stops it
-		// sitting around stale in between.
-		this.#mode = 'turn';
 		// The next conversation's recovery state is applied however it compares.
 		this.#lastSynced = NOT_SYNCED;
 		// A grid action still in flight belongs to the conversation we're leaving,
@@ -1113,10 +865,6 @@ export class FanoutController {
 	/** Replace the grid with the recovered columns for a parked fan-out. */
 	#rebuildFrom(f: FanoutRecoveryState): void {
 		this.userMessageId = f.parentMessageId;
-		// The mode comes off the wire, not off the columns: a recovered avatar grid
-		// is indistinguishable from an image fan-out by its contents, and getting
-		// this wrong would make "use this face" continue the chat with SDXL.
-		this.#mode = f.avatar ? 'avatar' : 'turn';
 		this.columns = this.#buildRecoveredColumns(f.siblings, pendingBranches(f), f.kind);
 	}
 
@@ -1150,7 +898,6 @@ export class FanoutController {
 			if (this.columns.length > 0) {
 				this.columns = [];
 				this.userMessageId = null;
-				this.#mode = 'turn';
 			}
 			return;
 		}
@@ -1186,9 +933,8 @@ export class FanoutController {
 			polling = true;
 			try {
 				// `?fanout=1` skips the conversation's message walk this poll has no
-				// use for. It carries a few small fields for its several callers
-				// (`fanout`, `inFlightSince`, `avatarDrawSince`); only `fanout` is
-				// read here.
+				// use for. It carries a few small fields for its two callers
+				// (`fanout`, `inFlightSince`); only `fanout` is read here.
 				const have = held.size > 0 ? `&have=${[...held.keys()].join(',')}` : '';
 				const res = await fetch(`/api/conversations/${id}?fanout=1${have}`, {
 					signal: AbortSignal.timeout(RECOVERY_POLL_TIMEOUT_MS),

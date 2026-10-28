@@ -113,40 +113,22 @@ describe('AvatarDrawDialog', () => {
 });
 
 /**
- * Comparing several models is offered from the same dialog, but only where the
- * result can be parked on the description — the page decides that and passes it
- * down. Two models is also the boundary the whole feature turns on: one is a
- * background draw that applies itself, two is a comparison the user resolves.
+ * Comparing several models is offered from the same dialog, always — a
+ * comparison changes nothing in the thread. Two models is the boundary the
+ * feature turns on: one is a draw that goes on show by itself, two is a
+ * comparison the user picks from.
  */
 describe('AvatarDrawDialog — comparing models', () => {
-	it('offers the compare toggle when the page allows it', async () => {
-		render(AvatarDrawDialog, { props: { ...base, canCompare: true } });
+	it('offers the compare toggle', async () => {
+		render(AvatarDrawDialog, { props: base });
 		await userEvent.click(screen.getByLabelText('Select model'));
 		expect(screen.getByText('Multiple')).toBeInTheDocument();
-	});
-
-	it('withholds it, with a reason, once the conversation has moved on', async () => {
-		// Not a silent absence: the control is missing for a reason the user can act
-		// on (draw from the latest reply instead), so the reason is on screen.
-		render(AvatarDrawDialog, {
-			props: {
-				...base,
-				canCompare: false,
-				compareBlockedReason: 'Comparing needs the description to be the latest thing.',
-			},
-		});
-		expect(
-			screen.getByText('Comparing needs the description to be the latest thing.'),
-		).toBeInTheDocument();
-		await userEvent.click(screen.getByLabelText('Select model'));
-		expect(screen.queryByText('Multiple')).toBeNull();
 	});
 
 	it('says how many models will draw once the cart is a real comparison', () => {
 		render(AvatarDrawDialog, {
 			props: {
 				...base,
-				canCompare: true,
 				compareMode: true,
 				compareSelections: [
 					{ modelId: 'mock::flux', count: 1 },
@@ -166,7 +148,6 @@ describe('AvatarDrawDialog — comparing models', () => {
 		render(AvatarDrawDialog, {
 			props: {
 				...base,
-				canCompare: true,
 				compareMode: true,
 				compareSelections: [{ modelId: 'mock::flux', count: 1 }],
 			},

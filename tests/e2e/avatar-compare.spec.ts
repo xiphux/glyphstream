@@ -4,191 +4,117 @@ import { test, expect, type Page } from './fixtures/test';
 import { resetData, sendChatFromHome } from './helpers';
 
 /**
- * Drawing a conversation avatar with several image models at once, and picking
+ * Drawing a conversation avatar, with one image model or several, and picking
  * the one to keep.
  *
  * What only an e2e can say here. The unit tests mock every boundary this flow
- * crosses: the endpoint tests mock the relay and the queries, the controller
- * tests mock fetch. So each half is pinned and the seam between them isn't —
- * and the seam is where this feature actually lives. A comparison PARKS itself
- * (the fan-out marker on the appearance description, the active leaf moved onto
- * it), which is a claim about how the branch walk, the recovery rebuild and the
- * pick interact against a real database. Nothing below stubs any of it.
- *
- * Two specs:
- *   - happy path: two image models draw candidate portraits into the compare
- *     grid; "Use this avatar" adopts one, moves the thread onto its branch, and
- *     leaves the other reachable as a sibling.
- *   - recovery: reload with the comparison still unresolved. The grid has to
- *     come back from server truth AND come back as an AVATAR comparison — the
- *     `avatar` flag is what keeps its pick adopting a face rather than
- *     continuing the chat with an image model, and a reloaded page has nothing
- *     else to tell the two apart.
+ * crosses: the endpoint tests mock the job runner, the workflow tests mock
+ * fetch. So each half is pinned and the seam between them isn't — a portrait
+ * is drawn by a durable job, lands as a version on the reply it was drawn from
+ * (`message_images`), becomes the face server-side, and reaches the page
+ * through the light photo read rather than a reload. Nothing below stubs any
+ * of it.
  *
  * Uses Mock Image + Mock Painter (mock-upstream.mjs). Both return the same 1x1
- * PNG instantly, so the columns settle immediately — the timing-sensitive half
- * of fan-out recovery is fanout.spec.ts's job, not this file's.
+ * PNG instantly, so draws settle immediately.
  */
 
 const DB_PATH = resolve('./tests/.e2e-data/test.db');
 
-/** Read the columns this flow is a claim about, straight from the DB. */
-function conversationRow(id: string): {
-	avatar_media_id: string | null;
-	active_leaf_message_id: string | null;
-	fanout_parent_message_id: string | null;
-} {
+function query<T>(sql: string, ...params: string[]): T {
 	const db = new DatabaseSync(DB_PATH);
 	db.exec('PRAGMA busy_timeout = 5000');
 	try {
-		return db
-			.prepare(
-				`SELECT avatar_media_id, active_leaf_message_id, fanout_parent_message_id
-				 FROM conversations WHERE id = ?`,
-			)
-			.get(id) as ReturnType<typeof conversationRow>;
+		return db.prepare(sql).get(...params) as T;
 	} finally {
 		db.close();
 	}
 }
 
+const face = (convId: string) =>
+	query<{ avatar_media_id: string | null }>(
+		'SELECT avatar_media_id FROM conversations WHERE id = ?',
+		convId,
+	).avatar_media_id;
+const portraitCount = (convId: string) =>
+	query<{ n: number }>(
+		`SELECT COUNT(*) AS n FROM message_images
+		 WHERE conversation_id = ? AND kind = 'portrait' AND media_id IS NOT NULL`,
+		convId,
+	).n;
+const messageCount = (convId: string) =>
+	query<{ n: number }>('SELECT COUNT(*) AS n FROM messages WHERE conversation_id = ?', convId).n;
+
 const avatarMenu = (page: Page) =>
 	page.getByRole('button', { name: /^Avatar for this conversation/ });
+const headerFace = (page: Page) => page.locator('header img[src*="/api/media/"]').first();
 
-/**
- * From a conversation whose latest reply is the appearance description, open
- * the draw dialog and dispatch a comparison across both mock image models.
- */
-async function drawWithTwoModels(page: Page): Promise<void> {
+async function openDrawDialog(page: Page) {
 	await avatarMenu(page).click();
 	await page.getByRole('button', { name: /Draw the latest reply|Draw it again/ }).click();
-
-	// The dialog's picker is filtered to image models. "Multiple" seeds the cart
-	// with the one already selected, so one more click makes it a comparison.
-	// Scoped to the dialog: the composer behind it has a picker too, and only the
-	// TRIGGER is inside — bits-ui portals the dropdown itself to the body, so the
-	// clicks below stay at page level.
 	const dialog = page.getByRole('dialog', { name: 'Draw the avatar' });
 	await expect(dialog).toBeVisible();
-	await dialog.getByLabel('Select model').click();
-	await page.getByRole('button', { name: 'Multiple' }).click();
-	// Not anchored at the end: a row's accessible name carries its capability
-	// pill ("Mock Painter 2I").
-	await page.getByRole('option', { name: /^Mock Painter/ }).click();
-	// Toggle the picker shut rather than pressing Escape — the dialog is listening
-	// for it too, and would close along with the popover.
-	await dialog.getByLabel('Select model').click();
-
-	// The button says what it is about to do — two branches, not one draw.
-	const draw = dialog.getByRole('button', { name: 'Draw with 2 models' });
-	await expect(draw).toBeEnabled();
-	await draw.click();
+	return dialog;
 }
 
 test.beforeEach(() => resetData());
 
-test.describe('flow: comparing avatar models', () => {
-	test('draws a portrait per model, then adopts the one picked', async ({ page }) => {
-		const convId = await sendChatFromHome(page, 'Describe how you look');
-
-		// No avatar yet: the trigger is the placeholder glyph, not an image.
-		await expect(page.locator('header img[src*="/api/media/"]')).toHaveCount(0);
-
-		await drawWithTwoModels(page);
-
-		// The dialog hands off to the grid rather than sitting on top of it.
-		await expect(page.getByRole('dialog', { name: 'Draw the avatar' })).toBeHidden();
-		await expect(page.getByText('Comparing 2 variations')).toBeVisible();
-		const pick = page.getByRole('button', { name: 'Use this avatar' });
-		await expect(pick).toHaveCount(2, { timeout: 15_000 });
-
-		// Re-roll is offered while this page still holds the reviewed prompt. (It
-		// is withheld on a grid recovered from server truth, where that prompt is
-		// gone — the unit tests cover that half; this is the one an e2e can see.)
-		await expect(page.getByRole('button', { name: 'Regenerate' })).toHaveCount(2);
-
-		// Parked while it waits for the user: the marker is set, and the leaf sits
-		// on the description the portraits hang under — which is what makes the
-		// grid recoverable (see the next spec).
-		const parked = conversationRow(convId);
-		expect(parked.fanout_parent_message_id).not.toBeNull();
-		expect(parked.active_leaf_message_id).toBe(parked.fanout_parent_message_id);
-		expect(parked.avatar_media_id).toBeNull(); // nothing applied on arrival
-
-		// Adopt the second candidate.
-		await pick.nth(1).click();
-
-		// The grid goes; the header is wearing a face.
-		await expect(page.getByText('Comparing 2 variations')).toBeHidden();
-		await expect(page.locator('header img[src*="/api/media/"]').first()).toBeVisible();
-
-		const picked = conversationRow(convId);
-		expect(picked.avatar_media_id).not.toBeNull();
-		// The comparison is resolved (marker cleared) and the thread has moved onto
-		// the chosen branch, so the next message continues from the face picked.
-		expect(picked.fanout_parent_message_id).toBeNull();
-		expect(picked.active_leaf_message_id).not.toBe(parked.active_leaf_message_id);
-
-		// The loser is kept, not pruned: both portraits are still siblings under the
-		// description, which is what the ‹N/M› arrows navigate.
-		const db = new DatabaseSync(DB_PATH);
-		try {
-			const siblings = db
-				.prepare(
-					`SELECT COUNT(*) AS n FROM messages
-					 WHERE conversation_id = ? AND parent_message_id = ? AND role = 'assistant'`,
-				)
-				.get(convId, parked.fanout_parent_message_id) as { n: number };
-			expect(siblings.n).toBe(2);
-		} finally {
-			db.close();
-		}
-
-		// And the composer is usable again — a parked comparison holds it, so this
-		// is the observable end of the whole interaction.
-		await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
-	});
-
-	test('rebuilds an unresolved comparison as a comparison, not a chat fan-out', async ({
+test.describe('flow: drawing the avatar', () => {
+	test('draws a portrait onto the reply and wears it, leaving the thread alone', async ({
 		page,
 	}) => {
 		const convId = await sendChatFromHome(page, 'Describe how you look');
-		await drawWithTwoModels(page);
-		// Wait for both portraits to be DRAWN, not merely for both columns to exist:
-		// every column renders its pick button from the moment it's dispatched,
-		// disabled until its portrait lands. Counting buttons let the reload race the
-		// draw itself — even the second branch's request reaching the server — and a
-		// load that found one portrait done and nothing pending rebuilt a one-column
-		// grid with no recovery poll to notice the other.
-		const ready = page.getByRole('button', { name: 'Use this avatar' });
-		await expect(ready).toHaveCount(2, { timeout: 15_000 });
-		await expect(ready.nth(0)).toBeEnabled({ timeout: 15_000 });
-		await expect(ready.nth(1)).toBeEnabled({ timeout: 15_000 });
+		await expect(page.locator('header img[src*="/api/media/"]')).toHaveCount(0);
+		const before = messageCount(convId);
 
-		// Walk away and come back with nothing picked. The whole grid is client
-		// state; all the server has is the marker and the sibling portraits.
-		await page.reload();
+		const dialog = await openDrawDialog(page);
+		await dialog.getByRole('button', { name: 'Draw', exact: true }).click();
 
-		await expect(page.getByText('Comparing 2 variations')).toBeVisible();
-		const pick = page.getByRole('button', { name: 'Use this avatar' });
-		await expect(pick).toHaveCount(2);
-		// The label is the tell: a recovered avatar grid is indistinguishable from
-		// an image fan-out by its contents, so this is the `avatar` wire flag having
-		// survived the round trip. Get it wrong and the button reads "Continue with
-		// this" and picks by continuing the chat with an image model.
-		await expect(page.getByRole('button', { name: 'Continue with this' })).toHaveCount(0);
+		// The dialog closes once the server has it, and the portrait shows at the
+		// end of the reply it was drawn from.
+		await expect(dialog).toBeHidden();
+		await expect(page.getByRole('button', { name: 'Open portrait' })).toBeVisible({
+			timeout: 15_000,
+		});
+		await expect(headerFace(page)).toBeVisible();
 
-		// Re-rolling survives the reload too: the page's copy of the reviewed
-		// prompt is gone, so each column re-sends the one read off its media row.
-		const regenerate = page.getByRole('button', { name: 'Regenerate' });
-		await expect(regenerate).toHaveCount(2);
-		await regenerate.first().click();
-		await expect(pick).toHaveCount(3, { timeout: 15_000 });
+		expect(face(convId)).not.toBeNull();
+		expect(portraitCount(convId)).toBe(1);
+		// No message of its own: the thread holds only the conversation.
+		expect(messageCount(convId)).toBe(before);
+	});
 
-		// A pick after recovery still adopts the face — the half that would break if
-		// the flag were lost, since the endpoint it posts to is chosen by mode.
-		await pick.first().click();
-		await expect(page.locator('header img[src*="/api/media/"]').first()).toBeVisible();
-		expect(conversationRow(convId).avatar_media_id).not.toBeNull();
+	test('compares models in the dialog and wears the one picked', async ({ page }) => {
+		const convId = await sendChatFromHome(page, 'Describe how you look');
+		const dialog = await openDrawDialog(page);
+
+		// "Multiple" seeds the cart with the model already selected, so one more
+		// click makes it a comparison. The dropdown is portalled to the body.
+		await dialog.getByLabel('Select model').click();
+		await page.getByRole('button', { name: 'Multiple' }).click();
+		await page.getByRole('option', { name: /^Mock Painter/ }).click();
+		// Toggle the picker shut rather than pressing Escape, which would also
+		// close the dialog.
+		await dialog.getByLabel('Select model').click();
+		await dialog.getByRole('button', { name: 'Draw with 2 models' }).click();
+
+		// The dialog stays up and becomes the comparison.
+		const pick = dialog.getByRole('button', { name: 'Use this avatar' });
+		await expect(pick).toHaveCount(2, { timeout: 15_000 });
+		await expect(pick.nth(1)).toBeEnabled({ timeout: 15_000 });
+		await pick.nth(1).click();
+
+		await expect(dialog).toBeHidden();
+		await expect(headerFace(page)).toBeVisible();
+		const picked = face(convId);
+		expect(picked).not.toBeNull();
+		// Both kept, as versions: the arrows on the portrait reach the other.
+		expect(portraitCount(convId)).toBe(2);
+		await expect(page.getByText('2/2').or(page.getByText('1/2'))).toBeVisible();
+
+		// Switching versions changes the face.
+		const other = page.getByRole('button', { name: /Previous version|Next version/ });
+		await other.and(page.locator(':enabled')).first().click();
+		await expect.poll(() => face(convId)).not.toBe(picked);
 	});
 });

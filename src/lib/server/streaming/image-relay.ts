@@ -56,7 +56,7 @@ export interface ImageRelayParams extends MediaRelayParams {
 	 *   remembered preference) even when this particular model doesn't list it,
 	 *   deliberately, so the upstream can snap to its nearest — see
 	 *   `resolveAspectRatio`;
-	 * - the avatar route picks via `nearestOffered`, which returns an element of
+	 * - the photos route picks via `nearestOffered`, which returns an element of
 	 *   the model's own list, so that one IS a member.
 	 *
 	 * Undefined leaves the upstream's own default, which is what a model with no

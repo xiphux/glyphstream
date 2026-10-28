@@ -35,7 +35,7 @@ export const POST: RequestHandler = ({ locals, params, url }) => {
 		'Message not found in this conversation',
 	);
 
-	if (picked) recordComparisonPick(params.id, picked, 'fanout');
+	if (picked) recordComparisonPick(params.id, picked);
 
 	return Response.json({ activeLeafMessageId: result.newActiveLeaf });
 };

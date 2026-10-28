@@ -64,7 +64,6 @@ import { loadMediaBytes } from '../media/data-url';
 import { MediaNotAvailableError } from '../media/errors';
 import { notifyFanoutCompleteIfLast } from '../messages/fanout-notify';
 import {
-	AVATAR_BRANCH,
 	PHOTO_BRANCH_PREFIX,
 	clearInFlight,
 	DEFAULT_BRANCH,
@@ -95,6 +94,10 @@ import { notifyConversationComplete } from '../push/notify';
 const log = createLogger('generation-jobs');
 const avatarLog = createLogger('avatar');
 
+/** Whether a job draws a picture onto a reply (`message_images`) rather than
+ *  into the thread. */
+const drawsOntoReply = (o: JobOrigin) => o === 'photo' || o === 'portrait';
+
 /**
  * What a generation is for. Decides everything the submitting route used to
  * decide with closures, so a resumed job behaves exactly as it would have:
@@ -103,15 +106,14 @@ const avatarLog = createLogger('avatar');
  *    first-exchange title task, notifies on its own.
  *  - `fanout`: one branch of a multi-model grid. A pinned sibling; the grid's
  *    single "N ready" notification fires when the last branch settles.
- *  - `avatar`: a background portrait draw. Advances the leaf only if the user
- *    hasn't moved on, and applies the portrait as the conversation's avatar.
- *  - `avatar_fanout`: one portrait of an avatar comparison — a pinned sibling
- *    like `fanout`; the pick applies the winner, not the relay.
  *  - `photo`: a texting photo, developed from one of a reply's `[photo: …]`.
  *    It lands ON the reply as a version (`message_images`), not as a message,
  *    so the thread never changes: no leaf to advance, nothing to supersede.
  *    Each is its own side errand, so several can draw at once — a comparison
  *    is just several, and notifies once, when the last one settles.
+ *  - `portrait`: an avatar portrait, drawn from the reply that describes the
+ *    assistant. Lands on that reply exactly as a photo does (with no marker),
+ *    and a version that goes on show becomes the conversation's avatar.
  */
 export type JobOrigin = GenerationJobRow['origin'];
 
@@ -134,7 +136,7 @@ export interface GenerationJobParams {
 	enhancementEnabled: boolean;
 	promptStyle: string | null;
 	promptHint: string | null;
-	/** Persist as display-only (avatar portraits) — see the image relay. */
+	/** Persist as display-only (photos and portraits) — see the image relay. */
 	displayOnly?: boolean;
 	/** The texting photo this draws: the reply (also the job's anchor) and
 	 *  which of its markers. */
@@ -143,11 +145,9 @@ export interface GenerationJobParams {
 	 *  together, and the pick counts their models (see `comparison_id`). */
 	compareId?: string;
 	/**
-	 * Legacy, and no longer written: the leaf a photo draw advanced from back
-	 * when a photo was a message of its own, re-developed as a sibling of the
-	 * one on screen. Kept because the field is persisted; the migration turns
-	 * those jobs into photo draws, which ignore it, so only a portrait reads it
-	 * now — and none sets it.
+	 * Legacy, and read by nothing: the leaf a photo or portrait draw advanced
+	 * from back when each was a message of its own. Kept because the field is
+	 * persisted; the migrations turned those jobs into draws onto the reply.
 	 */
 	expectLeafMessageId?: string;
 	/** The client's dispatched grid size, for the aggregate notification. */
@@ -178,7 +178,7 @@ const MAX_INTERRUPTIONS = 1;
  */
 const RESUME_DELAY_MS = 10_000;
 
-const isFanoutOrigin = (o: JobOrigin) => o === 'fanout' || o === 'avatar_fanout';
+const isFanoutOrigin = (o: JobOrigin) => o === 'fanout';
 
 /** A sink with no listener — a resumed job's events go nowhere. */
 const NO_LISTENER: MediaRelaySink = { write: () => {}, close: () => {} };
@@ -359,24 +359,22 @@ function register(row: GenerationJobRow, endpoint: LoadedEndpoint): InFlightEntr
 	const entry = registerInFlight(
 		row.conversationId,
 		endpoint,
-		// A single send takes the conversation's default slot and an avatar draw
-		// its own — both supersede their predecessor, as they always have. Grid
-		// branches coexist, so each is keyed by its job.
+		// A single send takes the conversation's default slot, superseding its
+		// predecessor. Grid branches and pictures drawn onto a reply coexist, so
+		// each is keyed by its job.
 		row.origin === 'send'
 			? DEFAULT_BRANCH
-			: row.origin === 'avatar'
-				? AVATAR_BRANCH
-				: row.origin === 'photo'
-					? `${PHOTO_BRANCH_PREFIX}${row.id}`
-					: row.id,
+			: drawsOntoReply(row.origin)
+				? `${PHOTO_BRANCH_PREFIX}${row.id}`
+				: row.id,
 		row.kind,
 		row.modelId,
 		parseParams(row).sourceMediaId,
-		// A background portrait or photo isn't part of the conversation's turn:
+		// A photo or portrait isn't part of the conversation's turn:
 		// recovery, the grid and the aggregate notification must not count it.
 		!isBackgroundDraw(row.origin),
 	);
-	const key = row.origin === 'photo' ? comparisonKey(parseParams(row)) : null;
+	const key = comparisonKey(row, parseParams(row));
 	if (key) comparing.set(key, (comparing.get(key) ?? 0) + 1);
 	// A reattached video is rendering on the bridge from the moment it's back in
 	// flight — not only once it regains its slot, which is when the relay would
@@ -407,63 +405,53 @@ function endpointFor(row: GenerationJobRow): LoadedEndpoint | undefined {
 }
 
 /**
- * A draw the user backgrounds rather than waits on — an avatar portrait or a
- * texting photo. Never killed by a chat send, and not a turn: recovery, the
- * grid and the aggregate notification must not count it. A portrait takes the
- * conversation's one avatar slot, so starting one supersedes the last; photos
- * each take their own.
+ * A draw the user backgrounds rather than waits on — a texting photo or an
+ * avatar portrait. Never killed by a chat send, and not a turn: recovery, the
+ * grid and the aggregate notification must not count it. Each takes its own
+ * slot, so several draw at once and none supersedes another.
  */
 function isBackgroundDraw(origin: JobOrigin): boolean {
-	return origin === 'avatar' || origin === 'photo';
+	return drawsOntoReply(origin);
 }
 
-/** The compare-and-swap guard for a portrait's leaf advance: it takes the leaf
- *  only if the user hasn't moved on. Undefined (advance unconditionally) for
- *  everything else — a photo never touches the leaf at all. */
-function backgroundDrawLeaf(
-	row: GenerationJobRow,
-	params: GenerationJobParams,
-): string | undefined {
-	if (row.origin !== 'avatar') return undefined;
-	return params.expectLeafMessageId ?? row.anchorMessageId;
-}
-
-/** Where a photo lands: as a version of its marker on the reply, or — for a
- *  failure — as the failed attempt shown until the next one. A single draw
- *  goes on show; a comparison's only takes the stage if nothing holds it. */
-function landPhoto(
+/** Where a photo or portrait lands: as a version on its reply (of its marker,
+ *  for a photo), or — for a failure — as the failed attempt shown until the
+ *  next one. A single draw goes on show; a comparison's only takes the stage if
+ *  nothing holds it. Returns whether it went on show. */
+function landOnReply(
 	tx: Tx,
 	row: GenerationJobRow,
 	params: GenerationJobParams,
 	outcome: { mediaId: string } | { error: string },
-): void {
-	const markerIndex = params.photo!.index;
-	const messageId = params.photo!.sourceMessageId;
+): boolean {
+	const markerIndex = params.photo?.index ?? null;
+	const messageId = row.anchorMessageId;
 	const now = Date.now();
 	const landed = 'mediaId' in outcome;
-	const key = comparisonKey(params);
+	const key = comparisonKey(row, params);
 	const closed = !!key && closedComparisons.has(key);
 	// A comparison already picked from: what lands is a plain version, not a
 	// contender — and a failure is nothing to keep, being neither a result to
-	// compare nor news about the photo the user chose.
-	if (closed && !landed) return;
+	// compare nor news about the picture the user chose.
+	if (closed && !landed) return false;
 	const compareId = key && !closed ? params.compareId! : null;
+	const shown = landed && (!key || (!!compareId && !hasShownImage(tx, messageId, markerIndex)));
 	insertMessageImage(tx, {
 		id: generateId(),
 		userId: row.userId,
 		conversationId: row.conversationId,
 		messageId,
-		kind: 'photo',
+		kind: row.origin === 'portrait' ? 'portrait' : 'photo',
 		markerIndex,
 		mediaId: landed ? outcome.mediaId : null,
 		modelId: row.modelId,
 		error: landed ? null : outcome.error,
-		shownAt:
-			landed && (!key || (compareId && !hasShownImage(tx, messageId, markerIndex))) ? now : null,
+		shownAt: shown ? now : null,
 		// On a failure too, so the comparison's other results don't clear it.
 		comparisonId: compareId,
 		createdAt: now,
 	});
+	return shown;
 }
 
 function parseParams(row: GenerationJobRow): GenerationJobParams {
@@ -488,12 +476,14 @@ async function runJob(
 	// Guarded: it runs from `finally` blocks, and the notification reads the DB.
 	// A throw there would reject a run nobody awaits (a resumed job's), which
 	// Node treats as fatal — a lost notification is not worth the process.
+	// Set by the landing, read once the media has persisted (see `onMediaPersisted`).
+	let faceOnLand = false;
 	const settle = () => {
 		if (settled) return;
 		settled = true;
 		try {
 			clearInFlight(row.conversationId, entry);
-			if (row.origin === 'photo') notifyComparisonIfLast(row, params);
+			if (drawsOntoReply(row.origin)) notifyComparisonIfLast(row, params);
 			if (isFanoutOrigin(row.origin)) {
 				notifyFanoutCompleteIfLast({
 					conversationId: row.conversationId,
@@ -539,14 +529,11 @@ async function runJob(
 			abortSignal: entry.controller.signal,
 			advanceActiveLeaf: !isFanoutOrigin(row.origin),
 			fanoutIndex: row.fanoutIndex,
-			// An avatar draw anchors on a reply that already existed and can take
-			// minutes, so it only advances the leaf if the user hasn't moved on.
-			advanceActiveLeafIfCurrent: backgroundDrawLeaf(row, params),
-			// A grid runs the title task once, from /prepare; an avatar draw is a
-			// side errand in a conversation that already has a title.
+			// A grid runs the title task once, from /prepare; a photo or portrait is
+			// a side errand in a conversation that already has a title.
 			suppressTitleTask: row.origin !== 'send',
 			// A grid fires one aggregate notification instead of one per branch,
-			// and so does a photo comparison.
+			// and so does a photo or portrait comparison.
 			suppressNotify: isFanoutOrigin(row.origin) || !!params.compareId,
 			inFlight: entry,
 			preparedPrompt: row.preparedJson
@@ -566,11 +553,17 @@ async function runJob(
 			persistWith: (tx) => {
 				if (!consumeGenerationJob(tx, row.id)) throw new GenerationDiscardedError();
 			},
-			landOn:
-				row.origin === 'photo' ? (tx, outcome) => landPhoto(tx, row, params, outcome) : undefined,
+			landOn: drawsOntoReply(row.origin)
+				? (tx, outcome) => {
+						faceOnLand = landOnReply(tx, row, params, outcome) && row.origin === 'portrait';
+					}
+				: undefined,
+			// A portrait that went on show is the conversation's face — after the
+			// commit, so a face never points at a version that rolled back.
 			onMediaPersisted:
-				row.origin === 'avatar'
+				row.origin === 'portrait'
 					? (mediaId) => {
+							if (!faceOnLand) return;
 							const result = setConversationAvatar(row.conversationId, row.userId, mediaId);
 							// Both reasons are races (the conversation deleted, or the media
 							// reaped, between persist and now) — worth a log line, not a
@@ -740,10 +733,10 @@ function persistFailure(
 	message: string,
 ): string | undefined {
 	try {
-		if (row.origin === 'photo') {
+		if (drawsOntoReply(row.origin)) {
 			getDb().transaction((tx) => {
 				if (!consumeGenerationJob(tx, row.id)) throw new GenerationDiscardedError();
-				landPhoto(tx, row, params, { error: message });
+				landOnReply(tx, row, params, { error: message });
 				recordModelEvent(row.modelId, 'failed', { userId: row.userId, tx });
 			});
 			return undefined;
@@ -755,7 +748,6 @@ function persistFailure(
 			sourceMediaId: params.sourceMediaId,
 			modelUsed: row.modelId,
 			advanceActiveLeaf: !isFanoutOrigin(row.origin),
-			advanceActiveLeafIfCurrent: backgroundDrawLeaf(row, params),
 			fanoutIndex: row.fanoutIndex,
 			inTransaction: (tx) => {
 				if (!consumeGenerationJob(tx, row.id)) throw new GenerationDiscardedError();
@@ -789,24 +781,24 @@ const comparing = new Map<string, number>();
  */
 const closedComparisons = new Set<string>();
 
-function comparisonKey(params: GenerationJobParams): string | null {
-	return params.compareId && params.photo
-		? `${params.photo.sourceMessageId}:${params.compareId}`
+function comparisonKey(row: GenerationJobRow, params: GenerationJobParams): string | null {
+	return params.compareId && drawsOntoReply(row.origin)
+		? `${row.anchorMessageId}:${params.compareId}`
 		: null;
 }
 
-/** A photo comparison was picked from (see `closedComparisons`). */
+/** A photo or portrait comparison was picked from (see `closedComparisons`). */
 export function closePhotoComparison(messageId: string, compareId: string): void {
 	const key = `${messageId}:${compareId}`;
 	if (comparing.has(key)) closedComparisons.add(key);
 }
 
 /**
- * The one notification for a photo comparison, from whichever of its draws
- * settles last. Says nothing if none of them produced a photo.
+ * The one notification for a photo or portrait comparison, from whichever of
+ * its draws settles last. Says nothing if none of them produced a picture.
  */
 function notifyComparisonIfLast(row: GenerationJobRow, params: GenerationJobParams): void {
-	const key = comparisonKey(params);
+	const key = comparisonKey(row, params);
 	if (!key) return;
 	const left = (comparing.get(key) ?? 1) - 1;
 	if (left > 0) {
@@ -816,11 +808,12 @@ function notifyComparisonIfLast(row: GenerationJobRow, params: GenerationJobPara
 	comparing.delete(key);
 	// Picked from already: the user has what they came for.
 	if (closedComparisons.delete(key)) return;
-	const { sourceMessageId } = params.photo!;
+	const sourceMessageId = row.anchorMessageId;
 	// The comparison's own results, by its id — not by timing, which a re-roll
 	// started after others had landed would get wrong.
 	const developed = countComparisonResults(row.userId, sourceMessageId, params.compareId!);
 	if (developed === 0) return;
+	const noun = row.origin === 'portrait' ? 'portrait' : 'photo';
 	void notifyConversationComplete({
 		userId: row.userId,
 		conversationId: row.conversationId,
@@ -829,6 +822,6 @@ function notifyComparisonIfLast(row: GenerationJobRow, params: GenerationJobPara
 			getConversationMeta(row.conversationId, row.userId)?.title ?? 'New conversation',
 		previewText: '',
 		modality: 'image',
-		summary: developed === 1 ? '1 photo ready' : `${developed} photos ready`,
+		summary: developed === 1 ? `1 ${noun} ready` : `${developed} ${noun}s ready`,
 	}).catch((e: unknown) => log.warn('notify failed:', errorMessage(e)));
 }

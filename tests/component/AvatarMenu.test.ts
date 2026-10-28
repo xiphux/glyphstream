@@ -110,10 +110,12 @@ describe('AvatarMenu', () => {
 		expect(screen.getByText('No avatar yet')).toBeInTheDocument();
 	});
 
-	it('stands both steps down while something is in flight', async () => {
+	it('holds the description back while a turn is in flight, but not the drawing', async () => {
+		// Step 1 needs the composer; a drawing changes nothing in the thread, so it
+		// can go alongside a reply, or another drawing.
 		await open({ busy: true, status: 'Drawing…' });
 		expect(screen.getByRole('button', { name: '1. Ask for a description' })).toBeDisabled();
-		expect(drawButton()).toBeDisabled();
+		expect(drawButton()).toBeEnabled();
 		expect(screen.getByText('Drawing…')).toBeInTheDocument();
 	});
 

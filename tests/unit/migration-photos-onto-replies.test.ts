@@ -32,6 +32,10 @@ const STATEMENTS = readFileSync(resolve(`./drizzle/${dir}/migration.sql`), 'utf-
 	.map((s) => s.trim())
 	.filter(Boolean);
 
+/** An origin this migration's release wrote, which the schema no longer
+ *  names (portraits moved onto their replies since). */
+const AVATAR_FANOUT = 'avatar_fanout' as unknown as 'fanout';
+
 let db: TestDB;
 let userId: string;
 let convId: string;
@@ -215,7 +219,8 @@ describe('photos onto replies', () => {
 	it('ends an open comparison, keeping its candidates as versions', () => {
 		photo(replyId, 1);
 		photo(replyId, 1, 'ep::flux');
-		setFanoutParent(convId, userId, replyId, true);
+		setFanoutParent(convId, userId, replyId);
+		setActiveLeafMessageId(convId, replyId);
 
 		migrate();
 
@@ -225,14 +230,15 @@ describe('photos onto replies', () => {
 	});
 
 	it('ends a comparison open before any of its draws landed', () => {
-		setFanoutParent(convId, userId, replyId, true);
+		setFanoutParent(convId, userId, replyId);
+		setActiveLeafMessageId(convId, replyId);
 		insertGenerationJob({
 			id: 'branch',
 			userId,
 			conversationId: convId,
 			anchorMessageId: replyId,
 			kind: 'image',
-			origin: 'avatar_fanout',
+			origin: AVATAR_FANOUT,
 			modelId: 'ep::sdxl',
 			fanoutIndex: 0,
 			paramsJson: JSON.stringify({ photo: { sourceMessageId: replyId, index: 0 } }),
@@ -245,14 +251,15 @@ describe('photos onto replies', () => {
 	});
 
 	it('leaves an avatar comparison parked', () => {
-		setFanoutParent(convId, userId, replyId, true);
+		setFanoutParent(convId, userId, replyId);
+		setActiveLeafMessageId(convId, replyId);
 		insertGenerationJob({
 			id: 'portrait',
 			userId,
 			conversationId: convId,
 			anchorMessageId: replyId,
 			kind: 'image',
-			origin: 'avatar_fanout',
+			origin: AVATAR_FANOUT,
 			modelId: 'ep::sdxl',
 			fanoutIndex: 0,
 			paramsJson: JSON.stringify({ prompt: 'a fox' }),
@@ -282,7 +289,8 @@ describe('photos onto replies', () => {
 			.set({ createdAt: Date.now() + 1000 })
 			.where(eq(messages.id, portrait))
 			.run();
-		setFanoutParent(convId, userId, replyId, true);
+		setFanoutParent(convId, userId, replyId);
+		setActiveLeafMessageId(convId, replyId);
 
 		migrate();
 
@@ -296,7 +304,8 @@ describe('photos onto replies', () => {
 			.set({ createdAt: Date.now() + 1000 })
 			.where(eq(messages.id, failed))
 			.run();
-		setFanoutParent(convId, userId, replyId, true);
+		setFanoutParent(convId, userId, replyId);
+		setActiveLeafMessageId(convId, replyId);
 
 		migrate();
 
@@ -306,14 +315,15 @@ describe('photos onto replies', () => {
 
 	it('leaves an avatar comparison open before any of its portraits landed', () => {
 		photo(replyId, 0);
-		setFanoutParent(convId, userId, replyId, true);
+		setFanoutParent(convId, userId, replyId);
+		setActiveLeafMessageId(convId, replyId);
 		insertGenerationJob({
 			id: 'portrait',
 			userId,
 			conversationId: convId,
 			anchorMessageId: replyId,
 			kind: 'image',
-			origin: 'avatar_fanout',
+			origin: AVATAR_FANOUT,
 			modelId: 'ep::sdxl',
 			fanoutIndex: 0,
 			paramsJson: JSON.stringify({ prompt: 'a fox' }),
@@ -340,7 +350,8 @@ describe('photos onto replies', () => {
 		db.update(messages).set({ createdAt: 1 }).where(eq(messages.id, portrait)).run();
 		photo(replyId, 0);
 		photo(replyId, 0, 'ep::flux');
-		setFanoutParent(convId, userId, replyId, true);
+		setFanoutParent(convId, userId, replyId);
+		setActiveLeafMessageId(convId, replyId);
 
 		migrate();
 
@@ -367,7 +378,7 @@ describe('photos onto replies', () => {
 				conversationId: convId,
 				anchorMessageId: anchor,
 				kind: 'image',
-				origin,
+				origin: origin === 'avatar_fanout' ? AVATAR_FANOUT : origin,
 				modelId: 'ep::sdxl',
 				fanoutIndex: origin === 'avatar_fanout' ? 3 : null,
 				paramsJson: params(index),

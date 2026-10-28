@@ -155,7 +155,6 @@ export class PhotoComparisonGrid implements TriageSource {
 			startedAt: null,
 			inputMediaId: null,
 			dispatchIndex: null,
-			avatarPrompt: null,
 			errorMessageId: null,
 		};
 	}

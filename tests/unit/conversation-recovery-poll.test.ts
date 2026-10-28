@@ -19,7 +19,6 @@ vi.mock('#lib/server/db/queries/conversations.js', async (importOriginal) => ({
 vi.mock('#lib/server/messages/fanout-recovery.js', () => ({
 	getFanoutRecoveryState: (): FanoutRecoveryState => ({
 		parentMessageId: 'u1',
-		avatar: false,
 		kind: 'chat',
 		siblings: mocks.siblings,
 		pending: 1,

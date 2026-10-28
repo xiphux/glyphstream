@@ -293,11 +293,12 @@ docs.
     `linkAvatarMedia`/`unlinkAvatarMedia` suffice — and `deleteConversation`
     releases its avatar BEFORE its orphan pass, or a portrait drawn in that
     conversation survives a "delete media too" the user asked for.
-  - The portrait persists `displayOnly` and is decided so at persist time, never
-    revisited. Sending an image for a few turns and dropping it when it stops
-    being recent would re-prefill the whole conversation the turn it vanished;
-    never-sent is the only deterministic variant. The description text stays,
-    which is the continuity the model actually needs.
+  - The portrait is never sent upstream. It is a version on the description
+    reply (`message_images`, kind `portrait`) rather than a message, so there's
+    nothing in the thread to serialize; sending an image for a few turns and
+    dropping it when it stops being recent would re-prefill the whole
+    conversation the turn it vanished. The description text stays, which is the
+    continuity the model actually needs.
   - The description is an ordinary turn, not an auxiliary call — the
     conversation's own model already holds the branch and invented the persona,
     the user can edit the request before sending and Retry the result, and the
@@ -305,10 +306,10 @@ docs.
 
   Remaining, all optional:
   - _Per-message avatar snapshots._ "Which face was it wearing at message 40" is
-    a real question in a long roleplay. Mostly answered for free — each
-    generation is a real message, so the transcript IS the history and the
-    column only ever means "current" — but nothing renders an older face
-    alongside the messages it was current for.
+    a real question in a long roleplay. Partly answered — every portrait is kept
+    as a version on the reply it was drawn from, and the column only ever means
+    "current" — but nothing renders an older face alongside the messages it was
+    current for.
   - _Storing the appearance description separately_ (a `persona_appearance`
     column) so a re-roll doesn't re-read it off the branch, and so the
     **Character / asset consistency** sub-item under the **multimodal pipeline**

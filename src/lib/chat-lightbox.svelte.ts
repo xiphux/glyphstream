@@ -127,13 +127,12 @@ export class ChatLightbox {
 	/**
 	 * The open image is one the media fan-out grid on screen is showing — the
 	 * user is triaging it. The lightbox then trades its own actions for the
-	 * grid's footer (star, re-roll, the avatar pick, discard), so the swipe
+	 * grid's footer (star, re-roll, a comparison's pick, discard), so the swipe
 	 * through a fresh grid offers what the grid does, and "Regenerate" means
 	 * what it means there.
 	 */
 	readonly triaging = $derived(!!this.#column);
-	/** Whether the grid's Regenerate is offered for the open image (an avatar
-	 *  portrait recovered without its prompt has nothing to re-roll from). */
+	/** Whether the grid's Regenerate is offered for the open image. */
 	readonly canRegenerate = $derived.by(
 		() => !!this.#column && this.#deps.triage().canRegenerate(this.#column),
 	);
@@ -288,9 +287,9 @@ export class ChatLightbox {
 	}
 
 	/**
-	 * An avatar comparison's pick, from the lightbox. It ends the comparison —
-	 * the grid clears, as Done does — so the lightbox closes with it rather than
-	 * leave the user swiping a set whose grid no longer exists.
+	 * A photo or portrait comparison's pick, from the lightbox. It ends the
+	 * comparison, so the lightbox closes with it rather than leave the user
+	 * swiping a set whose grid no longer exists.
 	 */
 	pick(mediaId: string): void {
 		const fanout = this.#deps.triage();

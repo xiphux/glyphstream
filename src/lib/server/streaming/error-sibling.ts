@@ -18,12 +18,7 @@ type AppendInput = Parameters<typeof appendMessage>[0];
 
 export interface ErrorSiblingInput extends Pick<
 	AppendInput,
-	| 'conversationId'
-	| 'modelUsed'
-	| 'genMs'
-	| 'advanceActiveLeafIfCurrent'
-	| 'fanoutIndex'
-	| 'inTransaction'
+	'conversationId' | 'modelUsed' | 'genMs' | 'fanoutIndex' | 'inTransaction'
 > {
 	/** The message the reply answers. */
 	parentMessageId: string;

@@ -106,19 +106,26 @@ export function deleteGenerationJob(id: string): void {
 }
 
 /**
- * The photo draws queued or running for `messageIds` (texting replies), as
- * `[messageId, params_json]` — the caller reads which marker each develops.
- * Read for the chat page, which resolved the conversation for its user first.
+ * The photo and portrait draws queued or running for `messageIds` — the caller
+ * reads which marker a photo develops off `params_json`. Read for the chat
+ * page, which resolved the conversation for its user first.
  */
 export function listPhotoJobsForMessages(
 	conversationId: string,
 	messageIds: string[],
-): Array<{ id: string; anchorMessageId: string; modelId: string; paramsJson: string }> {
+): Array<{
+	id: string;
+	anchorMessageId: string;
+	origin: 'photo' | 'portrait';
+	modelId: string;
+	paramsJson: string;
+}> {
 	if (messageIds.length === 0) return [];
 	return getDb()
 		.select({
 			id: generationJobs.id,
 			anchorMessageId: generationJobs.anchorMessageId,
+			origin: sql<'photo' | 'portrait'>`${generationJobs.origin}`,
 			modelId: generationJobs.modelId,
 			paramsJson: generationJobs.paramsJson,
 		})
@@ -126,7 +133,7 @@ export function listPhotoJobsForMessages(
 		.where(
 			and(
 				eq(generationJobs.conversationId, conversationId),
-				eq(generationJobs.origin, 'photo'),
+				inArray(generationJobs.origin, ['photo', 'portrait']),
 				inArray(generationJobs.anchorMessageId, messageIds),
 			),
 		)

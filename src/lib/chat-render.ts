@@ -620,9 +620,11 @@ export function buildRenderedConversation(
 	// A call with NO result at all is kept. That is no longer the
 	// `finish_reason: 'stop'` case — the relay drops those parts at persist time
 	// now, so they never reach here. It's the reaction whose answering `tool` row
-	// is off the ACTIVE BRANCH: parking an avatar comparison rewinds the leaf past
-	// it, and a portrait attaching as a sibling takes the leaf with it. The
-	// reaction really did run; only its answer is out of view.
+	// is off the ACTIVE BRANCH: before portraits moved onto their reply, one
+	// attached as a sibling of that row and took the leaf with it (and a parked
+	// avatar comparison rewound the leaf past it), and conversations from then
+	// keep that shape. The reaction really did run; only its answer is out of
+	// view.
 	const inlineReactions = new Map<string, Map<string, string>>();
 	for (const r of candidateReactions) {
 		if (toolResultsByCallId.get(r.toolCallId)?.isError) continue;
@@ -869,10 +871,7 @@ export function graphemes(): Intl.Segmenter {
  * `role:'tool'` rows that answer nothing but reactions.
  *
  * Client-side mirror of `resolveReplyLeaf` in `db/queries/messages.ts`, and it
- * has to agree with it: `AvatarDrawWorkflow.canCompare` and the server's parkable rule answer
- * the same question on either side of one call, and a client that offers the
- * comparison against a server that then refuses it surfaces as a page-level
- * error only after the user has picked their models.
+ * has to agree with it (`reply-leaf-parity.test.ts`).
  *
  * The question is "has the branch moved on past this reply?", for which a
  * reaction's tool row is bookkeeping to look past. `turnLooksSettled`

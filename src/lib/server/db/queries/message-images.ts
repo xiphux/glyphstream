@@ -1,7 +1,8 @@
 /**
- * Pictures drawn for a message — see `messageImages` in the schema. Today
- * that is a reply's developed photos: every version of each of its
- * `[photo: …]`, plus a failed attempt until the next one replaces it.
+ * Pictures drawn for a message — see `messageImages` in the schema: a reply's
+ * developed photos (every version of each of its `[photo: …]`) and the avatar
+ * portraits drawn from it, plus a failed attempt until the next one replaces
+ * it.
  *
  * Reads take ids the caller has already scoped (the chat page resolves the
  * conversation for its user first, as every messages read does); writes that
@@ -147,12 +148,16 @@ export function resolveComparison(
 /**
  * Put one version on show. Scoped to the user and the conversation, and to
  * versions that exist — a failed attempt or a trashed image has nothing to
- * show. False when there was no such version.
+ * show. The version shown, or null when there was no such version.
  */
-export function showMessageImage(userId: string, conversationId: string, id: string): boolean {
+export function showMessageImage(
+	userId: string,
+	conversationId: string,
+	id: string,
+): { kind: 'photo' | 'portrait'; mediaId: string } | null {
 	const db = getDb();
 	const target = db
-		.select({ id: messageImages.id })
+		.select({ kind: messageImages.kind, mediaId: media.id })
 		.from(messageImages)
 		.innerJoin(media, eq(media.id, messageImages.mediaId))
 		.where(
@@ -164,9 +169,9 @@ export function showMessageImage(userId: string, conversationId: string, id: str
 			),
 		)
 		.get();
-	if (!target) return false;
+	if (!target) return null;
 	db.update(messageImages).set({ shownAt: Date.now() }).where(eq(messageImages.id, id)).run();
-	return true;
+	return target;
 }
 
 /**

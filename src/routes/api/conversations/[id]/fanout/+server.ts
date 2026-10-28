@@ -4,13 +4,13 @@
  * Take down a parked comparison that has nothing to resolve.
  *
  * Every other way out of a fan-out grid resolves it by CHOOSING: `selectBranch`
- * (a pick, or a dismiss onto the first real result) or `../avatar/pick`. That
+ * (a pick, or a dismiss onto the first real result). That
  * leaves no exit for a grid where every branch failed — those persist durable
  * error siblings, so the grid rebuilds from server truth on every reload, while
- * "Use this avatar" refuses a message with no image, Discard refuses to remove
- * the last column, and Done finds no successful branch to select. The marker
- * then sits parked, and the guards that read it (a background avatar draw,
- * compaction) keep refusing against a comparison the user cannot dismiss.
+ * Discard refuses to remove the last column and Done finds no successful branch
+ * to select. The marker then sits parked, and the guards that read it
+ * (compaction, a check-in) keep refusing against a comparison the user cannot
+ * dismiss.
  *
  * So: clear the marker, move nothing. Deliberately NOT `selectBranch` on the
  * anchor — that walks to the deepest descendant, which on an all-failed grid is

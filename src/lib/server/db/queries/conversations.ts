@@ -236,9 +236,7 @@ export function updateConversationModel(
 
 /**
  * Mark this conversation as having an unresolved multi-model fan-out parked
- * on `parentMessageId` — the shared user message for a turn fan-out, or the
- * appearance description (an ASSISTANT message) for an avatar comparison, which
- * parks through .../avatar/prepare. The page load reads this to
+ * on `parentMessageId`, the shared user message. The page load reads this to
  * rehydrate the compare grid after a reload. Cleared when the fan-out resolves
  * (selectBranch on a pick / dismiss / continue).
  */
@@ -246,27 +244,10 @@ export function setFanoutParent(
 	conversationId: string,
 	userId: string,
 	parentMessageId: string,
-	/**
-	 * Also move the active leaf onto the anchor, in the SAME statement.
-	 *
-	 * An avatar comparison has to do both: the marker is what recovery looks for,
-	 * and it only reports a fan-out whose marker IS the leaf. Done as two updates,
-	 * a failure between them leaves the leaf rewound onto the description with no
-	 * marker parked — the one state the whole parkable rule exists to avoid, and
-	 * with nothing on screen to explain it. `selectBranch` sets this pair together
-	 * for the same reason; so does the leaf-advancing path in `appendMessage`.
-	 *
-	 * A turn fan-out passes nothing: `/messages/prepare` creates the anchor and
-	 * `appendMessage` has already landed the leaf on it.
-	 */
-	alsoSetActiveLeaf = false,
 ): void {
 	getDb()
 		.update(conversations)
-		.set({
-			fanoutParentMessageId: parentMessageId,
-			...(alsoSetActiveLeaf ? { activeLeafMessageId: parentMessageId, updatedAt: Date.now() } : {}),
-		})
+		.set({ fanoutParentMessageId: parentMessageId })
 		.where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)))
 		.run();
 }
@@ -288,8 +269,8 @@ export function clearFanoutParent(conversationId: string, userId: string): void 
 		.run();
 }
 
-/** The parked fan-out's anchor message id — a user message for a turn fan-out,
- *  an assistant one for an avatar comparison — or null when none / not owned. */
+/** The parked fan-out's anchor, the shared user message — or null when none /
+ *  not owned. */
 export function getFanoutParent(conversationId: string, userId: string): string | null {
 	const row = getDb()
 		.select({ p: conversations.fanoutParentMessageId })
@@ -400,6 +381,8 @@ export function getConversationMeta(
 	private: boolean;
 	/** Set when a scheduled task's run created the conversation. */
 	scheduleId: string | null;
+	/** The conversation's own face, over its preset's; null for none. */
+	avatarMediaId: string | null;
 } | null {
 	const db = getDb();
 	const row = db
@@ -418,6 +401,7 @@ export function getConversationMeta(
 			disabledFeaturesJson: conversations.disabledFeaturesJson,
 			private: conversations.private,
 			scheduleId: conversations.scheduleId,
+			avatarMediaId: conversations.avatarMediaId,
 		})
 		.from(conversations)
 		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
@@ -438,6 +422,7 @@ export function getConversationMeta(
 		disabledFeatures: parseDisabledFeatures(row.disabledFeaturesJson),
 		private: row.private,
 		scheduleId: row.scheduleId,
+		avatarMediaId: row.avatarMediaId,
 	};
 }
 

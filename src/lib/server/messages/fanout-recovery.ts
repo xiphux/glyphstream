@@ -16,7 +16,7 @@
  */
 
 import { getFanoutParent } from '../db/queries/conversations';
-import { getMessageRole, getSiblingAssistants } from '../db/queries/messages';
+import { getSiblingAssistants } from '../db/queries/messages';
 import { conversationTurnEntries } from '../streaming/in-flight';
 import type { FanoutRecoveryState } from '#lib/types/api.js';
 
@@ -31,7 +31,6 @@ export function getFanoutRecoveryState(
 	if (!parent || parent !== activeLeafMessageId) {
 		return {
 			parentMessageId: null,
-			avatar: false,
 			kind: null,
 			siblings: [],
 			pending: 0,
@@ -40,27 +39,16 @@ export function getFanoutRecoveryState(
 			pendingSourceMediaIds: [],
 		};
 	}
-	// Turn-scoped: a BACKGROUND avatar draw (single model) running alongside a
-	// parked fan-out is not one of its branches, and counting it grows a phantom
-	// image-kind column that flips the grid to a media layout and takes the pick
-	// action away. It registers `isTurn: false` and is filtered here.
-	//
-	// An avatar COMPARISON is the opposite case — its branches are the grid — so
-	// those register as turns and are counted, like any other fan-out's.
+	// Turn-scoped: a photo or portrait drawing alongside a parked fan-out is not
+	// one of its branches, and counting it grows a phantom image-kind column that
+	// flips the grid to a media layout and takes the pick action away. It
+	// registers `isTurn: false` and is filtered here.
 	const entries = conversationTurnEntries(conversationId);
-	// Which kind of comparison this is, from the anchor's role. The dispatch route
-	// refuses a non-user fan-out parent, and the avatar route only ever anchors on
-	// an assistant message, so the two are disjoint by construction. The client
-	// needs it to know that "pick" here means adopting a face rather than
-	// continuing the thread with that model.
-	const parentRole = getMessageRole(conversationId, parent);
 	// Re-rolls are additive (a new sibling next to the original, deleting
 	// nothing), so every persisted sibling is a real column — no shadowing.
-	const avatar = parentRole === 'assistant';
-	const siblings = getSiblingAssistants(conversationId, parent, { avatarPrompts: avatar });
+	const siblings = getSiblingAssistants(conversationId, parent);
 	return {
 		parentMessageId: parent,
-		avatar,
 		kind: entries[0]?.modelKind ?? null,
 		siblings,
 		pending: entries.length,

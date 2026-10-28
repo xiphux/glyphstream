@@ -7,9 +7,9 @@
 	  - media keep-many (image/video): star the keepers (onToggleFavorite),
 	    prune the duds (onDiscard) + re-roll (onRegenerate, additively — a new
 	    variation beside the original); every kept image/video stays a sibling.
-	An avatar comparison is both at once — its columns are images, kept as
-	siblings, but one of them also becomes the conversation's face — so it wires
-	all three callbacks and relabels the pick via `pickLabel`.
+	A photo or portrait comparison in the draw dialog is both at once — its
+	columns are images, all kept as versions, but one of them goes on show — so
+	it wires all three callbacks and relabels the pick via `pickLabel`.
 	Which action buttons render is driven by which callbacks the parent wires;
 	the keep-many *layout* (media grid vs chat strip) is driven by the columns'
 	modality via isMediaKind. Purely presentational — the page owns the streams,
@@ -40,8 +40,8 @@
 		 *  no "Continue with this" button renders — media fan-out is keep-many. */
 		onPick?: (column: FanoutColumn) => void;
 		/** Label for the pick button. Defaults to the thread-continuation wording;
-		 *  an avatar comparison is keep-many AND pick-one, and what its pick does is
-		 *  adopt a face, so it says so. */
+		 *  a photo or portrait comparison is keep-many AND pick-one, and what its
+		 *  pick does is put one on show, so it says so. */
 		pickLabel?: string;
 		/** A shorter caption for the pick where a media grid's equal-width buttons
 		 *  have no room for `pickLabel`, which stays its accessible name. */

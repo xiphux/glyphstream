@@ -14,10 +14,10 @@
 
 	Also how a texting photo is developed (`purpose="photo"`): the marker's
 	description as the prompt, and an aspect-ratio picker, since a photo is
-	whatever shape the phone was held. Developing with several models is a
-	comparison the dialog then shows in place of the form (`comparison`): the
-	same fan-out grid a media comparison has, each result as it lands, to pick
-	the one to show. All of them are kept.
+	whatever shape the phone was held. Drawing with several models, either way,
+	is a comparison the dialog then shows in place of the form (`comparison`):
+	the same fan-out grid a media comparison has, each result as it lands, to
+	pick the one to show. All of them are kept.
 -->
 <script lang="ts">
 	import BaseDialog from '#lib/components/BaseDialog.svelte';
@@ -46,21 +46,9 @@
 		 */
 		loadError?: boolean;
 		modelId: string;
-		/**
-		 * Whether more than one model may be picked, turning the draw into a
-		 * side-by-side comparison.
-		 *
-		 * Not always: a comparison parks itself on the description message so it
-		 * can be recovered after a reload, which the page can only allow while
-		 * nothing hangs below that message but the portraits themselves. When
-		 * false the picker stays single-select and `compareBlockedReason` says why.
-		 */
-		canCompare?: boolean;
-		/** One line explaining why comparing isn't on offer. Shown only when
-		 *  `canCompare` is false. */
-		compareBlockedReason?: string;
-		/** The compare "cart" — model id → count. Bound so the page can dispatch a
-		 *  branch per entry and reset it after. */
+		/** The compare "cart" — model id → count. Picking more than one model
+		 *  turns the draw into a side-by-side comparison. Bound so the page can
+		 *  dispatch a draw per entry and reset it after. */
 		compareSelections?: CompareSelection[];
 		/** Whether the picker is in compare mode. Bound so the page can read it
 		 *  (single draw vs comparison) and force it off. */
@@ -78,8 +66,8 @@
 		 * hand-tuned is exactly the case for sending it verbatim.
 		 */
 		enhance: boolean;
-		/** Non-null while drawing — the dialog stays up and reports progress
-		 *  rather than closing on a request the user can't see the result of. */
+		/** Non-null while the draw is on its way to the server — the dialog stays
+		 *  up until it's accepted, so a refusal can be shown where it was asked. */
 		status: string | null;
 		onPromptChange: (value: string) => void;
 		onEnhanceChange: (value: boolean) => void;
@@ -91,7 +79,7 @@
 		/** A photo's shape, or null for each model's default. Bindable; unused for
 		 *  an avatar, which is always square. */
 		aspectRatio?: string | null;
-		/** A photo comparison under way: its grid, shown instead of the form. */
+		/** A comparison under way: its grid, shown instead of the form. */
 		comparison?: Snippet;
 	}
 
@@ -102,8 +90,6 @@
 		loading = false,
 		loadError = false,
 		modelId,
-		canCompare = false,
-		compareBlockedReason,
 		compareSelections = $bindable([]),
 		compareMode = $bindable(false),
 		enhance,
@@ -161,7 +147,12 @@
 >
 	{#if comparison}
 		<p class="mt-1 text-xs text-fg-muted">
-			Pick the one to show. The others are kept too — the arrows on the photo reach them.
+			{#if isPhoto}
+				Pick the one to show. The others are kept too — the arrows on the photo reach them.
+			{:else}
+				Pick the one to use as the avatar. The others are kept too — the arrows on the portrait
+				reach them.
+			{/if}
 		</p>
 		<div class="mt-3 max-h-[65vh] overflow-y-auto">
 			{@render comparison()}
@@ -204,13 +195,10 @@
 				value={modelId}
 				onChange={onModelChange}
 				disabled={!!status}
-				allowCompare={canCompare}
+				allowCompare
 				bind:compareSelections
 				bind:compareMode
 			/>
-			{#if !canCompare && compareBlockedReason}
-				<p class="mt-1 text-xs text-fg-muted">{compareBlockedReason}</p>
-			{/if}
 			{#if comparing}
 				<p class="mt-1 text-xs text-fg-muted">
 					Each model draws its own version; you pick the one to keep.

@@ -103,7 +103,7 @@ export interface VideoRelayParams extends MediaRelayParams {
 	 * so the upstream can snap to its nearest. See `resolveAspectRatio`.
 	 *
 	 * (`ImageRelayParams.aspectRatio` carries the same field but has a second
-	 * caller, the avatar route, which picks via `nearestOffered` and so IS
+	 * caller, the photos route, which picks via `nearestOffered` and so IS
 	 * guaranteed a member. Don't copy that docstring's two-caller framing here.)
 	 *
 	 * Undefined leaves the upstream's own default, which is what a model with no

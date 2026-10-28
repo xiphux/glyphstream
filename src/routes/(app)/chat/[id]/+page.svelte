@@ -69,7 +69,6 @@
 	import { resolve } from '$app/paths';
 	import { stripSkillCommand } from '#lib/skill-command.js';
 	import { hasCopyableText, partsToText } from '#lib/message-parts.js';
-	import { AvatarDrawController } from '#lib/avatar-draw-controller.svelte.js';
 	import { AvatarDrawWorkflow } from '#lib/avatar-draw-workflow.svelte.js';
 	import { PhotoComparisonGrid } from '#lib/photo-comparison-grid.svelte.js';
 	import { watchDevelopingPhotos } from '#lib/photo-develop-watch.js';
@@ -150,11 +149,23 @@
 	);
 	const assistantLabel = $derived(data.assistantLabel);
 	const texting = $derived(data.conversation.replyStyle === 'texting');
+	// The conversation's own face, as the light photo read last reported it —
+	// a portrait going on show changes it, and that read is how the page hears
+	// (a reload of this route re-sends the whole window). Cleared whenever the
+	// load runs again, which then has the same answer.
+	let faceOverride = $state<{ conversationId: string; mediaId: string | null } | undefined>();
+	const conversationAvatarMediaId = $derived(
+		faceOverride && faceOverride.conversationId === data.conversation.id
+			? faceOverride.mediaId
+			: data.conversation.avatarMediaId,
+	);
+	// The face the assistant wears here: the conversation's own, else its preset's.
+	const assistantAvatarMediaId = $derived(conversationAvatarMediaId ?? data.presetAvatarMediaId);
 	// The conversation's own identity — the preset's name + avatar, or the
 	// friendly base-model name with no avatar.
 	const conversationIdentity = $derived({
 		label: assistantLabel,
-		avatarMediaId: data.assistantAvatarMediaId,
+		avatarMediaId: assistantAvatarMediaId,
 	});
 
 	let settingAvatar = $state(false);
@@ -249,7 +260,7 @@
 			kind: 'conversation' as const,
 			id: data.conversation.id,
 			name: 'This conversation',
-			avatarMediaId: data.conversation.avatarMediaId,
+			avatarMediaId: conversationAvatarMediaId,
 		},
 		...data.customModels.map((c) => ({
 			kind: 'preset' as const,
@@ -358,16 +369,8 @@
 	// svelte-ignore state_referenced_locally
 	let convId = $state(data.conversation.id);
 
-	// Avatar-draw recovery: the ring, the interruption latches, the reconcile
-	// probe and its poll. Extracted for the same reason the turn and fan-out
-	// controllers were — see its header, and the tests that exist because this
-	// used to live here untestable.
-	//
-	// svelte-ignore state_referenced_locally
-	const avatarDraw = new AvatarDrawController({ convId: () => convId }, data.avatarDrawSince);
 	// svelte-ignore state_referenced_locally
 	const checkIns = new CheckInController({ convId: () => convId }, data.checkIn);
-	const avatarStatus = $derived(avatarDraw.status);
 
 	// svelte-ignore state_referenced_locally
 	let modelKind = $state<ModelKind | null>(data.conversation.modelKind);
@@ -488,7 +491,8 @@
 		modelKind = data.conversation.modelKind;
 		serverInFlightSince = data.inFlightSince;
 		serverGeneratingSince = data.inFlightGeneratingSince;
-		avatarDraw.syncFromServer(data.avatarDrawSince);
+		// The page's word on the face again; the photo read's only outlived it.
+		faceOverride = undefined;
 		checkIns.syncFromServer(data.checkIn);
 		// Fully re-seed the canvas ONLY when switching conversations. A mid-turn
 		// refreshAll refreshes `data` with the same id — re-hydrating then
@@ -1384,8 +1388,8 @@
 		scrollToBottom: () => scrollToBottom(),
 	});
 
-	// The avatar draw dialog: its source reply, model, prompt, compare cart, and
-	// the draw itself. Reports progress through `avatarDraw` above.
+	// The draw dialog, for the avatar portrait or a texting photo: its reply,
+	// model, prompt, compare cart, and the draws themselves.
 	const avatarWorkflow = new AvatarDrawWorkflow({
 		convId: () => convId,
 		messages: () => messages,
@@ -1397,8 +1401,7 @@
 		// offering a switch the server is going to refuse.
 		enhanceByDefault: () =>
 			!isPrivate && !data.conversation.disabledFeatures.includes('image_prompt_enhancement'),
-		draw: avatarDraw,
-		fanout,
+		avatarMediaId: () => conversationAvatarMediaId,
 		refreshPhotos: (replyIds) => refreshPhotos(replyIds),
 	});
 
@@ -1472,12 +1475,6 @@
 		// track its branch streams as in-flight work worth recovering.
 		if (document.visibilityState === 'hidden') {
 			if (turn.busy || fanout.streaming) turn.markHidden();
-			// An avatar draw rides its own latch: it isn't a turn, so `turn.busy` is
-			// false for its whole duration and the flags above never see it. It's
-			// also the longest-lived fetch the app makes — minutes, on a shared GPU
-			// — which makes it the one most likely to be alive when iOS suspends
-			// the PWA, i.e. exactly the case this reconciliation exists for.
-			avatarDraw.markInterrupted();
 		} else if (turn.wasHiddenDuringFetch) {
 			// Reconcile against server state — if a single generation completed
 			// while we were backgrounded, the new message arrives via the load.
@@ -1493,13 +1490,6 @@
 			// still needs them), so drop them rather than reloading the page's
 			// window again on every later return to the tab.
 			if (!turn.busy && !fanout.streaming) turn.clearInterruptedFlags();
-		} else {
-			// A draw reconciles through the cheap probe, not a reload: a turn is over
-			// in seconds, a draw takes minutes, and a full `refreshAll()` per
-			// refocus across those minutes re-downloads a window that cannot have
-			// changed. The controller owns the scoping and the no-clear-here rule —
-			// see `reconcileIfOwed`.
-			avatarDraw.reconcileIfOwed();
 		}
 	}
 	/**
@@ -1533,7 +1523,6 @@
 	function onOffline() {
 		isOffline = true;
 		if (turn.busy || fanout.streaming) turn.markOffline();
-		avatarDraw.markInterrupted();
 	}
 	function onOnline() {
 		isOffline = false;
@@ -1543,7 +1532,7 @@
 			void refreshAll();
 			// Same as the visibility path: reconciled, and nothing in flight needs them.
 			if (!turn.busy && !fanout.streaming) turn.clearInterruptedFlags();
-		} else avatarDraw.reconcileIfOwed();
+		}
 	}
 
 	// In-flight assistant render state (segments + open/progress/status/queued/
@@ -1655,7 +1644,7 @@
 		if (!data.conversation.photos || m.role !== 'assistant') return undefined;
 		const versions = new Map<number, MessageImage[]>();
 		for (const image of m.images ?? []) {
-			if (image.markerIndex === null) continue;
+			if (image.kind !== 'photo' || image.markerIndex === null) continue;
 			const list = versions.get(image.markerIndex);
 			if (list) list.push(image);
 			else versions.set(image.markerIndex, [image]);
@@ -1671,7 +1660,7 @@
 			}
 		}
 		const developing = avatarWorkflow.developingFor(m.id);
-		for (const d of m.developing ?? []) developing.add(d.markerIndex);
+		for (const d of m.developing ?? []) if (d.markerIndex !== null) developing.add(d.markerIndex);
 		return {
 			versions,
 			developing,
@@ -1685,6 +1674,7 @@
 	// reload would bring back — so a photo change patches the replies in place
 	// instead (`PhotoStateResponse`), wherever they are on the page.
 	function applyPhotoState(state: PhotoStateResponse) {
+		faceOverride = { conversationId: convId, mediaId: state.avatarMediaId };
 		const changed = (id: string) => Object.hasOwn(state.replies, id);
 		messages = messages.map((m) => {
 			if (!changed(m.id)) return m;
@@ -1727,6 +1717,33 @@
 			},
 		});
 	});
+
+	// The avatar portraits drawn from a reply — any reply, in any chat — as one
+	// picture at the end of it, wherever there are some or one is drawing.
+	function portraitFor(m: ChatMessage): TextingPhotos | undefined {
+		if (m.role !== 'assistant') return undefined;
+		let versions = (m.images ?? []).filter((i) => i.kind === 'portrait');
+		const developing =
+			avatarWorkflow.isDeveloping(m.id, null) || !!m.developing?.some((d) => d.kind === 'portrait');
+		if (versions.length === 0 && !developing) return undefined;
+		// A version just put on show here, ahead of the data saying so.
+		const shown = avatarWorkflow.shownVersion(m.id, null);
+		if (shown && versions.some((v) => v.id === shown && v.mediaId)) {
+			versions = versions.map((v) =>
+				v.shown === (v.id === shown) ? v : { ...v, shown: v.id === shown },
+			);
+		}
+		return {
+			versions: new Map([[0, versions]]),
+			developing: new Set(developing ? [0] : []),
+			onDevelop: () => avatarWorkflow.openDialog(m),
+			onShow: (image: MessageImage) => void avatarWorkflow.showPhoto(m.id, image),
+			onRemove: (image: MessageImage) => void avatarWorkflow.removePhoto(m.id, image),
+		};
+	}
+
+	// The dialog is drawing the avatar, not a photo.
+	const drawingPortrait = $derived(avatarWorkflow.photo?.index === null);
 
 	function developPhoto(reply: ChatMessage, index: number, assistantLabel: string) {
 		const marker = photoMarkers(reply, assistantLabel).find((p) => p.index === index);
@@ -1897,12 +1914,9 @@
 		// conversation's columns (if any) re-hydrate from its load data below.
 		fanout.teardown();
 		resetCompare();
-		// Close the avatar dialog and drop its staged prompt: it was written
-		// against the conversation we're leaving, and pressing Draw here would
-		// send the old chat's text with this chat's source message. The DRAW's own
-		// status needs no reset — `avatarStatus` derives against `convId`, so an
-		// in-flight one is simply invisible from here and reappears if the user
-		// navigates back.
+		// Close the draw dialog and drop its staged prompt: it was written against
+		// the conversation we're leaving, and pressing Draw here would send the old
+		// chat's text with this chat's source message.
 		avatarWorkflow.reset();
 	}
 
@@ -1977,16 +1991,6 @@
 	$effect(() => {
 		if (!turn.recoveredInFlight) return;
 		return turn.startRecoveryPoll();
-	});
-
-	// Same, for an avatar draw whose client connection died. Its own poll rather
-	// than a flag on the turn controller's: `inFlightSince` excludes the draw on
-	// purpose (a draw isn't a turn, and counting it would raise a phantom
-	// "Generating…" bubble and disable the composer for the whole draw — see
-	// getInFlightSince), so the two have to terminate on different fields.
-	$effect(() => {
-		if (!avatarDraw.recovered) return;
-		return avatarDraw.startRecoveryPoll();
 	});
 
 	// Recovery poll for a RECOVERED fan-out (rebuilt from server truth after a
@@ -2578,18 +2582,18 @@
 						// count zero on a perfectly healthy install and silently remove
 						// the feature. The list behind the button is fetched on click.
 						hasImageModel: data.hasImageModel,
-						avatarMediaId: data.assistantAvatarMediaId,
+						avatarMediaId: assistantAvatarMediaId,
 						hasSource: !!avatarWorkflow.sourceMessage,
 						alreadyDrawn: avatarWorkflow.alreadyDrawn,
-						status: avatarStatus,
-						busy: generating || !!avatarStatus,
+						status: avatarWorkflow.portraitStatus,
+						busy: generating,
 						onDescribe: () => void beginAvatarDescription(),
 						onGenerate: () => avatarWorkflow.openDialog(),
 						// Reuses the same lightbox any generated image opens, so the
 						// avatar is inspectable from the one place it always is rather
 						// than by scrolling back to the bubble that produced it.
 						onViewFullSize: () => {
-							if (data.assistantAvatarMediaId) void lightbox.open(data.assistantAvatarMediaId);
+							if (assistantAvatarMediaId) void lightbox.open(assistantAvatarMediaId);
 						},
 					}
 				: undefined}
@@ -2774,6 +2778,7 @@
 									onOpenCanvas={(artifactId: string | null) => canvas.show(artifactId ?? undefined)}
 									{texting}
 									photos={photosFor(m, identity.label)}
+									portrait={portraitFor(m)}
 									checkIn={checkInNoteFor(m)}
 								/>
 							{/if}
@@ -2811,7 +2816,7 @@
 						<InFlightBubble
 							blocks={turn.inFlightBlocks}
 							{assistantLabel}
-							assistantAvatarMediaId={data.assistantAvatarMediaId}
+							{assistantAvatarMediaId}
 							label={inFlightLabel}
 							status={turn.inFlightStatus}
 							progress={turn.inFlightProgress}
@@ -2838,17 +2843,11 @@
 						in:fade={{ duration: listMounted && !reduceMotion ? 160 : 0 }}
 					>
 						<!-- Text fan-out: pick one to continue. Media fan-out (keep-many):
-					     discard duds + regenerate, no single pick. An avatar comparison
-					     is both — the portraits stay as siblings AND one becomes the
-					     conversation's face. Its Regenerate re-sends the column's own
-					     prompt, so a portrait with none recovered (a failure) has none. -->
+					     discard duds + regenerate, no single pick. -->
 						<FanoutColumns
 							columns={fanout.columns}
-							onPick={fanout.isMedia && !fanout.isAvatar
-								? undefined
-								: (c: FanoutColumn) => void fanout.pick(c)}
-							pickLabel={fanout.isAvatar ? 'Use this avatar' : 'Continue with this'}
-							pickCaption={fanout.isAvatar ? 'Use avatar' : undefined}
+							onPick={fanout.isMedia ? undefined : (c: FanoutColumn) => void fanout.pick(c)}
+							pickLabel="Continue with this"
 							onDiscard={fanout.isMedia ? (c: FanoutColumn) => void fanout.discard(c) : undefined}
 							onRegenerate={fanout.isMedia
 								? (c: FanoutColumn) => void fanout.regenerate(c)
@@ -3035,8 +3034,8 @@
 	<FanoutColumns
 		columns={photoGrid.columns}
 		onPick={(c: FanoutColumn) => void photoGrid.pick(c)}
-		pickLabel="Show this one"
-		pickCaption="Show"
+		pickLabel={drawingPortrait ? 'Use this avatar' : 'Show this one'}
+		pickCaption={drawingPortrait ? 'Use avatar' : 'Show'}
 		onDiscard={(c: FanoutColumn) => void photoGrid.discard(c)}
 		onRegenerate={(c: FanoutColumn) => void photoGrid.regenerate(c)}
 		canRegenerate={(c: FanoutColumn) => photoGrid.canRegenerate(c)}
@@ -3056,19 +3055,13 @@
 			loading={catalogue.status === 'loading'}
 			loadError={catalogue.loadFailed}
 			modelId={avatarWorkflow.modelId}
-			canCompare={avatarWorkflow.canCompare}
-			compareBlockedReason="Comparing several models needs the description to be the latest thing in the thread."
-			purpose={avatarWorkflow.photo ? 'photo' : 'avatar'}
+			purpose={drawingPortrait ? 'avatar' : 'photo'}
 			comparison={photoGrid.active ? photoComparisonGrid : undefined}
 			bind:aspectRatio={avatarWorkflow.aspectRatio}
 			bind:compareSelections={avatarWorkflow.compareSelections}
 			bind:compareMode={avatarWorkflow.compareMode}
 			enhance={avatarWorkflow.enhance}
-			status={avatarWorkflow.photo
-				? avatarWorkflow.photoSubmitting
-					? 'Sending…'
-					: null
-				: avatarStatus}
+			status={avatarWorkflow.photoSubmitting ? 'Sending…' : null}
 			onPromptChange={(v: string) => (avatarWorkflow.prompt = v)}
 			onEnhanceChange={(v: boolean) => (avatarWorkflow.enhance = v)}
 			onModelChange={(id: string) => avatarWorkflow.setModel(id)}
@@ -3107,10 +3100,9 @@
 							? (id: string) => lightbox.regenerate(id)
 							: undefined,
 						regenerateBlocked: lightbox.regenerateBlocked,
-						onPick:
-							photoGrid.active || fanout.isAvatar ? (id: string) => lightbox.pick(id) : undefined,
-						pickLabel: photoGrid.active ? 'Show this one' : 'Use this avatar',
-						pickCaption: photoGrid.active ? 'Show' : 'Use avatar',
+						onPick: photoGrid.active ? (id: string) => lightbox.pick(id) : undefined,
+						pickLabel: drawingPortrait ? 'Use this avatar' : 'Show this one',
+						pickCaption: drawingPortrait ? 'Use avatar' : 'Show',
 						busy: photoGrid.active ? photoGrid.picking : fanout.picking,
 					}
 				: null}

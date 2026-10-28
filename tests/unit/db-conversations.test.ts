@@ -1920,59 +1920,6 @@ describe('multi-model fan-out: sibling appends + active_leaf pinning', () => {
 		expect(byId.get(plain.msg.id)).not.toHaveProperty('favorite');
 	});
 
-	it('getSiblingAssistants recovers each portrait’s re-roll prompt only when asked', () => {
-		// An avatar grid rebuilt after a reload re-rolls from these, so they must be
-		// what the user TYPED: `promptFull` holds the enhancer's output for an
-		// enhanced draw, and re-enhancing that would draw something else.
-		const { u, conv, user } = seedConvWithUser();
-		const out = (name: string, promptFull: string, originalPrompt: string | null) =>
-			insertMedia({
-				userId: u.id,
-				storagePath: `ab/cd/${name}.png`,
-				contentType: 'image/png',
-				byteSize: 2048,
-				kind: 'image',
-				sourceEndpointId: 'bridge',
-				sourceModel: 'bridge::sdxl',
-				promptExcerpt: promptFull,
-				promptFull,
-				originalPrompt,
-			});
-		const sibling = (mediaId: string) =>
-			appendMessage({
-				conversationId: conv.id,
-				parentMessageId: user.id,
-				role: 'assistant',
-				parts: [{ type: 'image', mediaId }],
-				modelUsed: 'bridge::sdxl',
-				advanceActiveLeaf: false,
-			});
-		const enhanced = sibling(out('enh', 'cinematic portrait, rim light', 'a navigator').id);
-		const verbatim = sibling(out('verb', 'a navigator', null).id);
-		const failed = appendMessage({
-			conversationId: conv.id,
-			parentMessageId: user.id,
-			role: 'assistant',
-			parts: [{ type: 'error', message: 'boom' }],
-			modelUsed: 'bridge::sdxl',
-			advanceActiveLeaf: false,
-		});
-
-		const byId = new Map(
-			getSiblingAssistants(conv.id, user.id, { avatarPrompts: true }).map((m) => [
-				m.id,
-				m.avatarPrompt,
-			]),
-		);
-		expect(byId.get(enhanced.id)).toEqual({ prompt: 'a navigator', enhance: true });
-		expect(byId.get(verbatim.id)).toEqual({ prompt: 'a navigator', enhance: false });
-		// No media row to read one off.
-		expect(byId.get(failed.id)).toBeUndefined();
-
-		// Not asked (a turn fan-out): nothing extra in the payload.
-		expect(getSiblingAssistants(conv.id, user.id).every((m) => !('avatarPrompt' in m))).toBe(true);
-	});
-
 	it('getSiblingAssistants excludes non-assistant children and other parents', () => {
 		const { conv, user } = seedConvWithUser();
 		const a = appendMessage({
@@ -2187,7 +2134,6 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 		// Not parked yet (no marker) → nothing to recover.
 		expect(getFanoutRecoveryState(conv.id, u.id, user.id)).toEqual({
 			parentMessageId: null,
-			avatar: false,
 			kind: null,
 			siblings: [],
 			pending: 0,
@@ -2254,39 +2200,6 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 		// Idempotent: "no parked fan-out here" is the state it exists to reach.
 		clearFanoutParent(conv.id, u.id);
 		expect(getFanoutParent(conv.id, u.id)).toBeNull();
-	});
-
-	it('getFanoutRecoveryState flags a comparison parked on an assistant message', () => {
-		// An avatar comparison hangs off the appearance description, not a shared
-		// user message, and the client has to know which it is: "pick" means adopt
-		// this face there, and continue the thread with this model everywhere else.
-		// Derived from the anchor's role, which the two routes keep disjoint — the
-		// messages route refuses a non-user fan-out parent.
-		const { u, conv, user } = seedFanout();
-		setFanoutParent(conv.id, u.id, user.id);
-		expect(getFanoutRecoveryState(conv.id, u.id, user.id).avatar).toBe(false);
-
-		// Now park on an assistant message with its own children, the way an avatar
-		// draw does.
-		const description = appendMessage({
-			conversationId: conv.id,
-			parentMessageId: user.id,
-			role: 'assistant',
-			parts: [{ type: 'text', text: 'a weathered navigator' }],
-			modelUsed: 'bridge::a',
-		});
-		const portrait = appendMessage({
-			conversationId: conv.id,
-			parentMessageId: description.id,
-			role: 'assistant',
-			parts: [{ type: 'image', mediaId: 'm1' }],
-			modelUsed: 'bridge::sdxl',
-			advanceActiveLeaf: false,
-		});
-		setFanoutParent(conv.id, u.id, description.id);
-		const state = getFanoutRecoveryState(conv.id, u.id, description.id);
-		expect(state.avatar).toBe(true);
-		expect(state.siblings.map((m) => m.id)).toEqual([portrait.id]);
 	});
 
 	it('getFanoutRecoveryState shows all siblings during an additive re-roll', () => {

@@ -58,6 +58,10 @@
 		 *  chat may send photos. A texting reply draws them as texts; a standard
 		 *  one in its bubble, where each `[photo: …]` was (see PhotoSlot). */
 		photos?: TextingPhotos;
+		/** The avatar portraits drawn from this reply, as one picture (its
+		 *  versions under index 0) — set where any are, or are drawing. Shown at
+		 *  the end of the reply, whose description they were drawn from. */
+		portrait?: TextingPhotos;
 		/** This reply's pending check-in, if it set one: a note under it. */
 		checkIn?: PendingCheckInNote;
 	}
@@ -80,6 +84,7 @@
 		onOpenCanvas,
 		texting = false,
 		photos,
+		portrait,
 		checkIn,
 	}: Props = $props();
 
@@ -119,6 +124,18 @@
 			photosOn={!!photos}
 			{checkIn}
 		/>
+		{#if portrait}
+			<div class="mt-1.5">
+				<PhotoSlot
+					index={0}
+					description="{assistantLabel}'s portrait"
+					photos={portrait}
+					{onImageClick}
+					{openingLightboxFor}
+					portrait
+				/>
+			</div>
+		{/if}
 		{#each bottomCanvasCards as block (block.type === 'tool_call' ? block.toolCallId : '')}
 			{#if block.type === 'tool_call'}
 				<CanvasCard result={block.result} onOpen={onOpenCanvas} />
@@ -172,6 +189,17 @@
 				/>
 			{/if}
 		{/each}
+		{#if portrait}
+			<PhotoSlot
+				index={0}
+				description="{assistantLabel}'s portrait"
+				photos={portrait}
+				{onImageClick}
+				{openingLightboxFor}
+				inBubble
+				portrait
+			/>
+		{/if}
 		{#if reaction && message.role === 'user'}
 			<MessageReaction emoji={reaction} reactorLabel={assistantLabel} />
 		{/if}

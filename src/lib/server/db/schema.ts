@@ -345,9 +345,7 @@ export const conversations = sqliteTable(
 		// When set, this conversation has an UNRESOLVED multi-model fan-out:
 		// the leaf is pinned at this ANCHOR message while its N sibling assistant
 		// responses await the user's pick (text) or pruning (image). Set by
-		// .../messages/prepare, or by .../avatar/prepare for a comparison of
-		// candidate portraits, which anchors on an assistant message instead.
-		// Cleared by selectBranch (pick / dismiss / continue), truncateAtMessage,
+		// .../messages/prepare. Cleared by selectBranch (pick / dismiss / continue), truncateAtMessage,
 		// leaf-advancing appendMessage, and deleteBranch when the anchor is deleted. Lets the page rehydrate the
 		// compare grid after a reload without guessing from sibling counts.
 		// NOTE: this column was added via ALTER TABLE (migration 0019), which
@@ -487,20 +485,11 @@ export const messages = sqliteTable(
 		// A re-roll carries its SOURCE column's index rather than a fresh one, so
 		// it sorts directly after the variation it re-rolled — which is where the
 		// live grid puts it. Indices are assigned past the highest already under
-		// the anchor, so a second avatar draw round lands after the first instead
-		// of interleaving with it.
+		// the anchor.
 		//
 		// Null on every non-fan-out row and on rows predating the column; those
-		// sort chronologically AHEAD of any indexed sibling, which is exactly
-		// where an avatar comparison's already-drawn portraits belong (the live
-		// grid seeds them before the fresh branches). See getSiblingAssistants.
-		//
-		// "Ahead" is by grid position, not by age, and the two only coincide for
-		// rows that genuinely predate the grid. A BACKGROUND avatar draw is the
-		// case where they don't: it isn't a comparison branch, so it persists null
-		// however late it happens, and a comparison drawn from that description
-		// afterwards seeds it at the head. It's a candidate portrait either way,
-		// so the position is cosmetic — but it isn't "drawn earlier".
+		// sort chronologically AHEAD of any indexed sibling. See
+		// getSiblingAssistants.
 		fanoutIndex: integer('fanout_index'),
 		createdAt: integer('created_at').notNull(),
 	},
@@ -1038,7 +1027,9 @@ export const messageMedia = sqliteTable(
 // --- images drawn for a message -------------------------------------------
 //
 // A picture drawn FOR a message rather than as one: a reply's photo, developed
-// from a `[photo: …]` the reply wrote. It belongs to the reply, so it hangs off
+// from a `[photo: …]` the reply wrote, or an avatar portrait drawn from the
+// reply that describes how the assistant looks. It belongs to the reply, so it
+// hangs off
 // that row instead of being a message of its own — which is what lets it be
 // developed long after the conversation moved on (nothing in the thread
 // changes, and nothing here is ever sent upstream). Each row is one VERSION:
@@ -1049,8 +1040,8 @@ export const messageMedia = sqliteTable(
 // The image is also linked to the reply through `message_media`, so the ref
 // count, the gallery and branch deletion treat it as the reply's own media.
 //
-// `kind` leaves room for avatar portraits, which are still messages of their
-// own today (an image drawn from a description reply, with no marker).
+// `kind` tells them apart: a portrait has no marker, and the one on show is
+// the one last made the conversation's face.
 export const messageImages = sqliteTable(
 	'message_images',
 	{
@@ -1319,8 +1310,8 @@ export const generationJobs = sqliteTable(
 		conversationId: text('conversation_id')
 			.notNull()
 			.references(() => conversations.id, { onDelete: 'cascade' }),
-		// The message the result hangs off: the prompting user message, or — for
-		// an avatar draw — the assistant reply holding the appearance description.
+		// The message the result hangs off: the prompting user message, or — for a
+		// photo or portrait — the assistant reply it's drawn onto.
 		anchorMessageId: text('anchor_message_id')
 			.notNull()
 			.references((): AnySQLiteColumn => messages.id, { onDelete: 'cascade' }),
@@ -1328,7 +1319,7 @@ export const generationJobs = sqliteTable(
 		// What the generation is for, which decides how it registers in flight
 		// and what happens on completion (see `JobOrigin`).
 		origin: text('origin', {
-			enum: ['send', 'fanout', 'avatar', 'avatar_fanout', 'photo'],
+			enum: ['send', 'fanout', 'photo', 'portrait'],
 		}).notNull(),
 		// Conversation-facing `endpoint::model` id.
 		modelId: text('model_id').notNull(),

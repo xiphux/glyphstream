@@ -182,12 +182,11 @@
 		 * height, so a swipe between them doesn't resize the image.
 		 */
 		triage?: {
-			/** The grid's re-roll. Omit to withhold it (an avatar portrait recovered
-			 *  without its prompt has nothing to re-roll from). */
+			/** The grid's re-roll. Omit to withhold it. */
 			onRegenerate?: (id: string) => void;
 			/** Offered, but the grid is at its in-flight cap. */
 			regenerateBlocked?: boolean;
-			/** An avatar comparison's pick. `pickLabel` is its accessible name;
+			/** A photo or portrait comparison's pick. `pickLabel` is its accessible name;
 			 *  `pickCaption`, when set, the shorter text the equal-width button shows. */
 			onPick?: (id: string) => void;
 			pickLabel?: string;

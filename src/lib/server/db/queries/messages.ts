@@ -46,9 +46,7 @@ interface AppendInput {
 	 * Whether to point the conversation's active_leaf_message_id at the new
 	 * message (default true). A multi-model fan-out sets this false: its N
 	 * sibling assistant messages all hang off one anchor message (the shared
-	 * user message of a turn fan-out, or an assistant appearance description
-	 * when an avatar comparison draws several portraits at once), and
-	 * the leaf must stay pinned at that user message (so every branch's
+	 * user message), and the leaf must stay pinned at that user message (so every branch's
 	 * history walk is identical) until the user picks a winner. Letting each
 	 * concurrent append advance the leaf would make it ping-pong between
 	 * branches and corrupt the others' upstream context.
@@ -141,12 +139,12 @@ export function appendMessage(input: AppendInput): ChatMessage {
 			//
 			// `advanceActiveLeafIfCurrent` adds the leaf to the WHERE, making this
 			// a compare-and-swap: a caller whose anchor went stale while it worked
-			// leaves the branch where the user left it. Absent (every caller but
-			// avatar generation), the predicate is just the conversation id, as
+			// leaves the branch where the user left it. Absent (every caller but a
+			// check-in's reminder), the predicate is just the conversation id, as
 			// before.
 			// Resolved HERE, inside the transaction and through `tx`, not by the
-			// caller before it started work: an avatar draw takes minutes, and a
-			// reaction landing during it moves the leaf onto a `role:'tool'` row
+			// caller before it started work: a reaction landing in between moves
+			// the leaf onto a `role:'tool'` row
 			// that an anchor computed up front would no longer match. Asking whether the CURRENT
 			// leaf still reply-resolves to the caller's anchor keeps the guard's
 			// meaning — "has the branch moved on?" — while letting reaction
@@ -438,6 +436,11 @@ export function photoStateFor(
 		if (entry) entry.images = images;
 	}
 	for (const job of listPhotoJobsForMessages(conversationId, messageIds)) {
+		const developing = out.get(job.anchorMessageId)?.developing;
+		if (job.origin === 'portrait') {
+			developing?.push({ kind: 'portrait', markerIndex: null, modelId: job.modelId });
+			continue;
+		}
 		let params: { photo?: { index?: unknown } } | null;
 		try {
 			params = JSON.parse(job.paramsJson) as typeof params;
@@ -447,7 +450,7 @@ export function photoStateFor(
 		}
 		const markerIndex = params?.photo?.index;
 		if (typeof markerIndex !== 'number') continue;
-		out.get(job.anchorMessageId)?.developing.push({ markerIndex, modelId: job.modelId });
+		developing?.push({ kind: 'photo', markerIndex, modelId: job.modelId });
 	}
 	return out;
 }
@@ -777,51 +780,6 @@ export function resolveReplyLeaf(
 }
 
 /**
- * Whether `messageId` has any child message at all.
- *
- * Used by the avatar fan-out to decide whether the active leaf can be stepped
- * back onto the description it hangs under: a childless portrait is a dead end,
- * so parking the leaf on its parent hides nothing (the portrait comes straight
- * back as a grid column), while a portrait the conversation has continued from
- * would strand those turns on an unpicked branch. An EXISTS-shaped probe rather
- * than a count — the answer is a yes/no and the trees get long.
- */
-export function hasChildMessages(conversationId: string, messageId: string): boolean {
-	const row = getDb()
-		.select({ id: messages.id })
-		.from(messages)
-		.where(
-			and(eq(messages.conversationId, conversationId), eq(messages.parentMessageId, messageId)),
-		)
-		.limit(1)
-		.get();
-	return row !== undefined;
-}
-
-/**
- * Just the role of one message, or null when it doesn't exist.
- *
- * A projected probe rather than `getMessage`, for the same reason
- * `hasChildMessages` above is one: the caller wants a single column, and
- * `getMessage` has no projection — it reads every column and then JSON-parses
- * `content_json` on the way out. `role` sits ahead of `content_html` and
- * `raw_response_json` in the row layout, so asking for it alone also avoids
- * walking the overflow chain those two spill into on a long message.
- *
- * Worth the four lines because the caller is `getFanoutRecoveryState`, which
- * runs on the branch-walk-free `?fanout=1` poll — a route written specifically
- * to keep a 4-second tick off the heavy read path.
- */
-export function getMessageRole(conversationId: string, messageId: string): MessageRole | null {
-	const row = getDb()
-		.select({ role: messages.role })
-		.from(messages)
-		.where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId)))
-		.get();
-	return row?.role ?? null;
-}
-
-/**
  * The assistant messages that hang directly off `parentUserMessageId`, in the
  * order a compare grid should DISPLAY them. During a multi-model fan-out these
  * are the N sibling responses rendered side by side; for a normal turn there's
@@ -833,16 +791,10 @@ export function getMessageRole(conversationId: string, messageId: string): Messa
  * active. Each returned message carries its own `modelUsed` so the column
  * header can label which model produced it. Scoped to assistant rows so a
  * (future) tool message child can't leak into the column grid.
- *
- * `avatarPrompts` also attaches each portrait's re-roll inputs
- * (`ChatMessage.avatarPrompt`). Opt-in because only an avatar comparison needs
- * them — a turn fan-out re-derives its prompt from the shared user message, and
- * shipping every sibling's prompt again would only grow the page payload.
  */
 export function getSiblingAssistants(
 	conversationId: string,
 	parentUserMessageId: string,
-	opts?: { avatarPrompts?: boolean },
 ): ChatMessage[] {
 	const db = getDb();
 	const rows = db
@@ -864,9 +816,7 @@ export function getSiblingAssistants(
 	//
 	// Un-indexed rows (non-fan-out appends, and anything predating the column)
 	// sort chronologically AHEAD of every indexed one rather than falling to the
-	// end: that's where an avatar comparison's already-drawn portraits belong,
-	// since the live grid seeds those before the fresh branches. A fan-out whose
-	// rows all predate the column is entirely un-indexed and so keeps its old
+	// end. A fan-out whose rows all predate the column is entirely un-indexed and so keeps its old
 	// chronological order.
 	rows.sort((a, b) => {
 		const ai = a.fanoutIndex;
@@ -919,8 +869,6 @@ export function getSiblingAssistants(
 				id: media.id,
 				src: media.sourceMediaId,
 				ratio: media.aspectRatio,
-				promptFull: media.promptFull,
-				originalPrompt: media.originalPrompt,
 				favoritedAt: media.favoritedAt,
 			})
 			.from(media)
@@ -939,11 +887,6 @@ export function getSiblingAssistants(
 			// Seeds the grid's star, so a recovered grid shows what was already
 			// starred. Only when set: an unstarred branch doesn't pay for the key.
 			if (row?.favoritedAt != null) m.favorite = true;
-			if (opts?.avatarPrompts) {
-				// The typed prompt, never the enhancer's output — see `AvatarDrawPrompt`.
-				const prompt = row?.originalPrompt ?? row?.promptFull ?? null;
-				m.avatarPrompt = prompt ? { prompt, enhance: row?.originalPrompt != null } : null;
-			}
 		}
 	}
 	// A recovered grid draws these as its columns. Takes no user, so the owner

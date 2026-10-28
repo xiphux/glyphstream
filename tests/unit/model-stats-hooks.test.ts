@@ -18,6 +18,7 @@ vi.mock('#lib/server/endpoints/registry.js', () => ({
 
 import {
 	recordComparisonPick,
+	recordPhotoComparisonPick,
 	recordEdit,
 	recordModelSwitch,
 	recordRetry,
@@ -192,7 +193,7 @@ describe('comparison pick', () => {
 		reply(c.id, u.id, 'cloud::gpt', { advance: false });
 		reply(c.id, u.id, 'cloud::bad', { advance: false, parts: [{ type: 'error', message: 'x' }] });
 
-		recordComparisonPick(c.id, getMessage(c.id, a.id)!, 'fanout');
+		recordComparisonPick(c.id, getMessage(c.id, a.id)!);
 		expect(tally()).toEqual({
 			'local::qwen fanout_shown': 1,
 			'local::qwen fanout_win': 1,
@@ -208,7 +209,7 @@ describe('comparison pick', () => {
 			advance: false,
 			parts: [{ type: 'error', message: 'x' }],
 		});
-		recordComparisonPick(c.id, getMessage(c.id, failed.id)!, 'fanout');
+		recordComparisonPick(c.id, getMessage(c.id, failed.id)!);
 		expect(tally()).toEqual({});
 	});
 
@@ -217,8 +218,17 @@ describe('comparison pick', () => {
 		const u = userTurn(c.id);
 		const a = reply(c.id, u.id, 'bridge::flux', { advance: false });
 		reply(c.id, u.id, 'bridge::flux', { advance: false });
-		recordComparisonPick(c.id, getMessage(c.id, a.id)!, 'avatar');
+		recordComparisonPick(c.id, getMessage(c.id, a.id)!);
 		expect(tally()).toEqual({});
+	});
+
+	it('counts a portrait comparison as an avatar comparison', () => {
+		recordPhotoComparisonPick('bridge::flux', ['bridge::flux', 'bridge::sdxl'], 'portrait');
+		expect(tally()).toEqual({
+			'bridge::flux avatar_shown': 1,
+			'bridge::flux avatar_win': 1,
+			'bridge::sdxl avatar_shown': 1,
+		});
 	});
 });
 

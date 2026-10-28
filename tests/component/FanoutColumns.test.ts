@@ -43,7 +43,6 @@ function col(overrides: Partial<FanoutColumn>): FanoutColumn {
 		error: overrides.error ?? null,
 		aspectRatio: overrides.aspectRatio ?? null,
 		errorMessageId: overrides.errorMessageId ?? null,
-		avatarPrompt: overrides.avatarPrompt ?? null,
 	};
 }
 

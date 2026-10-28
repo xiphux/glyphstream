@@ -1,22 +1,18 @@
 /**
- * The avatar draw dialog's workflow: which reply the portrait is drawn from,
- * which image model draws it, the dialog's editable prompt, the compare cart,
- * and the draw itself (one model in the background, or several as a fan-out
- * comparison).
+ * The draw dialog's workflow, for an avatar portrait or a texting photo: which
+ * reply it's drawn onto, which image model draws it, the dialog's editable
+ * prompt, the compare cart, and the draws themselves.
  *
- * The same dialog develops texting photos (`openPhotoDialog`), which go their
- * own way once Develop is pressed: a photo is kept on the reply as a version
- * (POST /photos), not drawn into the thread, so there's no ring, no parked
- * comparison and nothing to recover — a comparison is several draws whose
- * results the dialog shows as they land, for the user to pick from.
+ * Both are kept on their reply as versions (POST /photos; a portrait is the
+ * one with no marker), not drawn into the thread — so there's nothing to park
+ * and nothing to recover: one model closes the dialog and the picture shows on
+ * its reply when it lands, and several are a comparison whose results the
+ * dialog shows as they land, for the user to pick from. A portrait on show is
+ * the conversation's face, which the server sets.
  *
- * Lifted out of the chat page, which hosts it. The recovery half (the ring,
- * the interruption latches, the reconcile) is `AvatarDrawController`; this is
- * the half that starts a draw, and it reports progress through that controller.
+ * Lifted out of the chat page, which hosts it.
  */
-import { refreshAll } from '$app/navigation';
 import { SvelteMap } from 'svelte/reactivity';
-import { lastReplyMessage } from './chat-render.js';
 import { consumeChatStream } from './consume-chat-stream.js';
 import { errorMessageFromResponse } from './fetch-error.js';
 import { expandCompareSelections, type CompareSelection } from './fanout.js';
@@ -24,20 +20,18 @@ import { partsToText } from './message-parts.js';
 import { extractAvatarPrompt } from './avatar-prompt.js';
 import { toast } from './toast.svelte.js';
 import { randomUUID } from './uuid.js';
-import type { AvatarDrawController } from './avatar-draw-controller.svelte.js';
-import type { FanoutController } from './fanout-controller.svelte.js';
 import type { ModelCatalogue } from './model-catalogue.svelte.js';
 import type { ChatMessage, MessageImage } from './types/api.js';
 
-/** A texting photo the dialog is developing: which reply, which of its
- *  `[photo: …]`. */
+/** A picture the dialog is drawing: which reply, and which of its
+ *  `[photo: …]` — null for the avatar portrait drawn from it. */
 export interface PhotoDraw {
 	replyId: string;
-	index: number;
+	index: number | null;
 }
 
-/** A photo comparison the dialog is showing: its draws, and the versions the
- *  photo already had, so the ones it adds can be told apart. */
+/** A comparison the dialog is showing: its draws, and the versions the
+ *  picture already had, so the ones it adds can be told apart. */
 export interface PhotoComparison extends PhotoDraw {
 	conversationId: string;
 	id: string;
@@ -48,7 +42,8 @@ export interface PhotoComparison extends PhotoDraw {
 	body: Record<string, unknown>;
 }
 
-const photoKey = (replyId: string, index: number) => `${replyId}:${index}`;
+const PORTRAIT = 'portrait';
+const photoKey = (replyId: string, index: number | null) => `${replyId}:${index ?? PORTRAIT}`;
 
 /** What the workflow reads from the host page. Getters, so each read is fresh:
  *  the page reassigns `convId` and `messages` on an in-place navigation. */
@@ -62,10 +57,10 @@ export interface AvatarDrawWorkflowDeps {
 	savedModelId(): string | null | undefined;
 	/** Whether prompt enhancement starts on when the dialog opens. */
 	enhanceByDefault(): boolean;
-	draw: AvatarDrawController;
-	fanout: FanoutController;
-	/** Bring these replies' photos up to date on the page, wherever they are
-	 *  in it — a photo change needs no reload of the window. */
+	/** The conversation's own avatar, as the page has it. */
+	avatarMediaId(): string | null;
+	/** Bring these replies' pictures (and the face) up to date on the page,
+	 *  wherever they are in it — a change needs no reload of the window. */
 	refreshPhotos(replyIds: string[]): Promise<void>;
 }
 
@@ -89,29 +84,29 @@ export class AvatarDrawWorkflow {
 	 */
 	enhance = $state(true);
 	/**
-	 * Picking several image models turns the draw into a comparison: a branch per
-	 * model, resolved in the fan-out grid. Kept here (not dialog state) because
-	 * the dispatch reads it after the dialog has closed.
+	 * Picking several image models turns the draw into a comparison: a draw per
+	 * model, picked from in the dialog's grid. Kept here (not dialog state)
+	 * because the dispatch reads it as the form gives way to the grid.
 	 */
 	compareSelections = $state<CompareSelection[]>([]);
 	compareMode = $state(false);
-	/** Set while the dialog is developing a texting photo instead of drawing the
-	 *  avatar. Cleared by `openDialog`. */
+	/** What the dialog is drawing — a photo, or the avatar portrait (`index`
+	 *  null). Set whenever it's open. */
 	photo = $state<PhotoDraw | null>(null);
 	/** A photo's shape, `W:H` or null for each model's default — bound to the
 	 *  dialog's aspect-ratio picker. A portrait is always square. */
 	aspectRatio = $state<string | null>(null);
-	/** The photo comparison on show in the dialog, while it's up. */
+	/** The comparison on show in the dialog, while it's up. */
 	photoComparison = $state<PhotoComparison | null>(null);
-	/** A single photo draw is on its way to the server: the dialog's Develop
-	 *  is spent until it's accepted (or refused), so a second click can't
-	 *  start a second draw. */
+	/** A single draw is on its way to the server: the dialog's button is spent
+	 *  until it's accepted (or refused), so a second click can't start a
+	 *  second draw. */
 	photoSubmitting = $state(false);
-	/** Draws THIS client has under way, by photo — the page also has the
+	/** Draws THIS client has under way, by picture — the page also has the
 	 *  server's word for it (`ChatMessage.developing`), which a reload keeps. */
 	#drawing = new SvelteMap<string, number>();
-	/** Versions this tab put on show, by photo, ahead of the page's data —
-	 *  see `shownVersion`. A draw of the photo landing supersedes it. */
+	/** Versions this tab put on show, by picture, ahead of the page's data —
+	 *  see `shownVersion`. A draw of the picture landing supersedes it. */
 	#shown = new SvelteMap<string, string>();
 	#modelOverride = $state<string | null>(null);
 
@@ -157,30 +152,13 @@ export class AvatarDrawWorkflow {
 	);
 
 	/**
-	 * The message the draw is for: the reply when developing a photo, else the
-	 * avatar's source reply.
+	 * Whether the source reply already has a portrait, so the header menu's
+	 * draw is another version rather than the first.
 	 */
-	readonly #anchor = $derived.by(() => {
-		const photo = this.photo;
-		if (!photo) return this.sourceMessage;
-		return this.#deps.messages().find((m) => m.id === photo.replyId);
-	});
-
-	/**
-	 * Whether this description has already been drawn on the active branch. A
-	 * second generation appends another portrait under the SAME description, so
-	 * the variants land as siblings and the ‹N/M› arrows compare them for free —
-	 * nothing about re-rolling needed building, only saying.
-	 */
-	readonly alreadyDrawn = $derived.by(() => {
-		const source = this.sourceMessage;
-		return (
-			!!source &&
-			this.#deps
-				.messages()
-				.some((m) => m.parentMessageId === source.id && m.parts.some((p) => p.type === 'image'))
-		);
-	});
+	readonly alreadyDrawn = $derived.by(
+		() =>
+			this.sourceMessage?.images?.some((i) => i.kind === 'portrait' && i.mediaId !== null) ?? false,
+	);
 
 	readonly #compareBranches = $derived.by(() =>
 		expandCompareSelections(this.compareSelections, (id) => {
@@ -191,52 +169,36 @@ export class AvatarDrawWorkflow {
 	readonly #comparing = $derived(this.compareMode && this.#compareBranches.length >= 2);
 
 	/**
-	 * Whether a comparison may be offered for this description.
-	 *
-	 * A comparison parks itself on the description so it can be rebuilt after a
-	 * reload, which means the active leaf has to end up there. It already is right
-	 * after a description arrives; for a re-roll it sits on the portrait drawn
-	 * last, and stepping back onto its parent hides nothing (that portrait
-	 * reappears as a grid column). Once the conversation has continued past the
-	 * description, those turns hang off one particular portrait and picking a
-	 * different one would strand them.
-	 *
-	 * `messages` is the active branch, so its last entry IS the leaf. The server
-	 * re-decides this properly (it can see children on branches this list doesn't
-	 * contain) and 409s; this is the affordance, not the rule.
+	 * What the header avatar says while a portrait is drawing anywhere in the
+	 * thread: this tab's draws, and the server's word for the rest (a reload,
+	 * another tab). Null when none is.
 	 */
-	readonly canCompare = $derived.by(() => {
-		// A photo's comparison changes nothing in the thread, so it's always on offer.
-		if (this.photo) return true;
-		const source = this.#anchor;
-		// Past a reaction's tool row, matching the server's parkable rule — the two
-		// must agree, or we offer a comparison the server then refuses.
-		const leaf = lastReplyMessage(this.#deps.messages());
-		if (!source || !leaf) return false;
-		// The `assistant` conjunct mirrors the server's parkable rule exactly — see
-		// avatar/prepare for why a childless USER leaf must not be parked over.
-		// Kept in step deliberately: the dialog closes before prepare is called, so
-		// a client that offered the comparison and a server that refuses it would
-		// surface as a page-level error only after the user had picked their models.
-		return (
-			leaf.id === source.id || (leaf.role === 'assistant' && leaf.parentMessageId === source.id)
-		);
+	readonly portraitStatus = $derived.by(() => {
+		for (const key of this.#drawing.keys()) if (key.endsWith(`:${PORTRAIT}`)) return 'Drawing…';
+		const drawing = this.#deps
+			.messages()
+			.some((m) => m.developing?.some((d) => d.kind === 'portrait'));
+		return drawing ? 'Drawing…' : null;
 	});
 
 	constructor(deps: AvatarDrawWorkflowDeps) {
 		this.#deps = deps;
 	}
 
-	openDialog(): void {
-		const source = this.sourceMessage;
+	/** Open the dialog to draw the avatar from `source` — by default the latest
+	 *  reply with text, which right after the header menu's step 1 is the
+	 *  description. */
+	openDialog(source = this.sourceMessage): void {
 		if (!source) return;
 		// The dialog renders a model list and picks a default from it, and the
 		// catalogue holds neither by default. Fire-and-forget: the dialog is a static
 		// import so it opens on the tap regardless, and its picker fills in when this
 		// resolves — `loading` is threaded through so the wait is visible.
 		void this.#deps.catalogue.ensureAll();
-		this.photo = null;
+		this.photo = { replyId: source.id, index: null };
+		this.photoComparison = null;
 		this.prompt = extractAvatarPrompt(partsToText(source.parts));
+		this.aspectRatio = null;
 		this.#openFresh();
 	}
 
@@ -255,8 +217,8 @@ export class AvatarDrawWorkflow {
 		this.#openFresh();
 	}
 
-	/** Whether this client has a draw of the photo under way. */
-	isDeveloping(replyId: string, index: number): boolean {
+	/** Whether this client has a draw of the picture under way. */
+	isDeveloping(replyId: string, index: number | null): boolean {
 		return (this.#drawing.get(photoKey(replyId, index)) ?? 0) > 0;
 	}
 
@@ -265,13 +227,14 @@ export class AvatarDrawWorkflow {
 		const out = new Set<number>();
 		const prefix = `${replyId}:`;
 		for (const key of this.#drawing.keys()) {
-			if (key.startsWith(prefix)) out.add(Number(key.slice(prefix.length)));
+			const rest = key.startsWith(prefix) ? key.slice(prefix.length) : null;
+			if (rest !== null && rest !== PORTRAIT) out.add(Number(rest));
 		}
 		return out;
 	}
 
-	/** Close the dialog. A photo comparison carries on without it: its results
-	 *  land as versions, and the arrows reach them. */
+	/** Close the dialog. A comparison carries on without it: its results land
+	 *  as versions, and the arrows reach them. */
 	close(): void {
 		this.open = false;
 		this.photoComparison = null;
@@ -280,8 +243,7 @@ export class AvatarDrawWorkflow {
 	#openFresh(): void {
 		this.enhance = this.#deps.enhanceByDefault();
 		// A fresh cart every time. Carrying one over would make the next draw a
-		// silent comparison — and, where `canCompare` has since gone false, one the
-		// picker no longer shows any way to cancel.
+		// silent comparison.
 		this.compareMode = false;
 		this.compareSelections = [];
 		this.open = true;
@@ -311,200 +273,17 @@ export class AvatarDrawWorkflow {
 		}).catch(() => {});
 	}
 
-	/**
-	 * Draw the same prompt with every model in the compare cart, one branch each,
-	 * and resolve them in the fan-out grid.
-	 *
-	 * Nothing of the single-model path below applies: there's no ring to spin (the
-	 * grid is the indicator), no interruption latch to arm (the fan-out controller
-	 * has its own recovery, which is the same mechanism), and no result to
-	 * announce — the portraits are candidates until one is picked.
-	 */
-	async #drawComparison(): Promise<void> {
-		const source = this.#anchor;
-		if (!source) return;
-		const branches = this.#compareBranches;
-		if (branches.length < 2) return;
-		// Close first: past this point the grid reports progress, and a dialog left
-		// up would sit on top of the thing the user is meant to be comparing. A
-		// refusal from prepare surfaces as the page's error, not in the dialog.
-		this.open = false;
-		this.compareMode = false;
-		this.compareSelections = [];
-		await this.#deps.fanout.sendAvatarDraw({
-			sourceMessageId: source.id,
-			prompt: this.prompt,
-			enhance: this.enhance,
-			branches,
-		});
+	/** Draw what the dialog is open for. */
+	generate(): void {
+		if (this.photo) this.#developPhoto(this.photo);
 	}
 
 	/**
-	 * Step two: draw the latest reply and make the result this conversation's
-	 * avatar.
-	 *
-	 * Applying the portrait is the SERVER's job now (the relay's
-	 * `onMediaPersisted` — see the generate route). This used to do it here on
-	 * `done`, which meant the apply only happened for a draw the client survived;
-	 * iOS suspends a PWA seconds after the screen locks, and a draw takes minutes,
-	 * so the common case was the portrait landing with no avatar to show for it.
-	 * What's left here is the part that genuinely needs a live client: the
-	 * progress ring, and pulling the result into view.
-	 */
-	async generate(): Promise<void> {
-		if (this.photo) {
-			this.#developPhoto(this.photo);
-			return;
-		}
-		// Two or more models is a comparison, which is a different mechanism end to
-		// end — see #drawComparison. One is the background draw below.
-		if (this.#comparing) {
-			await this.#drawComparison();
-			return;
-		}
-		const avatarDraw = this.#deps.draw;
-		const source = this.#anchor;
-		if (!source || !this.modelId || avatarDraw.status) return;
-		// Snapshot the conversation ONCE. Everything below runs across awaits that
-		// span the whole generation, and `convId` is reassigned when the user
-		// navigates to another chat — reading it again afterwards is how A's
-		// portrait ends up as B's avatar.
-		const cid = this.#deps.convId();
-		const setStatus = (status: string) => avatarDraw.setStatus(cid, status);
-		setStatus('Starting…');
-		// Whether the failure we end up in the catch with was one the SERVER told us
-		// about, as opposed to the connection simply going away. The two are
-		// indistinguishable by their exception — both are just an Error — but they
-		// are entirely distinguishable by where they were raised, so record it at
-		// the two places that know. See the catch for what it decides.
-		let serverReported = false;
-		avatarDraw.begin(cid);
-		try {
-			const res = await fetch(`/api/conversations/${cid}/avatar/generate`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					sourceMessageId: source.id,
-					modelId: this.modelId,
-					prompt: this.prompt,
-					enhance: this.enhance,
-				}),
-			});
-			// A rejection (bad model, message gone) lands here with the dialog still
-			// up, so the prompt the user just edited survives to be retried.
-			if (!res.ok || !res.body) {
-				serverReported = true;
-				throw new Error(await errorMessageFromResponse(res));
-			}
-
-			// Accepted — the request is the server's problem now, apply included. Close
-			// and let the drawing finish in the background, reported on the header
-			// avatar, so a minute of ComfyUI doesn't hold the UI hostage. Nothing
-			// below this point is load-bearing: losing the connection costs the ring
-			// and the toast, not the portrait or the avatar. Only if the user is still
-			// in this chat: after a switch the dialog up now is one they opened for
-			// another conversation.
-			if (this.#deps.convId() === cid) this.open = false;
-
-			// `drew` rather than a bare "the stream ended": a generation that
-			// produced no image part applied no avatar either, so it must not be
-			// announced as one.
-			let drew: boolean | null = null;
-			await consumeChatStream(res.body, {
-				onQueued: (ahead, paused) => {
-					const verb = paused ? 'Paused' : 'Queued';
-					setStatus(ahead > 0 ? `${verb} — ${ahead} ahead…` : `${verb}…`);
-				},
-				onProgress: (_percent, statusText) => setStatus(statusText ?? 'Drawing…'),
-				onStart: () => {
-					setStatus('Drawing…');
-				},
-				onDone: ({ assistantMessage }) => {
-					// The server has already applied it by the time `done` is written
-					// (`onMediaPersisted` runs before the frame goes out), so there's
-					// nothing to do here but notice.
-					drew = assistantMessage.parts.some((p) => p.type === 'image');
-				},
-				onError: (message) => {
-					// A terminal `error` frame: the server reached us to say the
-					// generation failed, so no interruption can explain this away.
-					serverReported = true;
-					throw new Error(message);
-				},
-			});
-
-			// The stream ran to completion, so the server is done and there is nothing
-			// left for a later probe to discover. Discharging here matters because
-			// the chat page's `hidden` handler arms the debt for ANY draw that was
-			// running when the page went away, without knowing whether the
-			// connection actually died — and on desktop it usually didn't (a tab
-			// switch doesn't kill an SSE). Left set, the
-			// next return to the foreground probes, learns nothing, and pays a full
-			// branch reload for it.
-			//
-			// Ownership-guarded, and OUTSIDE the `convId === cid` block below: an
-			// overlapping draw may own the slot by now, and a draw that finishes
-			// while the user is elsewhere is exactly the case that would otherwise
-			// strand its debt.
-			avatarDraw.completed(cid);
-
-			// Only refresh and announce if the user is still looking at the chat this
-			// belongs to. Reloading a conversation they've moved on from — and
-			// telling them its avatar changed — would be noise about someone else's
-			// thread. Navigating back re-runs the load anyway.
-			if (this.#deps.convId() === cid) {
-				await refreshAll();
-				if (drew) toast.success('Avatar updated');
-			}
-		} catch (e) {
-			if (this.#deps.convId() !== cid) return;
-			// Whether this was a real failure or only our connection dying is not
-			// decidable here, so don't guess — ask the server. A killed fetch, a
-			// refused one and a proxy that timed out a multi-minute SSE stream all
-			// arrive as the same TypeError, and the last two carry no
-			// `visibilitychange` or `offline` event to latch on. One cheap probe
-			// settles it: the registry is the only party that knows.
-			//
-			// This is also why nothing here touches the controller's server-truth
-			// mirror. Nulling it on the assumption that a failure freed the registry
-			// entry is wrong for exactly the interruptions that don't latch, and it's
-			// the write that stops `recovered` from ever flipping true — turning a
-			// draw the poll would have recovered into the "failed toast, no avatar"
-			// pair this whole change exists to remove.
-			//
-			// The interruption latch decides only ONE thing: whether to hand the probe
-			// a message to fall back on. The probe reports it if it can't reach the
-			// server either (see its docblock) — reasonable when we know nothing, and
-			// wrong when we know an outside cause took the connection away, because
-			// then the likeliest truth is that the draw is fine and we simply can't
-			// see it. `hidden` and `offline` both fire BEFORE the rejection they cause,
-			// so the latch is reliably set by the time we get here.
-			//
-			// But `serverReported` OVERRIDES it, because the latch is far coarser than
-			// it looks: nothing clears it on the way back to the foreground (see the
-			// chat page's visibility handler for why that would be worse), so one tab switch at
-			// minute one of a five-minute draw leaves it set for the remaining four.
-			// Without this override, a genuine upstream failure — ComfyUI running out
-			// of memory, say — arriving any time in that window would be classified as
-			// our own connection dropping, and the user would be told nothing. The
-			// server having reached us to report the failure is proof that no
-			// interruption explains it.
-			const suppress = !serverReported && avatarDraw.wasInterrupted(cid);
-			avatarDraw.reportFailure(
-				cid,
-				suppress ? undefined : e instanceof Error ? e.message : 'Avatar generation failed',
-			);
-		} finally {
-			avatarDraw.end(cid);
-		}
-	}
-
-	/**
-	 * Develop a texting photo: one draw per model picked, each kept on the reply
-	 * as a version when it lands. One model closes the dialog once the server
-	 * has the draw, and the photo shows in the thread when it arrives. Several
-	 * are a comparison: the dialog stays up and shows each result as it lands,
-	 * for the user to pick from (`showPhoto` with `pick`).
+	 * Draw a photo or portrait: one draw per model picked, each kept on the
+	 * reply as a version when it lands. One model closes the dialog once the
+	 * server has the draw, and the picture shows on its reply when it arrives.
+	 * Several are a comparison: the dialog stays up and shows each result as it
+	 * lands, for the user to pick from (`showPhoto` with `pick`).
 	 *
 	 * The server owns the outcome either way — a failure is stored on the photo
 	 * and shows there — so all that's left to a live client is pulling results
@@ -523,10 +302,12 @@ export class AvatarDrawWorkflow {
 		const compareId = models.length > 1 ? randomUUID() : null;
 		const body = {
 			messageId: photo.replyId,
-			index: photo.index,
+			// A portrait has no marker, and is always square.
+			...(photo.index === null
+				? { kind: 'portrait' }
+				: { index: photo.index, aspectRatio: this.aspectRatio }),
 			prompt: this.prompt,
 			enhance: this.enhance,
-			aspectRatio: this.aspectRatio,
 			...(compareId ? { compare: compareId } : {}),
 		};
 		if (compareId) {
@@ -615,27 +396,29 @@ export class AvatarDrawWorkflow {
 	}
 
 	/**
-	 * The version a photo shows, where this tab has just put one on show and
+	 * The version a picture shows, where this tab has just put one on show and
 	 * the page's data may not say so yet. Undefined to go by the data.
 	 */
-	shownVersion(replyId: string, index: number): string | undefined {
+	shownVersion(replyId: string, index: number | null): string | undefined {
 		return this.#shown.get(photoKey(replyId, index));
 	}
 
 	/**
-	 * Put a version of a photo on show — the arrows, or a comparison's pick,
-	 * which also counts toward the models' stats and closes the dialog.
+	 * Put a version of a picture on show — the arrows, or a comparison's pick,
+	 * which also counts toward the models' stats and closes the dialog. A
+	 * portrait on show is the face, which the server sets.
 	 *
-	 * The switch shows at once, and the arrows don't reload the page for it:
+	 * The switch shows at once, and the arrows don't reload a photo for it:
 	 * nothing else on the page reads which version is on show, and a reload of
-	 * this route re-sends the whole window. A pick does reload, as the end of a
-	 * comparison whose results may still be landing.
+	 * this route re-sends the whole window. A pick does (the end of a comparison
+	 * whose results may still be landing), and so does a portrait, to pick up
+	 * the face — both through the light photo read, not the page's load.
 	 */
 	async showPhoto(replyId: string, image: MessageImage, pick = false): Promise<void> {
 		const cid = this.#deps.convId();
-		const key = image.markerIndex === null ? null : photoKey(replyId, image.markerIndex);
-		const before = key ? this.#shown.get(key) : undefined;
-		if (key) this.#shown.set(key, image.id);
+		const key = photoKey(replyId, image.markerIndex);
+		const before = this.#shown.get(key);
+		this.#shown.set(key, image.id);
 		try {
 			const res = await fetch(`/api/conversations/${cid}/photos/${image.id}`, {
 				method: 'PATCH',
@@ -648,23 +431,48 @@ export class AvatarDrawWorkflow {
 			if (pick && this.#deps.convId() === cid) this.close();
 		} catch (e) {
 			// Back to what was showing, unless a later switch has moved on since.
-			if (key && this.#shown.get(key) === image.id) {
+			if (this.#shown.get(key) === image.id) {
 				if (before === undefined) this.#shown.delete(key);
 				else this.#shown.set(key, before);
 			}
 			toast.error(e instanceof Error ? e.message : String(e));
 			return;
 		}
-		if (pick && this.#deps.convId() === cid) await this.#deps.refreshPhotos([replyId]);
+		if ((pick || image.kind === 'portrait') && this.#deps.convId() === cid) {
+			await this.#deps.refreshPhotos([replyId]);
+		}
 	}
 
-	/** Move a version's image to the trash, which takes it off the photo
-	 *  (restoring the image brings it back). */
+	/**
+	 * Move a version's image to the trash, which takes it off the picture
+	 * (restoring the image brings it back). Removing the portrait that is the
+	 * face moves the face to the version now on show — or, with none left, back
+	 * to the preset's.
+	 */
 	async removePhoto(replyId: string, image: MessageImage): Promise<void> {
 		if (!image.mediaId) return;
 		const cid = this.#deps.convId();
+		const wasFace = image.kind === 'portrait' && image.mediaId === this.#deps.avatarMediaId();
 		try {
 			const res = await fetch(`/api/media/${image.mediaId}`, { method: 'DELETE' });
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : String(e));
+			return;
+		}
+		if (this.#deps.convId() !== cid) return;
+		await this.#deps.refreshPhotos([replyId]);
+		if (!wasFace || this.#deps.convId() !== cid) return;
+		const next = this.#deps
+			.messages()
+			.find((m) => m.id === replyId)
+			?.images?.find((i) => i.kind === 'portrait' && i.shown && i.mediaId);
+		if (next) {
+			await this.showPhoto(replyId, next);
+			return;
+		}
+		try {
+			const res = await fetch(`/api/conversations/${cid}/avatar`, { method: 'DELETE' });
 			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : String(e));

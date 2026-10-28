@@ -95,8 +95,22 @@ are converted to JPEG.
 
 Ask the model to describe an image of itself, then draw it with any configured
 image model and make the result that conversation's face. It suits roleplay —
-the character designs its own portrait — but isn't limited to it. The
-description stays in the thread as continuity; the image is shown but never
-re-sent to the model. Pick several image models and each draws a candidate side
-by side — different models read a description very differently — and the one
-you choose becomes the avatar, with the rest kept in the thread as alternatives.
+the character designs its own portrait — but isn't limited to it. Both steps
+start from the avatar in the chat's header: **Ask for a description** puts the
+request in the composer, and **Draw** opens a dialog with the description to
+review, the image model, and whether to enhance the prompt.
+
+The portrait shows at the end of the reply it was drawn from, and becomes the
+avatar as soon as it's drawn. The description stays in the thread as
+continuity; the image is shown but never re-sent to the model, and drawing
+doesn't change the conversation, so you can draw at any time — after you've
+carried on chatting, or while a reply is arriving.
+
+Each portrait keeps every version you draw. The arrows along its bottom switch
+between them, and whichever is showing is the avatar. The button on it draws
+again, and the bin removes the version on show (its image goes to Recently
+deleted); removing the one that's the avatar moves the avatar to the version
+showing next, or back to the preset's when none is left. Pick several image
+models in the dialog to compare — different models read a description very
+differently: their portraits appear in the dialog as they finish, and the one
+you pick becomes the avatar. The others are kept as versions.
