@@ -1,6 +1,6 @@
 /**
  * Pictures drawn for a message — see `messageImages` in the schema. Today
- * that is a texting reply's developed photos: every version of each of its
+ * that is a reply's developed photos: every version of each of its
  * `[photo: …]`, plus a failed attempt until the next one replaces it.
  *
  * Reads take ids the caller has already scoped (the chat page resolves the

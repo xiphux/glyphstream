@@ -1037,7 +1037,7 @@ export const messageMedia = sqliteTable(
 
 // --- images drawn for a message -------------------------------------------
 //
-// A picture drawn FOR a message rather than as one: a texting photo, developed
+// A picture drawn FOR a message rather than as one: a reply's photo, developed
 // from a `[photo: …]` the reply wrote. It belongs to the reply, so it hangs off
 // that row instead of being a message of its own — which is what lets it be
 // developed long after the conversation moved on (nothing in the thread

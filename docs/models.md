@@ -56,7 +56,7 @@ retrying, editing and branching work as usual. The model also sees its earlier
 replies exactly as it wrote them, names included. Like the rest of a preset, the
 style is fixed when a conversation is created.
 
-#### Photos
+### Photos
 
 A custom model can send photos. Turn on **Can send photos** in the preset (it's
 on by default for a texting preset and off for a standard one, like **Can check

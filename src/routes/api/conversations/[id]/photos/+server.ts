@@ -1,9 +1,10 @@
 /**
  * POST /api/conversations/:id/photos
  *
- * Develop one of a texting reply's `[photo: …]`: draw it with an image model
- * and keep the result as a version of that photo, on the reply itself (see
- * `message_images`). Streams the generation's events, like any draw.
+ * Develop one of a reply's `[photo: …]` (in a chat whose preset sends photos):
+ * draw it with an image model and keep the result as a version of that photo,
+ * on the reply itself (see `message_images`). Streams the generation's events,
+ * like any draw.
  *
  * Nothing in the thread changes — no message is added and the leaf stays
  * where it is — so a photo can be developed whenever the reply is on screen:
