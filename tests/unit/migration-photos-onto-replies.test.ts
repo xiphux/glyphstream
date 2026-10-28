@@ -276,12 +276,60 @@ describe('photos onto replies', () => {
 			sourceModel: 'ep::sdxl',
 			promptExcerpt: 'x',
 		}).id;
-		add(replyId, 'assistant', [{ type: 'image', mediaId, displayOnly: true }]);
+		const portrait = add(replyId, 'assistant', [{ type: 'image', mediaId, displayOnly: true }]);
+		// Drawn after the photo: the comparison open now is the avatar's.
+		db.update(messages)
+			.set({ createdAt: Date.now() + 1000 })
+			.where(eq(messages.id, portrait))
+			.run();
 		setFanoutParent(convId, userId, replyId, true);
 
 		migrate();
 
 		expect(conv().fanoutParentMessageId).toBe(replyId);
+	});
+
+	it('leaves an avatar comparison open before any of its portraits landed', () => {
+		photo(replyId, 0);
+		setFanoutParent(convId, userId, replyId, true);
+		insertGenerationJob({
+			id: 'portrait',
+			userId,
+			conversationId: convId,
+			anchorMessageId: replyId,
+			kind: 'image',
+			origin: 'avatar_fanout',
+			modelId: 'ep::sdxl',
+			fanoutIndex: 0,
+			paramsJson: JSON.stringify({ prompt: 'a fox' }),
+			createdAt: 1,
+		});
+
+		migrate();
+
+		expect(conv().fanoutParentMessageId).toBe(replyId);
+	});
+
+	it('ends a photo comparison on a reply that once had a portrait drawn', () => {
+		const mediaId = insertMedia({
+			userId,
+			storagePath: 'generated/old-portrait.png',
+			contentType: 'image/png',
+			byteSize: 1,
+			kind: 'image',
+			sourceEndpointId: 'ep',
+			sourceModel: 'ep::sdxl',
+			promptExcerpt: 'x',
+		}).id;
+		const portrait = add(replyId, 'assistant', [{ type: 'image', mediaId, displayOnly: true }]);
+		db.update(messages).set({ createdAt: 1 }).where(eq(messages.id, portrait)).run();
+		photo(replyId, 0);
+		photo(replyId, 0, 'ep::flux');
+		setFanoutParent(convId, userId, replyId, true);
+
+		migrate();
+
+		expect(conv().fanoutParentMessageId).toBeNull();
 	});
 
 	it('lands queued draws of a photo on its reply', () => {

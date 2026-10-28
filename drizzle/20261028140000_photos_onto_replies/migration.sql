@@ -156,25 +156,31 @@ SET compaction_resume_from_message_id = (
 WHERE compaction_resume_from_message_id IN (SELECT id FROM _removed);
 --> statement-breakpoint
 -- A photo comparison parked on its anchor is over: its candidates are
--- versions. Found by a candidate under it, or — before any has landed — by a
--- draw of it still queued. But not where a portrait stays under the same reply
--- (an appearance description can also be a texting reply with a photo): that
--- is an avatar comparison, which is still open.
+-- versions. Told apart from an avatar comparison (an appearance description
+-- can also be a texting reply with photos) by what it's drawing: a portrait
+-- draw still queued on the anchor (a photo comparison's were rewritten above)
+-- makes it an avatar comparison; otherwise a photo draw queued there, or a
+-- photo as the anchor's newest picture, makes it a photo one.
 UPDATE conversations
 SET fanout_parent_message_id = NULL
 WHERE fanout_parent_message_id IN (SELECT id FROM _removed)
 	OR (
-		(
-			fanout_parent_message_id IN (SELECT parent_id FROM _photo)
-			OR fanout_parent_message_id IN (SELECT id FROM _photo_compare_anchors)
+		NOT EXISTS (
+			SELECT 1 FROM generation_jobs j
+			WHERE j.anchor_message_id = conversations.fanout_parent_message_id
+				AND j.origin = 'avatar_fanout'
 		)
-		AND NOT EXISTS (
-			SELECT 1 FROM messages c
-			WHERE c.parent_message_id = conversations.fanout_parent_message_id
-				AND c.role = 'assistant'
-				AND c.id NOT IN (SELECT id FROM _removed)
-				AND json_valid(c.content_json)
-				AND json_extract(c.content_json, '$[0].type') = 'image'
+		AND (
+			fanout_parent_message_id IN (SELECT id FROM _photo_compare_anchors)
+			OR (
+				SELECT c.id FROM messages c
+				WHERE c.parent_message_id = conversations.fanout_parent_message_id
+					AND c.role = 'assistant'
+					AND json_valid(c.content_json)
+					AND json_extract(c.content_json, '$[0].type') IN ('image', 'error')
+				ORDER BY c.created_at DESC, c.id DESC
+				LIMIT 1
+			) IN (SELECT id FROM _photo)
 		)
 	);
 --> statement-breakpoint
