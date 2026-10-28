@@ -49,6 +49,7 @@ import { getConversationMeta } from '../db/queries/conversations';
 import { fenceCode, renderMarkdown } from '../markdown/render';
 import { notifyConversationComplete } from '../push/notify';
 import { withoutCheckInText } from '#lib/texting-check-ins.js';
+import { isCheckInMessage } from '#lib/check-ins.js';
 import type { NotifyModality } from '#lib/types/push.js';
 import { startTitleTaskIfFirstExchange } from '../tasks/title-task-runner';
 import { parseSSEStream } from './sse-parser';
@@ -506,7 +507,9 @@ async function runChatTurn(
 	const activatedTools = new Set<string>();
 	// One reaction per turn: once the model has reacted (by the tool, or by a
 	// typed emoji the catch turned into one), later iterations aren't watched.
-	let reactedThisTurn = false;
+	// Nor is a check-in's: its user message is the reminder, drawn as a divider
+	// with nowhere to show a badge, so a typed emoji stays in the reply.
+	let reactedThisTurn = isCheckInMessage(params.userMessage);
 
 	try {
 		for (let iter = 0; iter < maxIterations; iter++) {

@@ -603,6 +603,21 @@ describe('a reaction the model typed instead of calling the tool', () => {
 		expect(assistant.finishReason).toBe('stop');
 	});
 
+	it("is left as text in a check-in's turn, whose reminder has nowhere to show one", async () => {
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		mocks.upstreamResponses.push(typed);
+
+		const reminder: ChatMessage = {
+			...user,
+			parts: [{ type: 'text', text: '(Check-in: …)', checkIn: true }],
+		};
+		const { events } = await runTurn(conv, reminder, userId);
+
+		const [, assistant] = walkActiveBranch(conv.id);
+		expect(textOf(assistant)).toBe('❤️\n\nOh, Chris. Come here.');
+		expect(events.map(eventType)).not.toContain('reaction');
+	});
+
 	it('is left as text once the model has already reacted this turn', async () => {
 		const { conv, user, userId } = seedConversationWithUserMessage();
 		mocks.upstreamResponses.push(() =>
