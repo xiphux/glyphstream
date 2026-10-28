@@ -155,6 +155,7 @@
 		if (!status) onCancel();
 	}}
 	role="dialog"
+	wide={!!comparison}
 	titleId="avatar-draw-title"
 	title={isPhoto ? 'Develop the photo' : 'Draw the avatar'}
 >

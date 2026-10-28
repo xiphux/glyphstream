@@ -22,6 +22,7 @@
 		title,
 		children,
 		role = 'alertdialog',
+		wide = false,
 	}: {
 		/** Render the dialog when true; render nothing when false. */
 		open: boolean;
@@ -35,6 +36,8 @@
 		children: Snippet;
 		/** 'dialog' for panels that only present; see the comment above. */
 		role?: 'alertdialog' | 'dialog';
+		/** Room for a grid rather than a form (a photo comparison). */
+		wide?: boolean;
 	} = $props();
 
 	function onWindowKey(e: KeyboardEvent): void {
@@ -56,7 +59,12 @@
 			if (e.target === e.currentTarget) onCancel();
 		}}
 	>
-		<div class="w-full max-w-md rounded-lg border border-border surface-glass gs-pop p-5 shadow-xl">
+		<div
+			class={[
+				'w-full rounded-lg border border-border surface-glass gs-pop p-5 shadow-xl',
+				wide ? 'max-w-2xl' : 'max-w-md',
+			]}
+		>
 			<h2 id={titleId} class="text-base font-semibold">{title}</h2>
 			{@render children()}
 		</div>
