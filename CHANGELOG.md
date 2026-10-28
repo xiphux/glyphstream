@@ -9,6 +9,10 @@ arrived.
 
 ## Unreleased
 
+### Changed
+
+- A texting reply shows a typing indicator while each text is being written, and the text appears whole once it's done, instead of filling in word by word.
+
 ## v0.51.0
 
 ### Added

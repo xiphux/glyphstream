@@ -13,6 +13,10 @@
 	here, because the photo itself arrives as a row of its own after the reply —
 	which this component also draws, as the bare picture a phone shows.
 
+	While the reply is still arriving (`typing`), the text being written shows
+	as a typing indicator and appears whole once the next one starts. Partial
+	text in a bubble reads like a document loading, not like someone texting.
+
 	A `[later …]` text sets a check-in. It's a note to the app, not a text, so it
 	shows only while that check-in is pending — as a quiet line saying when, with
 	a way to call it off.
@@ -33,7 +37,7 @@
 	import type { ApprovalAction } from '#lib/approval-workflow.js';
 	import { cssAspectRatio } from '#lib/aspect-ratio.js';
 	import { codeCopyClicks, withCodeCopyButtons } from '#lib/code-copy.js';
-	import { speakerHue, textingItems, type TextingPhotos } from '#lib/texting.js';
+	import { speakerHue, textingItems, type TextingItem, type TextingPhotos } from '#lib/texting.js';
 	import type { PendingCheckInNote } from '#lib/check-ins.js';
 
 	interface Props {
@@ -50,6 +54,10 @@
 		/** Shown in a bubble from the assistant while there is nothing to show
 		 *  yet (a live reply before its first token). */
 		pending?: Snippet;
+		/** A live reply: the text still being written shows as a typing
+		 *  indicator, and arrives whole once the next one starts (or the reply
+		 *  ends) — the way a messaging app shows a text. */
+		typing?: boolean;
 		photos?: TextingPhotos;
 		checkIn?: PendingCheckInNote;
 	}
@@ -65,6 +73,7 @@
 		onApprovalSelect,
 		codeCopy = true,
 		pending,
+		typing = false,
 		photos,
 		checkIn,
 	}: Props = $props();
@@ -77,11 +86,20 @@
 		// at the bottom: left in, a canvas-only reply would draw an empty bubble.
 		// Without the photos that have arrived, too, which show further down.
 		// Only the last marker sets the check-in, and only while it's pending.
-		const items = textingItems(splitCanvasCards(blocks).body, assistantLabel).filter(
-			(item, i, all) =>
-				item.kind === 'later'
-					? !!checkIn && !all.slice(i + 1).some((x) => x.kind === 'later')
-					: item.kind !== 'photo' || !photos?.developed.has(item.index),
+		const all: Array<TextingItem | { kind: 'typing'; speaker: string | null }> = textingItems(
+			splitCanvasCards(blocks).body,
+			assistantLabel,
+		);
+		// Still being written: a text (or a marker, half-typed) at the end of a
+		// live reply. Tool calls and the like show as they go, as ever.
+		const last = all.at(-1);
+		if (typing && last && last.kind !== 'blocks' && last.kind !== 'sent-photo') {
+			all[all.length - 1] = { kind: 'typing', speaker: 'speaker' in last ? last.speaker : null };
+		}
+		const items = all.filter((item, i, all) =>
+			item.kind === 'later'
+				? !!checkIn && !all.slice(i + 1).some((x) => x.kind === 'later')
+				: item.kind !== 'photo' || !photos?.developed.has(item.index),
 		);
 		if (items.length === 0 && pending) items.push({ kind: 'text', speaker: null, text: '' });
 		return items.map((item) => {
@@ -142,7 +160,19 @@
 			{#if header}
 				{@render senderHeader(item.speaker, i === 0)}
 			{/if}
-			{#if item.kind === 'photo'}
+			{#if item.kind === 'typing'}
+				<div
+					role="status"
+					aria-label="{item.speaker ?? assistantLabel} is typing"
+					class="inline-flex gap-1 rounded-2xl bg-surface-raised px-3.5 py-3 text-fg-muted"
+				>
+					<span class="size-1.5 animate-pulse rounded-full bg-current"></span>
+					<span class="size-1.5 animate-pulse rounded-full bg-current [animation-delay:150ms]"
+					></span>
+					<span class="size-1.5 animate-pulse rounded-full bg-current [animation-delay:300ms]"
+					></span>
+				</div>
+			{:else if item.kind === 'photo'}
 				<div
 					class="flex w-60 max-w-[85%] flex-col gap-1.5 rounded-2xl border border-dashed border-border-strong bg-surface-raised px-3.5 py-2.5"
 				>

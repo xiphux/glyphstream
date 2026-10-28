@@ -110,11 +110,38 @@ describe('texting reply style', () => {
 		unmount();
 
 		render(InFlightBubble, {
-			props: { ...live, blocks: [{ type: 'plain-text', text: 'hey\n\nSam: yo' }] },
+			props: { ...live, blocks: [{ type: 'plain-text', text: 'hey\n\nSam: yo\n\nwhat' }] },
 		});
 		expect(screen.getByText('hey')).toBeInTheDocument();
 		expect(screen.getByText('yo')).toBeInTheDocument();
 		expect(screen.getByText('Sam')).toBeInTheDocument();
+		// The text still being written is someone typing, not half a text.
+		expect(screen.queryByText('what')).toBeNull();
+		expect(screen.getByRole('status', { name: 'Sam is typing' })).toBeInTheDocument();
+	});
+
+	it('types a half-written marker too, rather than showing it as text', () => {
+		render(InFlightBubble, {
+			props: {
+				assistantLabel: 'Chloe',
+				label: 'Thinking',
+				status: null,
+				progress: null,
+				elapsedSeconds: 0,
+				onImageClick: vi.fn(),
+				texting: true,
+				blocks: [{ type: 'plain-text', text: 'one sec\n\n[photo: me at th' }],
+			},
+		});
+		expect(screen.getByText('one sec')).toBeInTheDocument();
+		expect(screen.queryByText(/\[photo/)).toBeNull();
+		expect(screen.getByRole('status', { name: 'Chloe is typing' })).toBeInTheDocument();
+	});
+
+	it('types nothing in a stored reply', () => {
+		render(MessageBubble, { props: { ...bubbleProps, message: reply(GROUP) } });
+		expect(screen.queryByRole('status')).toBeNull();
+		expect(screen.getByText('nm')).toBeInTheDocument();
 	});
 
 	describe('photos', () => {

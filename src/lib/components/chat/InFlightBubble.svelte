@@ -143,6 +143,7 @@
 			{approvalBusy}
 			{onApprovalSelect}
 			codeCopy={false}
+			typing
 			pending={split.body.length === 0 && split.cards.length === 0 ? placeholder : undefined}
 		/>
 		{#each split.cards as block (block.type === 'tool_call' ? block.toolCallId : '')}

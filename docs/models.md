@@ -39,7 +39,8 @@ A preset's **Reply style** can be set to **Texting**, for presets meant to feel
 like a text conversation. Each paragraph of a reply then shows as its own chat
 bubble, as if the other side had sent several texts in a row. Glyphstream tells
 the model to write that way, so the preset's system prompt only needs to describe
-the character.
+the character. While a reply is arriving, the text being written shows as a
+typing indicator, and appears whole once it's done.
 
 The same preset can play more than one person. A text that starts with a name and
 a colon (`Sam: see you there`) shows under that name, with a coloured initial.
