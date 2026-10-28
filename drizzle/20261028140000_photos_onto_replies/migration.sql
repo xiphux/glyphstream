@@ -126,11 +126,16 @@ SET compaction_resume_from_message_id = (
 )
 WHERE compaction_resume_from_message_id IN (SELECT id FROM _removed);
 --> statement-breakpoint
--- A photo comparison parked on its anchor is over: its candidates are versions.
+-- A photo comparison parked on its anchor is over: its candidates are
+-- versions. Found by a candidate under it, or — before any has landed — by a
+-- draw of it still queued (rewritten above, so now a photo draw on the reply).
 UPDATE conversations
 SET fanout_parent_message_id = NULL
 WHERE fanout_parent_message_id IN (SELECT id FROM _removed)
-	OR fanout_parent_message_id IN (SELECT parent_id FROM _photo);
+	OR fanout_parent_message_id IN (SELECT parent_id FROM _photo)
+	OR fanout_parent_message_id IN (
+		SELECT anchor_message_id FROM generation_jobs WHERE origin = 'photo'
+	);
 --> statement-breakpoint
 UPDATE conversations
 SET active_leaf_message_id = (

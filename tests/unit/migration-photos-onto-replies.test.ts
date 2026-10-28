@@ -205,6 +205,46 @@ describe('photos onto replies', () => {
 		expect(versions()).toHaveLength(2);
 	});
 
+	it('ends a comparison open before any of its draws landed', () => {
+		setFanoutParent(convId, userId, replyId, true);
+		insertGenerationJob({
+			id: 'branch',
+			userId,
+			conversationId: convId,
+			anchorMessageId: replyId,
+			kind: 'image',
+			origin: 'avatar_fanout',
+			modelId: 'ep::sdxl',
+			fanoutIndex: 0,
+			paramsJson: JSON.stringify({ photo: { sourceMessageId: replyId, index: 0 } }),
+			createdAt: 1,
+		});
+
+		migrate();
+
+		expect(conv().fanoutParentMessageId).toBeNull();
+	});
+
+	it('leaves an avatar comparison parked', () => {
+		setFanoutParent(convId, userId, replyId, true);
+		insertGenerationJob({
+			id: 'portrait',
+			userId,
+			conversationId: convId,
+			anchorMessageId: replyId,
+			kind: 'image',
+			origin: 'avatar_fanout',
+			modelId: 'ep::sdxl',
+			fanoutIndex: 0,
+			paramsJson: JSON.stringify({ prompt: 'a fox' }),
+			createdAt: 1,
+		});
+
+		migrate();
+
+		expect(conv().fanoutParentMessageId).toBe(replyId);
+	});
+
 	it('lands queued draws of a photo on its reply', () => {
 		const p0 = photo(replyId, 0);
 		const params = (index: number) =>
