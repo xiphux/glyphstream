@@ -210,13 +210,15 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 				)?.promptMessageId ?? null);
 	// A check-in waiting to fire, for the note under the reply that set
 	// it and the page's wake-up when it's due. None while the operator has the
-	// feature off: the runner isn't there to fire (or drop) it.
-	const checkIn =
-		conversation.checkIns && getCheckInsConfig().enabled
-			? timeDb(locals, () => getCheckIn(conversation.id, locals.user.id))
-			: null;
+	// feature off: the runner isn't there to fire (or drop) it, and the page
+	// mustn't guess one from a reply either.
+	const checkInsOn = conversation.checkIns && getCheckInsConfig().enabled;
+	const checkIn = checkInsOn
+		? timeDb(locals, () => getCheckIn(conversation.id, locals.user.id))
+		: null;
 	return {
 		scheduledRunPromptId,
+		checkInsOn,
 		checkIn,
 		conversation,
 		referencedModels,

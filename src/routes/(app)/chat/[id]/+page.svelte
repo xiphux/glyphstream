@@ -1663,7 +1663,7 @@
 	// shows under the reply that set it, and only while that reply (or a photo it
 	// sent) is still the end of the thread — the moment the user answers, it's as
 	// good as gone (the server drops it when it comes due).
-	const checkInsOn = $derived(data.conversation.checkIns);
+	const checkInsOn = $derived(data.checkInsOn);
 	const liveCheckIn = $derived.by(() => {
 		const pending = checkInsOn ? checkIns.pending : null;
 		if (!pending) return null;
