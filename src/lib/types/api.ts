@@ -751,6 +751,15 @@ export interface MessageImage {
 	createdAt: number;
 }
 
+/** GET /api/conversations/:id/photos?messages=… — the photo state of those
+ *  replies, for a page to patch its copies with. */
+export interface PhotoStateResponse {
+	/** Draws still out across them. */
+	developing: number;
+	/** By reply id; every one asked about, empty where there's nothing. */
+	replies: Record<string, { images: MessageImage[]; developing: DevelopingImage[] }>;
+}
+
 /** A draw of one of a reply's photos, queued or running. */
 export interface DevelopingImage {
 	markerIndex: number;

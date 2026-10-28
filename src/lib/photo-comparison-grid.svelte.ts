@@ -85,7 +85,8 @@ export class PhotoComparisonGrid implements TriageSource {
 		if (!image || this.picking) return false;
 		this.picking = true;
 		try {
-			if (image.mediaId) await this.#deps.workflow.removePhoto(image);
+			const replyId = this.#deps.workflow.photoComparison?.replyId;
+			if (image.mediaId && replyId) await this.#deps.workflow.removePhoto(replyId, image);
 			this.#dismissed.add(image.id);
 			return true;
 		} finally {

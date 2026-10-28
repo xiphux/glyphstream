@@ -18,17 +18,19 @@
  * The model is chosen per draw and never written back to the conversation,
  * the same transient-override rule a portrait follows.
  *
- * GET ?messages=a,b,… says how many draws are still out for those replies —
- * what the chat page watches while a photo on screen is developing, so one
- * that lands after the page lost its stream (a suspended PWA, a reload
- * mid-draw) still shows up. Cheap by design: the page polls it.
+ * GET ?messages=a,b,… is those replies' photo state: their versions and the
+ * draws still out (`PhotoStateResponse`). The page patches its copies of the
+ * replies with it after a photo changes, rather than reloading — a reply above
+ * the window it reloads would otherwise never see the change. It's also what
+ * the page watches while a photo is developing, so one that lands after the
+ * page lost its stream (a suspended PWA, a reload mid-draw) still shows up.
  */
 
 import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import { getConversationMeta } from '#lib/server/db/queries/conversations.js';
-import { getMessage } from '#lib/server/db/queries/messages.js';
+import { getMessage, photoStateFor } from '#lib/server/db/queries/messages.js';
 import { clearImageFailures } from '#lib/server/db/queries/message-images.js';
 import { listPhotoJobsForMessages } from '#lib/server/db/queries/generation-jobs.js';
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
@@ -41,7 +43,7 @@ import { sseResponse } from '#lib/server/streaming/sse-transport.js';
 import { nearestOffered } from '#lib/aspect-ratio.js';
 import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '#lib/fanout.js';
 import { photoMarkers } from '#lib/texting-photos.js';
-import type { ModelEntry } from '#lib/types/api.js';
+import type { ModelEntry, PhotoStateResponse } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
 
 interface DevelopPhotoBody {
@@ -71,7 +73,13 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 	if (!getConversationMeta(params.id, locals.user.id)) error(404, 'Conversation not found');
 	const ids = (url.searchParams.get('messages') ?? '').split(',').filter(Boolean);
 	if (ids.length > MAX_WATCHED) error(400, 'Too many messages');
-	return Response.json({ developing: listPhotoJobsForMessages(params.id, ids).length });
+	const state = photoStateFor(params.id, ids);
+	const body: PhotoStateResponse = { developing: 0, replies: {} };
+	for (const [id, entry] of state) {
+		body.replies[id] = entry;
+		body.developing += entry.developing.length;
+	}
+	return Response.json(body);
 };
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {

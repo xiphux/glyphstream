@@ -1,22 +1,22 @@
 /* @vitest-environment happy-dom */
 /**
  * Watching developing photos for a page with no stream to tell it they landed
- * (`watchDevelopingPhotos`): it asks the server for a count, and reloads once
- * the count drops below what the page's data says is out.
+ * (`watchDevelopingPhotos`): it asks the server for those replies' photo state,
+ * and hands it over once the count of draws out differs from the page's.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { watchDevelopingPhotos } from '#lib/photo-develop-watch.js';
 
 let developing = 2;
-const fetchMock = vi.fn(async () => Response.json({ developing }));
-const refresh = vi.fn(async () => {});
+const fetchMock = vi.fn(async () => Response.json({ developing, replies: {} }));
+const apply = vi.fn();
 
 function watch() {
 	return watchDevelopingPhotos({
 		conversationId: 'c1',
 		replyIds: ['r1', 'r2'],
 		expected: 2,
-		refresh,
+		apply,
 	});
 }
 
@@ -25,7 +25,7 @@ beforeEach(() => {
 	vi.stubGlobal('fetch', fetchMock);
 	developing = 2;
 	fetchMock.mockClear();
-	refresh.mockClear();
+	apply.mockClear();
 });
 afterEach(() => {
 	vi.useRealTimers();
@@ -37,16 +37,18 @@ describe('watchDevelopingPhotos', () => {
 		const stop = watch();
 		await vi.advanceTimersByTimeAsync(5_000);
 		expect(fetchMock).toHaveBeenCalledWith('/api/conversations/c1/photos?messages=r1,r2');
-		expect(refresh).not.toHaveBeenCalled();
+		expect(apply).not.toHaveBeenCalled();
 		stop();
 	});
 
-	it('reloads once, when one of them has landed', async () => {
+	it('hands over the state when one has landed, or another has started', async () => {
 		const stop = watch();
 		developing = 1;
 		await vi.advanceTimersByTimeAsync(5_000);
-		await vi.advanceTimersByTimeAsync(10_000);
-		expect(refresh).toHaveBeenCalledOnce();
+		expect(apply).toHaveBeenLastCalledWith({ developing: 1, replies: {} });
+		developing = 3;
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(apply).toHaveBeenLastCalledWith({ developing: 3, replies: {} });
 		stop();
 	});
 
@@ -56,7 +58,7 @@ describe('watchDevelopingPhotos', () => {
 		// happy-dom drops `persisted` from the init dict, so set it on the event.
 		window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
 		await vi.advanceTimersByTimeAsync(0);
-		expect(refresh).toHaveBeenCalledOnce();
+		expect(apply).toHaveBeenCalledOnce();
 		stop();
 	});
 

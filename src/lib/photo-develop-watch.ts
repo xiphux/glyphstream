@@ -2,16 +2,17 @@
  * Watching photos that are developing, for a page that may have lost the
  * stream it started them with — or never had one (a reload mid-draw).
  *
- * A photo draw is a background job the server owns; the page learns of a
- * result by reloading. The tab that started a draw reloads when its stream
- * ends, but iOS suspends a backgrounded PWA and kills that stream within
- * seconds of a draw that takes minutes, and a reloaded page has no stream at
- * all. So while the page's own data says photos are developing, this asks the
- * server how many still are (`GET …/photos?messages=…`, a count) — every few
- * seconds while visible, and at once on the two halves of an app resume and on
- * coming back online — and reloads once that count drops. The reload brings
- * new data, which re-arms or retires the watch.
+ * A photo draw is a background job the server owns. The tab that started one
+ * hears when its stream ends, but iOS suspends a backgrounded PWA and kills
+ * that stream within seconds of a draw that takes minutes, and a reloaded page
+ * has no stream at all. So while the page's own data says photos are
+ * developing, this asks the server for those replies' photo state
+ * (`GET …/photos?messages=…`) — every few seconds while visible, and at once on
+ * the two halves of an app resume and on coming back online — and hands it to
+ * the page as soon as the count of draws out differs from what the page has.
+ * The page patches the replies with it, which re-arms or retires the watch.
  */
+import type { PhotoStateResponse } from './types/api.js';
 
 const POLL_MS = 5_000;
 
@@ -21,8 +22,8 @@ export interface DevelopWatch {
 	replyIds: string[];
 	/** How many draws the page's data says are out for them. */
 	expected: number;
-	/** Pull fresh data: the chat page's `refreshAll`. */
-	refresh: () => Promise<unknown>;
+	/** Take the fresh state — the page patches its replies with it. */
+	apply: (state: PhotoStateResponse) => void;
 }
 
 /** Start watching; returns the stop. */
@@ -37,11 +38,10 @@ export function watchDevelopingPhotos(watch: DevelopWatch): () => void {
 		try {
 			const res = await fetch(url);
 			if (!res.ok || stopped) return;
-			const { developing } = (await res.json()) as { developing: number };
-			if (developing < watch.expected && !stopped) {
-				stopped = true;
-				await watch.refresh();
-			}
+			const state = (await res.json()) as PhotoStateResponse;
+			// Fewer means one landed; more means another started elsewhere. Either
+			// way the page's copy is behind.
+			if (state.developing !== watch.expected && !stopped) watch.apply(state);
 		} catch {
 			// Offline or a blip: the next tick, or coming back online, asks again.
 		} finally {

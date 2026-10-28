@@ -64,6 +64,9 @@ export interface AvatarDrawWorkflowDeps {
 	enhanceByDefault(): boolean;
 	draw: AvatarDrawController;
 	fanout: FanoutController;
+	/** Bring these replies' photos up to date on the page, wherever they are
+	 *  in it — a photo change needs no reload of the window. */
+	refreshPhotos(replyIds: string[]): Promise<void>;
 }
 
 export class AvatarDrawWorkflow {
@@ -607,7 +610,7 @@ export class AvatarDrawWorkflow {
 					};
 				}
 			}
-			if (this.#deps.convId() === cid) await refreshAll();
+			if (this.#deps.convId() === cid) await this.#deps.refreshPhotos([photo.replyId]);
 		}
 	}
 
@@ -650,12 +653,12 @@ export class AvatarDrawWorkflow {
 			toast.error(e instanceof Error ? e.message : String(e));
 			return;
 		}
-		if (pick && this.#deps.convId() === cid) await refreshAll();
+		if (pick && this.#deps.convId() === cid) await this.#deps.refreshPhotos([replyId]);
 	}
 
 	/** Move a version's image to the trash, which takes it off the photo
 	 *  (restoring the image brings it back). */
-	async removePhoto(image: MessageImage): Promise<void> {
+	async removePhoto(replyId: string, image: MessageImage): Promise<void> {
 		if (!image.mediaId) return;
 		const cid = this.#deps.convId();
 		try {
@@ -664,6 +667,6 @@ export class AvatarDrawWorkflow {
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : String(e));
 		}
-		if (this.#deps.convId() === cid) await refreshAll();
+		if (this.#deps.convId() === cid) await this.#deps.refreshPhotos([replyId]);
 	}
 }

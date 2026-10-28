@@ -54,6 +54,7 @@ function setup() {
 		enhanceByDefault: () => false,
 		draw: {} as AvatarDrawController,
 		fanout: {} as FanoutController,
+		refreshPhotos: async () => {},
 	});
 	const grid = new PhotoComparisonGrid({
 		workflow,

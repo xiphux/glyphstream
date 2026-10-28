@@ -98,6 +98,7 @@
 		FeatureCategory,
 		MessageImage,
 		ModelKind,
+		PhotoStateResponse,
 	} from '#lib/types/api.js';
 
 	let { data }: { data: PageData } = $props();
@@ -1398,6 +1399,7 @@
 			!isPrivate && !data.conversation.disabledFeatures.includes('image_prompt_enhancement'),
 		draw: avatarDraw,
 		fanout,
+		refreshPhotos: (replyIds) => refreshPhotos(replyIds),
 	});
 
 	// A photo comparison in the develop dialog, as a fan-out grid.
@@ -1674,8 +1676,37 @@
 			developing,
 			onDevelop: (index: number) => developPhoto(m, index, assistantLabel),
 			onShow: (image: MessageImage) => void avatarWorkflow.showPhoto(m.id, image),
-			onRemove: (image: MessageImage) => void avatarWorkflow.removePhoto(image),
+			onRemove: (image: MessageImage) => void avatarWorkflow.removePhoto(m.id, image),
 		};
+	}
+
+	// A photo's state lives on its reply, which may be above the window a
+	// reload would bring back — so a photo change patches the replies in place
+	// instead (`PhotoStateResponse`), wherever they are on the page.
+	function applyPhotoState(state: PhotoStateResponse) {
+		const changed = (id: string) => Object.hasOwn(state.replies, id);
+		messages = messages.map((m) => {
+			if (!changed(m.id)) return m;
+			const { images, developing } = state.replies[m.id];
+			return {
+				...m,
+				images: images.length ? images : undefined,
+				developing: developing.length ? developing : undefined,
+			};
+		});
+	}
+
+	async function refreshPhotos(replyIds: string[]): Promise<void> {
+		const conversationId = convId;
+		try {
+			const res = await fetch(
+				`/api/conversations/${conversationId}/photos?messages=${replyIds.join(',')}`,
+			);
+			if (!res.ok || convId !== conversationId) return;
+			applyPhotoState((await res.json()) as PhotoStateResponse);
+		} catch {
+			// The develop watch, or the next look at the photo, catches up.
+		}
 	}
 
 	// Photos developing on screen, by the server's word. Watched until they
@@ -1685,11 +1716,14 @@
 	$effect(() => {
 		const replies = developingReplies;
 		if (replies.length === 0) return;
+		const conversationId = convId;
 		return watchDevelopingPhotos({
-			conversationId: convId,
+			conversationId,
 			replyIds: replies.map((m) => m.id),
 			expected: replies.reduce((n, m) => n + (m.developing?.length ?? 0), 0),
-			refresh: () => refreshAll(),
+			apply: (state) => {
+				if (convId === conversationId) applyPhotoState(state);
+			},
 		});
 	});
 

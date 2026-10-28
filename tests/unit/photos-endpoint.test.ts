@@ -221,7 +221,7 @@ describe('GET /photos', () => {
 		} as unknown as Parameters<typeof GET>[0]) as Response;
 	}
 
-	it('counts the draws still out for the replies asked about', async () => {
+	it('gives the photo state of the replies asked about', async () => {
 		insertGenerationJob({
 			id: 'j1',
 			userId,
@@ -234,8 +234,21 @@ describe('GET /photos', () => {
 			paramsJson: JSON.stringify({ photo: { sourceMessageId: replyId, index: 0 } }),
 			createdAt: 1,
 		});
-		expect(await status(replyId).json()).toEqual({ developing: 1 });
-		expect(await status('other').json()).toEqual({ developing: 0 });
+		const v = version();
+		expect(await status(replyId).json()).toMatchObject({
+			developing: 1,
+			replies: {
+				[replyId]: {
+					images: [{ id: v, markerIndex: 0, shown: true }],
+					developing: [{ markerIndex: 0, modelId: 'ep::sdxl' }],
+				},
+			},
+		});
+		// Every reply asked about has an entry, empty where there's nothing.
+		expect(await status('other').json()).toEqual({
+			developing: 0,
+			replies: { other: { images: [], developing: [] } },
+		});
 	});
 
 	it('refuses someone else’s conversation', () => {

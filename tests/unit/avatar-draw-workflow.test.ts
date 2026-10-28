@@ -53,6 +53,7 @@ function setup(opts: { saved?: string | null; status?: string; messages?: ChatMe
 		end: vi.fn(),
 	};
 	const fanout = { sendAvatarDraw: vi.fn(async () => {}) };
+	const refreshPhotos = vi.fn(async (_ids: string[]) => {});
 	const w = new AvatarDrawWorkflow({
 		convId: () => page.convId,
 		messages: () => page.messages,
@@ -61,8 +62,9 @@ function setup(opts: { saved?: string | null; status?: string; messages?: ChatMe
 		enhanceByDefault: () => false,
 		draw: draw as unknown as AvatarDrawController,
 		fanout: fanout as unknown as FanoutController,
+		refreshPhotos,
 	});
-	return { w, page, catalogue, draw, fanout };
+	return { w, page, catalogue, draw, fanout, refreshPhotos };
 }
 
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -250,7 +252,7 @@ describe('developing a texting photo', () => {
 		);
 
 	it('develops on the reply, with the marker and the shape, and closes once accepted', async () => {
-		const { w, draw } = setup({ messages: thread });
+		const { w, draw, refreshPhotos } = setup({ messages: thread });
 		w.openPhotoDialog({ replyId: 'r1', index: 1 }, 'the view');
 		expect(w.prompt).toBe('the view');
 		w.aspectRatio = '16:9';
@@ -267,6 +269,7 @@ describe('developing a texting photo', () => {
 		});
 		// No avatar ring: nothing in the thread is waiting on this.
 		expect(draw.begin).not.toHaveBeenCalled();
+		await vi.waitFor(() => expect(refreshPhotos).toHaveBeenCalledWith(['r1']));
 	});
 
 	it('says the photo is developing until its draw is done', async () => {
@@ -347,9 +350,11 @@ describe('developing a texting photo', () => {
 	});
 
 	it('removes a version by moving its image to the trash', async () => {
-		const { w } = setup({ messages: thread });
-		await w.removePhoto(reply.images![0]);
+		const { w, refreshPhotos } = setup({ messages: thread });
+		await w.removePhoto('r1', reply.images![0]);
 		expect(fetchMock).toHaveBeenCalledWith('/api/media/img', { method: 'DELETE' });
+		// Just that reply, wherever it is on the page — no reload of the window.
+		expect(refreshPhotos).toHaveBeenCalledWith(['r1']);
 	});
 
 	it('goes back to drawing the avatar when the avatar dialog is opened', () => {

@@ -3,7 +3,13 @@ import { listPhotoJobsForMessages } from './generation-jobs';
 import { eq, and, asc, inArray, isNotNull, isNull, getTableColumns } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import type { CompareSelection } from '#lib/fanout.js';
-import type { ChatMessage, DevelopingImage, MessagePart, MessageRole } from '#lib/types/api.js';
+import type {
+	ChatMessage,
+	DevelopingImage,
+	MessageImage,
+	MessagePart,
+	MessageRole,
+} from '#lib/types/api.js';
 import { isReactionTool } from '#lib/chat-render.js';
 import { parseDispatchedModels, parseMessageParts } from './json-columns';
 import { getDb, type DB, type Tx } from '../client';
@@ -409,27 +415,45 @@ function hydrateBranch(
 	return ordered.reverse();
 }
 
-/** The pictures drawn for each message, and the ones still drawing — a
- *  texting reply's photos. The chat page's window only: none of it goes
- *  upstream, so nothing else needs it. */
-function attachImages(conversationId: string, msgs: ChatMessage[]): void {
-	const ids = msgs.filter((m) => m.role === 'assistant').map((m) => m.id);
-	if (ids.length === 0) return;
-	const images = listImagesForMessages(conversationId, ids);
-	const developing = new Map<string, DevelopingImage[]>();
-	for (const job of listPhotoJobsForMessages(conversationId, ids)) {
+/**
+ * The photo state of each of `messageIds`: every version drawn for it, and the
+ * draws still out. An entry for every id, empty where there's nothing — so a
+ * caller patching its copy of a message can tell "none any more" from "not
+ * asked". Render path only: none of it goes upstream. The caller has resolved
+ * the conversation for its user.
+ */
+export function photoStateFor(
+	conversationId: string,
+	messageIds: string[],
+): Map<string, { images: MessageImage[]; developing: DevelopingImage[] }> {
+	const out = new Map(
+		messageIds.map((id) => [
+			id,
+			{ images: [] as MessageImage[], developing: [] as DevelopingImage[] },
+		]),
+	);
+	if (messageIds.length === 0) return out;
+	for (const [id, images] of listImagesForMessages(conversationId, messageIds)) {
+		const entry = out.get(id);
+		if (entry) entry.images = images;
+	}
+	for (const job of listPhotoJobsForMessages(conversationId, messageIds)) {
 		const params = JSON.parse(job.paramsJson) as { photo?: { index?: unknown } };
 		const markerIndex = params.photo?.index;
 		if (typeof markerIndex !== 'number') continue;
-		let list = developing.get(job.anchorMessageId);
-		if (!list) developing.set(job.anchorMessageId, (list = []));
-		list.push({ markerIndex, modelId: job.modelId });
+		out.get(job.anchorMessageId)?.developing.push({ markerIndex, modelId: job.modelId });
 	}
+	return out;
+}
+
+/** The chat page's window, with each reply's photos (see `photoStateFor`). */
+function attachImages(conversationId: string, msgs: ChatMessage[]): void {
+	const ids = msgs.filter((m) => m.role === 'assistant').map((m) => m.id);
+	const state = photoStateFor(conversationId, ids);
 	for (const m of msgs) {
-		const own = images.get(m.id);
-		if (own) m.images = own;
-		const drawing = developing.get(m.id);
-		if (drawing) m.developing = drawing;
+		const own = state.get(m.id);
+		if (own?.images.length) m.images = own.images;
+		if (own?.developing.length) m.developing = own.developing;
 	}
 }
 
