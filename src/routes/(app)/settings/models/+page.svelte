@@ -48,6 +48,9 @@
 	// them by hand, after which a style change leaves them alone.
 	let checkIns = $state(false);
 	let checkInsTouched = $state(false);
+	// Photos the same way.
+	let photos = $state(false);
+	let photosTouched = $state(false);
 	// Avatar edits are staged, not applied on pick: everything else in this form
 	// commits on Save, and a portrait that silently persisted the moment it was
 	// chosen — surviving "Clear (new)" — would be the odd one out.
@@ -100,6 +103,8 @@
 		replyStyle = 'standard';
 		checkIns = false;
 		checkInsTouched = false;
+		photos = false;
+		photosTouched = false;
 		setAvatarFile(null);
 		avatarMediaId = null;
 		avatarCleared = false;
@@ -120,6 +125,8 @@
 		replyStyle = m.replyStyle;
 		checkIns = m.checkIns;
 		checkInsTouched = m.checkIns !== (m.replyStyle === 'texting');
+		photos = m.photos;
+		photosTouched = m.photos !== (m.replyStyle === 'texting');
 		setAvatarFile(null);
 		avatarMediaId = m.avatarMediaId;
 		avatarCleared = false;
@@ -271,6 +278,7 @@
 					// user can no longer see (or that means nothing for an image model).
 					replyStyle: baseKind === null || baseKind === 'chat' ? replyStyle : 'standard',
 					checkIns: (baseKind === null || baseKind === 'chat') && checkIns,
+					photos: (baseKind === null || baseKind === 'chat') && photos,
 				};
 
 				const url = editingId ? `/api/custom-models/${editingId}` : '/api/custom-models';
@@ -547,6 +555,7 @@
 							onchange={(e) => {
 								// The event's value: the binding may not have caught up yet.
 								if (!checkInsTouched) checkIns = e.currentTarget.value === 'texting';
+								if (!photosTouched) photos = e.currentTarget.value === 'texting';
 							}}
 							disabled={busy}
 							class="w-full rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
@@ -579,6 +588,24 @@
 								When it says it'll get back to you later, it sets itself a reminder, and reaches out
 								then if you haven't replied. Suits a character; leave it off for a preset that does
 								a task. For something on a timetable, use a scheduled task instead.
+							</span>
+						</span>
+					</label>
+
+					<label class="flex cursor-pointer items-start gap-2 text-xs">
+						<input
+							type="checkbox"
+							bind:checked={photos}
+							onchange={() => (photosTouched = true)}
+							disabled={busy}
+							class="mt-0.5 h-3.5 w-3.5 rounded border-border accent-surface-inverse disabled:opacity-50"
+						/>
+						<span class="min-w-0">
+							<span class="font-medium">Can send photos</span>
+							<span class="mt-0.5 block text-[11px] text-fg-muted">
+								It can describe a photo it's sending, which shows where it put it, ready for you to
+								develop with an image model. Suits a character; leave it off for a preset that does
+								a task.
 							</span>
 						</span>
 					</label>

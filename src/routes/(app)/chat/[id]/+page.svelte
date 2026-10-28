@@ -1646,12 +1646,13 @@
 			fanout.comparing,
 	);
 
-	// Texting photos: each reply's developed versions, and the draws under way —
-	// the server's word (which a reload keeps) and this tab's own. A photo is
-	// kept on its reply, so it can be developed at any time, whatever else is
-	// running; the dialog above does the drawing.
-	function textingPhotosFor(m: ChatMessage, assistantLabel: string): TextingPhotos | undefined {
-		if (!texting || m.role !== 'assistant') return undefined;
+	// Photos, in a chat whose preset sends them (either reply style): each
+	// reply's developed versions, and the draws under way — the server's word
+	// (which a reload keeps) and this tab's own. A photo is kept on its reply,
+	// so it can be developed at any time, whatever else is running; the dialog
+	// above does the drawing.
+	function photosFor(m: ChatMessage, assistantLabel: string): TextingPhotos | undefined {
+		if (!data.conversation.photos || m.role !== 'assistant') return undefined;
 		const versions = new Map<number, MessageImage[]>();
 		for (const image of m.images ?? []) {
 			if (image.markerIndex === null) continue;
@@ -2772,7 +2773,7 @@
 									bottomCanvasCards={canvasCardsByGroupLast.get(m.id) ?? []}
 									onOpenCanvas={(artifactId: string | null) => canvas.show(artifactId ?? undefined)}
 									{texting}
-									textingPhotos={textingPhotosFor(m, identity.label)}
+									photos={photosFor(m, identity.label)}
 									checkIn={checkInNoteFor(m)}
 								/>
 							{/if}
@@ -2826,6 +2827,7 @@
 							onOpenCanvas={(artifactId: string | null) => canvas.show(artifactId ?? undefined)}
 							{texting}
 							typing={!turn.inFlightDone}
+							photos={data.conversation.photos}
 						/>
 					</div>
 				{/if}

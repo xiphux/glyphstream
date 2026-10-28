@@ -58,10 +58,14 @@ style is fixed when a conversation is created.
 
 #### Photos
 
-A texting partner can send photos. Glyphstream tells the model it can write a
-text of its own as `[photo: …]`, describing the picture in full along with its
-aspect ratio. That text shows as a photo placeholder with the description and a
-**Develop** button.
+A custom model can send photos. Turn on **Can send photos** in the preset (it's
+on by default for a texting preset and off for a standard one, like **Can check
+in**). Glyphstream then tells the model it can write a paragraph of its own as
+`[photo: …]`, describing the picture in full along with its aspect ratio. That
+paragraph shows as a photo placeholder with the description and a **Develop**
+button — as a text of its own in a texting reply, or in place within a standard
+one. Chats without a preset don't send photos, and like the rest of a preset,
+the setting is copied into each chat when it starts.
 
 **Develop** opens the same dialog as drawing an avatar, with the description
 already filled in. You can edit the prompt, pick a shape (a ratio named in the

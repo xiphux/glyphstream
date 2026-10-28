@@ -27,18 +27,16 @@
 	one split the same way.
 -->
 <script lang="ts">
-	import { Camera, ChevronLeft, ChevronRight, RefreshCw, Trash2 } from '@lucide/svelte';
 	import RenderBlocks from './RenderBlocks.svelte';
 	import CheckInNote from './CheckInNote.svelte';
 	import AssistantAvatar from './AssistantAvatar.svelte';
+	import PhotoSlot from './PhotoSlot.svelte';
 	import type { Snippet } from 'svelte';
 	import { splitCanvasCards, type RenderBlock } from '#lib/chat-render.js';
 	import type { ApprovalAction } from '#lib/approval-workflow.js';
-	import { cssAspectRatio } from '#lib/aspect-ratio.js';
 	import { codeCopyClicks, withCodeCopyButtons } from '#lib/code-copy.js';
 	import { speakerHue, textingItems, type TextingItem, type TextingPhotos } from '#lib/texting.js';
 	import type { PendingCheckInNote } from '#lib/check-ins.js';
-	import type { MessageImage } from '#lib/types/api.js';
 
 	interface Props {
 		blocks: RenderBlock[];
@@ -109,31 +107,6 @@
 			return { item, header };
 		});
 	});
-
-	const photoButton = 'rounded-full bg-black/55 p-1.5 text-white transition hover:bg-black/70';
-
-	/** A marker's developed versions (with an image), the one on show, and
-	 *  whether its latest attempt failed. */
-	function photoState(index: number) {
-		const all = photos?.versions.get(index) ?? [];
-		const versions = all.filter((v): v is MessageImage & { mediaId: string } => !!v.mediaId);
-		const shown = versions.find((v) => v.shown) ?? null;
-		const failed = all.findLast((v) => !v.mediaId) ?? null;
-		// Developing it again failed: a failure since the version on show was
-		// drawn, and not a comparison's — a model that failed beside the result
-		// now showing is no news about this photo.
-		const failedAgain =
-			failed && shown && !failed.inComparison && failed.createdAt > shown.createdAt
-				? failed.error
-				: null;
-		return {
-			versions,
-			shown,
-			failure: failed?.error ?? null,
-			failedAgain,
-			developing: photos?.developing.has(index) ?? false,
-		};
-	}
 </script>
 
 {#snippet senderHeader(speaker: string | null, first: boolean)}
@@ -197,121 +170,13 @@
 					></span>
 				</div>
 			{:else if item.kind === 'photo'}
-				{@const index = item.index}
-				{@const state = photoState(index)}
-				{#if state.shown}
-					{@const shown = state.shown}
-					{@const at = state.versions.indexOf(shown)}
-					<div class="flex w-64 max-w-[75%] flex-col gap-1">
-						<div class="relative">
-							<button
-								type="button"
-								onclick={() => onImageClick(shown.mediaId)}
-								aria-label="Open photo"
-								disabled={openingLightboxFor === shown.mediaId}
-								class="block w-full overflow-hidden rounded-2xl p-0 transition disabled:opacity-60"
-							>
-								<img
-									src="/api/media/{shown.mediaId}/display"
-									alt={item.description}
-									loading="lazy"
-									style:aspect-ratio={cssAspectRatio({
-										width: shown.width ?? undefined,
-										height: shown.height ?? undefined,
-										aspectRatio: shown.aspectRatio ?? undefined,
-									})}
-									class="block h-auto max-h-[70vh] w-full object-cover"
-								/>
-							</button>
-							<div class="absolute top-2 right-2 flex gap-1">
-								{#if photos?.onDevelop && !state.developing}
-									<button
-										type="button"
-										onclick={() => photos?.onDevelop?.(index)}
-										aria-label="Develop again"
-										title="Develop again"
-										class={photoButton}
-									>
-										<RefreshCw class="size-3.5" aria-hidden="true" />
-									</button>
-								{/if}
-								{#if photos?.onRemove}
-									<button
-										type="button"
-										onclick={() => photos?.onRemove?.(shown)}
-										aria-label="Remove this photo"
-										title="Remove this photo"
-										class={photoButton}
-									>
-										<Trash2 class="size-3.5" aria-hidden="true" />
-									</button>
-								{/if}
-							</div>
-							{#if state.developing}
-								<p
-									class="absolute bottom-2 left-2 rounded-full bg-black/55 px-2 py-0.5 text-xs text-white"
-								>
-									Developing…
-								</p>
-							{:else if state.versions.length > 1}
-								<div
-									class="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/55 px-1 text-xs text-white"
-								>
-									<button
-										type="button"
-										onclick={() => photos?.onShow?.(state.versions[at - 1])}
-										disabled={at === 0 || !photos?.onShow}
-										aria-label="Previous version"
-										class="rounded-full p-1 transition hover:bg-black/40 disabled:opacity-40"
-									>
-										<ChevronLeft class="size-3.5" aria-hidden="true" />
-									</button>
-									<span class="tabular-nums">{at + 1}/{state.versions.length}</span>
-									<button
-										type="button"
-										onclick={() => photos?.onShow?.(state.versions[at + 1])}
-										disabled={at === state.versions.length - 1 || !photos?.onShow}
-										aria-label="Next version"
-										class="rounded-full p-1 transition hover:bg-black/40 disabled:opacity-40"
-									>
-										<ChevronRight class="size-3.5" aria-hidden="true" />
-									</button>
-								</div>
-							{/if}
-						</div>
-						<!-- Developing it again failed: the photo on show is the last one
-					     that worked, so say why there's no new one. -->
-						{#if state.failedAgain && !state.developing}
-							<p class="text-xs text-danger">Couldn't develop again: {state.failedAgain}</p>
-						{/if}
-					</div>
-				{:else}
-					<div
-						class="flex w-60 max-w-[85%] flex-col gap-1.5 rounded-2xl border border-dashed border-border-strong bg-surface-raised px-3.5 py-2.5"
-					>
-						<div class="flex items-center gap-1.5 text-xs font-medium text-fg-muted">
-							<Camera class="size-3.5" aria-hidden="true" />
-							Photo
-						</div>
-						<p class="line-clamp-4 text-sm italic text-fg-secondary">{item.description}</p>
-						{#if state.developing}
-							<p class="text-xs text-fg-muted">Developing…</p>
-						{:else}
-							{#if state.failure}
-								<p class="text-xs text-danger">Couldn't develop: {state.failure}</p>
-							{/if}
-							{#if photos?.onDevelop}
-								<button
-									type="button"
-									onclick={() => photos?.onDevelop?.(index)}
-									class="self-start rounded-md bg-surface-inverse px-3 py-1 text-xs font-medium text-fg-inverse transition hover:opacity-90"
-								>
-									{state.failure ? 'Try again' : 'Develop'}
-								</button>
-							{/if}
-						{/if}
-					</div>
-				{/if}
+				<PhotoSlot
+					index={item.index}
+					description={item.description}
+					{photos}
+					{onImageClick}
+					{openingLightboxFor}
+				/>
 			{:else}
 				<div class="max-w-[85%] min-w-0 rounded-2xl bg-surface-raised px-3.5 py-2">
 					{#if pending && blocks.length === 0}

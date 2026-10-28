@@ -19,6 +19,8 @@
 	import type { ChatMessage } from '#lib/types/api.js';
 	import type { ApprovalAction } from '#lib/approval-workflow.js';
 	import { withoutCheckInMarkers, type TextingPhotos } from '#lib/texting.js';
+	import { splitAtPhotos, type PhotoSegment } from '#lib/texting-photos.js';
+	import PhotoSlot from './PhotoSlot.svelte';
 	import type { PendingCheckInNote } from '#lib/check-ins.js';
 	import CheckInNote from './CheckInNote.svelte';
 
@@ -52,9 +54,10 @@
 		/** The conversation's 'texting' reply style: an assistant row renders as
 		 *  a run of text bubbles (TextingBubbles) instead of one bubble. */
 		texting?: boolean;
-		/** Texting only: this reply's photos, and what can be done with them —
-		 *  see TextingBubbles. */
-		textingPhotos?: TextingPhotos;
+		/** This reply's photos, and what can be done with them — set where the
+		 *  chat may send photos. A texting reply draws them as texts; a standard
+		 *  one in its bubble, where each `[photo: …]` was (see PhotoSlot). */
+		photos?: TextingPhotos;
 		/** This reply's pending check-in, if it set one: a note under it. */
 		checkIn?: PendingCheckInNote;
 	}
@@ -76,7 +79,7 @@
 		bottomCanvasCards = [],
 		onOpenCanvas,
 		texting = false,
-		textingPhotos,
+		photos,
 		checkIn,
 	}: Props = $props();
 
@@ -90,6 +93,15 @@
 
 	// Assistant rows only — a tool row borrows neither the label nor the face.
 	const avatarMediaId = $derived(message.role === 'assistant' ? assistantAvatarMediaId : null);
+
+	// A standard reply cut around its photos, where the chat may send them, so
+	// each is drawn where the model put it. Anything else is one run, as ever.
+	const segments = $derived.by((): PhotoSegment[] => {
+		const blocks = messageToBlocks(message, toolResultsByCallId);
+		if (message.role !== 'assistant') return [{ kind: 'blocks', blocks }];
+		const shown = withoutCheckInMarkers(blocks);
+		return photos ? splitAtPhotos(shown) : [{ kind: 'blocks', blocks: shown }];
+	});
 </script>
 
 {#if texting && message.role === 'assistant'}
@@ -103,7 +115,7 @@
 			{approvalDecisions}
 			{approvalBusy}
 			{onApprovalSelect}
-			photos={textingPhotos}
+			{photos}
 			{checkIn}
 		/>
 		{#each bottomCanvasCards as block (block.type === 'tool_call' ? block.toolCallId : '')}
@@ -138,16 +150,27 @@
 				<div class="text-[11px] font-medium tracking-wide opacity-60">{roleLabel}</div>
 			</div>
 		{/if}
-		<RenderBlocks
-			blocks={message.role === 'assistant'
-				? withoutCheckInMarkers(messageToBlocks(message, toolResultsByCallId))
-				: messageToBlocks(message, toolResultsByCallId)}
-			{onImageClick}
-			{openingLightboxFor}
-			{approvalDecisions}
-			{approvalBusy}
-			{onApprovalSelect}
-		/>
+		{#each segments as segment, i (i)}
+			{#if segment.kind === 'photo'}
+				<PhotoSlot
+					index={segment.index}
+					description={segment.description}
+					{photos}
+					{onImageClick}
+					{openingLightboxFor}
+					inBubble
+				/>
+			{:else}
+				<RenderBlocks
+					blocks={segment.blocks}
+					{onImageClick}
+					{openingLightboxFor}
+					{approvalDecisions}
+					{approvalBusy}
+					{onApprovalSelect}
+				/>
+			{/if}
+		{/each}
 		{#if reaction && message.role === 'user'}
 			<MessageReaction emoji={reaction} reactorLabel={assistantLabel} />
 		{/if}

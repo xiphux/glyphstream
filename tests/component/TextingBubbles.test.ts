@@ -223,7 +223,7 @@ describe('texting reply style', () => {
 		it('shows an undeveloped marker as a photo to develop', async () => {
 			const onDevelop = vi.fn();
 			render(MessageBubble, {
-				props: { ...bubbleProps, message: reply(PHOTOS), textingPhotos: photos({ onDevelop }) },
+				props: { ...bubbleProps, message: reply(PHOTOS), photos: photos({ onDevelop }) },
 			});
 			expect(screen.getByText('me at the beach')).toBeInTheDocument();
 			expect(screen.getByText('the dog')).toBeInTheDocument();
@@ -233,7 +233,7 @@ describe('texting reply style', () => {
 
 		it('offers no Develop where nothing can develop it', () => {
 			render(MessageBubble, {
-				props: { ...bubbleProps, message: reply(PHOTOS), textingPhotos: photos() },
+				props: { ...bubbleProps, message: reply(PHOTOS), photos: photos() },
 			});
 			expect(screen.getByText('the dog')).toBeInTheDocument();
 			expect(screen.queryByRole('button', { name: 'Develop' })).toBeNull();
@@ -246,7 +246,7 @@ describe('texting reply style', () => {
 					...bubbleProps,
 					onImageClick,
 					message: reply(PHOTOS),
-					textingPhotos: photos({
+					photos: photos({
 						versions: new Map([[1, [version('a'), version('b', { shown: true })]]]),
 					}),
 				},
@@ -273,7 +273,7 @@ describe('texting reply style', () => {
 				props: {
 					...bubbleProps,
 					message: reply(PHOTOS),
-					textingPhotos: photos({
+					photos: photos({
 						versions: new Map([[1, [a, b, version('c')]]]),
 						onShow,
 						onDevelop,
@@ -295,7 +295,7 @@ describe('texting reply style', () => {
 				props: {
 					...bubbleProps,
 					message: reply(PHOTOS),
-					textingPhotos: photos({ developing: new Set([0]), onDevelop: vi.fn() }),
+					photos: photos({ developing: new Set([0]), onDevelop: vi.fn() }),
 				},
 			});
 			expect(screen.getByText('Developing…')).toBeInTheDocument();
@@ -307,7 +307,7 @@ describe('texting reply style', () => {
 				props: {
 					...bubbleProps,
 					message: reply(PHOTOS),
-					textingPhotos: photos({
+					photos: photos({
 						versions: new Map([
 							[
 								1,
@@ -330,7 +330,7 @@ describe('texting reply style', () => {
 				props: {
 					...bubbleProps,
 					message: reply(PHOTOS),
-					textingPhotos: photos({
+					photos: photos({
 						versions: new Map([
 							[
 								1,
@@ -351,7 +351,7 @@ describe('texting reply style', () => {
 				props: {
 					...bubbleProps,
 					message: reply(PHOTOS),
-					textingPhotos: photos({
+					photos: photos({
 						versions: new Map([
 							[
 								1,
@@ -373,7 +373,7 @@ describe('texting reply style', () => {
 				props: {
 					...bubbleProps,
 					message: reply(PHOTOS),
-					textingPhotos: photos({
+					photos: photos({
 						versions: new Map([[1, [version('f', { mediaId: null, error: 'out of memory' })]]]),
 						onDevelop,
 					}),
@@ -423,5 +423,58 @@ describe('texting check-ins', () => {
 		expect(screen.getByText('gtg')).toBeInTheDocument();
 		expect(screen.queryByText(/later 1h/)).toBeNull();
 		expect(screen.getByText(/Will check in around/)).toBeInTheDocument();
+	});
+});
+
+describe('photos in a standard reply', () => {
+	const STANDARD =
+		'<p>Here is the view.</p>\n<p>[photo: the harbour at dusk, 4:3]</p>\n<p>Lovely, right?</p>';
+	const standard = { ...bubbleProps, texting: false };
+
+	it('draws the photo where the model put it, within the bubble', async () => {
+		const onDevelop = vi.fn();
+		const { container } = render(MessageBubble, {
+			props: {
+				...standard,
+				message: reply(STANDARD),
+				photos: { versions: new Map(), developing: new Set<number>(), onDevelop },
+			},
+		});
+		const text = container.textContent ?? '';
+		expect(text.indexOf('Here is the view.')).toBeLessThan(text.indexOf('the harbour at dusk'));
+		expect(text.indexOf('the harbour at dusk')).toBeLessThan(text.indexOf('Lovely, right?'));
+		expect(screen.queryByText(/\[photo:/)).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: 'Develop' }));
+		expect(onDevelop).toHaveBeenCalledWith(0);
+	});
+
+	it('leaves the marker as text in a chat that doesn’t send photos', () => {
+		render(MessageBubble, { props: { ...standard, message: reply(STANDARD) } });
+		expect(screen.getByText(/\[photo: the harbour/)).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Develop' })).toBeNull();
+	});
+
+	it('shows a placeholder live, and holds back a marker still being written', () => {
+		const live = {
+			assistantLabel: 'Guide',
+			label: 'Thinking',
+			status: null,
+			progress: null,
+			elapsedSeconds: 0,
+			onImageClick: vi.fn(),
+			photos: true,
+		};
+		const { unmount } = render(InFlightBubble, {
+			props: { ...live, blocks: [{ type: 'plain-text', text: 'Here.\n\n[photo: a cat]\n\nAnd' }] },
+		});
+		expect(screen.getByText('a cat')).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Develop' })).toBeNull();
+		unmount();
+
+		render(InFlightBubble, {
+			props: { ...live, blocks: [{ type: 'plain-text', text: 'Here.\n\n[photo: a ca' }] },
+		});
+		expect(screen.getByText('Here.')).toBeInTheDocument();
+		expect(screen.queryByText(/\[photo/)).toBeNull();
 	});
 });

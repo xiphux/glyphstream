@@ -9,6 +9,10 @@ arrived.
 
 ## Unreleased
 
+### Added
+
+- Photos work in the standard reply style too, through a new **Can send photos** preset setting: on by default for texting presets (and existing ones), off for standard ones.
+
 ### Changed
 
 - A texting reply shows a typing indicator while each text is being written, and the text appears whole once it's done, instead of filling in word by word.

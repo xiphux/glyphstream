@@ -10,6 +10,8 @@
 <script lang="ts">
 	import RenderBlocks from './RenderBlocks.svelte';
 	import { withoutCheckInMarkers } from '#lib/texting.js';
+	import { splitAtPhotos } from '#lib/texting-photos.js';
+	import PhotoSlot from './PhotoSlot.svelte';
 	import CanvasCard from './CanvasCard.svelte';
 	import AssistantAvatar from './AssistantAvatar.svelte';
 	import TextingBubbles from './TextingBubbles.svelte';
@@ -56,6 +58,9 @@
 		onOpenCanvas?: (artifactId: string | null) => void;
 		/** The 'texting' reply style — see MessageBubble. */
 		texting?: boolean;
+		/** The chat may send photos: a standard reply draws each `[photo: …]` as
+		 *  a placeholder where it is, and holds back one still being written. */
+		photos?: boolean;
 		/** Whether the reply is still being written (see TextingBubbles); false
 		 *  once the stream ends, while the bubble waits to be replaced. */
 		typing?: boolean;
@@ -80,6 +85,7 @@
 		onOpenCanvas,
 		texting = false,
 		typing = true,
+		photos = false,
 	}: Props = $props();
 
 	// Canvas cards render at the bottom of the live bubble, matching how the
@@ -87,6 +93,14 @@
 	// successful ones from its body). Without this a create_canvas-first turn
 	// would stream into a blank bubble — its only block is the canvas tool call.
 	let split = $derived(splitCanvasCards(blocks));
+
+	// A standard reply cut around its photos (see MessageBubble). Placeholders
+	// only: a photo can't be developed until the reply is in.
+	const segments = $derived(
+		photos
+			? splitAtPhotos(withoutCheckInMarkers(blocks), typing)
+			: [{ kind: 'blocks' as const, blocks: withoutCheckInMarkers(blocks) }],
+	);
 </script>
 
 {#snippet mcpNotice()}
@@ -177,15 +191,27 @@
 			</div>
 		{/if}
 		{@render mcpNotice()}
-		<RenderBlocks
-			blocks={withoutCheckInMarkers(blocks)}
-			{onImageClick}
-			{openingLightboxFor}
-			{approvalDecisions}
-			{approvalBusy}
-			{onApprovalSelect}
-			codeCopy={false}
-		/>
+		{#each segments as segment, i (i)}
+			{#if segment.kind === 'photo'}
+				<PhotoSlot
+					index={segment.index}
+					description={segment.description}
+					{onImageClick}
+					{openingLightboxFor}
+					inBubble
+				/>
+			{:else}
+				<RenderBlocks
+					blocks={segment.blocks}
+					{onImageClick}
+					{openingLightboxFor}
+					{approvalDecisions}
+					{approvalBusy}
+					{onApprovalSelect}
+					codeCopy={false}
+				/>
+			{/if}
+		{/each}
 		{#each split.cards as block (block.type === 'tool_call' ? block.toolCallId : '')}
 			{#if block.type === 'tool_call'}
 				<CanvasCard result={block.result} onOpen={onOpenCanvas} />

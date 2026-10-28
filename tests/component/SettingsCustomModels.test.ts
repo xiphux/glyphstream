@@ -339,3 +339,30 @@ describe('custom models — check-ins', () => {
 		expect(checkbox()).toBeChecked();
 	});
 });
+
+describe('custom models — photos', () => {
+	const checkbox = () => screen.getByRole('checkbox', { name: /Can send photos/ });
+
+	it('follows the reply style until set by hand', async () => {
+		const user = userEvent.setup();
+		renderPage([]);
+		expect(checkbox()).not.toBeChecked();
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'texting');
+		expect(checkbox()).toBeChecked();
+
+		await user.click(checkbox());
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'standard');
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'texting');
+		expect(checkbox()).not.toBeChecked();
+	});
+
+	it('keeps a standard preset’s photos on when set by hand', async () => {
+		const user = userEvent.setup();
+		renderPage([makeCustom({ name: 'Guide', replyStyle: 'standard', photos: true })]);
+		await user.click(screen.getByRole('button', { name: /^Guide/ }));
+		expect(checkbox()).toBeChecked();
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'texting');
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'standard');
+		expect(checkbox()).toBeChecked();
+	});
+});
