@@ -52,6 +52,21 @@ describe('texting reply style', () => {
 		expect(screen.queryByText(/Sam: yo/)).toBeNull();
 	});
 
+	it('gives the preset an initial when it has no avatar, as any speaker has', () => {
+		render(MessageBubble, { props: { ...bubbleProps, message: reply(GROUP) } });
+		// Chloe opens and closes the run; Sam's run has one.
+		expect(screen.getAllByText('C')).toHaveLength(2);
+		expect(screen.getAllByText('S')).toHaveLength(1);
+	});
+
+	it('shows the avatar instead, where the preset has one', () => {
+		render(MessageBubble, {
+			props: { ...bubbleProps, assistantAvatarMediaId: 'face', message: reply(GROUP) },
+		});
+		expect(screen.queryByText('C')).toBeNull();
+		expect(screen.getAllByText('S')).toHaveLength(1);
+	});
+
 	it('leaves the standard bubble alone when the style is off', () => {
 		render(MessageBubble, {
 			props: { ...bubbleProps, texting: false, message: reply(GROUP) },

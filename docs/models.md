@@ -44,6 +44,7 @@ typing indicator, and appears whole once it's done.
 
 The same preset can play more than one person. A text that starts with a name and
 a colon (`Sam: see you there`) shows under that name, with a coloured initial.
+The preset's own texts show its avatar, or an initial too if it has none.
 Texts with no name come from whoever sent the previous one; each reply starts
 with the preset itself. If the model puts the preset's own name in front of a
 text, that text shows as the preset's. To keep ordinary sentences from reading as

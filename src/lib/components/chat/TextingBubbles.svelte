@@ -115,21 +115,22 @@
 
 {#snippet senderHeader(speaker: string | null, first: boolean)}
 	<div class={['flex items-center gap-1.5', !first && 'mt-2']}>
-		{#if speaker === null}
-			{#if assistantAvatarMediaId}
-				<AssistantAvatar
-					mediaId={assistantAvatarMediaId}
-					label={assistantLabel}
-					onClick={onImageClick}
-				/>
-			{/if}
+		{#if speaker === null && assistantAvatarMediaId}
+			<AssistantAvatar
+				mediaId={assistantAvatarMediaId}
+				label={assistantLabel}
+				onClick={onImageClick}
+			/>
 		{:else}
+			{@const name = speaker ?? assistantLabel}
+			<!-- A preset with no avatar gets an initial like any other speaker,
+			     so its texts are told apart from theirs at a glance. -->
 			<span
 				aria-hidden="true"
 				class="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white"
-				style:background-color="hsl({speakerHue(speaker)} 50% 45%)"
+				style:background-color="hsl({speakerHue(name)} 50% 45%)"
 			>
-				{Array.from(speaker)[0].toUpperCase()}
+				{Array.from(name)[0]?.toUpperCase()}
 			</span>
 		{/if}
 		<div class="text-[11px] font-medium tracking-wide opacity-60">
