@@ -415,6 +415,48 @@ describe('firing', () => {
 		expect(notify).not.toHaveBeenCalled();
 	});
 
+	it('keeps what the turn said before a tool call, even if it then passes', async () => {
+		mocks.tools = true;
+		register({
+			definition: {
+				type: 'function',
+				function: { name: 'get_current_time', description: 'time', parameters: { type: 'object' } },
+			},
+			execute: () => ({ content: '{"iso":"2026-10-27T16:00:00Z"}' }),
+		});
+		const t = thread();
+		scheduled(t);
+		mocks.upstream.push(() =>
+			sse([
+				{ choices: [{ delta: { content: 'hey, one sec' }, finish_reason: null }] },
+				{
+					choices: [
+						{
+							delta: {
+								tool_calls: [
+									{
+										index: 0,
+										id: 'call_1',
+										type: 'function',
+										function: { name: 'get_current_time', arguments: '{}' },
+									},
+								],
+							},
+							finish_reason: null,
+						},
+					],
+				},
+				{ choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+			]),
+		);
+		mocks.upstream.push(reply('[no text]'));
+		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
+		await idle(t.conversationId);
+		const branch = walkActiveBranch(t.conversationId);
+		expect(roles(branch).slice(0, 4)).toEqual(['user', 'assistant', 'check-in', 'assistant']);
+		expect(text(branch[3])).toBe('hey, one sec');
+	});
+
 	it('keeps a reply the user stopped partway, like any stopped reply', async () => {
 		const t = thread();
 		scheduled(t);

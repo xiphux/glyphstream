@@ -292,12 +292,10 @@ function settleCheckIn(
 	// reminder too.
 	const leaf = getActiveLeafMessageId(conversationId, userId);
 	if (!leaf || findUserMessageAncestor(conversationId, leaf)?.id !== reminderId) return;
-	// Stopped with something already said (the user pressed Stop on a reply
-	// they were reading): it stays, like any stopped reply.
-	const leafRow = getMessage(conversationId, leaf);
-	if (outcome.kind === 'stopped' && leafRow?.role === 'assistant' && !isPass(leafRow.parts)) {
-		return;
-	}
+	// Anything the turn said or made on the way stays, like any stopped reply:
+	// the user pressed Stop on a reply they were reading, or the model wrote a
+	// line before a tool call and only then passed.
+	if (turnRows(conversationId, leaf, reminderId).some((m) => !isPass(m.parts))) return;
 	restoreActiveLeafIfUnchanged(conversationId, leaf, previousLeafId);
 	deleteBranch(conversationId, reminderId, userId);
 	if (previousUpdatedAt !== null) {
@@ -305,8 +303,20 @@ function settleCheckIn(
 	}
 }
 
-/** Whether a reply says nothing: a `[no text]` pass or no text at all, and no
- *  media either. */
+/** The rows from `leaf` up to (not including) the reminder: one turn's
+ *  replies, tool calls and results. Bounded by the tool loop, so a walk. */
+function turnRows(conversationId: string, leaf: string, reminderId: string): ChatMessage[] {
+	const rows: ChatMessage[] = [];
+	let cursor = getMessage(conversationId, leaf);
+	while (cursor && cursor.id !== reminderId) {
+		rows.push(cursor);
+		cursor = cursor.parentMessageId ? getMessage(conversationId, cursor.parentMessageId) : null;
+	}
+	return rows;
+}
+
+/** Whether a row says nothing: a `[no text]` pass or no text at all (a tool
+ *  call or its result), and no media either. */
 function isPass(parts: ChatMessage['parts']): boolean {
 	return isCheckInSkip(partsToText(parts)) && !parts.some((p) => 'mediaId' in p);
 }
