@@ -337,6 +337,21 @@ describe('developing a texting photo', () => {
 		expect(w.open).toBe(false);
 	});
 
+	it('leaves a dialog opened in another chat alone when a pick lands', async () => {
+		let answer!: () => void;
+		fetchMock.mockImplementationOnce(
+			() => new Promise<Response>((r) => (answer = () => r(new Response('{}')))),
+		);
+		const { w, page } = setup({ messages: thread });
+		w.openPhotoDialog({ replyId: 'r1', index: 1 }, 'the view');
+		const picking = w.showPhoto('r1', reply.images![0], true);
+		page.convId = 'B';
+		w.openDialog();
+		answer();
+		await picking;
+		expect(w.open).toBe(true);
+	});
+
 	it('switches versions at once, and back if the server refuses', async () => {
 		const { w } = setup({ messages: thread });
 		const other = { ...reply.images![0], id: 'v1' };

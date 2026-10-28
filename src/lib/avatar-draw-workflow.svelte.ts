@@ -643,7 +643,9 @@ export class AvatarDrawWorkflow {
 				body: JSON.stringify({ shown: true, ...(pick ? { pick: true } : {}) }),
 			});
 			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
-			if (pick) this.close();
+			// Not if the user has moved to another chat, where a dialog up now is one
+			// they opened there.
+			if (pick && this.#deps.convId() === cid) this.close();
 		} catch (e) {
 			// Back to what was showing, unless a later switch has moved on since.
 			if (key && this.#shown.get(key) === image.id) {
