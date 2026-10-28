@@ -416,12 +416,14 @@ describe('firing', () => {
 		expect(notify).not.toHaveBeenCalled();
 	});
 
-	/** A first round that only reacts, as a check-in can: a wave, a face. */
-	function reactOnly(emoji = '👋') {
+	/** A first round that only reacts, as a check-in can: a wave, a face
+	 *  (after `text`, if given). */
+	function reactOnly(emoji = '👋', text?: string) {
 		mocks.tools = true;
 		register(reactToMessageTool);
 		mocks.upstream.push(() =>
 			sse([
+				...(text ? [{ choices: [{ delta: { content: text }, finish_reason: null }] }] : []),
 				{
 					choices: [
 						{
@@ -458,6 +460,17 @@ describe('firing', () => {
 		expect(notify).toHaveBeenCalledWith(
 			expect.objectContaining({ assistantMessageId: branch[3].id, previewText: '👋' }),
 		);
+	});
+
+	it('takes a reply back out that passes and reacts in the same breath', async () => {
+		const t = thread();
+		scheduled(t);
+		reactOnly('👋', '[no text]');
+		mocks.upstream.push(reply('[no text]'));
+		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
+		await idle(t.conversationId);
+		expect(roles(walkActiveBranch(t.conversationId))).toEqual(['user', 'assistant']);
+		expect(notify).not.toHaveBeenCalled();
 	});
 
 	it('takes a reply back out when the only reaction was refused', async () => {

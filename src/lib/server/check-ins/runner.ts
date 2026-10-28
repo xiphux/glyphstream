@@ -356,8 +356,8 @@ function notifyTurn(row: CheckInRow, rows: ChatMessage[]): void {
 
 /** The emoji a turn reacted with (`rows` newest first, as `turnRows` gives
  *  them), oldest first. A check-in can answer with nothing else, which says as
- *  much as a text would, so a turn that reacted isn't a pass. One the tool
- *  refused never happened; one whose result is missing did (the thread draws
+ *  much as a text would, so a turn that reacted isn't a pass — unless the
+ *  reacting row also wrote the pass marker. One the tool refused never happened; one whose result is missing did (the thread draws
  *  it the same way — see `buildRenderedConversation`). */
 function reactions(rows: ChatMessage[]): string[] {
 	const refused = new Set(
@@ -366,7 +366,7 @@ function reactions(rows: ChatMessage[]): string[] {
 		),
 	);
 	return rows
-		.filter((m) => m.role === 'assistant')
+		.filter((m) => m.role === 'assistant' && !declines(m))
 		.reverse()
 		.flatMap((m) =>
 			m.parts.flatMap((p) => {
@@ -375,6 +375,14 @@ function reactions(rows: ChatMessage[]): string[] {
 				return parseReactionEmoji(p.arguments) ?? [];
 			}),
 		);
+}
+
+/** A row that wrote the pass marker itself, rather than nothing: whatever it
+ *  reacted with on the way, the model said it was passing. (The empty row the
+ *  reaction tool's second round often ends with is not one.) */
+function declines(m: ChatMessage): boolean {
+	const text = partsToText(m.parts).trim();
+	return text !== '' && isCheckInSkip(text);
 }
 
 function hasReaction(parts: ChatMessage['parts']): boolean {
