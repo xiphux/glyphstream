@@ -182,6 +182,19 @@ describe('photos onto replies', () => {
 		expect(conv().activeLeafMessageId).toBe(replyId);
 	});
 
+	it('puts the newest version on show where none was on the branch', () => {
+		const first = photo(replyId, 0);
+		const again = photo(replyId, 0, 'ep::flux');
+		const other = add(replyId, 'user', text('a different reply'));
+		setActiveLeafMessageId(convId, other);
+
+		migrate();
+
+		const shown = versions().filter((v) => v.shownAt !== null);
+		expect(shown.map((v) => v.mediaId)).toEqual([again.mediaId]);
+		expect(versions().find((v) => v.mediaId === first.mediaId)?.shownAt).toBeNull();
+	});
+
 	it('drops a failed draw beside the photos, and the leaf it held', () => {
 		photo(replyId, 0);
 		const failed = add(replyId, 'assistant', [{ type: 'error', message: 'out of memory' }]);

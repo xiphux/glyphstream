@@ -110,6 +110,26 @@ JOIN conversations c ON c.id = p.conversation_id
 JOIN messages r ON r.id = p.reply_id AND r.conversation_id = p.conversation_id
 WHERE p.media_id IN (SELECT id FROM media) AND p.marker_index IS NOT NULL;
 --> statement-breakpoint
+-- A photo with no version on the active branch shows its newest — marked, so a
+-- comparison drawn on it later doesn't take the stage before a pick (that
+-- only happens where nothing is on show).
+UPDATE message_images
+SET shown_at = created_at
+WHERE id IN (SELECT id FROM _photo)
+	AND NOT EXISTS (
+		SELECT 1 FROM message_images o
+		WHERE o.message_id = message_images.message_id
+			AND o.marker_index = message_images.marker_index
+			AND o.shown_at IS NOT NULL
+	)
+	AND id = (
+		SELECT o.id FROM message_images o
+		WHERE o.message_id = message_images.message_id
+			AND o.marker_index = message_images.marker_index
+		ORDER BY o.created_at DESC, o.id DESC
+		LIMIT 1
+	);
+--> statement-breakpoint
 INSERT OR IGNORE INTO message_media (message_id, media_id)
 SELECT p.reply_id, p.media_id
 FROM _photo p
