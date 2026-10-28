@@ -289,6 +289,21 @@ describe('photos onto replies', () => {
 		expect(conv().fanoutParentMessageId).toBe(replyId);
 	});
 
+	it('ends a photo comparison whose last draw failed', () => {
+		photo(replyId, 0);
+		const failed = add(replyId, 'assistant', [{ type: 'error', message: 'timed out' }]);
+		db.update(messages)
+			.set({ createdAt: Date.now() + 1000 })
+			.where(eq(messages.id, failed))
+			.run();
+		setFanoutParent(convId, userId, replyId, true);
+
+		migrate();
+
+		expect(conv().fanoutParentMessageId).toBeNull();
+		expect(ids()).not.toContain(failed);
+	});
+
 	it('leaves an avatar comparison open before any of its portraits landed', () => {
 		photo(replyId, 0);
 		setFanoutParent(convId, userId, replyId, true);

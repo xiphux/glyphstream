@@ -160,7 +160,8 @@ WHERE compaction_resume_from_message_id IN (SELECT id FROM _removed);
 -- can also be a texting reply with photos) by what it's drawing: a portrait
 -- draw still queued on the anchor (a photo comparison's were rewritten above)
 -- makes it an avatar comparison; otherwise a photo draw queued there, or a
--- photo as the anchor's newest picture, makes it a photo one.
+-- photo as the anchor's newest picture, makes it a photo one. Pictures, not
+-- failures: a comparison's last draw failing often arrives after its photos.
 UPDATE conversations
 SET fanout_parent_message_id = NULL
 WHERE fanout_parent_message_id IN (SELECT id FROM _removed)
@@ -177,7 +178,7 @@ WHERE fanout_parent_message_id IN (SELECT id FROM _removed)
 				WHERE c.parent_message_id = conversations.fanout_parent_message_id
 					AND c.role = 'assistant'
 					AND json_valid(c.content_json)
-					AND json_extract(c.content_json, '$[0].type') IN ('image', 'error')
+					AND json_extract(c.content_json, '$[0].type') = 'image'
 				ORDER BY c.created_at DESC, c.id DESC
 				LIMIT 1
 			) IN (SELECT id FROM _photo)
