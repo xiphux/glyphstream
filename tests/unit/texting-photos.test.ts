@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { photoMarkers, splitAtPhotos } from '#lib/texting-photos.js';
 import type { RenderBlock } from '#lib/chat-render.js';
+import { textingItems, withoutCheckInMarkers } from '#lib/texting.js';
+import { renderMarkdown } from '#lib/server/markdown/render.js';
 import type { ChatMessage, MessagePart } from '#lib/types/api.js';
 
 function msg(id: string, role: ChatMessage['role'], parts: MessagePart[], html?: string) {
@@ -96,5 +98,34 @@ describe('splitAtPhotos', () => {
 		expect(splitAtPhotos([{ type: 'plain-text', text: 'look\n\n[pho' }], true)).toEqual([
 			{ kind: 'blocks', blocks: [{ type: 'plain-text', text: 'look' }] },
 		]);
+	});
+});
+
+// A developed photo is stored against its number, which the server reads with
+// `photoMarkers` (`textingItems`) and a standard reply draws with
+// `splitAtPhotos` — the two must count alike for every shape a reply takes, or
+// stored photos land in the wrong places.
+describe('photo numbering, standard against texting', () => {
+	const REPLIES = [
+		'here\n\n[photo: one]\n\nand\n\n[photo: two]',
+		'Sam: [photo: a speaker’s]\n\nJo: hi\n\n*[photo: in italics]*\n\n**[photo: in bold]**',
+		'one\n\n---\n\n[photo: after a divider]\n\n- a list\n- [photo: inside a list]',
+		'```\n[photo: in code]\n```\n\n[photo: real]',
+		'[photo: a]\n[photo: b]\n\n[photo: ]\n\n[photo: c]',
+		'bye\n\n[photo: before a check-in]\n\n[later 1h: ask]',
+	];
+
+	it.each(REPLIES)('agrees on %j', async (markdown) => {
+		const rendered = [{ type: 'html', html: await renderMarkdown(markdown) }] as RenderBlock[];
+		const plain = [{ type: 'plain-text', text: markdown }] as RenderBlock[];
+		for (const blocks of [rendered, plain]) {
+			const texting = textingItems(blocks, 'Chloe').flatMap((item) =>
+				item.kind === 'photo' ? [{ index: item.index, description: item.description }] : [],
+			);
+			const standard = splitAtPhotos(withoutCheckInMarkers(blocks)).flatMap((s) =>
+				s.kind === 'photo' ? [{ index: s.index, description: s.description }] : [],
+			);
+			expect(standard).toEqual(texting);
+		}
 	});
 });
