@@ -11,7 +11,7 @@ arrived.
 
 ### Added
 
-- Custom models can check in on you: when one says it'll get back to you later, it sets a reminder, and if you haven't replied by then it reaches out, with a notification. On by default for texting presets; a per-preset setting for the rest.
+- Custom models can check in on you: when one says it'll get back to you later, it sets a reminder, and if you haven't replied by then it reaches out, with a notification. On by default for texting presets; a per-preset setting for the rest. Operators can switch it off server-wide with `[check_ins] enabled = false`.
 
 ## v0.50.0
 

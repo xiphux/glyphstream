@@ -34,8 +34,8 @@ export const TEXTING_INSTRUCTIONS =
  * The check-in marker `#lib/check-ins.ts` reads, per style — on only for a
  * conversation whose preset allows check-ins. It must be a paragraph of its
  * own: that's the unit both the parser and the bubbles split on, so "a line of
- * its own" (one newline) would leave it unread and on show. "Only when you've said so" is
- * what keeps every goodbye from setting one. The reminder, when it comes, says
+ * its own" (one newline) would leave it unread and on show. The "If you tell
+ * them you'll …" condition is what keeps every goodbye from setting one. The reminder, when it comes, says
  * how to pass on it; that wording lives there, not here, because this is rent.
  */
 export const CHECK_IN_INSTRUCTIONS: Record<ReplyStyle, string> = {
