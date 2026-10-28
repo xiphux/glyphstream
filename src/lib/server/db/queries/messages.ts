@@ -57,11 +57,11 @@ interface AppendInput {
 	 * is STILL this message id at write time.
 	 *
 	 * For a normal send the anchor is created microseconds earlier and is the
-	 * leaf by construction, so nothing needs this. An avatar generation is the
-	 * exception — it anchors on an assistant reply that already existed and can
-	 * take minutes, during which the user may send another turn and move the
-	 * leaf on. Advancing unconditionally then rewinds the branch onto the older
-	 * anchor and the newer exchange drops out of the rendered thread.
+	 * leaf by construction, so nothing needs this. A check-in's reminder is the
+	 * exception — it anchors on a leaf read before the append, and the user may
+	 * send another turn in between and move the leaf on. Advancing
+	 * unconditionally then rewinds the branch onto the older anchor and the
+	 * newer exchange drops out of the rendered thread.
 	 *
 	 * When the guard fails the row still persists, as a sibling the ‹N/M› arrows
 	 * expose — the same shape a fan-out branch already has.
@@ -746,8 +746,8 @@ export function getFirstRootMessageId(conversationId: string): string | null {
  * (see `reactionOnly` in the relay), so its leaf is the final assistant row
  * already and this never fires for it.
  *
- * Callers that go on to MOVE the leaf (parking a comparison, advancing onto a
- * portrait) leave the skipped tool row off the branch. That is only safe
+ * A caller that goes on to MOVE the leaf (`appendMessage`'s compare-and-swap)
+ * leaves the skipped tool row off the branch. That is only safe
  * because `dropOrphanedToolCalls` removes the now-unanswered call from the
  * upstream payload; without it this produces a request strict backends reject
  * on every subsequent turn. Don't use this to reshape a branch without it.
