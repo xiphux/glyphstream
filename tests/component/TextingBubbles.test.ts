@@ -301,6 +301,23 @@ describe('texting reply style', () => {
 			expect(screen.getAllByRole('button', { name: 'Develop' })).toHaveLength(1);
 		});
 
+		it('says so when developing a photo again failed, keeping the last one', () => {
+			render(MessageBubble, {
+				props: {
+					...bubbleProps,
+					message: reply(PHOTOS),
+					textingPhotos: photos({
+						versions: new Map([
+							[1, [version('a', { shown: true }), version('f', { mediaId: null, error: 'oom' })]],
+						]),
+						onDevelop: vi.fn(),
+					}),
+				},
+			});
+			expect(screen.getByRole('img', { name: 'the dog' })).toBeInTheDocument();
+			expect(screen.getByText(/Couldn't develop again: oom/)).toBeInTheDocument();
+		});
+
 		it('keeps a failed attempt on the photo, with a way to try again', async () => {
 			const onDevelop = vi.fn();
 			render(MessageBubble, {

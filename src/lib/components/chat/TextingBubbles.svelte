@@ -192,80 +192,87 @@
 				{#if state.shown}
 					{@const shown = state.shown}
 					{@const at = state.versions.indexOf(shown)}
-					<div class="relative w-64 max-w-[75%]">
-						<button
-							type="button"
-							onclick={() => onImageClick(shown.mediaId)}
-							aria-label="Open photo"
-							disabled={openingLightboxFor === shown.mediaId}
-							class="block w-full overflow-hidden rounded-2xl p-0 transition disabled:opacity-60"
-						>
-							<img
-								src="/api/media/{shown.mediaId}/display"
-								alt={item.description}
-								loading="lazy"
-								style:aspect-ratio={cssAspectRatio({
-									width: shown.width ?? undefined,
-									height: shown.height ?? undefined,
-									aspectRatio: shown.aspectRatio ?? undefined,
-								})}
-								class="block h-auto max-h-[70vh] w-full object-cover"
-							/>
-						</button>
-						<div class="absolute top-2 right-2 flex gap-1">
-							{#if photos?.onDevelop && !state.developing}
-								<button
-									type="button"
-									onclick={() => photos?.onDevelop?.(index)}
-									aria-label="Develop again"
-									title="Develop again"
-									class={photoButton}
+					<div class="flex w-64 max-w-[75%] flex-col gap-1">
+						<div class="relative">
+							<button
+								type="button"
+								onclick={() => onImageClick(shown.mediaId)}
+								aria-label="Open photo"
+								disabled={openingLightboxFor === shown.mediaId}
+								class="block w-full overflow-hidden rounded-2xl p-0 transition disabled:opacity-60"
+							>
+								<img
+									src="/api/media/{shown.mediaId}/display"
+									alt={item.description}
+									loading="lazy"
+									style:aspect-ratio={cssAspectRatio({
+										width: shown.width ?? undefined,
+										height: shown.height ?? undefined,
+										aspectRatio: shown.aspectRatio ?? undefined,
+									})}
+									class="block h-auto max-h-[70vh] w-full object-cover"
+								/>
+							</button>
+							<div class="absolute top-2 right-2 flex gap-1">
+								{#if photos?.onDevelop && !state.developing}
+									<button
+										type="button"
+										onclick={() => photos?.onDevelop?.(index)}
+										aria-label="Develop again"
+										title="Develop again"
+										class={photoButton}
+									>
+										<RefreshCw class="size-3.5" aria-hidden="true" />
+									</button>
+								{/if}
+								{#if photos?.onRemove}
+									<button
+										type="button"
+										onclick={() => photos?.onRemove?.(shown)}
+										aria-label="Remove this photo"
+										title="Remove this photo"
+										class={photoButton}
+									>
+										<Trash2 class="size-3.5" aria-hidden="true" />
+									</button>
+								{/if}
+							</div>
+							{#if state.developing}
+								<p
+									class="absolute bottom-2 left-2 rounded-full bg-black/55 px-2 py-0.5 text-xs text-white"
 								>
-									<RefreshCw class="size-3.5" aria-hidden="true" />
-								</button>
-							{/if}
-							{#if photos?.onRemove}
-								<button
-									type="button"
-									onclick={() => photos?.onRemove?.(shown)}
-									aria-label="Remove this photo"
-									title="Remove this photo"
-									class={photoButton}
+									Developing…
+								</p>
+							{:else if state.versions.length > 1}
+								<div
+									class="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/55 px-1 text-xs text-white"
 								>
-									<Trash2 class="size-3.5" aria-hidden="true" />
-								</button>
+									<button
+										type="button"
+										onclick={() => photos?.onShow?.(state.versions[at - 1])}
+										disabled={at === 0 || !photos?.onShow}
+										aria-label="Previous version"
+										class="rounded-full p-1 transition hover:bg-black/40 disabled:opacity-40"
+									>
+										<ChevronLeft class="size-3.5" aria-hidden="true" />
+									</button>
+									<span class="tabular-nums">{at + 1}/{state.versions.length}</span>
+									<button
+										type="button"
+										onclick={() => photos?.onShow?.(state.versions[at + 1])}
+										disabled={at === state.versions.length - 1 || !photos?.onShow}
+										aria-label="Next version"
+										class="rounded-full p-1 transition hover:bg-black/40 disabled:opacity-40"
+									>
+										<ChevronRight class="size-3.5" aria-hidden="true" />
+									</button>
+								</div>
 							{/if}
 						</div>
-						{#if state.developing}
-							<p
-								class="absolute bottom-2 left-2 rounded-full bg-black/55 px-2 py-0.5 text-xs text-white"
-							>
-								Developing…
-							</p>
-						{:else if state.versions.length > 1}
-							<div
-								class="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/55 px-1 text-xs text-white"
-							>
-								<button
-									type="button"
-									onclick={() => photos?.onShow?.(state.versions[at - 1])}
-									disabled={at === 0 || !photos?.onShow}
-									aria-label="Previous version"
-									class="rounded-full p-1 transition hover:bg-black/40 disabled:opacity-40"
-								>
-									<ChevronLeft class="size-3.5" aria-hidden="true" />
-								</button>
-								<span class="tabular-nums">{at + 1}/{state.versions.length}</span>
-								<button
-									type="button"
-									onclick={() => photos?.onShow?.(state.versions[at + 1])}
-									disabled={at === state.versions.length - 1 || !photos?.onShow}
-									aria-label="Next version"
-									class="rounded-full p-1 transition hover:bg-black/40 disabled:opacity-40"
-								>
-									<ChevronRight class="size-3.5" aria-hidden="true" />
-								</button>
-							</div>
+						<!-- Developing it again failed: the photo on show is the last one
+					     that worked, so say why there's no new one. -->
+						{#if state.failure && !state.developing}
+							<p class="text-xs text-danger">Couldn't develop again: {state.failure}</p>
 						{/if}
 					</div>
 				{:else}
