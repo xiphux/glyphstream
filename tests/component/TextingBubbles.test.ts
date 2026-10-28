@@ -135,6 +135,24 @@ describe('texting reply style', () => {
 		expect(screen.getByRole('status', { name: 'Sam is typing' })).toBeInTheDocument();
 	});
 
+	it('shows the last text whole once the reply has finished', () => {
+		render(InFlightBubble, {
+			props: {
+				assistantLabel: 'Chloe',
+				label: 'Thinking',
+				status: null,
+				progress: null,
+				elapsedSeconds: 0,
+				onImageClick: vi.fn(),
+				texting: true,
+				typing: false,
+				blocks: [{ type: 'plain-text', text: 'hey\n\nwhat' }],
+			},
+		});
+		expect(screen.getByText('what')).toBeInTheDocument();
+		expect(screen.queryByRole('status')).toBeNull();
+	});
+
 	it('types a half-written marker too, rather than showing it as text', () => {
 		render(InFlightBubble, {
 			props: {

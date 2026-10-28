@@ -56,6 +56,9 @@
 		onOpenCanvas?: (artifactId: string | null) => void;
 		/** The 'texting' reply style — see MessageBubble. */
 		texting?: boolean;
+		/** Whether the reply is still being written (see TextingBubbles); false
+		 *  once the stream ends, while the bubble waits to be replaced. */
+		typing?: boolean;
 	}
 
 	let {
@@ -76,6 +79,7 @@
 		mcpUnavailable = [],
 		onOpenCanvas,
 		texting = false,
+		typing = true,
 	}: Props = $props();
 
 	// Canvas cards render at the bottom of the live bubble, matching how the
@@ -143,7 +147,7 @@
 			{approvalBusy}
 			{onApprovalSelect}
 			codeCopy={false}
-			typing
+			{typing}
 			pending={split.body.length === 0 && split.cards.length === 0 ? placeholder : undefined}
 		/>
 		{#each split.cards as block (block.type === 'tool_call' ? block.toolCallId : '')}

@@ -2798,6 +2798,7 @@
 							mcpUnavailable={turn.inFlightMcpUnavailable}
 							onOpenCanvas={(artifactId: string | null) => canvas.show(artifactId ?? undefined)}
 							{texting}
+							typing={!turn.inFlightDone}
 						/>
 					</div>
 				{/if}

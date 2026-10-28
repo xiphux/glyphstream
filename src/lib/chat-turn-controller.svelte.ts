@@ -154,6 +154,10 @@ export class ChatTurnController {
 	// Covered by tests/component/InFlightSegmentsReactivity.test.ts.
 	inFlightSegments = $state<InFlightSegment[]>([]);
 	inFlightOpen = $state(false);
+	/** The stream has ended, though the bubble may stay up a moment longer (a
+	 *  tool turn waits on `refreshAll` for its rows). Nothing is still being
+	 *  written, so a texting reply stops showing its last text as typing. */
+	inFlightDone = $state(false);
 	inFlightProgress = $state<number | null>(null);
 	inFlightStatus = $state<string | null>(null);
 	/** Set when the server emits a `queued` event (the endpoint's max_concurrent
@@ -290,6 +294,7 @@ export class ChatTurnController {
 		this.inFlightStartedAt = null;
 		this.inFlightMcpUnavailable = [];
 		this.liveReaction = null;
+		this.inFlightDone = false;
 	}
 
 	/**
@@ -472,6 +477,7 @@ export class ChatTurnController {
 				// Keep the in-flight bubble visible until then so the user doesn't
 				// stare at a blank gap.
 				this.streamedMessageId = assistantMessage.id;
+				this.inFlightDone = true;
 				if (!sawToolCalls) {
 					this.#deps.setMessages([...this.#deps.getMessages(), assistantMessage]);
 					this.inFlightOpen = false;
@@ -580,6 +586,7 @@ export class ChatTurnController {
 		// "Thinking…/Generating…" row is in the DOM when we measure — otherwise
 		// scrollToBottom lands with the optimistic user message at the viewport
 		// bottom and the in-flight bubble renders one row below it, off-screen.
+		this.inFlightDone = false;
 		this.inFlightOpen = true;
 		if (!isRetry) {
 			await tick();
@@ -743,6 +750,7 @@ export class ChatTurnController {
 		this.#resetInFlightSegments();
 		this.inFlightProgress = null;
 		this.inFlightStatus = null;
+		this.inFlightDone = false;
 		this.inFlightOpen = true;
 		// Reuse the same Stop wiring the send path uses — the in-flight registry on
 		// the server keys by conversation id, so stop()'s POST to /cancel reaches

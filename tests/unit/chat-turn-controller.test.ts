@@ -226,6 +226,33 @@ describe('ChatTurnController — send', () => {
 		vi.unstubAllGlobals();
 	});
 
+	// The bubble stays up through the reload, but nothing in it is being
+	// written any more: a texting reply stops typing its last text.
+	it('marks a tool turn done while its bubble waits on the reload', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () =>
+				sseResponse([
+					{ type: 'start', userMessage: userMsg('u1') },
+					{ type: 'tool_call_start', toolCallId: 't1', toolName: 'search' },
+					{ type: 'done', assistantMessage: assistantMsg('a-final') },
+				]),
+			),
+		);
+		const { deps } = makeDeps();
+		const turn = new ChatTurnController(deps);
+		let during: [boolean, boolean] | null = null;
+		refreshAll.mockImplementationOnce(async () => {
+			during = [turn.inFlightOpen, turn.inFlightDone];
+		});
+
+		await turn.send('use a tool', []);
+
+		expect(during).toEqual([true, true]);
+		expect(turn.inFlightDone).toBe(false);
+		vi.unstubAllGlobals();
+	});
+
 	it('surfaces an error event via setError', async () => {
 		const fetchMock = vi.fn(async () => sseResponse([{ type: 'error', message: 'upstream boom' }]));
 		vi.stubGlobal('fetch', fetchMock);
