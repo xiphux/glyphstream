@@ -37,7 +37,8 @@ import {
 	insertMessageImage,
 	listImagesForMessages,
 } from '#lib/server/db/queries/message-images.js';
-import { modelStatsDaily } from '#lib/server/db/schema.js';
+import { media, modelStatsDaily } from '#lib/server/db/schema.js';
+import { eq } from 'drizzle-orm';
 import { insertGenerationJob } from '#lib/server/db/queries/generation-jobs.js';
 import { getDb } from '#lib/server/db/client.js';
 import {
@@ -326,6 +327,19 @@ describe('PATCH /photos/:id', () => {
 			(v) => !v.mediaId,
 		);
 		expect(failures.map((v) => v.id)).toEqual([other]);
+	});
+
+	it('leaves a result trashed before the pick out of the count', async () => {
+		version({ modelId: 'ep::sdxl', comparisonId: 'cmp-1' });
+		const b = version({ modelId: 'ep::flux', comparisonId: 'cmp-1' });
+		const trashed = version({ modelId: 'ep::other', comparisonId: 'cmp-1' });
+		const trashedMedia = (listImagesForMessages(convId, [replyId]).get(replyId) ?? []).find(
+			(v) => v.id === trashed,
+		)!.mediaId!;
+		db.update(media).set({ deletedAt: 1 }).where(eq(media.id, trashedMedia)).run();
+		await pick(b, { shown: true, pick: true });
+		expect(Object.keys(tally())).not.toContain('other fanout_shown');
+		expect(tally()['flux fanout_win']).toBe(1);
 	});
 
 	it('counts a comparison once, however often it is picked from', async () => {

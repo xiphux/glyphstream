@@ -120,10 +120,13 @@ export function resolveComparison(
 			eq(messageImages.messageId, picked.messageId),
 			eq(messageImages.comparisonId, picked.comparisonId),
 		);
+		// Results only, and not one the user threw out before picking — the same
+		// as a deleted column in a fan-out pick.
 		const models = tx
 			.select({ modelId: messageImages.modelId })
 			.from(messageImages)
-			.where(and(inComparison, isNotNull(messageImages.mediaId)))
+			.innerJoin(media, eq(media.id, messageImages.mediaId))
+			.where(and(inComparison, isNull(media.deletedAt)))
 			.all()
 			.map((r) => r.modelId);
 		// Its failed draws were results to compare, not news about the photo:
