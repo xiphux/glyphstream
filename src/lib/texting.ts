@@ -71,9 +71,11 @@ const TAG = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*?(\/?)>/g;
 /**
  * Split html into its top-level elements. Whitespace between them is dropped;
  * any other stray top-level text is kept, joined to the element that follows
- * it (or as a chunk of its own at the very end).
+ * it (or as a chunk of its own at the very end). A thematic break (`<hr>`) is
+ * dropped — a divider isn't something anyone texted — unless `keepBreaks`, for
+ * a standard reply being cut around its photos.
  */
-export function splitTopLevelHtml(html: string): string[] {
+export function splitTopLevelHtml(html: string, keepBreaks = false): string[] {
 	const out: string[] = [];
 	let depth = 0;
 	let start = 0;
@@ -83,12 +85,12 @@ export function splitTopLevelHtml(html: string): string[] {
 		if (closing) {
 			depth = Math.max(0, depth - 1);
 			if (depth === 0) {
-				pushChunk(out, html.slice(start, end));
+				pushChunk(out, html.slice(start, end), keepBreaks);
 				start = end;
 			}
 		} else if (VOID.test(rawName) || selfClosing) {
 			if (depth === 0) {
-				pushChunk(out, html.slice(start, end));
+				pushChunk(out, html.slice(start, end), keepBreaks);
 				start = end;
 			}
 		} else {
@@ -98,15 +100,15 @@ export function splitTopLevelHtml(html: string): string[] {
 	// An unclosed tail: a live render mid-stream can't produce one (markdown-it
 	// closes what it opens), but losing text silently would be worse than
 	// showing it unsplit.
-	pushChunk(out, html.slice(start));
+	pushChunk(out, html.slice(start), keepBreaks);
 	return out;
 }
 
-function pushChunk(out: string[], chunk: string): void {
+function pushChunk(out: string[], chunk: string, keepBreaks: boolean): void {
 	const trimmed = chunk.trim();
 	if (!trimmed) return;
 	// A thematic break is a divider, not something anyone texted.
-	if (/^<hr\b[^>]*>$/i.test(trimmed)) return;
+	if (!keepBreaks && /^<hr\b[^>]*>$/i.test(trimmed)) return;
 	out.push(trimmed);
 }
 

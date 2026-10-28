@@ -67,6 +67,20 @@ describe('splitAtPhotos', () => {
 		expect(splitAtPhotos(blocks)).toEqual([{ kind: 'blocks', blocks }]);
 	});
 
+	it('keeps a reply’s dividers, with or without a photo in it', () => {
+		const plain = html('<p>one</p>\n<hr>\n<p>two</p>');
+		// Untouched: the very same block.
+		expect(splitAtPhotos([plain])[0]).toEqual({ kind: 'blocks', blocks: [plain] });
+		expect((splitAtPhotos([plain])[0] as { blocks: RenderBlock[] }).blocks[0]).toBe(plain);
+		expect(
+			splitAtPhotos([html('<p>one</p>\n<hr>\n<p>[photo: a cat]</p>\n<hr>\n<p>two</p>')]),
+		).toEqual([
+			{ kind: 'blocks', blocks: [html('<p>one</p>\n<hr>')] },
+			{ kind: 'photo', index: 0, description: 'a cat' },
+			{ kind: 'blocks', blocks: [html('<hr>\n<p>two</p>')] },
+		]);
+	});
+
 	it('reads plain text the same way', () => {
 		expect(splitAtPhotos([{ type: 'plain-text', text: 'look\n\n[photo: a cat]' }])).toEqual([
 			{ kind: 'blocks', blocks: [{ type: 'plain-text', text: 'look' }] },

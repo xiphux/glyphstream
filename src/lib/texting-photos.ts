@@ -24,8 +24,8 @@ export type PhotoSegment =
 
 /**
  * A standard reply's blocks, cut around its photo markers so each photo can be
- * drawn where the model put it. Paragraphs around a marker stay whole. A reply
- * with no markers comes back as one run, as it was.
+ * drawn where the model put it. Paragraphs around a marker stay whole, and a
+ * block with no marker comes back untouched.
  *
  * `live` is a reply still arriving: a last paragraph that has begun a marker
  * but not finished it is held back rather than shown as raw text.
@@ -44,8 +44,16 @@ export function splitAtPhotos(blocks: RenderBlock[], live = false): PhotoSegment
 	};
 	blocks.forEach((block, b) => {
 		const last = live && b === blocks.length - 1;
+		// No marker in it (or, at the live end, not even the start of one): as it
+		// came — not cut and rejoined, which is work and can't add anything.
+		const text = block.type === 'html' ? block.html : block.type === 'plain-text' ? block.text : '';
+		if (!(last ? text.includes('[') : /\[photo/i.test(text))) {
+			run.push(block);
+			return;
+		}
 		if (block.type === 'html') {
-			const chunks = splitTopLevelHtml(block.html);
+			// Dividers kept: in a standard reply they're part of what was written.
+			const chunks = splitTopLevelHtml(block.html, true);
 			let kept: string[] = [];
 			chunks.forEach((chunk, c) => {
 				const description = photoDescription({ html: extractSpeaker(chunk).html });
