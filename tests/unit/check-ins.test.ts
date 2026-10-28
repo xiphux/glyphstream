@@ -39,6 +39,11 @@ describe('parseDelay', () => {
 });
 
 describe('checkInMarker', () => {
+	it('keeps a note to a line or two', () => {
+		const note = checkInMarker({ text: `[later 1h: ${'x'.repeat(1000)}]` })?.note;
+		expect(note).toHaveLength(280);
+	});
+
 	it('reads a plain or emphasized marker', () => {
 		expect(checkInMarker({ text: '[later 1h: ask about work]' })).toEqual({
 			delayMs: HOUR,

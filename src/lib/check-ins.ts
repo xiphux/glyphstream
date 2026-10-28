@@ -61,6 +61,11 @@ export function parseDelay(input: string): number | null {
 	return Math.min(MAX_CHECK_IN_DELAY_MS, Math.max(MIN_CHECK_IN_DELAY_MS, Math.round(total)));
 }
 
+/** A note is a reminder to self, a line or two. It is stored, then sent back
+ *  as the reminder in a turn nobody is watching, so one the model was steered
+ *  into writing (by a page it read, say) can't be a whole prompt. */
+const MAX_NOTE_CHARS = 280;
+
 export interface CheckInMarker {
 	delayMs: number;
 	note: string;
@@ -99,7 +104,7 @@ export function checkInMarker(text: { html: string } | { text: string }): CheckI
 		note = m[3].trim();
 	}
 	const delayMs = parseDelay(delay);
-	return delayMs === null || !note ? null : { delayMs, note };
+	return delayMs === null || !note ? null : { delayMs, note: note.slice(0, MAX_NOTE_CHARS) };
 }
 
 /** What the note under a reply shows while its check-in is pending. Absent
