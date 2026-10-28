@@ -41,14 +41,8 @@ export interface FanoutNotifyInput {
 	conversationId: string;
 	userId: string;
 	/**
-	 * The message the branches hang off of — its assistant children are the
-	 * produced results.
-	 *
-	 * Usually the shared user message a turn fan-out was prepared with. An avatar
-	 * comparison anchors on an ASSISTANT message instead (the appearance
-	 * description the portraits are drawn from), so don't read the name as a
-	 * guarantee of role: `getSiblingAssistants` is role-agnostic about the parent,
-	 * which is what lets both callers share this.
+	 * The shared user message a turn fan-out was prepared with — its assistant
+	 * children are the produced results.
 	 */
 	userMessageId: string;
 	conversationTitle: string | null;

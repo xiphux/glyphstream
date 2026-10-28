@@ -69,8 +69,8 @@ function extractToolCalls(parts: MessagePart[]): ChatCompletionRequestToolCall[]
 /**
  * Whether a part reaches the model at all.
  *
- * A `displayOnly` image (the portrait an avatar generation produced) is
- * rendered in the thread but has no place in the request — see the flag's note
+ * A `displayOnly` image (a photo or portrait draw's) is shown in the thread
+ * but has no place in the request — see the flag's note
  * on why that's decided once, at persist time.
  *
  * Exported because the serializer is not the only place that has to know. The

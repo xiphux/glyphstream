@@ -680,7 +680,7 @@ export class FanoutController {
 		// Tested on `!== 'error'` rather than `=== 'done'` because of the branch
 		// that lands `persisted` and THEN gets marked 'cancelled': a Stop arriving
 		// between the `done` event and the stream close. That column holds a real
-		// portrait, and while it was merely unpromotable this only cost a no-op
+		// result, and while it was merely unpromotable this only cost a no-op
 		// Done — but now that the else-branch clears the marker, treating it as
 		// nothing would take the anchor's children off the active branch for good.
 		const firstPersisted = this.columns.find((c) => c.persisted && c.status !== 'error');

@@ -184,8 +184,9 @@ export interface MediaRelayParams {
 	persistWith?: (tx: Tx) => void;
 	/**
 	 * Land the result ON `userMessage` rather than as a new row under it: a
-	 * texting photo is a version of the reply's `[photo: …]`, not a message of
-	 * its own (see `message_images`). Called in the transaction that links the
+	 * texting photo is a version of the reply's `[photo: …]`, and a portrait a
+	 * version of the reply it was drawn from — neither a message of its own (see
+	 * `message_images`). Called in the transaction that links the
 	 * media to that message and runs `persistWith`; a failure lands here too, as
 	 * a failed attempt, instead of as an error sibling. The thread itself doesn't
 	 * change, so the leaf and fan-out params have nothing to do. `done` carries

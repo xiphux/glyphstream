@@ -466,11 +466,13 @@ export type MessagePart =
 			mediaId: string;
 			alt?: string;
 			/**
-			 * Rendered in the thread, NEVER sent upstream. Set on the portrait an
-			 * avatar generation produces: the user should see what came out at full
-			 * size, but re-sending an image on every subsequent turn is rent for
-			 * something the accompanying description already says in far fewer
-			 * tokens — and a non-vision model can't read it at all.
+			 * Rendered in the thread, NEVER sent upstream. Set on a photo or portrait
+			 * draw's image: the user should see what came out at full size, but
+			 * re-sending an image on every subsequent turn is rent for something the
+			 * reply it illustrates already says in far fewer tokens — and a
+			 * non-vision model can't read it at all. (Those images now land as
+			 * versions on their reply, in `message_images`, not as parts; older rows
+			 * may still carry one.)
 			 *
 			 * Deliberately decided at PERSIST time and never revisited. "Payload is
 			 * rent, and its prefix must be stable": what the user did may change the

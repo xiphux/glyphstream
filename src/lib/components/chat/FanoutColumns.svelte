@@ -53,9 +53,7 @@
 		onRegenerate?: (column: FanoutColumn) => void;
 		/** Per-column gate on Regenerate. A "no" hides the button only once the
 		 *  column settles; until then it shows disabled, since landing may change
-		 *  the answer. (An avatar portrait recovered without its prompt has nothing
-		 *  to re-roll from, and gets one if it lands with an image.) Defaults to
-		 *  every column. */
+		 *  the answer. Defaults to every column. */
 		canRegenerate?: (column: FanoutColumn) => boolean;
 		onImageClick: (mediaId: string) => void;
 		/** A pick/discard/regenerate request is in flight — disables the controls. */

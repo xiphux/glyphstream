@@ -67,10 +67,10 @@ export interface ImageRelayParams extends MediaRelayParams {
 	 *  category is not in the conversation's disabledFeatures). */
 	enhancementEnabled?: boolean;
 	/**
-	 * Persist the result as a display-only image — rendered in the thread but
-	 * never sent upstream. Set by avatar generation: the portrait should be
-	 * visible at full size (32px tells you nothing), but re-sending it every
-	 * turn is rent for what the description beside it already says in text.
+	 * Persist the result as a display-only image — shown but never sent
+	 * upstream. Set by photo and portrait draws: the picture should be visible
+	 * at full size, but re-sending it every turn is rent for what the reply it
+	 * illustrates already says in text.
 	 * See the `displayOnly` note on the image MessagePart.
 	 */
 	displayOnly?: boolean;
