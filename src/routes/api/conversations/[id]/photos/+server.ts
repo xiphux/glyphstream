@@ -32,7 +32,6 @@ import { parseJsonBody } from '#lib/server/http.js';
 import { getConversationMeta } from '#lib/server/db/queries/conversations.js';
 import { getMessage, photoStateFor } from '#lib/server/db/queries/messages.js';
 import { clearImageFailures } from '#lib/server/db/queries/message-images.js';
-import { listPhotoJobsForMessages } from '#lib/server/db/queries/generation-jobs.js';
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
 import { parseModelId } from '#lib/server/endpoints/model-id.js';
 import { listAllModels } from '#lib/server/endpoints/list-models.js';
@@ -40,6 +39,7 @@ import { submitGenerationJob } from '#lib/server/generation/jobs.js';
 import { enforceGenerationCap } from '#lib/server/generation/user-cap.js';
 import { resolveDisabledFeatures } from '#lib/server/chat/private-seal.js';
 import { sseResponse } from '#lib/server/streaming/sse-transport.js';
+import { photoDrawsInFlight } from '#lib/server/streaming/in-flight.js';
 import { nearestOffered } from '#lib/aspect-ratio.js';
 import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '#lib/fanout.js';
 import { photoMarkers } from '#lib/texting-photos.js';
@@ -137,12 +137,11 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		enhancementAllowed && (typeof body.enhance !== 'boolean' || body.enhance);
 
 	// Every draw holds a connection, a registry entry and a queued waiter, so
-	// bound how many one reply can have going — the same ceiling a fan-out has.
-	// Synchronous with the job's registration below.
-	if (
-		listPhotoJobsForMessages(params.id, [reply.id]).length >= MAX_FANOUT_BRANCHES_PER_CONVERSATION
-	) {
-		error(429, 'Too many photos developing for this reply');
+	// bound how many one conversation can have going — the same ceiling a
+	// fan-out has, counted separately from it. Synchronous with the job's
+	// registration below.
+	if (photoDrawsInFlight(params.id) >= MAX_FANOUT_BRANCHES_PER_CONVERSATION) {
+		error(429, 'Too many photos developing in this conversation');
 	}
 
 	// A new attempt replaces the failed one on screen — except within a

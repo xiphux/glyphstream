@@ -183,9 +183,21 @@ export function getInFlightEntries(conversationId: string): InFlightEntry[] {
 /** True when the conversation already has the maximum number of concurrent
  *  generations in flight — the dispatch handler 429s a further fan-out branch
  *  past this, bounding the standing queue of held-open connections + registry
- *  entries that an unbounded fan-out would otherwise pile up. */
+ *  entries that an unbounded fan-out would otherwise pile up. Texting photos
+ *  aren't counted: they have their own bound (the photos route), and a few
+ *  photos developing on old replies mustn't refuse the next comparison. */
 export function conversationFanoutAtCapacity(conversationId: string): boolean {
-	return getInFlightEntries(conversationId).length >= MAX_FANOUT_BRANCHES_PER_CONVERSATION;
+	return (
+		getInFlightEntries(conversationId).filter((e) => !e.branchKey.startsWith(PHOTO_BRANCH_PREFIX))
+			.length >= MAX_FANOUT_BRANCHES_PER_CONVERSATION
+	);
+}
+
+/** How many texting photos are developing in the conversation. */
+export function photoDrawsInFlight(conversationId: string): number {
+	return getInFlightEntries(conversationId).filter((e) =>
+		e.branchKey.startsWith(PHOTO_BRANCH_PREFIX),
+	).length;
 }
 
 /**

@@ -40,6 +40,13 @@ import {
 import { modelStatsDaily } from '#lib/server/db/schema.js';
 import { insertGenerationJob } from '#lib/server/db/queries/generation-jobs.js';
 import { getDb } from '#lib/server/db/client.js';
+import {
+	conversationFanoutAtCapacity,
+	registerInFlight,
+	resetInFlight,
+} from '#lib/server/streaming/in-flight.js';
+import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '#lib/fanout.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 
 let db: TestDB;
 let userId: string;
@@ -204,6 +211,18 @@ describe('POST /photos', () => {
 	])('refuses %s', async (_label, body, status) => {
 		await expect(develop(body)).rejects.toMatchObject({ status });
 		expect(mocks.submit).not.toHaveBeenCalled();
+	});
+
+	it('bounds the photos developing in a conversation, apart from its fan-out', async () => {
+		const ep = { id: 'ep' } as unknown as LoadedEndpoint;
+		for (let i = 0; i < MAX_FANOUT_BRANCHES_PER_CONVERSATION; i++) {
+			registerInFlight(convId, ep, `photo:job-${i}`, 'image', 'ep::sdxl', null, false);
+		}
+		// A comparison of models in the chat isn't held up by them…
+		expect(conversationFanoutAtCapacity(convId)).toBe(false);
+		// …but another photo is.
+		await expect(develop({})).rejects.toMatchObject({ status: 429 });
+		resetInFlight();
 	});
 
 	it('refuses a reply from someone else’s conversation', async () => {
