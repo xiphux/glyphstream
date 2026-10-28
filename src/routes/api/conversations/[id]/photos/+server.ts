@@ -137,8 +137,9 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		error(429, 'Too many photos developing for this reply');
 	}
 
-	// A new attempt replaces the failed one on screen.
-	clearImageFailures(reply.id, marker.index);
+	// A new attempt replaces the failed one on screen — except within a
+	// comparison, whose failures are among the results it's showing.
+	clearImageFailures(reply.id, marker.index, compareId ?? null);
 
 	const stream = submitGenerationJob({
 		userId: locals.user.id,

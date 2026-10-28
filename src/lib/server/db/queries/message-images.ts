@@ -7,7 +7,7 @@
  * conversation for its user first, as every messages read does); writes that
  * a request makes are scoped by user id here.
  */
-import { and, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm';
 import { getDb, type Tx } from '../client';
 import { media, messageImages } from '../schema';
 import type { MessageImage } from '#lib/types/api.js';
@@ -15,34 +15,46 @@ import type { MessageImage } from '#lib/types/api.js';
 export type NewMessageImage = typeof messageImages.$inferInsert;
 
 /** Record a version (or a failed attempt), in the transaction that consumes
- *  its generation job. A landed photo also clears the failure it retried. */
+ *  its generation job. A landed photo also clears the failure it retried —
+ *  but not a failure from its own comparison, which is one of the results
+ *  being compared. */
 export function insertMessageImage(tx: Tx, row: NewMessageImage): void {
 	if (row.mediaId) {
 		tx.delete(messageImages)
-			.where(
-				and(
-					eq(messageImages.messageId, row.messageId),
-					markerIs(row.markerIndex ?? null),
-					isNull(messageImages.mediaId),
-				),
-			)
+			.where(failuresOutside(row.messageId, row.markerIndex ?? null, row.comparisonId ?? null))
 			.run();
 	}
 	tx.insert(messageImages).values(row).run();
 }
 
-/** Forget a marker's failed attempts — a new one is under way. */
-export function clearImageFailures(messageId: string, markerIndex: number | null): void {
+/** Forget a marker's failed attempts — a new one is under way. A draw in a
+ *  comparison (`comparisonId`) leaves that comparison's own failures alone:
+ *  they're still on show in it. */
+export function clearImageFailures(
+	messageId: string,
+	markerIndex: number | null,
+	comparisonId: string | null = null,
+): void {
 	getDb()
 		.delete(messageImages)
-		.where(
-			and(
-				eq(messageImages.messageId, messageId),
-				markerIs(markerIndex),
-				isNull(messageImages.mediaId),
-			),
-		)
+		.where(failuresOutside(messageId, markerIndex, comparisonId))
 		.run();
+}
+
+/** A marker's failed attempts, except `comparisonId`'s (none excepted when null). */
+function failuresOutside(
+	messageId: string,
+	markerIndex: number | null,
+	comparisonId: string | null,
+) {
+	return and(
+		eq(messageImages.messageId, messageId),
+		markerIs(markerIndex),
+		isNull(messageImages.mediaId),
+		comparisonId === null
+			? undefined
+			: or(isNull(messageImages.comparisonId), ne(messageImages.comparisonId, comparisonId)),
+	);
 }
 
 /** Whether a marker has a version on show already — a comparison's first

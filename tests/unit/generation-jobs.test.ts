@@ -1174,6 +1174,20 @@ describe('a texting photo', () => {
 		);
 	});
 
+	it('keeps a comparison’s failed result when another of its results lands', async () => {
+		const s = seedReply();
+		mocks.imageGeneration.mockRejectedValueOnce(new Error('out of memory'));
+		await drain(submitGenerationJob(photoJob(s, 0, { compareId: 'cmp-1' }, 'bridge::flux')));
+		await drain(submitGenerationJob(photoJob(s, 0, { compareId: 'cmp-1' }, 'bridge::sdxl')));
+		expect(versions(s).map((v) => [v.modelId, v.error])).toEqual([
+			['bridge::flux', 'out of memory'],
+			['bridge::sdxl', null],
+		]);
+		// A later draw outside that comparison does replace it.
+		await drain(submitGenerationJob(photoJob(s, 0)));
+		expect(versions(s).some((v) => v.error)).toBe(false);
+	});
+
 	it('comes back after a restart and lands on the reply', async () => {
 		const s = seedReply();
 		leftover(s, {

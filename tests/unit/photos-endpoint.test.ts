@@ -184,6 +184,15 @@ describe('POST /photos', () => {
 		expect(listImagesForMessages(convId, [replyId]).get(replyId)).toBeUndefined();
 	});
 
+	it('leaves a comparison’s own failures for its next draw, clearing older ones', async () => {
+		const own = version({ mediaId: null, error: 'boom', comparisonId: 'cmp-1' });
+		version({ mediaId: null, error: 'old' });
+		await develop({ compare: 'cmp-1' });
+		expect((listImagesForMessages(convId, [replyId]).get(replyId) ?? []).map((v) => v.id)).toEqual([
+			own,
+		]);
+	});
+
 	it.each([
 		['a marker the reply does not have', { index: 2 }, 404],
 		['a reply that is not there', { messageId: 'nope' }, 404],

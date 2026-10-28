@@ -451,7 +451,8 @@ function landPhoto(
 		error: landed ? null : outcome.error,
 		shownAt:
 			landed && (!params.compareId || !hasShownImage(tx, messageId, markerIndex)) ? now : null,
-		comparisonId: landed ? (params.compareId ?? null) : null,
+		// On a failure too, so the comparison's other results don't clear it.
+		comparisonId: params.compareId ?? null,
 		createdAt: now,
 	});
 }
