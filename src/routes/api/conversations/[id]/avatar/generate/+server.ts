@@ -122,7 +122,13 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// it together; it bounds a queue, it isn't an exact quota.
 	enforceGenerationCap(locals.user);
 
-	const body = await parseJsonBody<GenerateAvatarBody>(request);
+	const body = await parseJsonBody<GenerateAvatarBody & { photo?: unknown }>(request);
+	// A texting photo used to be developed through here. A tab still running
+	// that release would otherwise have its photo drawn as a portrait — and
+	// made the conversation's face. Photos have their own route now (../photos).
+	if (body.photo !== undefined && body.photo !== null) {
+		error(409, 'Photos develop differently now — reload the page to develop this one.');
+	}
 	if (typeof body.sourceMessageId !== 'string' || !body.sourceMessageId) {
 		error(400, "'sourceMessageId' is required");
 	}

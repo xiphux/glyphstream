@@ -454,6 +454,16 @@ describe('POST /avatar/generate — shape', () => {
 		]);
 	});
 
+	it('refuses a photo from a client older than photos-on-the-reply', async () => {
+		// Drawn here, it would become a portrait — and the conversation's face.
+		for (const fanout of [false, true]) {
+			await expect(
+				call({ photo: { sourceMessageId: 'm1', index: 0 }, fanout }),
+			).rejects.toMatchObject({ status: 409 });
+		}
+		expect(mocks.runImageRelay).not.toHaveBeenCalled();
+	});
+
 	it('keeps a portrait square whatever shape is asked for', async () => {
 		await call({ aspectRatio: '9:16' });
 		expect(relayParams().aspectRatio).toBe('1:1');
