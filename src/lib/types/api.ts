@@ -595,8 +595,6 @@ export interface PendingCheckIn {
  *  check-in is due, so it reloads only once something has changed. */
 export interface CheckInStatus {
 	checkIn: PendingCheckIn | null;
-	/** A turn is running in the conversation — the check-in's, once it fired. */
-	inFlight: boolean;
 }
 
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';

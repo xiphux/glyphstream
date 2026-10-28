@@ -106,7 +106,7 @@ describe('wakeWhenDue', () => {
 	it('probes once due, and reloads only when the check-in has fired', async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(0);
-		let status: object = { checkIn: PENDING, inFlight: false };
+		let status: object = { checkIn: PENDING };
 		const fetchMock = probe(() => status);
 		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
 		const stop = c.wakeWhenDue(PENDING, 0);
@@ -118,11 +118,45 @@ describe('wakeWhenDue', () => {
 		await vi.advanceTimersByTimeAsync(30_000);
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 		expect(refreshAll).not.toHaveBeenCalled();
-		status = { checkIn: null, inFlight: true };
+		// Fired: the runner deleted the row as it started the turn.
+		status = { checkIn: null };
 		await vi.advanceTimersByTimeAsync(30_000);
 		expect(refreshAll).toHaveBeenCalledOnce();
-		await vi.advanceTimersByTimeAsync(60_000);
-		expect(fetchMock).toHaveBeenCalledTimes(3);
+		stop();
+	});
+
+	it("doesn't take the server's due time differing from the page's guess as a change", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(0);
+		// The page guessed from when the reply was written; the server set it
+		// when the reply finished.
+		probe(() => ({ checkIn: { ...PENDING, fireAt: PENDING.fireAt + 1_234 } }));
+		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
+		const stop = c.wakeWhenDue(PENDING, 0);
+		await vi.advanceTimersByTimeAsync(5 * 60_000);
+		expect(refreshAll).not.toHaveBeenCalled();
+		stop();
+	});
+
+	it('keeps watching after a reload that brought the same row back', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(0);
+		let fail = true;
+		const fetchMock = vi.fn(async () =>
+			fail ? new Response('', { status: 500 }) : Response.json({ checkIn: null }),
+		);
+		vi.stubGlobal('fetch', fetchMock);
+		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
+		const stop = c.wakeWhenDue(PENDING, 0);
+		await vi.advanceTimersByTimeAsync(15_000);
+		expect(refreshAll).toHaveBeenCalledOnce();
+		// The reload's row is unchanged, so the page keeps this wake-up; it must
+		// go on probing, and catch the fire when it comes.
+		c.syncFromServer({ ...PENDING });
+		fail = false;
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(refreshAll).toHaveBeenCalledTimes(2);
 		stop();
 	});
 
@@ -142,7 +176,7 @@ describe('wakeWhenDue', () => {
 	it('stops once the check-in is past its grace period, with one last reload', async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(0);
-		const fetchMock = probe(() => ({ checkIn: PENDING, inFlight: false }));
+		const fetchMock = probe(() => ({ checkIn: PENDING }));
 		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
 		c.wakeWhenDue(PENDING, 0);
 		// Grace for a 10s delay is the 30-minute floor.
@@ -157,7 +191,7 @@ describe('wakeWhenDue', () => {
 	it('does nothing more once cleaned up', async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(0);
-		const fetchMock = probe(() => ({ checkIn: PENDING, inFlight: false }));
+		const fetchMock = probe(() => ({ checkIn: PENDING }));
 		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
 		const stop = c.wakeWhenDue(PENDING, 0);
 		await vi.advanceTimersByTimeAsync(15_000);

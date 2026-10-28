@@ -17,8 +17,6 @@ import { DELETE, GET } from '../../src/routes/api/conversations/[id]/check-in/+s
 import { createConversation } from '#lib/server/db/queries/conversations.js';
 import { appendMessage } from '#lib/server/db/queries/messages.js';
 import { getCheckIn, setCheckIn } from '#lib/server/db/queries/check-ins.js';
-import { registerInFlight, resetInFlight } from '#lib/server/streaming/in-flight.js';
-import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 import type { CheckInStatus } from '#lib/types/api.js';
 
 let owner: string;
@@ -51,10 +49,7 @@ beforeEach(() => {
 		now: 0,
 	});
 });
-afterEach(() => {
-	resetInFlight();
-	closeTestDb();
-});
+afterEach(() => closeTestDb());
 
 async function call(handler: typeof GET, userId = owner): Promise<Response> {
 	try {
@@ -70,12 +65,9 @@ async function call(handler: typeof GET, userId = owner): Promise<Response> {
 }
 
 describe('GET', () => {
-	it('says what is pending and whether a turn is running', async () => {
-		let body = (await (await call(GET)).json()) as CheckInStatus;
-		expect(body).toMatchObject({ checkIn: { note: 'ask', fireAt: 3_600_000 }, inFlight: false });
-		registerInFlight(convId, { id: 'bridge' } as unknown as LoadedEndpoint);
-		body = (await (await call(GET)).json()) as CheckInStatus;
-		expect(body.inFlight).toBe(true);
+	it('says what is pending', async () => {
+		const body = (await (await call(GET)).json()) as CheckInStatus;
+		expect(body).toMatchObject({ checkIn: { note: 'ask', fireAt: 3_600_000 } });
 	});
 
 	it('shows none while the operator has check-ins off', async () => {

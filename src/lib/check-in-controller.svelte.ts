@@ -104,11 +104,14 @@ export class CheckInController {
 		const wake = async () => {
 			if (Date.now() >= giveUpAt) return void refreshAll();
 			// Hidden: nothing to draw. The next try after it shows again does it.
-			if (globalThis.document?.visibilityState !== 'hidden' && (await this.#moved(checkIn))) {
-				if (!stopped) void refreshAll();
-				return;
-			}
-			if (!stopped) arm(RETRY_WAKE_MS);
+			const moved =
+				globalThis.document?.visibilityState !== 'hidden' && (await this.#moved(checkIn));
+			if (stopped) return;
+			if (moved) void refreshAll();
+			// Re-armed after a reload too: one that brings the same row back (a
+			// failed probe's) leaves this effect running, and one that brings a new
+			// row or none cleans it up, timer and all.
+			arm(RETRY_WAKE_MS);
 		};
 		arm(Math.max(0, checkIn.fireAt - now) + FIRST_WAKE_DELAY_MS);
 		return () => {
@@ -117,18 +120,18 @@ export class CheckInController {
 		};
 	}
 
-	/** Whether the server's answer differs from `checkIn` pending and idle. A
-	 *  failed probe says yes: the reload is the fallback it was before. */
+	/** Whether the server no longer has `checkIn` pending: it fired (the runner
+	 *  deletes the row as it starts the turn), was dropped, or was replaced. By
+	 *  reply, not due time — the page's guess at that is from when the reply was
+	 *  written, the server's from when it finished, and a replacement always
+	 *  comes from a new reply. A failed probe says yes: the reload is the
+	 *  fallback it was before. */
 	async #moved(checkIn: PendingCheckIn): Promise<boolean> {
 		try {
 			const res = await fetch(`/api/conversations/${this.#convId()}/check-in`);
 			if (!res.ok) return true;
 			const status = (await res.json()) as CheckInStatus;
-			return (
-				status.inFlight ||
-				status.checkIn?.sourceMessageId !== checkIn.sourceMessageId ||
-				status.checkIn.fireAt !== checkIn.fireAt
-			);
+			return status.checkIn?.sourceMessageId !== checkIn.sourceMessageId;
 		} catch {
 			return true;
 		}
