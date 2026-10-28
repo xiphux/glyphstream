@@ -91,9 +91,13 @@ import {
 	walkActiveBranch,
 } from '#lib/server/db/queries/messages.js';
 import { getCheckIn, setCheckIn } from '#lib/server/db/queries/check-ins.js';
-import { resetEndpointGatesForTests } from '#lib/server/endpoints/concurrency.js';
+import {
+	acquireEndpointSlot,
+	resetEndpointGatesForTests,
+} from '#lib/server/endpoints/concurrency.js';
 import { _resetForTests, register } from '#lib/server/tools/registry.js';
 import {
+	getInFlightEntries,
 	getInFlightSince,
 	registerInFlight,
 	resetInFlight,
@@ -364,6 +368,87 @@ describe('firing', () => {
 		expect(roles(walkActiveBranch(t.conversationId))).toEqual(['user', 'assistant']);
 		expect(getActiveLeafMessageId(t.conversationId, t.userId)).toBe(t.answer.id);
 		expect(notify).not.toHaveBeenCalled();
+	});
+
+	it('takes a pass back out after a tool call too', async () => {
+		mocks.tools = true;
+		register({
+			definition: {
+				type: 'function',
+				function: { name: 'get_current_time', description: 'time', parameters: { type: 'object' } },
+			},
+			execute: () => ({ content: '{"iso":"2026-10-27T16:00:00Z"}' }),
+		});
+		const t = thread();
+		scheduled(t);
+		mocks.upstream.push(() =>
+			sse([
+				{
+					choices: [
+						{
+							delta: {
+								tool_calls: [
+									{
+										index: 0,
+										id: 'call_1',
+										type: 'function',
+										function: { name: 'get_current_time', arguments: '{}' },
+									},
+								],
+							},
+							finish_reason: null,
+						},
+					],
+				},
+				{ choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+			]),
+		);
+		mocks.upstream.push(reply('[no text]'));
+		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
+		await idle(t.conversationId);
+		expect(roles(walkActiveBranch(t.conversationId))).toEqual(['user', 'assistant']);
+		expect(notify).not.toHaveBeenCalled();
+	});
+
+	it('keeps a reply the user stopped partway, like any stopped reply', async () => {
+		const t = thread();
+		scheduled(t);
+		let finish: () => void = () => {};
+		mocks.upstream.push(
+			() =>
+				new Response(
+					new ReadableStream<Uint8Array>({
+						start(c) {
+							const delta = {
+								choices: [{ delta: { content: 'hey, how did' }, finish_reason: null }],
+							};
+							c.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(delta)}\n\n`));
+							finish = () => c.close();
+						},
+					}),
+					{ status: 200 },
+				),
+		);
+		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
+		await new Promise((r) => setTimeout(r, 50));
+		getInFlightEntries(t.conversationId)[0].controller.abort();
+		finish();
+		await idle(t.conversationId);
+		const branch = walkActiveBranch(t.conversationId);
+		expect(roles(branch)).toEqual(['user', 'assistant', 'check-in', 'assistant']);
+		expect(text(branch[3])).toContain('hey, how did');
+	});
+
+	it('takes it back out if it is still queued when its grace runs out', async () => {
+		const held = await acquireEndpointSlot(ENDPOINT, { work: { purpose: 'other' } });
+		const t = thread();
+		const row = scheduled(t);
+		const grace = graceFor({ fireAt: row.fireAt, createdAt: T0 });
+		expect(await runCheckInSweep(row.fireAt + grace)).toBe(1);
+		await idle(t.conversationId);
+		expect(roles(walkActiveBranch(t.conversationId))).toEqual(['user', 'assistant']);
+		expect(mocks.upstreamBodies).toHaveLength(0);
+		held.release();
 	});
 
 	it('keeps a reply that only puts it off again, without notifying', async () => {

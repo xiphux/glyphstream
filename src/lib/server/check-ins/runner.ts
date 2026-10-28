@@ -18,11 +18,12 @@
  *
  * The model may also decline: the reminder tells it to answer `[no text]` if
  * the moment has gone, and a reply like that (or a turn stopped before it
- * produced anything) is taken back out of the thread, reminder included, as if
- * it never fired. A turn that failed is left in place, error and all.
+ * said anything, or one still queued when its grace ran out) is taken back out
+ * of the thread, reminder included, as if it never fired. A turn that failed
+ * is left in place, error and all; a reply stopped partway stays as it is.
  */
 import { partsToText } from '#lib/message-parts.js';
-import type { ReplyStyle } from '#lib/types/api.js';
+import type { ChatMessage, ReplyStyle } from '#lib/types/api.js';
 import { friendlyModelName } from '#lib/model-ids.js';
 import { photoChain } from '#lib/texting-photos.js';
 import { withoutCheckInText } from '#lib/texting-check-ins.js';
@@ -42,6 +43,7 @@ import { getCustomModelForUser } from '../db/queries/custom-models';
 import {
 	appendMessage,
 	deleteBranch,
+	findUserMessageAncestor,
 	getActiveLeafMessageId,
 	getMessage,
 	restoreActiveLeafIfUnchanged,
@@ -175,7 +177,19 @@ function fireCheckIn(row: CheckInRow, now: number): FireResult {
 
 	const inFlight = registerInFlight(conversationId, endpoint, undefined, 'chat', meta.modelId);
 	inFlight.background = true;
+	// The grace bounds the wait in line too, as a scheduled task's deadline
+	// does: a turn still queued past it would arrive at the wrong moment.
+	// Aborting drops it out of line, and the `stopped` settle takes the reminder
+	// back out. Once the slot is granted the reply finishes, however late.
+	const deadline = setTimeout(
+		() => {
+			if (inFlight.generationStartedAt === null) inFlight.controller.abort();
+		},
+		Math.max(0, row.fireAt + graceFor(row) - now),
+	);
+	deadline.unref?.();
 	const settle = (outcome: TurnOutcome) => {
+		clearTimeout(deadline);
 		try {
 			settleCheckIn(row, reminder.id, leaf.id, outcome);
 		} catch (e) {
@@ -256,28 +270,38 @@ function settleCheckIn(
 		);
 		return;
 	}
-	const reply =
-		outcome.kind === 'done' ? getMessage(conversationId, outcome.assistantMessageId) : null;
-	if (reply && !isCheckInSkip(partsToText(reply.parts))) {
-		// A reply that only put the check-in off again ([later …] and nothing
-		// else) stays, so its new check-in does, but there's nothing to notify.
-		if (!withoutCheckInText(partsToText(reply.parts)).trim()) return;
-		void notifyCheckIn(row, reply.id, replyText(reply.parts)).catch((e: unknown) =>
-			log.warn('notify failed:', errorMessage(e)),
-		);
+	if (outcome.kind === 'done') {
+		const reply = getMessage(conversationId, outcome.assistantMessageId);
+		if (reply && !isPass(reply.parts)) {
+			// A reply that only put the check-in off again ([later …] and nothing
+			// else) stays, so its new check-in does, but there's nothing to notify.
+			if (!withoutCheckInText(partsToText(reply.parts)).trim()) return;
+			void notifyCheckIn(row, reply.id, replyText(reply.parts)).catch((e: unknown) =>
+				log.warn('notify failed:', errorMessage(e)),
+			);
+			return;
+		}
+	}
+	// Only while the thread still ends in this turn — the reminder, or the rows
+	// its reply (tool calls included) hangs below it: the user may have sent
+	// something meanwhile (which stopped this turn), and that hangs under the
+	// reminder too.
+	const leaf = getActiveLeafMessageId(conversationId, userId);
+	if (!leaf || findUserMessageAncestor(conversationId, leaf)?.id !== reminderId) return;
+	// Stopped with something already said (the user pressed Stop on a reply
+	// they were reading): it stays, like any stopped reply.
+	const leafRow = getMessage(conversationId, leaf);
+	if (outcome.kind === 'stopped' && leafRow?.role === 'assistant' && !isPass(leafRow.parts)) {
 		return;
 	}
-	// Only while the thread still ends at the reminder or its reply: the user
-	// may have sent something meanwhile (which stopped this turn), and that
-	// hangs under the reminder too.
-	const leaf = getActiveLeafMessageId(conversationId, userId);
-	const leafRow = leaf ? getMessage(conversationId, leaf) : null;
-	const ownLeaf =
-		leaf === reminderId ||
-		(leafRow?.role === 'assistant' && leafRow.parentMessageId === reminderId);
-	if (!leaf || !ownLeaf) return;
 	restoreActiveLeafIfUnchanged(conversationId, leaf, previousLeafId);
 	deleteBranch(conversationId, reminderId, userId);
+}
+
+/** Whether a reply says nothing: a `[no text]` pass or no text at all, and no
+ *  media either. */
+function isPass(parts: ChatMessage['parts']): boolean {
+	return isCheckInSkip(partsToText(parts)) && !parts.some((p) => 'mediaId' in p);
 }
 
 /** A reply's texts, without the markers that aren't texts (photos' too) —
