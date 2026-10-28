@@ -99,7 +99,13 @@ import {
 } from '#lib/server/db/queries/conversations.js';
 import { getFanoutRecoveryState } from '#lib/server/messages/fanout-recovery.js';
 import { appendMessage, getSiblingAssistants } from '#lib/server/db/queries/messages.js';
-import { conversations, generationJobs, media, messageImages } from '#lib/server/db/schema.js';
+import {
+	conversations,
+	generationJobs,
+	media,
+	messageImages,
+	messages,
+} from '#lib/server/db/schema.js';
 import { insertMedia } from '#lib/server/db/queries/media.js';
 import { insertGenerationJob } from '#lib/server/db/queries/generation-jobs.js';
 import {
@@ -1234,6 +1240,30 @@ describe('a texting photo', () => {
 		]);
 		expect(versions(s).find((v) => v.shown)?.id).toBe(fast.id);
 		expect(mocks.notify).not.toHaveBeenCalled();
+	});
+
+	it('cleans up its image when the reply is deleted mid-draw', async () => {
+		const s = seedReply();
+		// The real link, whose key on the message is what a vanished reply trips.
+		const real = await vi.importActual<typeof import('#lib/server/db/queries/media.js')>(
+			'#lib/server/db/queries/media.js',
+		);
+		mocks.linkMessageMedia.mockImplementation(real.linkMessageMedia);
+		let release!: () => void;
+		mocks.imageGeneration.mockReturnValueOnce(
+			new Promise((r) => (release = () => r({ data: [{ url: 'http://img/out.png' }] }))),
+		);
+		const stream = submitGenerationJob(photoJob(s));
+		await until(() => jobRows()[0]?.state === 'running', 'the draw to start');
+		// The reply goes, and its job with it.
+		mocks.testDb.delete(messages).where(eq(messages.id, s.reply.id)).run();
+		release();
+
+		const events = await drain(stream);
+		expect(events.at(-1)).toMatchObject({ type: 'error', message: 'Cancelled' });
+		const [row] = mocks.testDb.select().from(media).all();
+		expect(row.deletedAt).not.toBeNull();
+		expect(mocks.unlinkMediaFiles).toHaveBeenCalled();
 	});
 
 	it('comes back after a restart and lands on the reply', async () => {

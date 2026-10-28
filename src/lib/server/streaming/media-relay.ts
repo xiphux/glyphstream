@@ -467,8 +467,12 @@ export async function runMediaRelay(
 			const landOn = params.landOn;
 			if (landOn) {
 				getDb().transaction((tx) => {
-					linkMessageMedia(params.userMessage.id, produced.mediaId, tx);
+					// The job first: a message deleted mid-draw takes its job with it, so
+					// this throws GenerationDiscardedError and the media is cleaned up
+					// below — where linking first would fail on the vanished message's
+					// key, as an ordinary error, and strand the media.
 					params.persistWith?.(tx);
+					linkMessageMedia(params.userMessage.id, produced.mediaId, tx);
 					landOn(tx, { mediaId: produced.mediaId });
 					recordGenerated(tx);
 				});
