@@ -107,11 +107,11 @@ export class CheckInController {
 			const moved =
 				globalThis.document?.visibilityState !== 'hidden' && (await this.#moved(checkIn));
 			if (stopped) return;
-			if (moved) void refreshAll();
-			// Re-armed after a reload too: one that brings the same row back (a
-			// failed probe's) leaves this effect running, and one that brings a new
-			// row or none cleans it up, timer and all.
-			arm(RETRY_WAKE_MS);
+			// Waited out, so a slow reload can't overlap the next. Re-armed after it
+			// too: a reload that brings a new row or none cleans this up, timer and
+			// all, but one that brings the same row back leaves it running.
+			if (moved) await refreshAll().catch(() => {});
+			if (!stopped) arm(RETRY_WAKE_MS);
 		};
 		arm(Math.max(0, checkIn.fireAt - now) + FIRST_WAKE_DELAY_MS);
 		return () => {
@@ -124,16 +124,17 @@ export class CheckInController {
 	 *  deletes the row as it starts the turn), was dropped, or was replaced. By
 	 *  reply, not due time — the page's guess at that is from when the reply was
 	 *  written, the server's from when it finished, and a replacement always
-	 *  comes from a new reply. A failed probe says yes: the reload is the
-	 *  fallback it was before. */
+	 *  comes from a new reply. A failed probe says no, and the next one tries
+	 *  again: a reload would fail the same way on a dropped connection, and on
+	 *  a flaky one it would reload every 30s for the whole grace period. */
 	async #moved(checkIn: PendingCheckIn): Promise<boolean> {
 		try {
 			const res = await fetch(`/api/conversations/${this.#convId()}/check-in`);
-			if (!res.ok) return true;
+			if (!res.ok) return false;
 			const status = (await res.json()) as CheckInStatus;
 			return status.checkIn?.sourceMessageId !== checkIn.sourceMessageId;
 		} catch {
-			return true;
+			return false;
 		}
 	}
 }

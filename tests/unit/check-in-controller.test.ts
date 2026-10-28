@@ -138,7 +138,23 @@ describe('wakeWhenDue', () => {
 		stop();
 	});
 
-	it('keeps watching after a reload that brought the same row back', async () => {
+	it('probes on after a reload', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(0);
+		// A reload that brings the same row back leaves this wake-up in place
+		// (the page keeps the object: see syncFromServer), so the chain itself
+		// must go on.
+		const fetchMock = probe(() => ({ checkIn: { ...PENDING, sourceMessageId: 'other' } }));
+		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
+		const stop = c.wakeWhenDue(PENDING, 0);
+		await vi.advanceTimersByTimeAsync(15_000);
+		expect(refreshAll).toHaveBeenCalledOnce();
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		stop();
+	});
+
+	it('probes on through failures without reloading, then catches the fire', async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(0);
 		let fail = true;
@@ -148,29 +164,29 @@ describe('wakeWhenDue', () => {
 		vi.stubGlobal('fetch', fetchMock);
 		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
 		const stop = c.wakeWhenDue(PENDING, 0);
-		await vi.advanceTimersByTimeAsync(15_000);
-		expect(refreshAll).toHaveBeenCalledOnce();
-		// The reload's row is unchanged, so the page keeps this wake-up; it must
-		// go on probing, and catch the fire when it comes.
-		c.syncFromServer({ ...PENDING });
+		await vi.advanceTimersByTimeAsync(15_000 + 2 * 30_000);
+		expect(fetchMock).toHaveBeenCalledTimes(3);
+		expect(refreshAll).not.toHaveBeenCalled();
 		fail = false;
 		await vi.advanceTimersByTimeAsync(30_000);
-		expect(fetchMock).toHaveBeenCalledTimes(2);
-		expect(refreshAll).toHaveBeenCalledTimes(2);
+		expect(refreshAll).toHaveBeenCalledOnce();
 		stop();
 	});
 
-	it('reloads when the probe fails, as the fallback', async () => {
+	it("doesn't start the next probe until a slow reload has finished", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(0);
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(async () => new Response('', { status: 500 })),
-		);
+		let finish: () => void = () => {};
+		refreshAll.mockImplementationOnce(() => new Promise<void>((r) => (finish = r)));
+		const fetchMock = probe(() => ({ checkIn: null }));
 		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
-		c.wakeWhenDue(PENDING, 0);
-		await vi.advanceTimersByTimeAsync(15_000);
-		expect(refreshAll).toHaveBeenCalledOnce();
+		const stop = c.wakeWhenDue(PENDING, 0);
+		await vi.advanceTimersByTimeAsync(15_000 + 90_000);
+		expect(fetchMock).toHaveBeenCalledOnce();
+		finish();
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		stop();
 	});
 
 	it('stops once the check-in is past its grace period, with one last reload', async () => {
