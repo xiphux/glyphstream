@@ -42,6 +42,9 @@ describe('checkInMarker', () => {
 	it('keeps a note to a line or two', () => {
 		const note = checkInMarker({ text: `[later 1h: ${'x'.repeat(1000)}]` })?.note;
 		expect(note).toHaveLength(280);
+		const emoji = checkInMarker({ text: `[later 1h: ${'😊'.repeat(300)}]` })?.note;
+		expect([...emoji!]).toHaveLength(280);
+		expect(emoji!.endsWith('😊')).toBe(true);
 	});
 
 	it('reads a plain or emphasized marker', () => {
