@@ -258,6 +258,26 @@ describe('photos onto replies', () => {
 		expect(conv().fanoutParentMessageId).toBe(replyId);
 	});
 
+	it('leaves an avatar comparison open on a reply that also has a photo', () => {
+		photo(replyId, 0);
+		const mediaId = insertMedia({
+			userId,
+			storagePath: 'generated/portrait.png',
+			contentType: 'image/png',
+			byteSize: 1,
+			kind: 'image',
+			sourceEndpointId: 'ep',
+			sourceModel: 'ep::sdxl',
+			promptExcerpt: 'x',
+		}).id;
+		add(replyId, 'assistant', [{ type: 'image', mediaId, displayOnly: true }]);
+		setFanoutParent(convId, userId, replyId, true);
+
+		migrate();
+
+		expect(conv().fanoutParentMessageId).toBe(replyId);
+	});
+
 	it('lands queued draws of a photo on its reply', () => {
 		const p0 = photo(replyId, 0);
 		const params = (index: number) =>

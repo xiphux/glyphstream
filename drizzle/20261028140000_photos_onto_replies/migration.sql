@@ -78,6 +78,15 @@ FROM message_media
 WHERE media_id IN (SELECT media_id FROM _photo)
 GROUP BY media_id;
 --> statement-breakpoint
+-- Where a photo comparison's draws were still queued, before they're rewritten
+-- below: its anchor, which it may be parked on with nothing landed yet.
+CREATE TEMP TABLE _photo_compare_anchors AS
+SELECT DISTINCT anchor_message_id AS id
+FROM generation_jobs
+WHERE origin = 'avatar_fanout'
+	AND json_valid(params_json)
+	AND json_extract(params_json, '$.photo.sourceMessageId') IS NOT NULL;
+--> statement-breakpoint
 -- Queued draws of a photo now land on its reply: a comparison's as plain photo
 -- draws (each kept as a version), and every one anchored on the reply.
 UPDATE generation_jobs
@@ -148,13 +157,25 @@ WHERE compaction_resume_from_message_id IN (SELECT id FROM _removed);
 --> statement-breakpoint
 -- A photo comparison parked on its anchor is over: its candidates are
 -- versions. Found by a candidate under it, or — before any has landed — by a
--- draw of it still queued (rewritten above, so now a photo draw on the reply).
+-- draw of it still queued. But not where a portrait stays under the same reply
+-- (an appearance description can also be a texting reply with a photo): that
+-- is an avatar comparison, which is still open.
 UPDATE conversations
 SET fanout_parent_message_id = NULL
 WHERE fanout_parent_message_id IN (SELECT id FROM _removed)
-	OR fanout_parent_message_id IN (SELECT parent_id FROM _photo)
-	OR fanout_parent_message_id IN (
-		SELECT anchor_message_id FROM generation_jobs WHERE origin = 'photo'
+	OR (
+		(
+			fanout_parent_message_id IN (SELECT parent_id FROM _photo)
+			OR fanout_parent_message_id IN (SELECT id FROM _photo_compare_anchors)
+		)
+		AND NOT EXISTS (
+			SELECT 1 FROM messages c
+			WHERE c.parent_message_id = conversations.fanout_parent_message_id
+				AND c.role = 'assistant'
+				AND c.id NOT IN (SELECT id FROM _removed)
+				AND json_valid(c.content_json)
+				AND json_extract(c.content_json, '$[0].type') = 'image'
+		)
 	);
 --> statement-breakpoint
 UPDATE conversations
@@ -200,3 +221,5 @@ DROP TABLE _removed;
 DROP TABLE _shown;
 --> statement-breakpoint
 DROP TABLE _links_before;
+--> statement-breakpoint
+DROP TABLE _photo_compare_anchors;
