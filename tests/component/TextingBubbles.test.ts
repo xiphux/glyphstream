@@ -386,6 +386,16 @@ describe('texting reply style', () => {
 	});
 });
 
+describe('a texting chat that doesn’t send photos', () => {
+	it('shows a marker as the text it is, not a photo nothing can develop', () => {
+		render(MessageBubble, {
+			props: { ...bubbleProps, message: reply('<p>look</p>\n<p>[photo: the dog]</p>') },
+		});
+		expect(screen.getByText('[photo: the dog]')).toBeInTheDocument();
+		expect(screen.queryByText('Photo')).toBeNull();
+	});
+});
+
 describe('texting check-ins', () => {
 	const MARKED = '<p>gtg</p>\n<p>[later 1h: ask about work]</p>';
 

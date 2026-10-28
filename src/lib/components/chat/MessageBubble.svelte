@@ -116,6 +116,7 @@
 			{approvalBusy}
 			{onApprovalSelect}
 			{photos}
+			photosOn={!!photos}
 			{checkIn}
 		/>
 		{#each bottomCanvasCards as block (block.type === 'tool_call' ? block.toolCallId : '')}

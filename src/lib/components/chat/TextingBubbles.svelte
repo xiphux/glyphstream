@@ -57,6 +57,10 @@
 		 *  ends) — the way a messaging app shows a text. */
 		typing?: boolean;
 		photos?: TextingPhotos;
+		/** The chat sends photos, so a `[photo: …]` is one. Off, it's just a text
+		 *  — as it is in a standard reply — rather than a photo nothing can
+		 *  develop. */
+		photosOn?: boolean;
 		checkIn?: PendingCheckInNote;
 	}
 
@@ -73,6 +77,7 @@
 		pending,
 		typing = false,
 		photos,
+		photosOn = true,
 		checkIn,
 	}: Props = $props();
 
@@ -86,6 +91,10 @@
 		const all: Array<TextingItem | { kind: 'typing'; speaker: string | null }> = textingItems(
 			splitCanvasCards(blocks).body,
 			assistantLabel,
+		).map((item) =>
+			item.kind === 'photo' && !photosOn
+				? { kind: 'text', speaker: item.speaker, text: `[photo: ${item.description}]` }
+				: item,
 		);
 		// Still being written: a text (or a marker, half-typed) at the end of a
 		// live reply. Tool calls and the like show as they go, as ever. A
