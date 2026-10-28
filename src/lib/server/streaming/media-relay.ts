@@ -419,7 +419,7 @@ export async function runMediaRelay(
 						landOn(tx, { error: produced.error });
 						recordModelEvent(params.storedModelId, 'failed', { userId: params.userId, tx });
 					});
-				} else
+				} else {
 					persistedId = appendErrorSibling({
 						conversationId: params.conversationId,
 						parentMessageId: params.userMessage.id,
@@ -435,6 +435,7 @@ export async function runMediaRelay(
 							recordModelEvent(params.storedModelId, 'failed', { userId: params.userId, tx });
 						},
 					});
+				}
 			} catch (e) {
 				// Best-effort durability — the client still gets the error frame
 				// below, just without a handle to the (absent) row. A discarded
@@ -472,7 +473,7 @@ export async function runMediaRelay(
 					recordGenerated(tx);
 				});
 				assistantMessage = params.userMessage;
-			} else
+			} else {
 				assistantMessage = appendMessage({
 					conversationId: params.conversationId,
 					parentMessageId: params.userMessage.id,
@@ -494,6 +495,7 @@ export async function runMediaRelay(
 						recordGenerated(tx);
 					},
 				});
+			}
 		} catch (e) {
 			if (e instanceof GenerationDiscardedError) {
 				// The result has nowhere to land, but `generate` already stored it —

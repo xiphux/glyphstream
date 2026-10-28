@@ -1036,7 +1036,7 @@ export const messageMedia = sqliteTable(
 // developed long after the conversation moved on (nothing in the thread
 // changes, and nothing here is ever sent upstream). Each row is one VERSION:
 // developing again, or comparing models, adds rows; the shown one is the row
-// with the latest `shown_at`. A failed attempt is a row with an `error` and no
+// with the latest `shown_at`, else the newest. A failed attempt is a row with an `error` and no
 // media, until the next attempt replaces it.
 //
 // The image is also linked to the reply through `message_media`, so the ref
