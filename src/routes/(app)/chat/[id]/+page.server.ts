@@ -217,6 +217,13 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 		// The face falls back to it where the conversation has none of its own —
 		// the page combines the two, since a portrait changes only the latter.
 		presetAvatarMediaId,
+		// Read only by a tab still running the release before portraits moved
+		// onto replies: it shows a face from `assistantAvatarMediaId` and takes a
+		// missing `avatarDrawSince` for a draw that never ends (see
+		// `ConversationRecoveryPoll.avatarDrawSince`). This page reads neither.
+		// Remove a release after the portrait migration ships.
+		assistantAvatarMediaId: conversation.avatarMediaId ?? presetAvatarMediaId,
+		avatarDrawSince: null,
 		inFlightSince,
 		inFlightGeneratingSince,
 		fanout,

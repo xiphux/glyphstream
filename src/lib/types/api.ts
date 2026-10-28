@@ -1368,6 +1368,13 @@ export interface ConversationRecoveryPoll {
 	inFlightGeneratingSince: number | null;
 	fanout: FanoutRecoveryState;
 	siblingKeys: string[];
+	/**
+	 * Always null. A tab still running the release before portraits moved onto
+	 * replies reads it, and takes a missing one (`undefined !== null`) for a draw
+	 * that never ends — polling, with Draw disabled, until reloaded. Remove a
+	 * release after the portrait migration ships.
+	 */
+	avatarDrawSince: null;
 }
 
 // --- streaming event protocol (server → client SSE) ----------------------

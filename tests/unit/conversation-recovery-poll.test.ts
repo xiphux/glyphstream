@@ -85,4 +85,10 @@ describe('GET /api/conversations/:id?fanout=1', () => {
 		expect(body.siblingKeys[0]).not.toBe(siblingKeys[0]);
 		expect(body.siblingKeys[1]).toBe(siblingKeys[1]);
 	});
+
+	it('tells a tab from before portraits moved onto replies that no draw is running', async () => {
+		// That tab reads a missing field as a draw that never ends.
+		const body = await poll();
+		expect(body).toHaveProperty('avatarDrawSince', null);
+	});
 });
