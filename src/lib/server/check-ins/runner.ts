@@ -37,7 +37,9 @@ import {
 import {
 	getConversationCustomModelId,
 	getConversationMeta,
+	getConversationUpdatedAt,
 	getFanoutParent,
+	restoreConversationUpdatedAt,
 } from '../db/queries/conversations';
 import { getCustomModelForUser } from '../db/queries/custom-models';
 import {
@@ -160,6 +162,7 @@ function fireCheckIn(row: CheckInRow, now: number): FireResult {
 
 	// Gone before the turn starts, so a second tick can't fire it again.
 	deleteCheckInIfUnchanged(row.id, row.fireAt);
+	const updatedAt = getConversationUpdatedAt(conversationId, userId);
 	const prefs = getUserPreferences(userId);
 	const reminder = appendMessage({
 		conversationId,
@@ -191,7 +194,7 @@ function fireCheckIn(row: CheckInRow, now: number): FireResult {
 	const settle = (outcome: TurnOutcome) => {
 		clearTimeout(deadline);
 		try {
-			settleCheckIn(row, reminder.id, leaf.id, outcome);
+			settleCheckIn(row, reminder.id, leaf.id, updatedAt, outcome);
 		} catch (e) {
 			log.warn(`check-in for ${conversationId} failed while settling:`, errorMessage(e));
 		}
@@ -257,6 +260,7 @@ function settleCheckIn(
 	row: CheckInRow,
 	reminderId: string,
 	previousLeafId: string,
+	previousUpdatedAt: number | null,
 	outcome: TurnOutcome,
 ): void {
 	const { conversationId, userId } = row;
@@ -296,6 +300,9 @@ function settleCheckIn(
 	}
 	restoreActiveLeafIfUnchanged(conversationId, leaf, previousLeafId);
 	deleteBranch(conversationId, reminderId, userId);
+	if (previousUpdatedAt !== null) {
+		restoreConversationUpdatedAt(conversationId, userId, previousUpdatedAt);
+	}
 }
 
 /** Whether a reply says nothing: a `[no text]` pass or no text at all, and no

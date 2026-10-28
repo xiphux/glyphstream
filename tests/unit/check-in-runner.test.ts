@@ -84,7 +84,10 @@ vi.mock('#lib/server/tasks/title-task-runner.js', () => ({
 
 import { notifyConversationComplete } from '#lib/server/push/notify.js';
 import { startChatTurn } from '#lib/server/chat/start-turn.js';
-import { createConversation } from '#lib/server/db/queries/conversations.js';
+import {
+	createConversation,
+	getConversationUpdatedAt,
+} from '#lib/server/db/queries/conversations.js';
 import {
 	appendMessage,
 	getActiveLeafMessageId,
@@ -362,11 +365,13 @@ describe('firing', () => {
 	it('takes a pass back out, as if it never fired', async () => {
 		const t = thread();
 		scheduled(t);
+		const updatedAt = getConversationUpdatedAt(t.conversationId, t.userId);
 		mocks.upstream.push(reply('[no text]'));
 		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
 		await idle(t.conversationId);
 		expect(roles(walkActiveBranch(t.conversationId))).toEqual(['user', 'assistant']);
 		expect(getActiveLeafMessageId(t.conversationId, t.userId)).toBe(t.answer.id);
+		expect(getConversationUpdatedAt(t.conversationId, t.userId)).toBe(updatedAt);
 		expect(notify).not.toHaveBeenCalled();
 	});
 

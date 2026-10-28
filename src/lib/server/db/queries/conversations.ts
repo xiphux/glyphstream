@@ -444,6 +444,27 @@ export function getConversationCustomModelId(id: string, userId: string): string
 	);
 }
 
+/** A conversation's `updated_at`, read so it can be put back: a check-in the
+ *  model passed on is taken back out as if it never fired, and that includes
+ *  not moving the conversation up the sidebar or marking it for re-summary. */
+export function getConversationUpdatedAt(id: string, userId: string): number | null {
+	return (
+		getDb()
+			.select({ updatedAt: conversations.updatedAt })
+			.from(conversations)
+			.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
+			.get()?.updatedAt ?? null
+	);
+}
+
+export function restoreConversationUpdatedAt(id: string, userId: string, updatedAt: number): void {
+	getDb()
+		.update(conversations)
+		.set({ updatedAt })
+		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
+		.run();
+}
+
 /**
  * Replace the per-conversation feature opt-out list. Empty array → null in
  * the DB (canonical "all features on" state, matches absence). Scoped by
