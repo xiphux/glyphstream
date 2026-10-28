@@ -72,6 +72,7 @@
 	import { AvatarDrawController } from '#lib/avatar-draw-controller.svelte.js';
 	import { AvatarDrawWorkflow } from '#lib/avatar-draw-workflow.svelte.js';
 	import { PhotoComparisonGrid } from '#lib/photo-comparison-grid.svelte.js';
+	import { watchDevelopingPhotos } from '#lib/photo-develop-watch.js';
 	import { photoMarkers } from '#lib/texting-photos.js';
 	import type { TextingPhotos } from '#lib/texting.js';
 	import { CheckInController } from '#lib/check-in-controller.svelte.js';
@@ -1668,6 +1669,21 @@
 			onRemove: (image: MessageImage) => void avatarWorkflow.removePhoto(image),
 		};
 	}
+
+	// Photos developing on screen, by the server's word. Watched until they
+	// land, since this tab may hold no stream that will say so — see
+	// photo-develop-watch.ts.
+	const developingReplies = $derived(messages.filter((m) => m.developing?.length));
+	$effect(() => {
+		const replies = developingReplies;
+		if (replies.length === 0) return;
+		return watchDevelopingPhotos({
+			conversationId: convId,
+			replyIds: replies.map((m) => m.id),
+			expected: replies.reduce((n, m) => n + (m.developing?.length ?? 0), 0),
+			refresh: () => refreshAll(),
+		});
+	});
 
 	function developPhoto(reply: ChatMessage, index: number, assistantLabel: string) {
 		const marker = photoMarkers(reply, assistantLabel).find((p) => p.index === index);

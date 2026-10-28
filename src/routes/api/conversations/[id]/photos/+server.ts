@@ -17,6 +17,11 @@
  *
  * The model is chosen per draw and never written back to the conversation,
  * the same transient-override rule a portrait follows.
+ *
+ * GET ?messages=a,b,… says how many draws are still out for those replies —
+ * what the chat page watches while a photo on screen is developing, so one
+ * that lands after the page lost its stream (a suspended PWA, a reload
+ * mid-draw) still shows up. Cheap by design: the page polls it.
  */
 
 import { error } from '@sveltejs/kit';
@@ -57,6 +62,17 @@ interface DevelopPhotoBody {
 	 *  Only ever matched against versions of this same reply. */
 	compare?: unknown;
 }
+
+/** The most replies one status check may ask about — a page window's worth. */
+const MAX_WATCHED = 200;
+
+export const GET: RequestHandler = ({ locals, params, url }) => {
+	requireUser(locals);
+	if (!getConversationMeta(params.id, locals.user.id)) error(404, 'Conversation not found');
+	const ids = (url.searchParams.get('messages') ?? '').split(',').filter(Boolean);
+	if (ids.length > MAX_WATCHED) error(400, 'Too many messages');
+	return Response.json({ developing: listPhotoJobsForMessages(params.id, ids).length });
+};
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
 	requireUser(locals);

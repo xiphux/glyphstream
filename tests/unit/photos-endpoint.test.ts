@@ -27,7 +27,7 @@ vi.mock('#lib/server/endpoints/list-models.js', () => ({
 	listAllModels: () => mocks.listAllModels(),
 }));
 
-import { POST } from '../../src/routes/api/conversations/[id]/photos/+server';
+import { GET, POST } from '../../src/routes/api/conversations/[id]/photos/+server';
 import { PATCH } from '../../src/routes/api/conversations/[id]/photos/[photoId]/+server';
 import { createConversation } from '#lib/server/db/queries/conversations.js';
 import { appendMessage } from '#lib/server/db/queries/messages.js';
@@ -37,6 +37,7 @@ import {
 	listImagesForMessages,
 } from '#lib/server/db/queries/message-images.js';
 import { modelStatsDaily } from '#lib/server/db/schema.js';
+import { insertGenerationJob } from '#lib/server/db/queries/generation-jobs.js';
 import { getDb } from '#lib/server/db/client.js';
 
 let db: TestDB;
@@ -198,6 +199,38 @@ describe('POST /photos', () => {
 	it('refuses a reply from someone else’s conversation', async () => {
 		const stranger = seedUser().id;
 		await expect(develop({}, convId, stranger)).rejects.toMatchObject({ status: 404 });
+	});
+});
+
+describe('GET /photos', () => {
+	function status(messages: string, asUser = userId) {
+		const url = new URL(`http://x/api/conversations/${convId}/photos?messages=${messages}`);
+		return GET({
+			locals: { user: { id: asUser } },
+			params: { id: convId },
+			url,
+		} as unknown as Parameters<typeof GET>[0]) as Response;
+	}
+
+	it('counts the draws still out for the replies asked about', async () => {
+		insertGenerationJob({
+			id: 'j1',
+			userId,
+			conversationId: convId,
+			anchorMessageId: replyId,
+			kind: 'image',
+			origin: 'photo',
+			modelId: 'ep::sdxl',
+			fanoutIndex: null,
+			paramsJson: JSON.stringify({ photo: { sourceMessageId: replyId, index: 0 } }),
+			createdAt: 1,
+		});
+		expect(await status(replyId).json()).toEqual({ developing: 1 });
+		expect(await status('other').json()).toEqual({ developing: 0 });
+	});
+
+	it('refuses someone else’s conversation', () => {
+		expect(() => status(replyId, seedUser().id)).toThrow(expect.objectContaining({ status: 404 }));
 	});
 });
 
