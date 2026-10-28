@@ -294,8 +294,40 @@ function settleCheckIn(
 	if (!leaf || findUserMessageAncestor(conversationId, leaf)?.id !== reminderId) return;
 	// Anything the turn said or made on the way stays, like any stopped reply:
 	// the user pressed Stop on a reply they were reading, or the model wrote a
-	// line before a tool call and only then passed.
-	if (turnRows(conversationId, leaf, reminderId).some((m) => !isPass(m.parts))) return;
+	// line before a tool call and only then passed. Only the pass after it goes
+	// (a `[no text]` bubble would show, and be re-sent, as written).
+	const rows = turnRows(conversationId, leaf, reminderId);
+	if (rows.some((m) => !isPass(m.parts))) {
+		// Trailing replies that are only a pass, with no tool call a result
+		// would answer: the rest of the turn ends where they began.
+		let bare = 0;
+		while (
+			bare < rows.length &&
+			rows[bare].role === 'assistant' &&
+			isPass(rows[bare].parts) &&
+			!rows[bare].parts.some((p) => p.type === 'tool_call')
+		) {
+			bare++;
+		}
+		if (bare > 0) {
+			restoreActiveLeafIfUnchanged(conversationId, leaf, rows[bare].id);
+			deleteBranch(conversationId, rows[bare - 1].id, userId);
+		}
+		// Oldest first. A Stop was pressed by someone reading it, but a pass at
+		// the end of a turn that said something first said it to nobody watching.
+		const said = rows.filter((m) => m.role === 'assistant' && !isPass(m.parts)).reverse();
+		const latest = said.at(-1);
+		if (outcome.kind === 'done' && latest) {
+			const text = said
+				.map((m) => replyText(m.parts))
+				.filter(Boolean)
+				.join('\n\n');
+			void notifyCheckIn(row, latest.id, text).catch((e: unknown) =>
+				log.warn('notify failed:', errorMessage(e)),
+			);
+		}
+		return;
+	}
 	restoreActiveLeafIfUnchanged(conversationId, leaf, previousLeafId);
 	deleteBranch(conversationId, reminderId, userId);
 	if (previousUpdatedAt !== null) {

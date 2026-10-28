@@ -453,8 +453,12 @@ describe('firing', () => {
 		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
 		await idle(t.conversationId);
 		const branch = walkActiveBranch(t.conversationId);
-		expect(roles(branch).slice(0, 4)).toEqual(['user', 'assistant', 'check-in', 'assistant']);
+		// The line and its tool call stay; the pass after them doesn't.
+		expect(roles(branch)).toEqual(['user', 'assistant', 'check-in', 'assistant', 'tool']);
 		expect(text(branch[3])).toBe('hey, one sec');
+		expect(notify).toHaveBeenCalledWith(
+			expect.objectContaining({ assistantMessageId: branch[3].id, previewText: 'hey, one sec' }),
+		);
 	});
 
 	it('keeps a reply the user stopped partway, like any stopped reply', async () => {
