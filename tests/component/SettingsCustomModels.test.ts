@@ -50,6 +50,7 @@ function makeCustom(overrides: Partial<CustomModel> = {}): CustomModel {
 		defaultDisabledFeatures: overrides.defaultDisabledFeatures ?? [],
 		replyStyle: overrides.replyStyle ?? 'standard',
 		checkIns: overrides.checkIns ?? false,
+		photos: overrides.photos ?? false,
 		avatarMediaId: overrides.avatarMediaId ?? null,
 		createdAt: 0,
 		updatedAt: 0,

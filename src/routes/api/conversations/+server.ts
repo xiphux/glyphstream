@@ -66,6 +66,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	let resolvedReplyStyle: ReplyStyle = 'standard';
 	let resolvedCheckIns = false;
 
+	let resolvedPhotos = false;
+
 	// modelKind is optional and validated identically whether a custom
 	// model or a base model id was supplied — the caller forwards it so
 	// the send dispatcher knows the chat/image/video path without
@@ -94,6 +96,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		resolvedCustomModelId = cm.id;
 		resolvedReplyStyle = cm.replyStyle;
 		resolvedCheckIns = cm.checkIns;
+		resolvedPhotos = cm.photos;
 	} else {
 		const modelId = optionalString(body.modelId, 'modelId')?.trim();
 		if (!modelId) error(400, "'modelId' or 'customModelId' is required");
@@ -140,6 +143,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		customModelId: resolvedCustomModelId,
 		replyStyle: resolvedReplyStyle,
 		checkIns: resolvedCheckIns,
+		photos: resolvedPhotos,
 		title:
 			requireMaxLength(
 				optionalString(body.title, 'title')?.trim(),

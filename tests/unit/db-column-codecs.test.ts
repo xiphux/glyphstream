@@ -45,8 +45,10 @@ import { createCustomModel, getCustomModelForUser } from '#lib/server/db/queries
 
 const COVERED = [
 	'conversations.check_ins',
+	'conversations.photos',
 	'conversations.private',
 	'custom_models.check_ins',
+	'custom_models.photos',
 	'mcp_credentials.secret_ciphertext',
 	'media.embedding',
 	'memories.embedding',
@@ -211,6 +213,36 @@ describe('check_ins', () => {
 			v: on ? 1 : 0,
 		});
 		expect(getCustomModelForUser(cm.id, userId)!.checkIns).toBe(on);
+	});
+});
+
+describe('photos', () => {
+	it.each([true, false])('photos=%s is stored as 0/1 and read back as a boolean', (on) => {
+		const { id } = createConversation({
+			userId,
+			endpointId: 'e',
+			modelId: 'm',
+			modelKind: null,
+			photos: on,
+		});
+		expect(raw('conversations', 'photos', `id = '${id}'`)).toEqual({ t: 'integer', v: on ? 1 : 0 });
+		expect(getConversationMeta(id, userId)!.photos).toBe(on);
+
+		const cm = createCustomModel({
+			userId,
+			name: `photo-preset-${on}`,
+			description: null,
+			baseEndpointId: 'e',
+			baseModelId: 'm',
+			systemPrompt: null,
+			parameters: null,
+			photos: on,
+		});
+		expect(raw('custom_models', 'photos', `id = '${cm.id}'`)).toEqual({
+			t: 'integer',
+			v: on ? 1 : 0,
+		});
+		expect(getCustomModelForUser(cm.id, userId)!.photos).toBe(on);
 	});
 });
 

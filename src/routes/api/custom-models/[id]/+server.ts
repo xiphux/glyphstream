@@ -15,6 +15,7 @@ import {
 	validateDefaultDisabledFeatures,
 	validateParameters,
 	validateCheckIns,
+	validatePhotos,
 	validateReplyStyle,
 } from '#lib/server/custom-models/validate.js';
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
@@ -86,6 +87,9 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	}
 	if (body.replyStyle !== undefined) {
 		patch.replyStyle = validateReplyStyle(body.replyStyle);
+	}
+	if (body.photos !== undefined) {
+		patch.photos = validatePhotos(body.photos);
 	}
 	if (body.checkIns !== undefined) {
 		patch.checkIns = validateCheckIns(body.checkIns);

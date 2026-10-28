@@ -141,6 +141,18 @@ describe('validateCreateInput', () => {
 		);
 	});
 
+	it('defaults photos with the style, and refuses a non-boolean', () => {
+		expect(validateCreateInput(valid).photos).toBe(false);
+		expect(validateCreateInput({ ...valid, replyStyle: 'texting' }).photos).toBe(true);
+		expect(validateCreateInput({ ...valid, replyStyle: 'texting', photos: false }).photos).toBe(
+			false,
+		);
+		expect(validateCreateInput({ ...valid, photos: true }).photos).toBe(true);
+		expect(() => validateCreateInput({ ...valid, photos: 'yes' } as never)).toThrow(
+			expect.objectContaining({ status: 400 }),
+		);
+	});
+
 	it('rejects empty name', () => {
 		expect(() => validateCreateInput({ ...valid, name: '   ' })).toThrow();
 	});

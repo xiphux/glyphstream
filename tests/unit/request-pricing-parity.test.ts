@@ -89,7 +89,11 @@ import { createConversation } from '#lib/server/db/queries/conversations.js';
 import { appendMessage } from '#lib/server/db/queries/messages.js';
 import { setUserPreferences } from '#lib/server/db/queries/user-preferences.js';
 import { createCanvas } from '#lib/server/db/queries/artifacts.js';
-import { CHECK_IN_INSTRUCTIONS, TEXTING_INSTRUCTIONS } from '#lib/server/chat/reply-style.js';
+import {
+	CHECK_IN_INSTRUCTIONS,
+	PHOTO_INSTRUCTIONS,
+	TEXTING_INSTRUCTIONS,
+} from '#lib/server/chat/reply-style.js';
 import { resetInFlight } from '#lib/server/streaming/in-flight.js';
 import { resetConfigCachesForTests } from '#lib/server/util/config-cache.js';
 
@@ -111,6 +115,7 @@ beforeEach(() => {
 		// So the reply style's instructions are among the pieces priced.
 		replyStyle: 'texting',
 		checkIns: true,
+		photos: true,
 	}).id;
 	const q = appendMessage({
 		conversationId,
@@ -196,7 +201,7 @@ describe('the context readout prices what the send path sends', () => {
 		].filter((p): p is string => !!p);
 		expect(pieces.length).toBeGreaterThan(2);
 		expect(priced.replyStyleInstructions).toBe(
-			`${TEXTING_INSTRUCTIONS} ${CHECK_IN_INSTRUCTIONS.texting}`,
+			`${TEXTING_INSTRUCTIONS} ${PHOTO_INSTRUCTIONS.texting} ${CHECK_IN_INSTRUCTIONS.texting}`,
 		);
 		for (const piece of pieces) expect(system.content).toContain(piece);
 		// Joined by blank lines and nothing more: the priced pieces are the whole

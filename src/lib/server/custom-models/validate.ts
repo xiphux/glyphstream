@@ -29,6 +29,7 @@ export interface ValidatedCreate {
 	defaultDisabledFeatures: FeatureCategory[];
 	replyStyle: ReplyStyle;
 	checkIns: boolean;
+	photos: boolean;
 }
 
 export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCreate {
@@ -69,6 +70,9 @@ export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCr
 	// more often a tool than a character — doesn't unless asked to.
 	const checkIns =
 		body.checkIns === undefined ? replyStyle === 'texting' : validateCheckIns(body.checkIns);
+	// The same for photos: a texting partner sends them, a standard preset
+	// doesn't unless asked to.
+	const photos = body.photos === undefined ? replyStyle === 'texting' : validatePhotos(body.photos);
 
 	return {
 		name,
@@ -80,11 +84,17 @@ export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCr
 		defaultDisabledFeatures,
 		replyStyle,
 		checkIns,
+		photos,
 	};
 }
 
 export function validateCheckIns(raw: unknown): boolean {
 	if (typeof raw !== 'boolean') error(400, "'checkIns' must be a boolean");
+	return raw;
+}
+
+export function validatePhotos(raw: unknown): boolean {
+	if (typeof raw !== 'boolean') error(400, "'photos' must be a boolean");
 	return raw;
 }
 

@@ -71,6 +71,9 @@ export interface ChatToolContextInput {
 	/** Whether the conversation may check in — adds the check-in marker's
 	 *  instruction alongside the style's. Omitted = off. */
 	checkIns?: boolean;
+	/** Whether the conversation may send photos — adds the photo marker's
+	 *  instruction alongside the style's. Omitted = off. */
+	photos?: boolean;
 	/**
 	 * The active branch AFTER any synthetic skill-activation exchange, used to
 	 * seed cross-turn deferred-tool activations.
@@ -147,6 +150,7 @@ export async function buildChatToolContext(input: ChatToolContextInput): Promise
 	const styleInstructions = replyStyleInstructions(
 		input.replyStyle ?? 'standard',
 		input.checkIns ?? false,
+		input.photos ?? false,
 	);
 	let systemPrompt: string | null = [environmentBlock, baseSystemPrompt, styleInstructions]
 		.filter(Boolean)

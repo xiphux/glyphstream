@@ -46,6 +46,7 @@ function makePreset(
 		defaultDisabledFeatures: [],
 		replyStyle: 'standard',
 		checkIns: false,
+		photos: false,
 		avatarMediaId: null,
 		createdAt: 0,
 		updatedAt: 0,

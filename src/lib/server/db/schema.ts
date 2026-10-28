@@ -326,6 +326,10 @@ export const conversations = sqliteTable(
 		// snapshotted from the custom model at create time; always off for a chat
 		// with no preset. Gates the instruction in the system prompt and the runner.
 		checkIns: integer('check_ins', { mode: 'boolean' }).notNull().default(false),
+		// Whether the assistant may send `[photo: …]` (`#lib/texting-photos.ts`),
+		// snapshotted from the custom model like `check_ins`; always off for a
+		// chat with no preset. Gates the instruction and the photo rendering.
+		photos: integer('photos', { mode: 'boolean' }).notNull().default(false),
 		// Forward FK to messages.id; nullable until first message exists.
 		// SQLite resolves the cyclic FK fine because both sides are nullable
 		// at the right moments (active_leaf is null at conversation creation;
@@ -567,6 +571,9 @@ export const customModels = sqliteTable(
 		// a texting preset and off otherwise (`validateCreateInput`, and the editor
 		// to match).
 		checkIns: integer('check_ins', { mode: 'boolean' }).notNull().default(false),
+		// Copied onto each conversation created from this preset (see
+		// `conversations.photos`); defaults like `check_ins` above.
+		photos: integer('photos', { mode: 'boolean' }).notNull().default(false),
 		// The preset's avatar — a media row shown beside the model name above
 		// each of its replies, so a preset roleplaying a character reads as a
 		// someone rather than a name. NULL = no avatar (the label renders alone,

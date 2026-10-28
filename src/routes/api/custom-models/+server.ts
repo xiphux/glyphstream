@@ -30,6 +30,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		defaultDisabledFeatures: validated.defaultDisabledFeatures,
 		replyStyle: validated.replyStyle,
 		checkIns: validated.checkIns,
+		photos: validated.photos,
 	});
 	return Response.json({ customModel: model }, { status: 201 });
 };

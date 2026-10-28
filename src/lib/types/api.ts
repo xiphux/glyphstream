@@ -1040,6 +1040,9 @@ export interface ConversationDetail extends ConversationSummary {
 	/** Whether the assistant may set itself check-ins (`#lib/check-ins.ts`).
 	 *  Snapshotted from the custom model; false for a chat with no preset. */
 	checkIns: boolean;
+	/** Whether the assistant may send `[photo: …]`. Snapshotted from the custom
+	 *  model; false for a chat with no preset. */
+	photos: boolean;
 	activeLeafMessageId: string | null;
 	/** The active branch, root → leaf — or, for the chat page, only its newest
 	 *  window (see `hasEarlierMessages`). */
@@ -1134,6 +1137,9 @@ export interface CustomModel {
 	/** Whether its chats may check in on the user (`#lib/check-ins.ts`). Copied
 	 *  onto each conversation created from the preset. */
 	checkIns: boolean;
+	/** Whether its chats may send photos (`[photo: …]`). Copied onto each
+	 *  conversation created from the preset. */
+	photos: boolean;
 	/** Media id of the preset's avatar, shown beside the model name above its
 	 *  replies. Null when unset. Not part of Create/Update — it moves a media
 	 *  ref_count with it, so it has its own single write path
@@ -1164,6 +1170,8 @@ export interface CreateCustomModelRequest {
 	replyStyle?: ReplyStyle;
 	/** Defaults to on for a texting preset, off otherwise. */
 	checkIns?: boolean;
+	/** Defaults to on for a texting preset, off otherwise. */
+	photos?: boolean;
 }
 
 export type UpdateCustomModelRequest = Partial<CreateCustomModelRequest>;

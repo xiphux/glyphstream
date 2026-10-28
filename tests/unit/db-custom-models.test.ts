@@ -331,6 +331,30 @@ describe('custom-models CRUD', () => {
 		expect(getConversationDetail(plain.id, u.id)?.checkIns).toBe(false);
 	});
 
+	it('photos defaults off, persists, and patches — and a conversation keeps it', () => {
+		const u = seedUser();
+		const base = {
+			userId: u.id,
+			description: null,
+			baseEndpointId: 'bridge',
+			baseModelId: 'x',
+			systemPrompt: null,
+			parameters: null,
+		};
+		expect(createCustomModel({ ...base, name: 'A' }).photos).toBe(false);
+		const cm = createCustomModel({ ...base, name: 'B', photos: true });
+		expect(getCustomModelForUser(cm.id, u.id)?.photos).toBe(true);
+		expect(updateCustomModel(cm.id, u.id, { photos: false })?.photos).toBe(false);
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat',
+			photos: true,
+		});
+		expect(getConversationDetail(conv.id, u.id)?.photos).toBe(true);
+	});
+
 	it('a conversation keeps the replyStyle it was created with', () => {
 		const u = seedUser();
 		const conv = createConversation({

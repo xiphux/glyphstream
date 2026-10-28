@@ -25,6 +25,8 @@ interface CreateInput {
 	replyStyle?: ReplyStyle;
 	/** Omit for off. */
 	checkIns?: boolean;
+	/** Omit for off. */
+	photos?: boolean;
 }
 
 interface UpdateInput {
@@ -37,6 +39,7 @@ interface UpdateInput {
 	defaultDisabledFeatures?: FeatureCategory[];
 	replyStyle?: ReplyStyle;
 	checkIns?: boolean;
+	photos?: boolean;
 }
 
 function rowToCustomModel(row: typeof customModels.$inferSelect): CustomModel {
@@ -51,6 +54,7 @@ function rowToCustomModel(row: typeof customModels.$inferSelect): CustomModel {
 		defaultDisabledFeatures: parseDisabledFeatures(row.defaultDisabledFeaturesJson),
 		replyStyle: row.replyStyle,
 		checkIns: row.checkIns,
+		photos: row.photos,
 		avatarMediaId: row.avatarMediaId,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
@@ -91,6 +95,7 @@ export function createCustomModel(input: CreateInput): CustomModel {
 	const defaultDisabledFeatures = input.defaultDisabledFeatures ?? [];
 	const replyStyle = input.replyStyle ?? 'standard';
 	const checkIns = input.checkIns ?? false;
+	const photos = input.photos ?? false;
 	db.insert(customModels)
 		.values({
 			id,
@@ -104,6 +109,7 @@ export function createCustomModel(input: CreateInput): CustomModel {
 			defaultDisabledFeaturesJson: encodeDisabledFeatures(defaultDisabledFeatures),
 			replyStyle,
 			checkIns,
+			photos,
 			createdAt: now,
 			updatedAt: now,
 		})
@@ -119,6 +125,7 @@ export function createCustomModel(input: CreateInput): CustomModel {
 		defaultDisabledFeatures,
 		replyStyle,
 		checkIns,
+		photos,
 		// Avatars are never set at create time — the editor uploads or picks one
 		// against an existing preset, so the single ref-counted write path
 		// (`setCustomModelAvatar`) is the only thing that ever populates this.
@@ -162,6 +169,7 @@ export function updateCustomModel(
 		}
 		if (input.replyStyle !== undefined) patch.replyStyle = input.replyStyle;
 		if (input.checkIns !== undefined) patch.checkIns = input.checkIns;
+		if (input.photos !== undefined) patch.photos = input.photos;
 
 		tx.update(customModels).set(patch).where(eq(customModels.id, id)).run();
 		const refreshed = tx.select().from(customModels).where(eq(customModels.id, id)).get();

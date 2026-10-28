@@ -46,6 +46,8 @@ interface CreateInput {
 	replyStyle?: ReplyStyle;
 	/** From the custom model; omit for off. */
 	checkIns?: boolean;
+	/** From the custom model; omit for off. */
+	photos?: boolean;
 	title?: string | null;
 	disabledFeatures?: FeatureCategory[] | null;
 	// "Private chat" content seal (see schema.ts). Set once at create time,
@@ -76,6 +78,7 @@ export function createConversation(input: CreateInput): ConversationDetail {
 			parametersJson: input.parameters ? JSON.stringify(input.parameters) : null,
 			replyStyle: input.replyStyle ?? 'standard',
 			checkIns: input.checkIns ?? false,
+			photos: input.photos ?? false,
 			title: input.title ?? null,
 			activeLeafMessageId: null,
 			createdAt: now,
@@ -102,6 +105,7 @@ export function createConversation(input: CreateInput): ConversationDetail {
 		parameters: input.parameters ?? null,
 		replyStyle: input.replyStyle ?? 'standard',
 		checkIns: input.checkIns ?? false,
+		photos: input.photos ?? false,
 		activeLeafMessageId: null,
 		createdAt: now,
 		updatedAt: now,
@@ -340,6 +344,7 @@ export function getConversationDetail(
 			parametersJson: conversations.parametersJson,
 			replyStyle: conversations.replyStyle,
 			checkIns: conversations.checkIns,
+			photos: conversations.photos,
 			activeLeafMessageId: conversations.activeLeafMessageId,
 			createdAt: conversations.createdAt,
 			updatedAt: conversations.updatedAt,
@@ -365,6 +370,7 @@ export function getConversationDetail(
 		parameters: parseModelParameters(row.parametersJson),
 		replyStyle: row.replyStyle,
 		checkIns: row.checkIns,
+		photos: row.photos,
 		activeLeafMessageId: row.activeLeafMessageId,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
@@ -387,6 +393,7 @@ export function getConversationMeta(
 	parameters: CustomModelParameters | null;
 	replyStyle: ReplyStyle;
 	checkIns: boolean;
+	photos: boolean;
 	title: string | null;
 	activeLeafMessageId: string | null;
 	disabledFeatures: FeatureCategory[];
@@ -405,6 +412,7 @@ export function getConversationMeta(
 			parametersJson: conversations.parametersJson,
 			replyStyle: conversations.replyStyle,
 			checkIns: conversations.checkIns,
+			photos: conversations.photos,
 			title: conversations.title,
 			activeLeafMessageId: conversations.activeLeafMessageId,
 			disabledFeaturesJson: conversations.disabledFeaturesJson,
@@ -424,6 +432,7 @@ export function getConversationMeta(
 		parameters: parseModelParameters(row.parametersJson),
 		replyStyle: row.replyStyle,
 		checkIns: row.checkIns,
+		photos: row.photos,
 		title: row.title,
 		activeLeafMessageId: row.activeLeafMessageId,
 		disabledFeatures: parseDisabledFeatures(row.disabledFeaturesJson),

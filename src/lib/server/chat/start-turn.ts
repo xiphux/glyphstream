@@ -143,6 +143,7 @@ export async function startChatTurn(
 		baseSystemPrompt,
 		replyStyle: meta.replyStyle,
 		checkIns: meta.checkIns,
+		photos: meta.photos,
 		branch,
 		trustedMcpTools: prefs?.trustedMcpTools ?? [],
 		timeZone: prefs?.timezone ?? null,
