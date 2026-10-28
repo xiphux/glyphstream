@@ -64,6 +64,9 @@ export function splitAtPhotos(blocks: RenderBlock[], live = false): PhotoSegment
 				} else if (!(
 					last &&
 					c === chunks.length - 1 &&
+					// A marker is a paragraph, so only a paragraph can be one half
+					// typed — a code line or list item ending `[` is just text.
+					/^<p[\s>]/.test(chunk) &&
 					unfinished(chunk.replace(/<[^>]*>/g, ''))
 				)) {
 					kept.push(chunk);

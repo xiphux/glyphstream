@@ -90,6 +90,15 @@ describe('splitAtPhotos', () => {
 		]);
 	});
 
+	it("doesn't hold back a live code line or list item that ends in [", () => {
+		const code = html('<p>try</p>\n<pre><code>x = {"a": [</code></pre>');
+		expect(splitAtPhotos([code], true)).toEqual([
+			{ kind: 'blocks', blocks: [html('<p>try</p>\n<pre><code>x = {"a": [</code></pre>')] },
+		]);
+		const list = html('<ul>\n<li>Label: [</li>\n</ul>');
+		expect(splitAtPhotos([list], true)).toEqual([{ kind: 'blocks', blocks: [list] }]);
+	});
+
 	it('holds back a marker still being written in a live reply', () => {
 		const live = [html('<p>look</p>\n<p>[photo: a cat on</p>')];
 		expect(splitAtPhotos(live, true)).toEqual([{ kind: 'blocks', blocks: [html('<p>look</p>')] }]);
