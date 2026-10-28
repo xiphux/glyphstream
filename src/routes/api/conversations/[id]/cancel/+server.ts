@@ -9,7 +9,8 @@ import type { RequestHandler } from './$types';
  * or after the stream already ended).
  *
  * Stop halts the whole fan-out; see `cancelInFlightGenerations` for what that
- * means per branch.
+ * means per branch. A texting photo developing meanwhile carries on: it's a
+ * picture for an earlier reply, not the generation being stopped.
  */
 export const POST: RequestHandler = async ({ locals, params }) => {
 	requireUser(locals);
@@ -19,5 +20,7 @@ export const POST: RequestHandler = async ({ locals, params }) => {
 
 	// Nothing in flight is not an error — succeed silently so the client UI can
 	// stay simple.
-	return Response.json({ cancelled: await cancelInFlightGenerations(params.id) });
+	return Response.json({
+		cancelled: await cancelInFlightGenerations(params.id, { sparePhotos: true }),
+	});
 };

@@ -65,6 +65,7 @@ import { MediaNotAvailableError } from '../media/errors';
 import { notifyFanoutCompleteIfLast } from '../messages/fanout-notify';
 import {
 	AVATAR_BRANCH,
+	PHOTO_BRANCH_PREFIX,
 	clearInFlight,
 	DEFAULT_BRANCH,
 	registerInFlight,
@@ -365,7 +366,7 @@ function register(row: GenerationJobRow, endpoint: LoadedEndpoint): InFlightEntr
 			: row.origin === 'avatar'
 				? AVATAR_BRANCH
 				: row.origin === 'photo'
-					? `photo:${row.id}`
+					? `${PHOTO_BRANCH_PREFIX}${row.id}`
 					: row.id,
 		row.kind,
 		row.modelId,

@@ -44,6 +44,16 @@ afterEach(() => {
 });
 
 describe('cancelInFlightGenerations', () => {
+	it('leaves photo draws running for Stop, and stops them with the conversation', async () => {
+		const turn = registerInFlight('c1', endpoint);
+		const photo = registerInFlight('c1', endpoint, 'photo:job-1', 'image', null, null, false);
+		await cancelInFlightGenerations('c1', { sparePhotos: true });
+		expect(turn.controller.signal.aborted).toBe(true);
+		expect(photo.controller.signal.aborted).toBe(false);
+		await cancelInFlightGenerations('c1');
+		expect(photo.controller.signal.aborted).toBe(true);
+	});
+
 	it('resolves false with nothing in flight', async () => {
 		await expect(cancelInFlightGenerations('nothing-here')).resolves.toBe(false);
 	});

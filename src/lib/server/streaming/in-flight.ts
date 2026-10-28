@@ -40,6 +40,12 @@ export const DEFAULT_BRANCH = 'default';
  */
 export const AVATAR_BRANCH = 'avatar';
 
+/**
+ * Prefix of a texting photo's draw, keyed per job (`photo:<jobId>`): photos
+ * draw side by side, so none supersedes another, and none is a turn.
+ */
+export const PHOTO_BRANCH_PREFIX = 'photo:';
+
 export interface InFlightEntry {
 	/**
 	 * Whether this entry is part of the conversation's TURN — a plain send or a

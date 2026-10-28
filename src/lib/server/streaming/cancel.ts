@@ -11,15 +11,29 @@
  * (chat) commits whatever partial text it had.
  */
 import { videoCancel } from '../endpoints/client';
-import { getInFlightEntries } from './in-flight';
+import { getInFlightEntries, PHOTO_BRANCH_PREFIX, type InFlightEntry } from './in-flight';
+
+/** Whether an entry is a texting photo's draw (see `register` in the job runner). */
+export function isPhotoDraw(entry: InFlightEntry): boolean {
+	return entry.branchKey.startsWith(PHOTO_BRANCH_PREFIX);
+}
 
 /**
  * Cancel the conversation's generations. Resolves `false` when nothing was in
  * flight (the user clicked Stop too late, or the stream already ended). Callers
  * must have checked ownership: this acts on the id alone.
+ *
+ * `sparePhotos` leaves texting photos drawing: the Stop button stops the reply
+ * on screen, and a photo of an earlier reply isn't it. Deleting the
+ * conversation stops everything.
  */
-export async function cancelInFlightGenerations(conversationId: string): Promise<boolean> {
-	const entries = getInFlightEntries(conversationId);
+export async function cancelInFlightGenerations(
+	conversationId: string,
+	opts: { sparePhotos?: boolean } = {},
+): Promise<boolean> {
+	const entries = getInFlightEntries(conversationId).filter(
+		(e) => !opts.sparePhotos || !isPhotoDraw(e),
+	);
 	if (entries.length === 0) return false;
 
 	// Every local abort first, synchronously: they stop the upstream fetch and
