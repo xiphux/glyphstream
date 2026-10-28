@@ -73,6 +73,12 @@ function photo(parentId: string, index: number, modelUsed = 'ep::sdxl') {
 		modelUsed,
 	}).id;
 	linkMessageMedia(id, mediaId);
+	// Distinct times, in creation order: two photos seeded in one millisecond
+	// would otherwise sort by their random ids.
+	db.update(messages)
+		.set({ createdAt: Date.now() + mediaSeq })
+		.where(eq(messages.id, id))
+		.run();
 	return { id, mediaId };
 }
 
