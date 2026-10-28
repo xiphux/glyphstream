@@ -75,7 +75,12 @@ export type RenderBlock =
 	| { type: 'html'; html: string }
 	/** Plain-text fallback for messages without rendered HTML (user
 	 *  rows, just-arrived in-flight text whose rAF render hasn't fired). */
-	| { type: 'plain-text'; text: string }
+	| {
+			type: 'plain-text';
+			text: string;
+			/** The model's own reaction, drawn as a text (see `ownReaction`). */
+			ownReaction?: true;
+	  }
 	| {
 			type: 'tool_call';
 			toolCallId: string;
@@ -317,6 +322,8 @@ function partToBlock(
 	switch (p.type) {
 		case 'text':
 			if (!p.text) return null;
+			// Not the reply's text, so never the place its rendered html goes.
+			if (p.ownReaction) return { type: 'plain-text', text: p.text, ownReaction: true };
 			if (!usedContentHtml && m.role === 'assistant' && m.contentHtml) {
 				return { type: 'html', html: m.contentHtml };
 			}
@@ -688,17 +695,16 @@ export function buildRenderedConversation(
 	return { visibleMessages, toolResultsByCallId, pendingApprovals, reactionsByMessageId };
 }
 
-/** A check-in reply's reactions as the emoji themselves, after its text: as
- *  if the model had texted the emoji rather than reacted to the reminder. Only
- *  the drawing changes — the model's history keeps the call and its result. */
+/** A check-in reply's reactions as the emoji themselves, where the call was:
+ *  as if the model had texted the emoji rather than reacted to the reminder.
+ *  Only the drawing changes — the model's history keeps the call and its
+ *  result. */
 function withInlineReactions(msg: ChatMessage, emojiByCall: Map<string, string>): ChatMessage {
-	const emoji: MessagePart[] = [];
-	const parts = msg.parts.filter((p) => {
-		if (p.type !== 'tool_call' || !emojiByCall.has(p.toolCallId)) return true;
-		emoji.push({ type: 'text', text: emojiByCall.get(p.toolCallId)! });
-		return false;
+	const parts = msg.parts.map((p): MessagePart => {
+		const emoji = p.type === 'tool_call' ? emojiByCall.get(p.toolCallId) : undefined;
+		return emoji ? { type: 'text', text: emoji, ownReaction: true } : p;
 	});
-	return { ...msg, parts: [...parts, ...emoji] };
+	return { ...msg, parts };
 }
 
 // --- bubble-merge flags -------------------------------------------------

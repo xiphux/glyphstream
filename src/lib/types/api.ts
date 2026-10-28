@@ -456,6 +456,10 @@ export type MessagePart =
 			 *  place (see `#lib/check-ins.ts`): it goes upstream like any text, but
 			 *  the thread draws it as a divider, since the user didn't write it. */
 			checkIn?: true;
+			/** Never stored: a check-in reply's reaction, which the thread draws
+			 *  as the model's own text (`buildRenderedConversation`). Always the
+			 *  preset's, whoever spoke last in a texting reply. */
+			ownReaction?: true;
 	  }
 	| {
 			type: 'image';

@@ -95,6 +95,19 @@ describe('textingItems', () => {
 			{ kind: 'text', speaker: 'Sam', html: '<p>three</p>' },
 		]);
 	});
+
+	it("gives the model's own reaction to the model, whoever spoke last", () => {
+		const blocks: RenderBlock[] = [
+			{ type: 'html', html: '<p>Sam: yo</p>' },
+			{ type: 'plain-text', text: '👋', ownReaction: true },
+			{ type: 'html', html: '<p>so?</p>' },
+		];
+		expect(textingItems(blocks, 'Chloe')).toEqual([
+			{ kind: 'text', speaker: 'Sam', html: '<p>yo</p>' },
+			{ kind: 'text', speaker: null, text: '👋' },
+			{ kind: 'text', speaker: null, html: '<p>so?</p>' },
+		]);
+	});
 });
 
 describe('photo markers', () => {

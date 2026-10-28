@@ -387,7 +387,24 @@ describe('buildRenderedConversation — a check-in’s reaction', () => {
 		const reply = visibleMessages.find((m) => m.id === 'a1')!;
 		expect(messageToBlocks(reply, new Map())).toEqual([
 			{ type: 'html', html: '<p>how did it go?</p>' },
-			{ type: 'plain-text', text: '👋' },
+			{ type: 'plain-text', text: '👋', ownReaction: true },
+		]);
+	});
+
+	// The relay turns a reply that opens with a lone emoji into a reaction
+	// ahead of the text; it still reads in the order it was written.
+	it('keeps the emoji where the model put it, and the reply its html', () => {
+		const { visibleMessages } = buildRenderedConversation([
+			reminder,
+			msg('a1', 'assistant', [reactionPart('😊'), { type: 'text', text: 'Hey!' }], {
+				contentHtml: '<p>Hey!</p>',
+			}),
+			result('call_r'),
+		]);
+		const reply = visibleMessages.find((m) => m.id === 'a1')!;
+		expect(messageToBlocks(reply, new Map())).toEqual([
+			{ type: 'plain-text', text: '😊', ownReaction: true },
+			{ type: 'html', html: '<p>Hey!</p>' },
 		]);
 	});
 
@@ -401,7 +418,7 @@ describe('buildRenderedConversation — a check-in’s reaction', () => {
 		const ids = visibleMessages.map((m) => m.id);
 		expect(ids).toContain('a1');
 		expect(messageToBlocks(visibleMessages[ids.indexOf('a1')], new Map())).toEqual([
-			{ type: 'plain-text', text: '😊' },
+			{ type: 'plain-text', text: '😊', ownReaction: true },
 		]);
 	});
 

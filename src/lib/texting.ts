@@ -217,6 +217,10 @@ export function textingItems(blocks: RenderBlock[], defaultName: string): Textin
 				const { speaker: named, html } = extractSpeaker(chunk);
 				push(resolve(named), { html });
 			}
+		} else if (block.type === 'plain-text' && block.ownReaction) {
+			// The model's own reaction: from it, not whoever spoke last.
+			speaker = null;
+			push(null, { text: block.text });
 		} else if (block.type === 'plain-text') {
 			for (const para of block.text.split(/\n\s*\n/)) {
 				const trimmed = para.trim();
