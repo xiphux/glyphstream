@@ -27,6 +27,13 @@
  * - **Not a structural symbol.** `⚠️` / `✅` / arrows lead technical replies as
  *   markers, not reactions. The tool description already says "not symbols".
  *
+ * It also catches the other typed shape: the call itself written out as the
+ * opening line, `react_to_message(emoji="😳")`. That one is unambiguous, so it
+ * needs no blank line and may be the whole reply — a tool turn with nothing
+ * else in it is one the loop already handles. It mattered in practice: a chat
+ * whose first reaction came out typed this way copied it on every reaction
+ * after, and never once called the tool.
+ *
  * It is a wrapper around the normalizer rather than a step in the relay because
  * the relay parses every upstream stream twice — once for the client, once for
  * the recorder that persists the row — and both must see the same rewrite. Each
@@ -85,15 +92,42 @@ type Verdict =
 	{ kind: 'hold' } | { kind: 'release' } | { kind: 'react'; emoji: string; rest: string };
 
 /** Decide what the held opening text is. `hold` means it could still go either
- *  way; the caller turns a `hold` at end-of-text into `release`. */
-export function classifyLeadingText(held: string): Verdict {
-	const v = classify(held);
+ *  way; `ended` says no more text is coming, and the caller turns a `hold` then
+ *  into `release`. */
+export function classifyLeadingText(held: string, ended = false): Verdict {
+	const v = classify(held, ended);
 	return v.kind === 'hold' && held.length > MAX_HOLD_CHARS ? { kind: 'release' } : v;
 }
 
-function classify(held: string): Verdict {
+/** The call written out: `react_to_message(emoji="😳")`, the argument named or
+ *  not, either quote. */
+const CALL_OPEN = `${REACTION_TOOL_NAME}(`;
+const TYPED_CALL = new RegExp(
+	`^${REACTION_TOOL_NAME}\\(\\s*(?:emoji\\s*[=:]\\s*)?(["'])([^"'\\n]*)\\1\\s*\\)`,
+);
+/** The call's line break, and any blank lines after it. */
+const LINE_AFTER = /^[ \t]*\r?\n\s*/;
+
+function classifyTypedCall(body: string, ended: boolean): Verdict | null {
+	if (!CALL_OPEN.startsWith(body.slice(0, CALL_OPEN.length))) return null;
+	if (body.length < CALL_OPEN.length) return ended ? { kind: 'release' } : { kind: 'hold' };
+	const call = TYPED_CALL.exec(body);
+	if (!call) return ended || body.includes('\n') ? { kind: 'release' } : { kind: 'hold' };
+	const emoji = validateEmoji(call[2]);
+	if (!emoji) return { kind: 'release' };
+	const after = body.slice(call[0].length);
+	const line = LINE_AFTER.exec(after);
+	if (line) return { kind: 'react', emoji, rest: after.slice(line[0].length) };
+	if (!/^[ \t]*$/.test(after)) return { kind: 'release' };
+	// Nothing after it yet: the reply may still come, or this was all of it.
+	return ended ? { kind: 'react', emoji, rest: '' } : { kind: 'hold' };
+}
+
+function classify(held: string, ended: boolean): Verdict {
 	const body = held.trimStart();
 	if (body === '') return { kind: 'hold' };
+	const typed = classifyTypedCall(body, ended);
+	if (typed) return typed;
 	const [first, second] = firstTwoGraphemes(body);
 	// Plain text: decided on the first character, so ordinary replies are held
 	// for one delta at most.
@@ -149,31 +183,32 @@ export function catchLeadingReaction(
 			held = '';
 			state = 'passthrough';
 		};
+		const react = (emoji: string, rest: string) => {
+			out.push(
+				{
+					type: 'tool_call_start',
+					toolCallId,
+					toolName: REACTION_TOOL_NAME,
+					index: SYNTHETIC_INDEX,
+				},
+				{
+					type: 'tool_call_args_delta',
+					toolCallId,
+					index: SYNTHETIC_INDEX,
+					argumentsDelta: JSON.stringify({ emoji }),
+				},
+			);
+			if (rest) out.push({ type: 'text', text: rest });
+			held = '';
+			state = 'reacted';
+		};
 		for (const d of r.deltas) {
 			if (state === 'holding') {
 				if (d.type === 'text') {
 					held += d.text;
 					const v = classifyLeadingText(held);
 					if (v.kind === 'release') release();
-					else if (v.kind === 'react') {
-						out.push(
-							{
-								type: 'tool_call_start',
-								toolCallId,
-								toolName: REACTION_TOOL_NAME,
-								index: SYNTHETIC_INDEX,
-							},
-							{
-								type: 'tool_call_args_delta',
-								toolCallId,
-								index: SYNTHETIC_INDEX,
-								argumentsDelta: JSON.stringify({ emoji: v.emoji }),
-							},
-							{ type: 'text', text: v.rest },
-						);
-						held = '';
-						state = 'reacted';
-					}
+					else if (v.kind === 'react') react(v.emoji, v.rest);
 					continue;
 				}
 				// Reasoning precedes the reply and doesn't decide anything. A tool
@@ -190,8 +225,13 @@ export function catchLeadingReaction(
 			}
 			out.push(d);
 		}
-		// The reply's text is over: whatever is still held was never the shape.
-		if (state === 'holding' && (final || r.finishReason || r.done)) release();
+		// The reply's text is over: a typed call may stand alone; anything else
+		// still held was never the shape.
+		if (state === 'holding' && (final || r.finishReason || r.done)) {
+			const v = classifyLeadingText(held, true);
+			if (v.kind === 'react') react(v.emoji, v.rest);
+			else release();
+		}
 		// A caught reply has to read as a tool turn, or the relay never runs the
 		// tool and drops the call as unexecuted.
 		if (r.finishReason) sawFinish = true;

@@ -267,6 +267,51 @@ describe('catchLeadingReaction', () => {
 	});
 });
 
+describe('catchLeadingReaction — the call typed out', () => {
+	it('turns a typed react_to_message call into a reaction and keeps the reply', () => {
+		const r = run(['react_to_message(emoji="😳")\n\nomg...', '\n\nfor real??']);
+		expect(r.emoji).toBe('😳');
+		expect(r.text).toBe('omg...\n\nfor real??');
+		expect(r.finish).toBe('tool_calls');
+	});
+
+	it('assembles the call across tokens', () => {
+		const r = run(['re', 'act', '_to', '_message', '(emoji', '="', '🥰', '")', '\n', 'stop it']);
+		expect(r.emoji).toBe('🥰');
+		expect(r.text).toBe('stop it');
+	});
+
+	it('takes a single line break, an unnamed argument and single quotes', () => {
+		expect(run(["react_to_message('🙈')\nhi"]).emoji).toBe('🙈');
+		expect(run(['react_to_message(emoji: "🙈")\nhi']).emoji).toBe('🙈');
+	});
+
+	it('takes a reply that is only the call, as a tool turn with no text', () => {
+		const r = run(['react_to_message(emoji="😂")']);
+		expect(r.emoji).toBe('😂');
+		expect(r.text).toBe('');
+		expect(r.finish).toBe('tool_calls');
+	});
+
+	it('leaves a call with something that is not an emoji alone', () => {
+		const r = run(['react_to_message(emoji="hello")\n\nhi']);
+		expect(r.emoji).toBeNull();
+		expect(r.text).toBe('react_to_message(emoji="hello")\n\nhi');
+	});
+
+	it('leaves prose that only starts like the name alone', () => {
+		expect(run(['reacting to that, honestly…']).emoji).toBeNull();
+		expect(run(['react_to_message is a tool I have']).text).toBe(
+			'react_to_message is a tool I have',
+		);
+	});
+
+	it('only looks at the opening: a call later in the reply is text', () => {
+		const r = run(['hey\n\nreact_to_message(emoji="😂")']);
+		expect(r.emoji).toBeNull();
+	});
+});
+
 describe('syntheticReactionId', () => {
 	it('is nine alphanumerics, the strictest tool-call id format an upstream enforces', () => {
 		for (let i = 0; i < 50; i++) expect(syntheticReactionId()).toMatch(/^[A-Za-z0-9]{9}$/);

@@ -579,6 +579,29 @@ describe('a reaction the model typed instead of calling the tool', () => {
 		expect(reaction).toMatchObject({ emoji: '❤️', messageId: user.id });
 	});
 
+	it('takes the call itself typed out, and loops on for the reply when it was all there was', async () => {
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		mocks.upstreamResponses.push(() =>
+			sseResponse([textChunk('react_to_message(emoji="😳")'), finishChunk('stop')]),
+		);
+		mocks.upstreamResponses.push(() => sseResponse([textChunk('omg...'), finishChunk('stop')]));
+
+		const { events } = await runTurn(conv, user, userId);
+
+		expect(mocks.upstreamCalls).toHaveLength(2);
+		const branch = walkActiveBranch(conv.id);
+		expect(branch.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant']);
+		expect(textOf(branch[1])).toBe('');
+		expect(branch[1].parts.find((p) => p.type === 'tool_call')).toMatchObject({
+			toolName: 'react_to_message',
+			arguments: '{"emoji":"😳"}',
+		});
+		expect(textOf(branch[3])).toBe('omg...');
+		const chunks = events.filter((e) => eventType(e) === 'text') as Array<{ chunk: string }>;
+		expect(chunks.map((c) => c.chunk).join('')).toBe('omg...');
+		expect(events.find((e) => eventType(e) === 'reaction')).toMatchObject({ emoji: '😳' });
+	});
+
 	it('is left as text when reactions are switched off', async () => {
 		const { conv, user, userId } = seedConversationWithUserMessage();
 		mocks.upstreamResponses.push(typed);
