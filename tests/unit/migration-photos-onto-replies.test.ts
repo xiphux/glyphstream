@@ -157,6 +157,17 @@ describe('photos onto replies', () => {
 		expect(refCount(p1.mediaId)).toBe(1);
 	});
 
+	it('keeps the reference a photo holds as an avatar', () => {
+		const p0 = photo(replyId, 0);
+		// Set as the conversation's face: one more reference than its message link.
+		db.update(media).set({ refCount: 2 }).where(eq(media.id, p0.mediaId)).run();
+
+		migrate();
+
+		expect(links(p0.mediaId)).toEqual([replyId]);
+		expect(refCount(p0.mediaId)).toBe(2);
+	});
+
 	it('keeps every version of a re-developed photo, with the one on the branch on show', () => {
 		const first = photo(replyId, 0);
 		const again = photo(replyId, 0, 'ep::flux');

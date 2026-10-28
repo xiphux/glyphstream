@@ -68,6 +68,16 @@ WITH RECURSIVE b(id, parent_id) AS (
 )
 SELECT id FROM b WHERE id IN (SELECT id FROM _photo);
 --> statement-breakpoint
+-- Each photo image's message links as they stand, so its ref count can be
+-- moved by however many links it gains or loses below. Not recounted from
+-- scratch: the count also holds references `message_media` doesn't, an
+-- avatar's among them (`linkAvatarMedia`).
+CREATE TEMP TABLE _links_before AS
+SELECT media_id, count(*) AS n
+FROM message_media
+WHERE media_id IN (SELECT media_id FROM _photo)
+GROUP BY media_id;
+--> statement-breakpoint
 -- Queued draws of a photo now land on its reply: a comparison's as plain photo
 -- draws (each kept as a version), and every one anchored on the reply.
 UPDATE generation_jobs
@@ -136,11 +146,22 @@ DELETE FROM check_ins WHERE source_message_id IN (SELECT id FROM _removed);
 --> statement-breakpoint
 DELETE FROM messages WHERE id IN (SELECT id FROM _removed);
 --> statement-breakpoint
--- Each photo's image moved from its message to the reply: count its links again.
+-- Each photo's image moved from its message to the reply: move its ref count
+-- by the change in its links.
 UPDATE media
-SET ref_count = (SELECT count(*) FROM message_media mm WHERE mm.media_id = media.id),
+SET ref_count = MAX(
+		ref_count
+			- COALESCE((SELECT b.n FROM _links_before b WHERE b.media_id = media.id), 0)
+			+ (SELECT count(*) FROM message_media mm WHERE mm.media_id = media.id),
+		0
+	),
 	unreferenced_since = CASE
-		WHEN (SELECT count(*) FROM message_media mm WHERE mm.media_id = media.id) > 0 THEN NULL
+		WHEN MAX(
+			ref_count
+				- COALESCE((SELECT b.n FROM _links_before b WHERE b.media_id = media.id), 0)
+				+ (SELECT count(*) FROM message_media mm WHERE mm.media_id = media.id),
+			0
+		) > 0 THEN NULL
 		ELSE COALESCE(unreferenced_since, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
 	END
 WHERE id IN (SELECT media_id FROM _photo) AND deleted_at IS NULL;
@@ -152,3 +173,5 @@ DROP TABLE _failed;
 DROP TABLE _removed;
 --> statement-breakpoint
 DROP TABLE _shown;
+--> statement-breakpoint
+DROP TABLE _links_before;
