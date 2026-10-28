@@ -117,10 +117,11 @@ function classifyTypedCall(body: string, ended: boolean): Verdict | null {
 	if (!emoji) return { kind: 'release' };
 	const after = body.slice(call[0].length);
 	const line = LINE_AFTER.exec(after);
-	if (line) return { kind: 'react', emoji, rest: after.slice(line[0].length) };
-	if (!/^[ \t]*$/.test(after)) return { kind: 'release' };
-	// Nothing after it yet: the reply may still come, or this was all of it.
-	return ended ? { kind: 'react', emoji, rest: '' } : { kind: 'hold' };
+	if (!line && !/^[ \t]*$/.test(after)) return { kind: 'release' };
+	// Nothing after it yet (the reply may still come, or this was all of it):
+	// wait for the reply's first words, so no line break is left leading it.
+	const rest = line ? after.slice(line[0].length) : '';
+	return rest || ended ? { kind: 'react', emoji, rest } : { kind: 'hold' };
 }
 
 function classify(held: string, ended: boolean): Verdict {
