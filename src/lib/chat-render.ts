@@ -515,7 +515,9 @@ export interface RenderedConversation {
 	toolResultsByCallId: Map<string, ToolResultEntry>;
 	pendingApprovals: string[];
 	/**
-	 * `userMessageId → emoji` for every `react_to_message` call on this branch.
+	 * `userMessageId → emoji` for every `react_to_message` call on this branch,
+	 * except one answering a check-in reminder, which has nowhere to show a
+	 * badge: `buildRenderedConversation` draws that as the reply's own text.
 	 *
 	 * The reaction is emitted by the ASSISTANT but belongs to the USER message
 	 * above it, so it's resolved here by walking forward and remembering the
@@ -635,7 +637,9 @@ export function buildRenderedConversation(
 	}
 
 	// Hide a reaction-only row only when a LATER assistant row in the same turn
-	// will render. Such a row draws nothing (every part is dropped), so on its own
+	// will render — and never one whose reactions are drawn inline (a check-in's),
+	// which has the emoji to show. Otherwise such a row draws nothing (every part
+	// is dropped), so on its own
 	// it's an empty bubble worth suppressing — but if it's the last assistant row
 	// of the turn it is also the only place `MessageActions` can hang, and hiding
 	// it strands the user with no Retry, no `‹ N/M ›` sibling nav (which would
