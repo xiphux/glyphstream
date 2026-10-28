@@ -740,6 +740,9 @@ export interface MessageImage {
 	/** Null for a failed attempt, which carries `error` instead. */
 	mediaId: string | null;
 	error: string | null;
+	/** Drawn in a comparison not yet picked from. Its failures are results
+	 *  shown in the comparison, not news about the photo. */
+	inComparison: boolean;
 	/** Conversation-facing id of the model that drew it. */
 	modelId: string;
 	/** The version on show for its marker: the one last picked, else the

@@ -21,6 +21,7 @@ const version = (id: string, over: Partial<MessageImage> = {}): MessageImage => 
 	markerIndex: 0,
 	mediaId: `media-${id}`,
 	error: null,
+	inComparison: false,
 	modelId: 'img-1',
 	shown: false,
 	aspectRatio: '3:4',

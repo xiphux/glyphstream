@@ -1242,6 +1242,28 @@ describe('a texting photo', () => {
 		expect(mocks.notify).not.toHaveBeenCalled();
 	});
 
+	it('keeps nothing of a draw that fails after the pick', async () => {
+		const s = seedReply();
+		mocks.endpoint = endpoint(2);
+		let failSlow!: () => void;
+		mocks.imageGeneration
+			.mockImplementationOnce(
+				() => new Promise((_, reject) => (failSlow = () => reject(new Error('oom')))),
+			)
+			.mockResolvedValueOnce({ data: [{ url: 'http://img/fast.png' }] });
+		const slow = drain(submitGenerationJob(photoJob(s, 0, { compareId: 'cmp-1' }, 'bridge::flux')));
+		await until(() => failSlow !== undefined, 'the slow draw to start');
+		await drain(submitGenerationJob(photoJob(s, 0, { compareId: 'cmp-1' })));
+		const [fast] = versions(s);
+		const picked = resolveComparison(s.user.id, s.conv.id, fast.id)!;
+		closePhotoComparison(picked.messageId, picked.comparisonId);
+		failSlow();
+		await slow;
+
+		expect(versions(s).map((v) => v.id)).toEqual([fast.id]);
+		expect(jobRows()).toEqual([]);
+	});
+
 	it('cleans up its image when the reply is deleted mid-draw', async () => {
 		const s = seedReply();
 		// The real link, whose key on the message is what a vanished reply trips.

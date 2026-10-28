@@ -442,8 +442,12 @@ function landPhoto(
 	const now = Date.now();
 	const landed = 'mediaId' in outcome;
 	const key = comparisonKey(params);
-	// Already picked from: a plain version, not a contender.
-	const compareId = key && !closedComparisons.has(key) ? params.compareId! : null;
+	const closed = !!key && closedComparisons.has(key);
+	// A comparison already picked from: what lands is a plain version, not a
+	// contender — and a failure is nothing to keep, being neither a result to
+	// compare nor news about the photo the user chose.
+	if (closed && !landed) return;
+	const compareId = key && !closed ? params.compareId! : null;
 	insertMessageImage(tx, {
 		id: generateId(),
 		userId: row.userId,

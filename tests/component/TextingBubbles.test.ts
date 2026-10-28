@@ -205,6 +205,7 @@ describe('texting reply style', () => {
 			markerIndex: 1,
 			mediaId: `media-${id}`,
 			error: null,
+			inComparison: false,
 			modelId: 'ep::sdxl',
 			shown: false,
 			aspectRatio: '3:4',
@@ -336,6 +337,27 @@ describe('texting reply style', () => {
 								[
 									version('f', { mediaId: null, error: 'oom', createdAt: 1 }),
 									version('a', { shown: true, createdAt: 2 }),
+								],
+							],
+						]),
+					}),
+				},
+			});
+			expect(screen.queryByText(/Couldn't develop/)).toBeNull();
+		});
+
+		it('says nothing of a failure from a comparison still open', () => {
+			render(MessageBubble, {
+				props: {
+					...bubbleProps,
+					message: reply(PHOTOS),
+					textingPhotos: photos({
+						versions: new Map([
+							[
+								1,
+								[
+									version('a', { shown: true, createdAt: 1, inComparison: true }),
+									version('f', { mediaId: null, error: 'oom', createdAt: 2, inComparison: true }),
 								],
 							],
 						]),

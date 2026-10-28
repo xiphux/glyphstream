@@ -119,14 +119,18 @@
 		const versions = all.filter((v): v is MessageImage & { mediaId: string } => !!v.mediaId);
 		const shown = versions.find((v) => v.shown) ?? null;
 		const failed = all.findLast((v) => !v.mediaId) ?? null;
+		// Developing it again failed: a failure since the version on show was
+		// drawn, and not a comparison's — a model that failed beside the result
+		// now showing is no news about this photo.
+		const failedAgain =
+			failed && shown && !failed.inComparison && failed.createdAt > shown.createdAt
+				? failed.error
+				: null;
 		return {
 			versions,
 			shown,
 			failure: failed?.error ?? null,
-			// A failure since the version on show was drawn — developing it again
-			// failed. One from before (a comparison's model that failed beside
-			// the result now showing) is no news about this photo.
-			failedAgain: failed && shown && failed.createdAt > shown.createdAt ? failed.error : null,
+			failedAgain,
 			developing: photos?.developing.has(index) ?? false,
 		};
 	}

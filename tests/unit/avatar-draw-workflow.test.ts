@@ -231,6 +231,7 @@ describe('developing a texting photo', () => {
 				markerIndex: 1,
 				mediaId: 'img',
 				error: null,
+				inComparison: false,
 				modelId: 'img-1',
 				shown: true,
 				aspectRatio: null,
