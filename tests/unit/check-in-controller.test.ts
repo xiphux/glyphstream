@@ -96,31 +96,73 @@ describe('cancel', () => {
 });
 
 describe('wakeWhenDue', () => {
-	it('reloads once due, and again while it stays pending', () => {
+	/** The probe answers with `status()`, read on each call. */
+	function probe(status: () => object) {
+		const fetchMock = vi.fn(async () => Response.json(status()));
+		vi.stubGlobal('fetch', fetchMock);
+		return fetchMock;
+	}
+
+	it('probes once due, and reloads only when the check-in has fired', async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(0);
+		let status: object = { checkIn: PENDING, inFlight: false };
+		const fetchMock = probe(() => status);
 		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
 		const stop = c.wakeWhenDue(PENDING, 0);
-		vi.advanceTimersByTime(10_000);
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(fetchMock).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(fetchMock).toHaveBeenCalledWith('/api/conversations/c1/check-in');
 		expect(refreshAll).not.toHaveBeenCalled();
-		vi.advanceTimersByTime(5_000);
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(refreshAll).not.toHaveBeenCalled();
+		status = { checkIn: null, inFlight: true };
+		await vi.advanceTimersByTimeAsync(30_000);
 		expect(refreshAll).toHaveBeenCalledOnce();
-		vi.advanceTimersByTime(30_000);
-		expect(refreshAll).toHaveBeenCalledTimes(2);
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(fetchMock).toHaveBeenCalledTimes(3);
 		stop();
-		vi.advanceTimersByTime(60_000);
-		expect(refreshAll).toHaveBeenCalledTimes(2);
 	});
 
-	it('stops once the check-in is past its grace period', () => {
+	it('reloads when the probe fails, as the fallback', async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(0);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => new Response('', { status: 500 })),
+		);
+		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
+		c.wakeWhenDue(PENDING, 0);
+		await vi.advanceTimersByTimeAsync(15_000);
+		expect(refreshAll).toHaveBeenCalledOnce();
+	});
+
+	it('stops once the check-in is past its grace period, with one last reload', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(0);
+		const fetchMock = probe(() => ({ checkIn: PENDING, inFlight: false }));
 		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
 		c.wakeWhenDue(PENDING, 0);
 		// Grace for a 10s delay is the 30-minute floor.
-		vi.advanceTimersByTime(PENDING.fireAt + 30 * 60_000 + 60_000);
-		const calls = refreshAll.mock.calls.length;
-		vi.advanceTimersByTime(10 * 60_000);
-		expect(refreshAll).toHaveBeenCalledTimes(calls);
+		await vi.advanceTimersByTimeAsync(PENDING.fireAt + 30 * 60_000 + 60_000);
+		expect(refreshAll).toHaveBeenCalledOnce();
+		const probes = fetchMock.mock.calls.length;
+		await vi.advanceTimersByTimeAsync(10 * 60_000);
+		expect(fetchMock).toHaveBeenCalledTimes(probes);
+		expect(refreshAll).toHaveBeenCalledOnce();
+	});
+
+	it('does nothing more once cleaned up', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(0);
+		const fetchMock = probe(() => ({ checkIn: PENDING, inFlight: false }));
+		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
+		const stop = c.wakeWhenDue(PENDING, 0);
+		await vi.advanceTimersByTimeAsync(15_000);
+		stop();
+		await vi.advanceTimersByTimeAsync(5 * 60_000);
+		expect(fetchMock).toHaveBeenCalledOnce();
 	});
 });

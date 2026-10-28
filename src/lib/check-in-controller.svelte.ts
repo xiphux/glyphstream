@@ -8,17 +8,19 @@
  * The next load replaces that guess with the row itself.
  *
  * Waking: a check-in fires with nobody connected, so an open page wouldn't
- * otherwise notice. Once it's due the page reloads, which picks up the running
- * turn as a recovered one (and that polls until the reply lands). The runner
- * only ticks every 30s, so a reload that still finds it pending tries again.
+ * otherwise notice. Once it's due the page asks the server (a cheap probe, not
+ * a reload — the runner ticks every 30s and may wait longer still), and reloads
+ * when the answer has moved: the check-in fired, which the reload picks up as a
+ * recovered turn (and that polls until the reply lands), or it went away.
  */
 import { refreshAll } from '$app/navigation';
 import { errorMessageFromResponse } from './fetch-error';
 import { graceFor } from './check-ins';
 import { checkInSetBy } from './texting-check-ins';
-import type { ChatMessage, PendingCheckIn } from './types/api';
+import type { ChatMessage, CheckInStatus, PendingCheckIn } from './types/api';
 
-/** After the due time, before the first reload: the runner's tick, plus a beat. */
+/** After the due time, before the first probe: a beat, for the case where the
+ *  runner's tick lands right on it. The retries cover the rest. */
 const FIRST_WAKE_DELAY_MS = 5_000;
 const RETRY_WAKE_MS = 30_000;
 
@@ -86,26 +88,49 @@ export class CheckInController {
 	}
 
 	/**
-	 * Reload the page once `checkIn` is due, and again while it stays pending —
-	 * but not past its grace period, when the runner has dropped it (or, with
-	 * the feature switched off, never will): one last reload then, to clear it,
-	 * and no more. Returns a cleanup for the caller's `$effect`, which re-runs it
-	 * whenever the pending row changes (a reload that brings a new one included).
+	 * Once `checkIn` is due, probe for it every 30s and reload the page when it
+	 * has fired or gone — but not past its grace period, when the runner has
+	 * dropped it (or, with the feature switched off, never will): one last
+	 * reload then, to clear it, and no more. Returns a cleanup for the caller's
+	 * `$effect`, which re-runs it whenever the pending row changes.
 	 */
 	wakeWhenDue(checkIn: PendingCheckIn, now = Date.now()): () => void {
 		let timer: ReturnType<typeof setTimeout> | null = null;
+		let stopped = false;
 		const giveUpAt = checkIn.fireAt + graceFor(checkIn) + RETRY_WAKE_MS;
 		const arm = (delay: number) => {
-			timer = setTimeout(() => {
-				const last = Date.now() >= giveUpAt;
-				// Hidden: nothing to draw. The next try after it shows again does it.
-				if (last || globalThis.document?.visibilityState !== 'hidden') void refreshAll();
-				if (!last) arm(RETRY_WAKE_MS);
-			}, delay);
+			timer = setTimeout(() => void wake(), delay);
+		};
+		const wake = async () => {
+			if (Date.now() >= giveUpAt) return void refreshAll();
+			// Hidden: nothing to draw. The next try after it shows again does it.
+			if (globalThis.document?.visibilityState !== 'hidden' && (await this.#moved(checkIn))) {
+				if (!stopped) void refreshAll();
+				return;
+			}
+			if (!stopped) arm(RETRY_WAKE_MS);
 		};
 		arm(Math.max(0, checkIn.fireAt - now) + FIRST_WAKE_DELAY_MS);
 		return () => {
+			stopped = true;
 			if (timer) clearTimeout(timer);
 		};
+	}
+
+	/** Whether the server's answer differs from `checkIn` pending and idle. A
+	 *  failed probe says yes: the reload is the fallback it was before. */
+	async #moved(checkIn: PendingCheckIn): Promise<boolean> {
+		try {
+			const res = await fetch(`/api/conversations/${this.#convId()}/check-in`);
+			if (!res.ok) return true;
+			const status = (await res.json()) as CheckInStatus;
+			return (
+				status.inFlight ||
+				status.checkIn?.sourceMessageId !== checkIn.sourceMessageId ||
+				status.checkIn.fireAt !== checkIn.fireAt
+			);
+		} catch {
+			return true;
+		}
 	}
 }
