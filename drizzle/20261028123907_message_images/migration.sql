@@ -18,5 +18,6 @@ CREATE TABLE `message_images` (
 );
 --> statement-breakpoint
 CREATE INDEX `idx_message_images_message` ON `message_images` (`message_id`,`marker_index`);--> statement-breakpoint
-CREATE INDEX `idx_message_images_conversation` ON `message_images` (`user_id`,`conversation_id`);--> statement-breakpoint
+CREATE INDEX `idx_message_images_conversation` ON `message_images` (`conversation_id`);--> statement-breakpoint
+CREATE INDEX `idx_message_images_user` ON `message_images` (`user_id`);--> statement-breakpoint
 CREATE INDEX `idx_message_images_media` ON `message_images` (`media_id`);

@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "d0f37c57-b08d-4545-920c-9675306e2872",
+  "id": "c43f9a52-17e4-41f7-bc05-c3b1ab218b3e",
   "prevIds": [
     "fce7c758-2e3f-4c47-ab53-2a06ed80c127"
   ],
@@ -4084,10 +4084,6 @@
     {
       "columns": [
         {
-          "value": "user_id",
-          "isExpression": false
-        },
-        {
           "value": "conversation_id",
           "isExpression": false
         }
@@ -4096,6 +4092,20 @@
       "where": null,
       "origin": "manual",
       "name": "idx_message_images_conversation",
+      "entityType": "indexes",
+      "table": "message_images"
+    },
+    {
+      "columns": [
+        {
+          "value": "user_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_message_images_user",
       "entityType": "indexes",
       "table": "message_images"
     },

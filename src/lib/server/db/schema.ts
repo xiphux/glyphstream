@@ -1075,7 +1075,10 @@ export const messageImages = sqliteTable(
 	},
 	(t) => [
 		index('idx_message_images_message').on(t.messageId, t.markerIndex),
-		index('idx_message_images_conversation').on(t.userId, t.conversationId),
+		// Conversation first: deleting a conversation cascades here by it. The
+		// user's own index serves the cascade from a deleted account.
+		index('idx_message_images_conversation').on(t.conversationId),
+		index('idx_message_images_user').on(t.userId),
 		index('idx_message_images_media').on(t.mediaId),
 	],
 );
