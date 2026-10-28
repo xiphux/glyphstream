@@ -38,6 +38,22 @@
 	// during SSR.
 	let failedFor = $state<string | null>(null);
 	const failed = $derived(failedFor === mediaId);
+
+	/**
+	 * Hide the avatar when its image fails. Attached rather than written as
+	 * `onerror={…}`: server rendering turns an element's error handler into an
+	 * inline `onerror` attribute (so an error before hydration can be replayed),
+	 * and the CSP blocks inline handlers — which also blocked that replay. An
+	 * image that broke before hydration is caught by its state instead. Reading
+	 * `mediaId` here re-attaches for a new avatar.
+	 */
+	function hideOnError(img: HTMLImageElement) {
+		const id = mediaId;
+		const fail = () => (failedFor = id);
+		if (img.complete && img.naturalWidth === 0) fail();
+		img.addEventListener('error', fail);
+		return () => img.removeEventListener('error', fail);
+	}
 </script>
 
 {#snippet portrait()}
@@ -56,7 +72,7 @@
 		height="32"
 		loading="lazy"
 		decoding="async"
-		onerror={() => (failedFor = mediaId)}
+		{@attach hideOnError}
 		class="size-8 shrink-0 rounded-full object-cover ring-1 ring-black/10 dark:ring-white/15"
 	/>
 {/snippet}

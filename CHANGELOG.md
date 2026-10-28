@@ -25,6 +25,7 @@ arrived.
 - An emoji reaction in a check-in's reply shows as the model's own text instead of vanishing onto the hidden reminder, and a check-in that only reacts (a wave, say) is kept and notified like any other.
 - A standard reply that schedules a check-in keeps its horizontal dividers instead of losing them.
 - An emoji reaction the model writes out as `react_to_message(emoji="…")` at the start of its reply lands as a reaction instead of showing as a text.
+- The avatar beside a reply no longer trips the Content Security Policy on page load, and one whose image can't be loaded is hidden rather than shown broken.
 
 ## v0.51.0
 

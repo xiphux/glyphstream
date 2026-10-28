@@ -97,6 +97,20 @@ if (typeof window !== 'undefined') {
 }
 
 /**
+ * Report every image as still loading. happy-dom never loads an image, yet
+ * reports each one `complete` with no width — which is what a BROKEN image
+ * looks like in a browser, so code that checks for one (AssistantAvatar's)
+ * would treat every image in every test as failed. A test about loaded or
+ * broken images sets its own state.
+ */
+if (typeof HTMLImageElement !== 'undefined') {
+	Object.defineProperty(HTMLImageElement.prototype, 'complete', {
+		configurable: true,
+		get: () => false,
+	});
+}
+
+/**
  * Filter out Svelte 5's `derived_inert` warnings, which fire spuriously
  * during bits-ui Popover / Switch teardown in the test environment.
  *
