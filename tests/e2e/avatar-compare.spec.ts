@@ -117,4 +117,91 @@ test.describe('flow: drawing the avatar', () => {
 		await other.and(page.locator(':enabled')).first().click();
 		await expect.poll(() => face(convId)).not.toBe(picked);
 	});
+
+	test('keeps a comparison whose streams were lost, and picks from it full size', async ({
+		page,
+	}) => {
+		const convId = await sendChatFromHome(page, 'Describe how you look');
+		// Each draw is handed to the server, and its stream then ends before the
+		// server says anything — as an iOS PWA's connections go when it's
+		// suspended. The photo state can't be read either, until `reachable`.
+		let reachable = false;
+		await page.route(
+			(url) => url.pathname === `/api/conversations/${convId}/photos`,
+			async (route) => {
+				const request = route.request();
+				if (request.method() !== 'POST') {
+					if (reachable) await route.fallback();
+					else await route.abort();
+					return;
+				}
+				const headers = await request.allHeaders();
+				const sent = new AbortController();
+				const res = await fetch(request.url(), {
+					method: 'POST',
+					headers: {
+						cookie: headers.cookie,
+						origin: headers.origin,
+						'content-type': headers['content-type'],
+					},
+					body: request.postData(),
+					signal: sent.signal,
+				});
+				sent.abort();
+				await route.fulfill({ status: res.status, contentType: 'text/event-stream', body: '' });
+			},
+		);
+
+		const dialog = await openDrawDialog(page);
+		// Slow enough to still be drawing once the streams are gone
+		// (mock-upstream's SLOW_DRAW), and sent as written so the marker reaches
+		// the image model.
+		await dialog.getByLabel('Image prompt').fill('SLOW_DRAW a red fox');
+		await dialog.getByLabel(/Rewrite for this model/).setChecked(false);
+		await dialog.getByLabel('Select model').click();
+		await page.getByRole('button', { name: 'Multiple' }).click();
+		await page.getByRole('option', { name: /^Mock Painter/ }).click();
+		await dialog.getByLabel('Select model').click();
+		await dialog.getByRole('button', { name: 'Draw with 2 models' }).click();
+
+		// Both streams are gone and the server can't be asked: the tab's own
+		// count of the draws keeps them on screen.
+		await expect
+			.poll(
+				() =>
+					query<{ n: number }>(
+						'SELECT COUNT(*) AS n FROM generation_jobs WHERE conversation_id = ?',
+						convId,
+					).n,
+			)
+			.toBe(2);
+		await page.waitForTimeout(500);
+		await expect(dialog.getByText('Developing…')).toHaveCount(2);
+
+		// Reachable again: the develop watch asks, and the results land in the grid.
+		reachable = true;
+		const pick = dialog.getByRole('button', { name: 'Use this avatar' });
+		await expect(pick).toHaveCount(2, { timeout: 15_000 });
+		await expect(dialog.getByText('Developing…')).toHaveCount(0);
+
+		// Closed without a pick, the comparison is still open: the full-size view
+		// offers its pick, which counts as the grid's would.
+		await dialog.getByRole('button', { name: 'Done' }).click();
+		await expect(dialog).toBeHidden();
+		await page.getByRole('button', { name: 'Open portrait' }).click();
+		const lightboxPick = page.getByRole('button', { name: 'Use this avatar' });
+		await expect(lightboxPick).toBeVisible();
+		await lightboxPick.click();
+		await expect
+			.poll(
+				() =>
+					query<{ n: number }>(
+						`SELECT COUNT(*) AS n FROM message_images
+						 WHERE conversation_id = ? AND comparison_id IS NOT NULL`,
+						convId,
+					).n,
+			)
+			.toBe(0);
+		expect(face(convId)).not.toBeNull();
+	});
 });

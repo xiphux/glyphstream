@@ -301,6 +301,10 @@ const FAST_CHUNK_DELAY_MS = 5;
  *  reply, so a generation is still demonstrably running after a page reload
  *  and across the sidebar poll's first tick. */
 const GLACIAL_CHUNK_DELAY_MS = 900;
+/** An image prompt carrying SLOW_DRAW_MARKER takes this long to answer, so a
+ *  spec can cut the page's connection while draws are still out. */
+const SLOW_DRAW_MARKER = 'SLOW_DRAW';
+const SLOW_DRAW_MS = 4000;
 
 /** Emit the fixed reply as OpenAI chat-completion SSE chunks: a role
  *  chunk, one chunk per word, a finish chunk, a usage chunk, then
@@ -459,12 +463,18 @@ const server = createServer(async (req, res) => {
 		// it on the probe below — that's the only place a spec can observe that the
 		// composer's selection reached the wire at all.
 		let requestedRatio = null;
+		let prompt = '';
 		try {
-			requestedRatio = JSON.parse(raw)?.aspect_ratio ?? null;
+			const parsed = JSON.parse(raw);
+			requestedRatio = parsed?.aspect_ratio ?? null;
+			prompt = String(parsed?.prompt ?? '');
 		} catch {
 			/* leave null */
 		}
 		lastImageRequest = { aspect_ratio: requestedRatio };
+		if (prompt.includes(SLOW_DRAW_MARKER)) {
+			await new Promise((r) => setTimeout(r, SLOW_DRAW_MS));
+		}
 		return sendJson(res, 200, {
 			created: Math.floor(Date.now() / 1000),
 			data: [
