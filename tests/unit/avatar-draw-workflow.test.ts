@@ -50,6 +50,8 @@ function setup(
 		status?: string;
 		messages?: ChatMessage[];
 		face?: string | null;
+		/** Whether the page's photo refresh reaches the server. */
+		refreshes?: boolean;
 	} = {},
 ) {
 	const page = {
@@ -64,7 +66,8 @@ function setup(
 		status: opts.status ?? 'full',
 		ensureAll: vi.fn(async () => {}),
 	} as unknown as ModelCatalogue;
-	const refreshPhotos = vi.fn(async (_ids: string[]) => {});
+	const refreshPhotos = vi.fn(async (_ids: string[]) => opts.refreshes ?? true);
+	const assumeDeveloping = vi.fn();
 	const w = new AvatarDrawWorkflow({
 		convId: () => page.convId,
 		messages: () => page.messages,
@@ -73,8 +76,9 @@ function setup(
 		enhanceByDefault: () => false,
 		avatarMediaId: () => opts.face ?? null,
 		refreshPhotos,
+		assumeDeveloping,
 	});
-	return { w, page, catalogue, refreshPhotos };
+	return { w, page, catalogue, refreshPhotos, assumeDeveloping };
 }
 
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -198,7 +202,10 @@ describe('drawing the avatar', () => {
 		const { w } = setup({
 			messages: [
 				u1,
-				{ ...a1, developing: [{ kind: 'portrait', markerIndex: null, modelId: 'img-1' }] },
+				{
+					...a1,
+					developing: [{ kind: 'portrait', markerIndex: null, modelId: 'img-1', compareId: null }],
+				},
 			],
 		});
 		expect(w.portraitStatus).toBe('Drawing…');
@@ -221,6 +228,47 @@ describe('drawing the avatar', () => {
 		expect(a.kind).toBe('portrait');
 		expect(a.compare).toBeTypeOf('string');
 		expect(b.compare).toBe(a.compare);
+	});
+
+	describe('a stream lost before the server’s last word', () => {
+		const sse = (frame?: object) => new Response(frame ? `data: ${JSON.stringify(frame)}\n\n` : '');
+		const compare = (w: AvatarDrawWorkflow) => {
+			w.openDialog();
+			w.compareMode = true;
+			w.compareSelections = [
+				{ modelId: 'img-1', count: 1 },
+				{ modelId: 'img-2', count: 1 },
+			];
+			w.generate();
+			return w.photoComparison!.id;
+		};
+
+		it('leaves the draw to the server’s word where there is one', async () => {
+			const { w, assumeDeveloping, refreshPhotos } = setup();
+			compare(w);
+			await vi.waitFor(() => expect(w.photoComparison?.pending).toEqual([]));
+			expect(refreshPhotos).toHaveBeenCalledTimes(2);
+			expect(assumeDeveloping).not.toHaveBeenCalled();
+		});
+
+		it('counts the draw as still out where the server can’t be asked', async () => {
+			const { w, assumeDeveloping } = setup({ refreshes: false });
+			fetchMock.mockResolvedValueOnce(sse({ type: 'done', assistantMessage: {} }));
+			const id = compare(w);
+			await vi.waitFor(() => expect(w.photoComparison?.pending).toEqual([]));
+			// img-1's stream ended on the server's word; img-2's just ended.
+			expect(assumeDeveloping.mock.calls).toEqual([
+				['a1', { kind: 'portrait', markerIndex: null, modelId: 'img-2', compareId: id }],
+			]);
+		});
+
+		it('takes a failure frame as the server’s word too', async () => {
+			const { w, assumeDeveloping } = setup({ refreshes: false });
+			fetchMock.mockImplementation(async () => sse({ type: 'error', message: 'out of memory' }));
+			compare(w);
+			await vi.waitFor(() => expect(w.photoComparison?.pending).toEqual([]));
+			expect(assumeDeveloping).not.toHaveBeenCalled();
+		});
 	});
 
 	it('keeps the dialog up and says why when a draw is refused', async () => {
@@ -258,6 +306,7 @@ describe('removing a portrait', () => {
 		// The page's refresh: p1 has gone to the trash, p2 shows in its place.
 		refreshPhotos.mockImplementation(async () => {
 			p.messages = thread([portrait('p2', { shown: true })]);
+			return true;
 		});
 		await w.removePhoto('a1', page.images[0]);
 		expect(urls()).toEqual([
@@ -271,6 +320,7 @@ describe('removing a portrait', () => {
 		const { w, page, refreshPhotos } = setup({ messages: thread([only]), face: 'media-p1' });
 		refreshPhotos.mockImplementation(async () => {
 			page.messages = thread([]);
+			return true;
 		});
 		await w.removePhoto('a1', only);
 		expect(urls()).toEqual([

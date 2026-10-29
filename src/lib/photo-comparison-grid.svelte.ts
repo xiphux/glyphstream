@@ -6,13 +6,15 @@
  *
  * The columns are derived, not kept: a result is a version of the photo
  * (`ChatMessage.images`) that wasn't there when the comparison started, and a
- * draw still out is a placeholder. Each action is the version's own: re-roll
+ * draw still out is a placeholder — one this tab is waiting on, or one the
+ * server says is still out (`ChatMessage.developing`), which outlasts the
+ * requests a suspended PWA loses. Each action is the version's own: re-roll
  * is another draw from that column's model in the same comparison, trash is
  * the image's delete (Recently deleted can bring it back), and the pick puts
  * it on show and counts the comparison in model stats.
  */
 import { SvelteSet } from 'svelte/reactivity';
-import type { AvatarDrawWorkflow } from './avatar-draw-workflow.svelte.js';
+import type { AvatarDrawWorkflow, PhotoComparison } from './avatar-draw-workflow.svelte.js';
 import type { TriageSource } from './chat-lightbox.svelte.js';
 import type { FanoutColumn } from './fanout.js';
 import type { ChatMessage, MessageImage, MessagePart } from './types/api.js';
@@ -55,9 +57,25 @@ export class PhotoComparisonGrid implements TriageSource {
 		const c = this.#deps.workflow.photoComparison;
 		if (!c) return [];
 		const landed = this.#results.map((image) => this.#column(image));
-		const out = c.pending.map((modelId, i) => this.#pendingColumn(c.id, modelId, i));
+		const out = this.#stillOut(c).map((modelId, i) => this.#pendingColumn(c.id, modelId, i));
 		return [...landed, ...out];
 	});
+
+	/** The comparison's draws still out, a model per draw: as many of each
+	 *  model as this tab or the server has, whichever is more — each knows of
+	 *  some the other doesn't (one just sent; one whose request was lost). */
+	#stillOut(c: PhotoComparison): string[] {
+		const reply = this.#deps.messages().find((m) => m.id === c.replyId);
+		const out = [...c.pending];
+		const unmatched = [...c.pending];
+		for (const d of reply?.developing ?? []) {
+			if (d.compareId !== c.id) continue;
+			const at = unmatched.indexOf(d.modelId);
+			if (at === -1) out.push(d.modelId);
+			else unmatched.splice(at, 1);
+		}
+		return out;
+	}
 
 	canRegenerate(col: FanoutColumn): boolean {
 		return col.status === 'done' || col.status === 'error';

@@ -48,6 +48,7 @@ import {
 } from '#lib/server/streaming/in-flight.js';
 import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '#lib/fanout.js';
 import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
+import type { PhotoStateResponse } from '#lib/types/api.js';
 
 let db: TestDB;
 let userId: string;
@@ -274,7 +275,7 @@ describe('GET /photos', () => {
 			replies: {
 				[replyId]: {
 					images: [{ id: v, markerIndex: 0, shown: true }],
-					developing: [{ kind: 'photo', markerIndex: 0, modelId: 'ep::sdxl' }],
+					developing: [{ kind: 'photo', markerIndex: 0, modelId: 'ep::sdxl', compareId: null }],
 				},
 			},
 		});
@@ -284,6 +285,34 @@ describe('GET /photos', () => {
 			avatarMediaId: null,
 			replies: { other: { images: [], developing: [] } },
 		});
+	});
+
+	it('says which comparison a draw still out belongs to', async () => {
+		const job = (id: string, origin: 'photo' | 'portrait', params: Record<string, unknown>) =>
+			insertGenerationJob({
+				id,
+				userId,
+				conversationId: convId,
+				anchorMessageId: replyId,
+				kind: 'image',
+				origin,
+				modelId: 'ep::sdxl',
+				fanoutIndex: null,
+				paramsJson: JSON.stringify(params),
+				createdAt: 1,
+			});
+		job('j1', 'photo', { photo: { sourceMessageId: replyId, index: 0 }, compareId: 'cmp-1' });
+		job('j2', 'photo', { photo: { sourceMessageId: replyId, index: 0 } });
+		job('j3', 'portrait', { compareId: 'cmp-2' });
+		const body = (await status(replyId).json()) as PhotoStateResponse;
+		expect(body.replies[replyId].developing.map((d) => [d.kind, d.compareId])).toEqual(
+			expect.arrayContaining([
+				['photo', 'cmp-1'],
+				['photo', null],
+				['portrait', 'cmp-2'],
+			]),
+		);
+		expect(body.replies[replyId].developing).toHaveLength(3);
 	});
 
 	it('refuses someone else’s conversation', () => {

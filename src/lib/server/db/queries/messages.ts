@@ -437,20 +437,23 @@ export function photoStateFor(
 	}
 	for (const job of listPhotoJobsForMessages(conversationId, messageIds)) {
 		const developing = out.get(job.anchorMessageId)?.developing;
-		if (job.origin === 'portrait') {
-			developing?.push({ kind: 'portrait', markerIndex: null, modelId: job.modelId });
-			continue;
-		}
-		let params: { photo?: { index?: unknown } } | null;
+		let params: { photo?: { index?: unknown }; compareId?: unknown } | null;
 		try {
 			params = JSON.parse(job.paramsJson) as typeof params;
 		} catch {
-			// One bad row must not take the whole chat page down with it.
+			// One bad row must not take the whole chat page down with it. A
+			// portrait needs nothing from them to be listed.
+			params = null;
+			if (job.origin !== 'portrait') continue;
+		}
+		const compareId = typeof params?.compareId === 'string' ? params.compareId : null;
+		if (job.origin === 'portrait') {
+			developing?.push({ kind: 'portrait', markerIndex: null, modelId: job.modelId, compareId });
 			continue;
 		}
 		const markerIndex = params?.photo?.index;
 		if (typeof markerIndex !== 'number') continue;
-		developing?.push({ kind: 'photo', markerIndex, modelId: job.modelId });
+		developing?.push({ kind: 'photo', markerIndex, modelId: job.modelId, compareId });
 	}
 	return out;
 }

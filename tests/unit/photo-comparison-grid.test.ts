@@ -52,7 +52,8 @@ function setup() {
 		savedModelId: () => 'img-1',
 		enhanceByDefault: () => false,
 		avatarMediaId: () => null,
-		refreshPhotos: async () => {},
+		refreshPhotos: async () => true,
+		assumeDeveloping: () => {},
 	});
 	const grid = new PhotoComparisonGrid({
 		workflow,
@@ -116,6 +117,42 @@ describe('PhotoComparisonGrid', () => {
 			{ type: 'image', mediaId: 'media-a', aspectRatio: '3:4' },
 		]);
 		expect(cols[1].statusLabel).toBe('Developing…');
+	});
+
+	it('keeps a placeholder for each draw the server still has, once this tab’s are gone', async () => {
+		const { grid, compare, workflow, page } = setup();
+		await compare([]);
+		const id = workflow.photoComparison!.id;
+		const out = (modelId: string, compareId: string | null = id) => ({
+			kind: 'photo' as const,
+			markerIndex: 0,
+			modelId,
+			compareId,
+		});
+		// The server's word on draws this tab is still waiting on doesn't add
+		// to them; another draw of the photo isn't this comparison's.
+		page.messages = [
+			{ ...page.messages[0], developing: [out('img-1'), out('img-2'), out('img-1', null)] },
+		];
+		expect(grid.columns.map((c) => [c.label, c.status])).toEqual([
+			['One', 'streaming'],
+			['Two', 'streaming'],
+		]);
+		// The requests go — as a suspended PWA's do — with Two's draw landed and
+		// One's still out on the server.
+		release();
+		await vi.waitFor(() => expect(workflow.photoComparison?.pending).toEqual([]));
+		page.messages = [
+			{
+				...page.messages[0],
+				images: [...page.messages[0].images!, version('b', { modelId: 'img-2' })],
+				developing: [out('img-1')],
+			},
+		];
+		expect(grid.columns.map((c) => [c.label, c.status])).toEqual([
+			['Two', 'done'],
+			['One', 'streaming'],
+		]);
 	});
 
 	it('shows a failed draw as a failed column', async () => {

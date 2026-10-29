@@ -9,6 +9,10 @@ arrived.
 
 ## Unreleased
 
+### Fixed
+
+- A photo comparison keeps showing the draws still developing after you switch away from the app and come back, instead of dropping them from the grid.
+
 ## v0.52.0
 
 ### Added

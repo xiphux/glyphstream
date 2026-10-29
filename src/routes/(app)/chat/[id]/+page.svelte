@@ -93,6 +93,7 @@
 	import { isSnippetKind } from '#lib/types/api.js';
 	import type {
 		ChatMessage,
+		DevelopingImage,
 		EarlierMessagesResponse,
 		FeatureCategory,
 		MessageImage,
@@ -1403,6 +1404,7 @@
 			!isPrivate && !data.conversation.disabledFeatures.includes('image_prompt_enhancement'),
 		avatarMediaId: () => conversationAvatarMediaId,
 		refreshPhotos: (replyIds) => refreshPhotos(replyIds),
+		assumeDeveloping: (replyId, draw) => assumeDeveloping(replyId, draw),
 	});
 
 	// A photo comparison in the develop dialog, as a fan-out grid.
@@ -1687,17 +1689,27 @@
 		});
 	}
 
-	async function refreshPhotos(replyIds: string[]): Promise<void> {
+	async function refreshPhotos(replyIds: string[]): Promise<boolean> {
 		const conversationId = convId;
 		try {
 			const res = await fetch(
 				`/api/conversations/${conversationId}/photos?messages=${replyIds.join(',')}`,
 			);
-			if (!res.ok || convId !== conversationId) return;
+			if (!res.ok || convId !== conversationId) return false;
 			applyPhotoState((await res.json()) as PhotoStateResponse);
+			return true;
 		} catch {
 			// The develop watch, or the next look at the photo, catches up.
+			return false;
 		}
+	}
+
+	// A draw this tab lost track of, counted on its reply so the develop watch
+	// below asks the server about it — whose answer then replaces the guess.
+	function assumeDeveloping(replyId: string, draw: DevelopingImage) {
+		messages = messages.map((m) =>
+			m.id === replyId ? { ...m, developing: [...(m.developing ?? []), draw] } : m,
+		);
 	}
 
 	// Photos developing on screen, by the server's word. Watched until they

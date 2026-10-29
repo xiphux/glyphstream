@@ -21,7 +21,7 @@ import { extractAvatarPrompt } from './avatar-prompt.js';
 import { toast } from './toast.svelte.js';
 import { randomUUID } from './uuid.js';
 import type { ModelCatalogue } from './model-catalogue.svelte.js';
-import type { ChatMessage, MessageImage } from './types/api.js';
+import type { ChatMessage, DevelopingImage, MessageImage } from './types/api.js';
 
 /** A picture the dialog is drawing: which reply, and which of its
  *  `[photo: …]` — null for the avatar portrait drawn from it. */
@@ -60,8 +60,12 @@ export interface AvatarDrawWorkflowDeps {
 	/** The conversation's own avatar, as the page has it. */
 	avatarMediaId(): string | null;
 	/** Bring these replies' pictures (and the face) up to date on the page,
-	 *  wherever they are in it — a change needs no reload of the window. */
-	refreshPhotos(replyIds: string[]): Promise<void>;
+	 *  wherever they are in it — a change needs no reload of the window.
+	 *  False when the server couldn't be asked. */
+	refreshPhotos(replyIds: string[]): Promise<boolean>;
+	/** Count a draw as still out on its reply until the server says otherwise —
+	 *  for one whose stream was lost with no word from the server since. */
+	assumeDeveloping(replyId: string, draw: DevelopingImage): void;
 }
 
 export class AvatarDrawWorkflow {
@@ -354,6 +358,9 @@ export class AvatarDrawWorkflow {
 	): Promise<void> {
 		const key = photoKey(photo.replyId, photo.index);
 		this.#drawing.set(key, (this.#drawing.get(key) ?? 0) + 1);
+		// Accepted, and the stream then ended without the server's last word:
+		// the connection went (iOS kills a suspended PWA's), not the draw.
+		let lost = false;
 		try {
 			const res = await fetch(`/api/conversations/${cid}/photos`, {
 				method: 'POST',
@@ -366,7 +373,11 @@ export class AvatarDrawWorkflow {
 			if (!compareId && this.#deps.convId() === cid && this.photo === photo) this.open = false;
 			// Every outcome — a version, or a failure kept on the photo — is the
 			// server's to store; the stream only says when to look.
-			await consumeChatStream(res.body, {});
+			lost = true;
+			await consumeChatStream(res.body, {
+				onDone: () => void (lost = false),
+				onError: () => void (lost = false),
+			});
 		} catch (e) {
 			// Refused, or the connection went. A refusal is worth saying; a lost
 			// connection isn't — the draw carries on, and the photo says so.
@@ -378,6 +389,22 @@ export class AvatarDrawWorkflow {
 			// What lands goes on show by the data's rules (a new draw, or a
 			// comparison's first result), not by an earlier switch here.
 			this.#shown.delete(key);
+			// The server's word first, and only then stop counting the draw as this
+			// tab's: the picture and the grid go from developing straight to what
+			// the server has — the result, or a draw it's still making — with no
+			// gap between. A draw whose stream was lost, with no word to be had
+			// either, stays counted on the reply until the page's watch gets one.
+			if (this.#deps.convId() === cid) {
+				const fresh = await this.#deps.refreshPhotos([photo.replyId]);
+				if (lost && !fresh && this.#deps.convId() === cid) {
+					this.#deps.assumeDeveloping(photo.replyId, {
+						kind: photo.index === null ? PORTRAIT : 'photo',
+						markerIndex: photo.index,
+						modelId,
+						compareId,
+					});
+				}
+			}
 			const left = (this.#drawing.get(key) ?? 1) - 1;
 			if (left > 0) this.#drawing.set(key, left);
 			else this.#drawing.delete(key);
@@ -391,7 +418,6 @@ export class AvatarDrawWorkflow {
 					};
 				}
 			}
-			if (this.#deps.convId() === cid) await this.#deps.refreshPhotos([photo.replyId]);
 		}
 	}
 

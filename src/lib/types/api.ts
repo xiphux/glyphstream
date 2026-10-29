@@ -752,6 +752,9 @@ export interface DevelopingImage {
 	/** Which of the reply's photos; null for a portrait. */
 	markerIndex: number | null;
 	modelId: string;
+	/** The comparison it's a draw of, if any — so a grid can tell its own draws
+	 *  still out from the tab's open requests, which a suspended PWA loses. */
+	compareId: string | null;
 }
 
 /**
