@@ -52,6 +52,7 @@ function photoSource() {
 	const cols = [column('v1', ['p1']), column('v2', ['p2'])];
 	return {
 		isMedia: true,
+		reportsOwnErrors: true,
 		columns: cols,
 		picking: false,
 		discard: vi.fn(async () => true),
@@ -464,6 +465,19 @@ describe('discarding from a fan-out grid', () => {
 		await settle();
 		await lb.discard('g1');
 		expect(toastError).toHaveBeenCalledWith("Couldn't delete: grid busy");
+		expect(lb.media?.id).toBe('g1');
+	});
+
+	it('leaves a refusal to a grid that says why itself, whatever the banner holds', async () => {
+		stubFetch(['g1', 'g2']);
+		const { lb, fanout, page } = setup([column('b1', ['g1']), column('b2', ['g2'])]);
+		Object.assign(fanout, { reportsOwnErrors: true });
+		fanout.discard.mockResolvedValueOnce(false);
+		page.error = 'a send’s old error';
+		await lb.open('g1');
+		await settle();
+		await lb.discard('g1');
+		expect(toastError).not.toHaveBeenCalled();
 		expect(lb.media?.id).toBe('g1');
 	});
 });

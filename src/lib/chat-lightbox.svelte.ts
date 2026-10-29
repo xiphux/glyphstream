@@ -65,6 +65,9 @@ export interface TriageSource {
 	canDiscard?(col: FanoutColumn): boolean;
 	/** False when refused; the reason is in the page's error banner or a toast. */
 	discard(col: FanoutColumn): Promise<boolean>;
+	/** A refused discard has toasted its own reason, so the banner — which this
+	 *  source never writes — isn't repeated. */
+	reportsOwnErrors?: boolean;
 	/** Whether the image gets the grid's footer; absent, every one does. */
 	triages?(col: FanoutColumn): boolean;
 }
@@ -361,7 +364,7 @@ export class ChatLightbox {
 			if (!(await fanout.discard(col))) {
 				// The banner the controller set sits under the lightbox. A photo's
 				// delete says why itself.
-				const error = fanout === this.#deps.photos?.() ? null : this.#deps.error();
+				const error = fanout.reportsOwnErrors ? null : this.#deps.error();
 				if (error) toast.error(`Couldn't delete: ${error}`);
 				return;
 			}

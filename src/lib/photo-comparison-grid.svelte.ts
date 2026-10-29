@@ -30,6 +30,7 @@ export interface PhotoComparisonGridDeps {
 export class PhotoComparisonGrid implements TriageSource {
 	#deps: PhotoComparisonGridDeps;
 	readonly isMedia = true;
+	readonly reportsOwnErrors = true;
 	picking = $state(false);
 	/** Failed draws the user cleared from the grid. They have no image to trash,
 	 *  and the next attempt at the photo replaces them anyway. */
@@ -148,6 +149,7 @@ export class PhotoComparisonGrid implements TriageSource {
 export class PhotoVersionTriage implements TriageSource {
 	#deps: PhotoComparisonGridDeps;
 	readonly isMedia = true;
+	readonly reportsOwnErrors = true;
 	picking = $state(false);
 
 	constructor(deps: PhotoComparisonGridDeps) {
