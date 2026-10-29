@@ -320,10 +320,10 @@ docs.
   - _An unpicked comparison leaves the reply and the face apart._ On a reply
     with no portrait yet, a comparison's first result goes on show there, but
     only the pick sets the face — so closing the grid without picking shows one
-    portrait on the reply and another in the header. Stepping the arrows away
-    and back realigns them. Holding the reply's portrait back until the pick
-    would close it, at the cost of an empty slot while comparing; left alone
-    as rare.
+    portrait on the reply and another in the header. Picking a result from the
+    full-size view, or stepping the arrows away and back, realigns them.
+    Holding the reply's portrait back until the pick would close it, at the
+    cost of an empty slot while comparing; left alone as rare.
   - _User avatars._ The user bubble has a label too, and GitHub OAuth hands us
     an avatar URL for free — but that's account identity with its own privacy
     question in a multi-user install, and it doesn't ride along with this.
