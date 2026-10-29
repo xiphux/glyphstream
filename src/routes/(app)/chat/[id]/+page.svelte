@@ -1696,11 +1696,16 @@
 		});
 	}
 
+	// A draw's end waits on this before it stops counting, so a request stalled on
+	// a socket a resume left dead gives up rather than hold "Developing…" up.
+	const PHOTO_REFRESH_TIMEOUT_MS = 15_000;
+
 	async function refreshPhotos(replyIds: string[]): Promise<boolean> {
 		const conversationId = convId;
 		try {
 			const res = await fetch(
 				`/api/conversations/${conversationId}/photos?messages=${replyIds.join(',')}`,
+				{ signal: AbortSignal.timeout(PHOTO_REFRESH_TIMEOUT_MS) },
 			);
 			if (!res.ok || convId !== conversationId) return false;
 			applyPhotoState((await res.json()) as PhotoStateResponse);
