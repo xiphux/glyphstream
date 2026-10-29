@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.52.1
+
 ### Changed
 
 - A photo or portrait comparison closed before you picked can still be picked from: tap the picture and the full-size view offers favorite, pick and delete for each result. Any other version can be deleted from there too.
