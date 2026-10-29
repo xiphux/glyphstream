@@ -13,7 +13,7 @@ vi.mock('#lib/toast.svelte.js', () => ({ toast: { success: () => {}, error: toas
 
 import { AvatarDrawWorkflow } from '#lib/avatar-draw-workflow.svelte.js';
 import type { ModelCatalogue } from '#lib/model-catalogue.svelte.js';
-import type { ChatMessage, MessageImage, ModelEntry } from '#lib/types/api.js';
+import type { ChatMessage, DevelopingImage, MessageImage, ModelEntry } from '#lib/types/api.js';
 
 const model = (id: string, kind: ModelEntry['kind'] = 'image') =>
 	({ id, kind, displayName: id.toUpperCase() }) as ModelEntry;
@@ -67,7 +67,12 @@ function setup(
 		ensureAll: vi.fn(async () => {}),
 	} as unknown as ModelCatalogue;
 	const refreshPhotos = vi.fn(async (_ids: string[]) => opts.refreshes ?? true);
-	const assumeDeveloping = vi.fn();
+	// As the page does: the draw joins its reply's.
+	const assumeDeveloping = vi.fn((replyId: string, draw: DevelopingImage) => {
+		page.messages = page.messages.map((m) =>
+			m.id === replyId ? { ...m, developing: [...(m.developing ?? []), draw] } : m,
+		);
+	});
 	const w = new AvatarDrawWorkflow({
 		convId: () => page.convId,
 		messages: () => page.messages,
@@ -260,6 +265,37 @@ describe('drawing the avatar', () => {
 			expect(assumeDeveloping.mock.calls).toEqual([
 				['a1', { kind: 'portrait', markerIndex: null, modelId: 'img-2', compareId: id }],
 			]);
+		});
+
+		it('doesn’t count a lost draw twice where the reply already lists it', async () => {
+			const { w, assumeDeveloping, page } = setup({ refreshes: false });
+			const id = compare(w);
+			// An earlier result's refresh listed both as still out.
+			page.messages = page.messages.map((m) =>
+				m.id === 'a1'
+					? {
+							...m,
+							developing: ['img-1', 'img-2'].map((modelId) => ({
+								kind: 'portrait' as const,
+								markerIndex: null,
+								modelId,
+								compareId: id,
+							})),
+						}
+					: m,
+			);
+			await vi.waitFor(() => expect(w.photoComparison?.pending).toEqual([]));
+			expect(assumeDeveloping).not.toHaveBeenCalled();
+		});
+
+		it('counts each of a model’s lost draws', async () => {
+			const { w, assumeDeveloping } = setup({ refreshes: false });
+			w.openDialog();
+			w.compareMode = true;
+			w.compareSelections = [{ modelId: 'img-1', count: 2 }];
+			w.generate();
+			await vi.waitFor(() => expect(w.photoComparison?.pending).toEqual([]));
+			expect(assumeDeveloping).toHaveBeenCalledTimes(2);
 		});
 
 		it('takes a failure frame as the server’s word too', async () => {

@@ -112,6 +112,12 @@ export class AvatarDrawWorkflow {
 	/** Versions this tab put on show, by picture, ahead of the page's data —
 	 *  see `shownVersion`. A draw of the picture landing supersedes it. */
 	#shown = new SvelteMap<string, string>();
+	/** Draws whose streams were lost, by reply and draw, since a refresh here
+	 *  last had the server's word on the reply — how many the reply's
+	 *  `developing` has to account for. The page's watch can have that word
+	 *  first; a count left high then guesses one draw too many, which the
+	 *  watch's next look corrects. Not reactive: only the guess reads it. */
+	#lost = new Map<string, number>();
 	#modelOverride = $state<string | null>(null);
 
 	/** The image models this user can draw with. */
@@ -396,8 +402,9 @@ export class AvatarDrawWorkflow {
 			// either, stays counted on the reply until the page's watch gets one.
 			if (this.#deps.convId() === cid) {
 				const fresh = await this.#deps.refreshPhotos([photo.replyId]);
-				if (lost && !fresh && this.#deps.convId() === cid) {
-					this.#deps.assumeDeveloping(photo.replyId, {
+				if (fresh) this.#forgetLost(photo.replyId);
+				else if (lost && this.#deps.convId() === cid) {
+					this.#assumeLost(photo.replyId, {
 						kind: photo.index === null ? PORTRAIT : 'photo',
 						markerIndex: photo.index,
 						modelId,
@@ -418,6 +425,35 @@ export class AvatarDrawWorkflow {
 					};
 				}
 			}
+		}
+	}
+
+	/**
+	 * Count a lost draw on its reply — unless the reply already lists one for
+	 * it. The server's last word often does (a suspended PWA loses every stream
+	 * at once, after earlier results' refreshes listed the rest), and a guess on
+	 * top would show the draw twice. Counted per draw, so two lost draws of one
+	 * model need two entries.
+	 */
+	#assumeLost(replyId: string, draw: DevelopingImage): void {
+		const key = `${replyId}|${draw.kind}|${draw.markerIndex}|${draw.modelId}|${draw.compareId}`;
+		const lost = (this.#lost.get(key) ?? 0) + 1;
+		this.#lost.set(key, lost);
+		const reply = this.#deps.messages().find((m) => m.id === replyId);
+		const listed = (reply?.developing ?? []).filter(
+			(d) =>
+				d.kind === draw.kind &&
+				d.markerIndex === draw.markerIndex &&
+				d.modelId === draw.modelId &&
+				d.compareId === draw.compareId,
+		).length;
+		if (listed < lost) this.#deps.assumeDeveloping(replyId, draw);
+	}
+
+	/** The server's word on a reply has replaced whatever was guessed on it. */
+	#forgetLost(replyId: string): void {
+		for (const key of this.#lost.keys()) {
+			if (key.startsWith(`${replyId}|`)) this.#lost.delete(key);
 		}
 	}
 
