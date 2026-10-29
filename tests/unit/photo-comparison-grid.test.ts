@@ -9,7 +9,7 @@ vi.mock('$app/navigation', () => ({ refreshAll: async () => {} }));
 vi.mock('#lib/toast.svelte.js', () => ({ toast: { success: () => {}, error: () => {} } }));
 
 import { AvatarDrawWorkflow } from '#lib/avatar-draw-workflow.svelte.js';
-import { PhotoComparisonGrid } from '#lib/photo-comparison-grid.svelte.js';
+import { PhotoComparisonGrid, PhotoVersionTriage } from '#lib/photo-comparison-grid.svelte.js';
 import type { ModelCatalogue } from '#lib/model-catalogue.svelte.js';
 import type { ChatMessage, MessageImage, ModelEntry } from '#lib/types/api.js';
 
@@ -71,7 +71,12 @@ function setup() {
 		workflow.generate();
 		page.messages = [{ ...reply, images: [...reply.images!, ...landed] }];
 	}
-	return { workflow, grid, compare, page };
+	const versions = new PhotoVersionTriage({
+		workflow,
+		messages: () => page.messages,
+		modelLabel: (id) => (id === 'img-1' ? 'One' : 'Two'),
+	});
+	return { workflow, grid, compare, page, versions };
 }
 
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -203,5 +208,62 @@ describe('PhotoComparisonGrid', () => {
 			fetchMock.mock.calls.some(([, init]) => (init as RequestInit)?.method === 'DELETE'),
 		).toBe(false);
 		expect(grid.columns.every((c) => c.status === 'streaming')).toBe(true);
+	});
+});
+
+describe('PhotoVersionTriage', () => {
+	function thread() {
+		const t = setup();
+		t.page.messages = [
+			{
+				...t.page.messages[0],
+				images: [
+					version('old', { shown: true }),
+					version('a', { inComparison: true, modelId: 'img-2' }),
+					version('f', { inComparison: true, mediaId: null, error: 'boom' }),
+				],
+			},
+		];
+		return t;
+	}
+
+	it('triages a version with an image, the grid’s way only for a comparison’s', () => {
+		const { versions } = thread();
+		expect(versions.columns.map((c) => [c.branchId, c.label])).toEqual([
+			['old', 'One'],
+			['a', 'Two'],
+		]);
+		const [old, a] = versions.columns;
+		expect([versions.triages(old), versions.triages(a)]).toEqual([false, true]);
+		expect(versions.pickLabels(old)).toBeNull();
+		expect(versions.pickLabels(a)).toEqual({ label: 'Show this one', caption: 'Show' });
+		expect(versions.canDiscard()).toBe(true);
+	});
+
+	it('picks a comparison’s result, counting the comparison', async () => {
+		const { versions } = thread();
+		await versions.pick(versions.columns[1]);
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/api/conversations/A/photos/a',
+			expect.objectContaining({ body: JSON.stringify({ shown: true, pick: true }) }),
+		);
+	});
+
+	it('picks nothing that isn’t a comparison’s', async () => {
+		const { versions } = thread();
+		await versions.pick(versions.columns[0]);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it('deletes a version by moving its image to the trash', async () => {
+		const { versions } = thread();
+		expect(await versions.discard(versions.columns[0])).toBe(true);
+		expect(fetchMock).toHaveBeenCalledWith('/api/media/media-old', { method: 'DELETE' });
+	});
+
+	it('says so when the trash refuses it', async () => {
+		const { versions } = thread();
+		fetchMock.mockResolvedValueOnce(new Response('{}', { status: 500 }));
+		expect(await versions.discard(versions.columns[0])).toBe(false);
 	});
 });

@@ -38,10 +38,17 @@ import type { ConversationMediaRef, MediaListItem } from './types/api.js';
 /** Same limit as the gallery's `fetchWithTimeout`. */
 const ITEM_FETCH_TIMEOUT_MS = 15_000;
 
+/** A pick's accessible name, and the shorter caption its button shows. */
+export interface PickLabels {
+	label: string;
+	caption: string;
+}
+
 /**
- * The comparison grid on screen, whose images the lightbox triages: the media
- * fan-out grid in the thread, or a photo comparison in the develop dialog. The
- * same columns and the same four reactions either way.
+ * Images the lightbox triages: the comparison grid on screen — the media
+ * fan-out grid in the thread, or a photo comparison in the develop dialog — or
+ * failing that, the photos on the thread's replies. The same columns and the
+ * same four reactions in each.
  */
 export interface TriageSource {
 	columns: readonly FanoutColumn[];
@@ -51,9 +58,15 @@ export interface TriageSource {
 	picking: boolean;
 	canRegenerate(col: FanoutColumn): boolean;
 	regenerate(col: FanoutColumn): Promise<void>;
+	/** The pick's labels where the lightbox offers one; absent or null, none. */
+	pickLabels?(col: FanoutColumn): PickLabels | null;
 	pick(col: FanoutColumn): Promise<void>;
-	/** False when refused; the reason is in the page's error banner. */
+	/** Whether Delete is offered; absent, a grid's rule (`canDiscardColumn`). */
+	canDiscard?(col: FanoutColumn): boolean;
+	/** False when refused; the reason is in the page's error banner or a toast. */
 	discard(col: FanoutColumn): Promise<boolean>;
+	/** Whether the image gets the grid's footer; absent, every one does. */
+	triages?(col: FanoutColumn): boolean;
 }
 
 /** What the lightbox reads from the host page. Getters, so each read is fresh:
@@ -63,6 +76,8 @@ export interface ChatLightboxDeps {
 	conversationId(): string;
 	/** The grid being triaged right now. */
 	triage(): TriageSource;
+	/** What triages an image that grid doesn't show: the thread's photos. */
+	photos?(): TriageSource;
 	/** The page's stars, shared with the fan-out grid's. */
 	favorites: MediaFavorites;
 	/** The page's error banner, which a refused fan-out discard writes to. */
@@ -106,40 +121,58 @@ export class ChatLightbox {
 		return (await res.json()) as MediaListItem;
 	});
 
+	/** The column showing `mediaId`, and the source it's in: the grid on screen
+	 *  if it shows it, else the thread's photos. */
+	#find(mediaId: string): { source: TriageSource; col: FanoutColumn } | undefined {
+		for (const source of [this.#deps.triage(), this.#deps.photos?.()]) {
+			if (!source?.isMedia) continue;
+			const col = columnShowingMedia(source.columns, mediaId);
+			if (col) return { source, col };
+		}
+		return undefined;
+	}
+	readonly #open = $derived(this.media ? this.#find(this.media.id) : undefined);
+
 	/**
-	 * The lightbox's Delete, offered only for an image the open media fan-out
-	 * grid is showing, and only where that grid's own trash button would allow
-	 * the discard. It IS that discard: the whole branch goes, the same as tapping
-	 * the trash icon on the cell. Any other media in the carousel (older turns,
-	 * other branches) still gets no Delete here. Destructive media deletion
-	 * outside a fan-out belongs to the gallery.
+	 * The lightbox's Delete, offered for an image the open media fan-out grid
+	 * is showing, where that grid's own trash button would allow the discard,
+	 * and for a photo or portrait on a reply. It IS that discard: the whole
+	 * branch goes, the same as tapping the trash icon on the cell, or the
+	 * version goes to the trash, as the reply's own trash button sends it. Any
+	 * other media in the carousel (older turns, other branches) still gets no
+	 * Delete here. Destructive media deletion outside those belongs to the
+	 * gallery.
 	 */
-	readonly #column = $derived.by(() => {
-		const fanout = this.#deps.triage();
-		return this.media && fanout.isMedia
-			? columnShowingMedia(fanout.columns, this.media.id)
-			: undefined;
+	readonly discardable = $derived.by(() => {
+		const open = this.#open;
+		if (!open) return false;
+		return open.source.canDiscard?.(open.col) ?? canDiscardColumn(open.source.columns, open.col);
 	});
-	readonly discardable = $derived.by(
-		() => !!this.#column && canDiscardColumn(this.#deps.triage().columns, this.#column),
-	);
 
 	/**
 	 * The open image is one the media fan-out grid on screen is showing — the
-	 * user is triaging it. The lightbox then trades its own actions for the
-	 * grid's footer (star, re-roll, a comparison's pick, discard), so the swipe
-	 * through a fresh grid offers what the grid does, and "Regenerate" means
-	 * what it means there.
+	 * user is triaging it — or a result of a photo comparison closed before its
+	 * pick. The lightbox then trades its own actions for the grid's footer
+	 * (star, re-roll, a comparison's pick, discard), so the swipe through a
+	 * fresh grid offers what the grid does, and "Regenerate" means what it
+	 * means there.
 	 */
-	readonly triaging = $derived(!!this.#column);
+	readonly triaging = $derived.by(() => {
+		const open = this.#open;
+		return !!open && (open.source.triages?.(open.col) ?? true);
+	});
 	/** Whether the grid's Regenerate is offered for the open image. */
 	readonly canRegenerate = $derived.by(
-		() => !!this.#column && this.#deps.triage().canRegenerate(this.#column),
+		() => !!this.#open && this.#open.source.canRegenerate(this.#open.col),
 	);
 	/** Re-roll is offered but can't start yet: the grid is at its in-flight cap. */
 	readonly regenerateBlocked = $derived.by(() =>
-		atActiveBranchCapacity(this.#deps.triage().columns),
+		atActiveBranchCapacity((this.#open?.source ?? this.#deps.triage()).columns),
 	);
+	/** The pick offered for the open image, if one is. */
+	readonly pickLabels = $derived.by(() => this.#open?.source.pickLabels?.(this.#open.col) ?? null);
+	/** A pick or discard is in flight where the open image is triaged. */
+	readonly busy = $derived.by(() => (this.#open?.source ?? this.#deps.triage()).picking);
 
 	/** Media id whose star is in flight; see `MediaFavorites.pendingId`. */
 	get favoritingId(): string | null {
@@ -279,9 +312,10 @@ export class ChatLightbox {
 	 * the lightbox reopens; the toast is what says the tap did something.
 	 */
 	regenerate(mediaId: string): void {
-		const fanout = this.#deps.triage();
-		const col = columnShowingMedia(fanout.columns, mediaId);
-		if (!col || !fanout.canRegenerate(col) || this.regenerateBlocked || fanout.picking) return;
+		const found = this.#find(mediaId);
+		if (!found) return;
+		const { source: fanout, col } = found;
+		if (!fanout.canRegenerate(col) || this.regenerateBlocked || fanout.picking) return;
 		void fanout.regenerate(col);
 		toast.info('Generating another variation');
 	}
@@ -292,11 +326,10 @@ export class ChatLightbox {
 	 * swiping a set whose grid no longer exists.
 	 */
 	pick(mediaId: string): void {
-		const fanout = this.#deps.triage();
-		const col = columnShowingMedia(fanout.columns, mediaId);
-		if (!col || fanout.picking) return;
+		const found = this.#find(mediaId);
+		if (!found || found.source.picking) return;
 		this.close();
-		void fanout.pick(col);
+		void found.source.pick(found.col);
 	}
 
 	/**
@@ -314,11 +347,11 @@ export class ChatLightbox {
 	 * branch that's the next image.
 	 */
 	async discard(mediaId: string): Promise<void> {
-		const fanout = this.#deps.triage();
-		const col = columnShowingMedia(fanout.columns, mediaId);
+		const found = this.#find(mediaId);
 		// A refused discard (grid busy) must not reach the toast below, which
 		// would repeat whatever stale error the banner last held.
-		if (!col || this.deletingId || fanout.picking) return;
+		if (!found || this.deletingId || found.source.picking) return;
+		const { source: fanout, col } = found;
 		// Everything the branch showed leaves the carousel with it (a batch
 		// branch has several images).
 		const removed = new Set(columnMediaIds(col));
@@ -326,8 +359,9 @@ export class ChatLightbox {
 		this.deletingId = mediaId;
 		try {
 			if (!(await fanout.discard(col))) {
-				// The banner the controller set sits under the lightbox.
-				const error = this.#deps.error();
+				// The banner the controller set sits under the lightbox. A photo's
+				// delete says why itself.
+				const error = fanout === this.#deps.photos?.() ? null : this.#deps.error();
 				if (error) toast.error(`Couldn't delete: ${error}`);
 				return;
 			}

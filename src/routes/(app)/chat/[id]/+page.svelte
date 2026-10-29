@@ -70,7 +70,7 @@
 	import { stripSkillCommand } from '#lib/skill-command.js';
 	import { hasCopyableText, partsToText } from '#lib/message-parts.js';
 	import { AvatarDrawWorkflow } from '#lib/avatar-draw-workflow.svelte.js';
-	import { PhotoComparisonGrid } from '#lib/photo-comparison-grid.svelte.js';
+	import { PhotoComparisonGrid, PhotoVersionTriage } from '#lib/photo-comparison-grid.svelte.js';
 	import { watchDevelopingPhotos } from '#lib/photo-develop-watch.js';
 	import { photoMarkers } from '#lib/texting-photos.js';
 	import type { TextingPhotos } from '#lib/texting.js';
@@ -1413,6 +1413,12 @@
 		messages: () => messages,
 		modelLabel: (id) => modelDisplayName(id),
 	});
+	// The thread's photos, for the lightbox to triage outside any grid.
+	const photoVersions = new PhotoVersionTriage({
+		workflow: avatarWorkflow,
+		messages: () => messages,
+		modelLabel: (id) => modelDisplayName(id),
+	});
 
 	// The inline media lightbox: tap a generated image to open it, swipe through
 	// the conversation's media, star it, or discard its fan-out branch.
@@ -1422,6 +1428,7 @@
 		conversationId: () => data.conversation.id,
 		// The dialog's photo comparison while one is up, over the thread's grid.
 		triage: () => (photoGrid.active ? photoGrid : fanout),
+		photos: () => photoVersions,
 		favorites,
 		error: () => errorMsg,
 	});
@@ -3112,10 +3119,10 @@
 							? (id: string) => lightbox.regenerate(id)
 							: undefined,
 						regenerateBlocked: lightbox.regenerateBlocked,
-						onPick: photoGrid.active ? (id: string) => lightbox.pick(id) : undefined,
-						pickLabel: drawingPortrait ? 'Use this avatar' : 'Show this one',
-						pickCaption: drawingPortrait ? 'Use avatar' : 'Show',
-						busy: photoGrid.active ? photoGrid.picking : fanout.picking,
+						onPick: lightbox.pickLabels ? (id: string) => lightbox.pick(id) : undefined,
+						pickLabel: lightbox.pickLabels?.label,
+						pickCaption: lightbox.pickLabels?.caption,
+						busy: lightbox.busy,
 					}
 				: null}
 		/>

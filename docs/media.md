@@ -113,4 +113,6 @@ deleted); removing the one that's the avatar moves the avatar to the version
 showing next, or back to the preset's when none is left. Pick several image
 models in the dialog to compare — different models read a description very
 differently: their portraits appear in the dialog as they finish, and the one
-you pick becomes the avatar. The others are kept as versions.
+you pick becomes the avatar. The others are kept as versions. Close the dialog
+before picking and you can still pick from the full-size view: tap the portrait
+and swipe through the results.

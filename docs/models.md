@@ -79,6 +79,9 @@ again, the arrows along its bottom switch between versions, and the bin removes 
 one on show (its image goes to Recently deleted, and restoring it puts it back).
 Pick several models in the dialog to compare: their versions appear in the
 dialog as they finish, and you pick the one to show. The others are kept too.
+Closing the dialog before picking leaves the comparison open: tap the photo to
+see each result full size with its model's name, and favorite, pick or delete it
+there. Any other version can be deleted from there too.
 If a draw fails, the photo says so, with a button to try again.
 
 A photo is shown but never sent back to the model, which already has its

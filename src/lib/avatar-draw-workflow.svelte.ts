@@ -473,10 +473,10 @@ export class AvatarDrawWorkflow {
 	 * Move a version's image to the trash, which takes it off the picture
 	 * (restoring the image brings it back). Removing the portrait that is the
 	 * face moves the face to the version now on show — or, with none left, back
-	 * to the preset's.
+	 * to the preset's. False when the image couldn't go (the toast says why).
 	 */
-	async removePhoto(replyId: string, image: MessageImage): Promise<void> {
-		if (!image.mediaId) return;
+	async removePhoto(replyId: string, image: MessageImage): Promise<boolean> {
+		if (!image.mediaId) return false;
 		const cid = this.#deps.convId();
 		const wasFace = image.kind === 'portrait' && image.mediaId === this.#deps.avatarMediaId();
 		try {
@@ -484,18 +484,18 @@ export class AvatarDrawWorkflow {
 			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : String(e));
-			return;
+			return false;
 		}
-		if (this.#deps.convId() !== cid) return;
+		if (this.#deps.convId() !== cid) return true;
 		await this.#deps.refreshPhotos([replyId]);
-		if (!wasFace || this.#deps.convId() !== cid) return;
+		if (!wasFace || this.#deps.convId() !== cid) return true;
 		const next = this.#deps
 			.messages()
 			.find((m) => m.id === replyId)
 			?.images?.find((i) => i.kind === 'portrait' && i.shown && i.mediaId);
 		if (next) {
 			await this.showPhoto(replyId, next);
-			return;
+			return true;
 		}
 		try {
 			const res = await fetch(`/api/conversations/${cid}/avatar`, { method: 'DELETE' });
@@ -504,5 +504,6 @@ export class AvatarDrawWorkflow {
 			toast.error(e instanceof Error ? e.message : String(e));
 		}
 		if (this.#deps.convId() === cid) await this.#deps.refreshPhotos([replyId]);
+		return true;
 	}
 }

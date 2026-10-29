@@ -46,7 +46,26 @@ function stubFetch(media: string[], overrides: Record<string, () => Promise<Resp
 	return mock;
 }
 
-function setup(columns: FanoutColumn[] = []) {
+/** The thread's photos: `p1` a comparison's result still to be picked from,
+ *  `p2` a version like any other. */
+function photoSource() {
+	const cols = [column('v1', ['p1']), column('v2', ['p2'])];
+	return {
+		isMedia: true,
+		columns: cols,
+		picking: false,
+		discard: vi.fn(async () => true),
+		regenerate: vi.fn(async () => {}),
+		pick: vi.fn(async () => {}),
+		canRegenerate: () => false,
+		canDiscard: () => true,
+		triages: (c: FanoutColumn) => c.branchId === 'v1',
+		pickLabels: (c: FanoutColumn) =>
+			c.branchId === 'v1' ? { label: 'Show this one', caption: 'Show' } : null,
+	};
+}
+
+function setup(columns: FanoutColumn[] = [], photos?: ReturnType<typeof photoSource>) {
 	const page = { conversationId: 'A', error: null as string | null };
 	const fanout = {
 		isMedia: columns.length > 0,
@@ -61,6 +80,7 @@ function setup(columns: FanoutColumn[] = []) {
 	const lb = new ChatLightbox({
 		conversationId: () => page.conversationId,
 		triage: () => fanout as unknown as TriageSource,
+		photos: photos && (() => photos as unknown as TriageSource),
 		favorites,
 		error: () => page.error,
 	});
@@ -445,6 +465,61 @@ describe('discarding from a fan-out grid', () => {
 		await lb.discard('g1');
 		expect(toastError).toHaveBeenCalledWith("Couldn't delete: grid busy");
 		expect(lb.media?.id).toBe('g1');
+	});
+});
+
+describe('triaging the thread’s photos', () => {
+	it('gives a comparison’s result the grid’s footer, with its pick', async () => {
+		stubFetch(['p1', 'p2']);
+		const photos = photoSource();
+		const { lb } = setup([], photos);
+		await lb.open('p1');
+		expect(lb.triaging).toBe(true);
+		expect(lb.discardable).toBe(true);
+		expect(lb.canRegenerate).toBe(false);
+		expect(lb.pickLabels).toEqual({ label: 'Show this one', caption: 'Show' });
+		lb.pick('p1');
+		expect(photos.pick).toHaveBeenCalledWith(photos.columns[0]);
+		expect(lb.media).toBeNull();
+	});
+
+	it('offers any other version just a Delete', async () => {
+		stubFetch(['p1', 'p2']);
+		const { lb } = setup([], photoSource());
+		await lb.open('p2');
+		expect(lb.triaging).toBe(false);
+		expect(lb.discardable).toBe(true);
+		expect(lb.pickLabels).toBeNull();
+	});
+
+	it('leaves an image the grid on screen shows to the grid', async () => {
+		stubFetch(['p1']);
+		const photos = photoSource();
+		const grid = [column('b1', ['p1']), column('b2', ['g2'])];
+		const { lb, fanout } = setup(grid, photos);
+		await lb.open('p1');
+		expect(lb.pickLabels).toBeNull();
+		lb.pick('p1');
+		expect(fanout.pick).toHaveBeenCalledWith(grid[0]);
+		expect(photos.pick).not.toHaveBeenCalled();
+	});
+
+	it('deletes a version and moves on, leaving a refusal’s reason to its own toast', async () => {
+		stubFetch(['p1', 'p2']);
+		const photos = photoSource();
+		const { lb, page } = setup([], photos);
+		await lb.open('p1');
+		await settle();
+		await lb.discard('p1');
+		expect(photos.discard).toHaveBeenCalledWith(photos.columns[0]);
+		expect(lb.media?.id).toBe('p2');
+		expect(lb.siblings.map((m) => m.id)).toEqual(['p2']);
+
+		photos.discard.mockResolvedValueOnce(false);
+		page.error = 'a fan-out’s old error';
+		await lb.discard('p2');
+		expect(toastError).not.toHaveBeenCalled();
+		expect(lb.media?.id).toBe('p2');
 	});
 });
 

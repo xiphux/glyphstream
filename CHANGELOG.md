@@ -9,6 +9,10 @@ arrived.
 
 ## Unreleased
 
+### Changed
+
+- A photo or portrait comparison closed before you picked can still be picked from: tap the picture and the full-size view offers favorite, pick and delete for each result. Any other version can be deleted from there too.
+
 ### Fixed
 
 - A photo comparison keeps showing the draws still developing after you switch away from the app and come back, instead of dropping them from the grid.
