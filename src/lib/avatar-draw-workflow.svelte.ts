@@ -431,7 +431,8 @@ export class AvatarDrawWorkflow {
 
 	/**
 	 * Put a version of a picture on show — the arrows, or a comparison's pick,
-	 * which also counts toward the models' stats and closes the dialog. A
+	 * which also counts toward the models' stats and closes the dialog if it's
+	 * up for this picture (the full-size view can pick another's). A
 	 * portrait on show is the face, which the server sets.
 	 *
 	 * The switch shows at once, and the arrows don't reload a photo for it:
@@ -454,7 +455,8 @@ export class AvatarDrawWorkflow {
 			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			// Not if the user has moved to another chat, where a dialog up now is one
 			// they opened there.
-			if (pick && this.#deps.convId() === cid) this.close();
+			const forThis = !this.photo || photoKey(this.photo.replyId, this.photo.index) === key;
+			if (pick && forThis && this.#deps.convId() === cid) this.close();
 		} catch (e) {
 			// Back to what was showing, unless a later switch has moved on since.
 			if (this.#shown.get(key) === image.id) {

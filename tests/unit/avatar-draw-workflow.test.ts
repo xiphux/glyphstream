@@ -470,6 +470,14 @@ describe('developing a texting photo', () => {
 		expect(w.open).toBe(false);
 	});
 
+	it('leaves the dialog up when the pick is another picture’s', async () => {
+		const { w } = setup({ messages: thread });
+		w.openPhotoDialog({ replyId: 'r1', index: 1 }, 'the view');
+		await w.showPhoto('r1', { ...reply.images![0], id: 'p0', markerIndex: 0 }, true);
+		expect(bodies()[0]).toEqual({ shown: true, pick: true });
+		expect(w.open).toBe(true);
+	});
+
 	it('leaves a dialog opened in another chat alone when a pick lands', async () => {
 		let answer!: () => void;
 		fetchMock.mockImplementationOnce(
