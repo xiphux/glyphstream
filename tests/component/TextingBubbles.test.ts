@@ -302,6 +302,27 @@ describe('texting reply style', () => {
 			expect(screen.getAllByRole('button', { name: 'Develop' })).toHaveLength(1);
 		});
 
+		it('still steps between versions while another is developing', async () => {
+			const onShow = vi.fn();
+			const a = version('a');
+			render(MessageBubble, {
+				props: {
+					...bubbleProps,
+					message: reply(PHOTOS),
+					photos: photos({
+						versions: new Map([[1, [a, version('b', { shown: true })]]]),
+						developing: new Set([1]),
+						onShow,
+						onDevelop: vi.fn(),
+					}),
+				},
+			});
+			expect(screen.getByText('Developing…')).toBeInTheDocument();
+			expect(screen.queryByRole('button', { name: 'Develop again' })).toBeNull();
+			await fireEvent.click(screen.getByRole('button', { name: 'Previous version' }));
+			expect(onShow).toHaveBeenCalledWith(a);
+		});
+
 		it('says so when developing a photo again failed, keeping the last one', () => {
 			render(MessageBubble, {
 				props: {

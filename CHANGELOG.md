@@ -12,6 +12,7 @@ arrived.
 ### Fixed
 
 - A photo comparison keeps showing the draws still developing after you switch away from the app and come back, instead of dropping them from the grid.
+- A photo's arrows stay usable while another version of it is developing, so the results of a long comparison can be looked through as they land.
 
 ## v0.52.0
 

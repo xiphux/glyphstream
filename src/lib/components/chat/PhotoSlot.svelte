@@ -119,11 +119,14 @@
 					</button>
 				{/if}
 			</div>
+			<!-- Up here, not in place of the arrows: a comparison of many models
+			     can take minutes, and what has landed is worth looking through. -->
 			{#if state.developing}
-				<p class="absolute bottom-2 left-2 rounded-full bg-black/55 px-2 py-0.5 text-xs text-white">
+				<p class="absolute top-2 left-2 rounded-full bg-black/55 px-2 py-0.5 text-xs text-white">
 					{working}
 				</p>
-			{:else if state.versions.length > 1}
+			{/if}
+			{#if state.versions.length > 1}
 				<div
 					class="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/55 px-1 text-xs text-white"
 				>
