@@ -2,7 +2,7 @@
 	One `[photo: …]` of a reply, where the model put it: the version on show,
 	with arrows between versions and buttons to develop it again or remove this
 	one — or, before it's developed, a placeholder with its description and a
-	Develop button. Shared by both reply styles: a texting reply draws it as a
+	Develop button, or why there's none. Shared by both reply styles: a texting reply draws it as a
 	text of its own (TextingBubbles), a standard one inside its bubble
 	(`inBubble`).
 
@@ -192,6 +192,8 @@
 				>
 					{state.failure ? 'Try again' : 'Develop'}
 				</button>
+			{:else if photos?.noImageModel}
+				<p class="text-xs text-fg-muted">No image model is configured to {verb} it.</p>
 			{/if}
 		{/if}
 	</div>

@@ -9,6 +9,14 @@ arrived.
 
 ## Unreleased
 
+### Changed
+
+- With no image model configured, a sent photo says so instead of offering **Develop**, and the preset form notes it under **Can send photos**, which a texting preset no longer turns on by default.
+
+### Fixed
+
+- An image endpoint that's down no longer makes the avatar menu say no image model is configured.
+
 ## v0.52.1
 
 ### Changed

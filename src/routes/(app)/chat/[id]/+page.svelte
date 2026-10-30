@@ -1673,7 +1673,7 @@
 		return {
 			versions,
 			developing,
-			onDevelop: (index: number) => developPhoto(m, index, assistantLabel),
+			...developable((index: number) => developPhoto(m, index, assistantLabel)),
 			onShow: (image: MessageImage) => void avatarWorkflow.showPhoto(m.id, image),
 			onRemove: (image: MessageImage) => void avatarWorkflow.removePhoto(m.id, image),
 		};
@@ -1760,10 +1760,17 @@
 		return {
 			versions: new Map([[0, versions]]),
 			developing: new Set(developing ? [0] : []),
-			onDevelop: () => avatarWorkflow.openDialog(m),
+			...developable(() => avatarWorkflow.openDialog(m)),
 			onShow: (image: MessageImage) => void avatarWorkflow.showPhoto(m.id, image),
 			onRemove: (image: MessageImage) => void avatarWorkflow.removePhoto(m.id, image),
 		};
+	}
+
+	// Develop on offer where an image model can do it; otherwise the picture says
+	// why not. The server's word, not the catalogue's first-paint slice — see the
+	// header's avatar menu.
+	function developable(onDevelop: TextingPhotos['onDevelop']) {
+		return data.hasImageModel ? { onDevelop } : { noImageModel: true };
 	}
 
 	// The dialog is drawing the avatar, not a photo.

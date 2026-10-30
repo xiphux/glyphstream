@@ -180,7 +180,9 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 				return endpointId === undefined || !failedEndpoints.has(endpointId);
 			})
 		: referencedModelIds;
-	const hasImageModel = allModels.some((m) => m.kind === 'image');
+	// An endpoint that didn't answer may be the one with the image models, so it
+	// can't rule them out: "none configured" waits for every endpoint's word.
+	const hasImageModel = allModels.some((m) => m.kind === 'image') || failedEndpoints.size > 0;
 	// A scheduled run paused on its own turn: its approval prompts offer "for
 	// this schedule". Not merely `scheduleId` — a finished run's conversation is
 	// an ordinary chat, whose prompts are answered with the account's trust list.

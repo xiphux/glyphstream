@@ -82,13 +82,16 @@ const FEATURE_CATEGORIES: FeatureCategoryEntry[] = [
 	{ id: 'mcp:filesystem', label: 'Filesystem', description: '', source: 'mcp' },
 ];
 
-function renderPage(customModels: CustomModel[] = []) {
+function renderPage(
+	customModels: CustomModel[] = [],
+	{ models = MODELS, modelsError = null as string | null } = {},
+) {
 	return render(CustomModelsPage, {
 		props: {
 			data: {
 				customModels,
-				models: MODELS,
-				modelsError: null,
+				models,
+				modelsError,
 				featureCategories: FEATURE_CATEGORIES,
 			},
 		},
@@ -364,5 +367,27 @@ describe('custom models — photos', () => {
 		await user.selectOptions(screen.getByLabelText('Reply style'), 'texting');
 		await user.selectOptions(screen.getByLabelText('Reply style'), 'standard');
 		expect(checkbox()).toBeChecked();
+	});
+
+	const noImage = MODELS.filter((m) => m.kind !== 'image');
+
+	it('says so where nothing could develop them, and doesn’t turn them on unasked', async () => {
+		const user = userEvent.setup();
+		renderPage([], { models: noImage });
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'texting');
+		expect(checkbox()).not.toBeChecked();
+		expect(screen.getByText(/No image model is configured/)).toBeInTheDocument();
+		// Still the user's to turn on — one may be configured later.
+		await user.click(checkbox());
+		expect(checkbox()).toBeChecked();
+	});
+
+	it('doesn’t call an endpoint that didn’t answer “none configured”', async () => {
+		const user = userEvent.setup();
+		renderPage([], { models: noImage, modelsError: 'images: unreachable' });
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'texting');
+		expect(checkbox()).toBeChecked();
+		expect(screen.queryByText(/No image model is configured/)).toBeNull();
+		expect(screen.getByText(/Couldn't check for an image model/)).toBeInTheDocument();
 	});
 });

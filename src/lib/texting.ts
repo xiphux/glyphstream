@@ -55,6 +55,9 @@ export interface TextingPhotos {
 	/** Open the develop dialog for a marker: first time, again, or after a
 	 *  failure. Absent where nothing can draw. */
 	onDevelop?: (index: number) => void;
+	/** No image model is configured, so nothing can develop it — the
+	 *  placeholder says so rather than offer Develop. */
+	noImageModel?: boolean;
 	/** Put a version on show (the arrows). */
 	onShow?: (image: MessageImage) => void;
 	/** Move a version's image to the trash. */

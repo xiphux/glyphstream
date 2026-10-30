@@ -239,6 +239,14 @@ describe('texting reply style', () => {
 			expect(screen.queryByRole('button', { name: 'Develop' })).toBeNull();
 		});
 
+		it('says why there’s no Develop where no image model is configured', () => {
+			render(MessageBubble, {
+				props: { ...bubbleProps, message: reply(PHOTOS), photos: photos({ noImageModel: true }) },
+			});
+			expect(screen.queryByRole('button', { name: 'Develop' })).toBeNull();
+			expect(screen.getAllByText('No image model is configured to develop it.')).toHaveLength(2);
+		});
+
 		it('draws the version on show in the marker’s place, under its sender', async () => {
 			const onImageClick = vi.fn();
 			render(MessageBubble, {

@@ -69,6 +69,11 @@
 	// Show only the toggles the composer will actually offer for this preset's base
 	// model — same rule as FeatureTogglesMenu. No base model picked yet → unknown
 	// kind → show everything.
+	// What develops a preset's photos. None listed means none configured only when
+	// every endpoint answered — one that didn't may be the one that has them.
+	const hasImageModel = $derived(data.models.some((m: ModelEntry) => m.kind === 'image'));
+	const noImageModel = $derived(!hasImageModel && !data.modelsError);
+
 	const baseKind = $derived(
 		data.models.find((m: ModelEntry) => m.id === baseModelComposite)?.kind ?? null,
 	);
@@ -555,7 +560,8 @@
 							onchange={(e) => {
 								// The event's value: the binding may not have caught up yet.
 								if (!checkInsTouched) checkIns = e.currentTarget.value === 'texting';
-								if (!photosTouched) photos = e.currentTarget.value === 'texting';
+								// Not where nothing could develop them.
+								if (!photosTouched) photos = e.currentTarget.value === 'texting' && !noImageModel;
 							}}
 							disabled={busy}
 							class="w-full rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
@@ -607,6 +613,15 @@
 								develop with an image model. Suits a character; leave it off for a preset that does
 								a task.
 							</span>
+							{#if noImageModel}
+								<span class="mt-0.5 block text-[11px] text-fg-muted">
+									No image model is configured, so its photos can't be developed until one is.
+								</span>
+							{:else if !hasImageModel}
+								<span class="mt-0.5 block text-[11px] text-fg-muted">
+									Couldn't check for an image model to develop them: an endpoint didn't answer.
+								</span>
+							{/if}
 						</span>
 					</label>
 				{/if}
