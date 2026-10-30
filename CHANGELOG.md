@@ -12,6 +12,7 @@ arrived.
 ### Changed
 
 - With no image model configured, a sent photo says so instead of offering **Develop**, and the preset form notes it under **Can send photos**, which a texting preset no longer turns on by default.
+- Tap a photo's description to read all of it, rather than its first few lines.
 
 ### Fixed
 

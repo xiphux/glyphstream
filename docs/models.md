@@ -69,7 +69,8 @@ the setting is copied into each chat when it starts.
 
 Developing takes an image model. With none configured, the preset form says so
 under **Can send photos**, and a texting preset leaves it off unless you turn it
-on; a photo already sent says so in place of **Develop**.
+on; a photo already sent says so in place of **Develop**. Tap a photo's
+description to read all of it.
 
 **Develop** opens the same dialog as drawing an avatar, with the description
 already filled in. You can edit the prompt, pick a shape (a ratio named in the

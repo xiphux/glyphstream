@@ -1,8 +1,8 @@
 <!--
 	One `[photo: …]` of a reply, where the model put it: the version on show,
 	with arrows between versions and buttons to develop it again or remove this
-	one — or, before it's developed, a placeholder with its description and a
-	Develop button, or why there's none. Shared by both reply styles: a texting reply draws it as a
+	one — or, before it's developed, a placeholder with its description (tap
+	for all of it) and a Develop button, or why there's none. Shared by both reply styles: a texting reply draws it as a
 	text of its own (TextingBubbles), a standard one inside its bubble
 	(`inBubble`).
 
@@ -47,9 +47,12 @@
 
 	const photoButton = 'rounded-full bg-black/55 p-1.5 text-white transition hover:bg-black/70';
 
+	/** The whole description, rather than its first few lines. */
+	let expanded = $state(false);
+
 	/** The photo's developed versions (with an image), the one on show, and
 	 *  whether its latest attempt failed. */
-	const state = $derived.by(() => {
+	const view = $derived.by(() => {
 		const all = photos?.versions.get(index) ?? [];
 		const versions = all.filter((v): v is MessageImage & { mediaId: string } => !!v.mediaId);
 		const shown = versions.find((v) => v.shown) ?? null;
@@ -71,9 +74,9 @@
 	});
 </script>
 
-{#if state.shown}
-	{@const shown = state.shown}
-	{@const at = state.versions.indexOf(shown)}
+{#if view.shown}
+	{@const shown = view.shown}
+	{@const at = view.versions.indexOf(shown)}
 	<div class={['flex max-w-[75%] flex-col gap-1', portrait ? 'w-40' : 'w-64', inBubble && 'my-2']}>
 		<div class="relative">
 			<button
@@ -96,7 +99,7 @@
 				/>
 			</button>
 			<div class="absolute top-2 right-2 flex gap-1">
-				{#if photos?.onDevelop && !state.developing}
+				{#if photos?.onDevelop && !view.developing}
 					<button
 						type="button"
 						onclick={() => photos?.onDevelop?.(index)}
@@ -121,29 +124,29 @@
 			</div>
 			<!-- Up here, not in place of the arrows: a comparison of many models
 			     can take minutes, and what has landed is worth looking through. -->
-			{#if state.developing}
+			{#if view.developing}
 				<p class="absolute top-2 left-2 rounded-full bg-black/55 px-2 py-0.5 text-xs text-white">
 					{working}
 				</p>
 			{/if}
-			{#if state.versions.length > 1}
+			{#if view.versions.length > 1}
 				<div
 					class="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/55 px-1 text-xs text-white"
 				>
 					<button
 						type="button"
-						onclick={() => photos?.onShow?.(state.versions[at - 1])}
+						onclick={() => photos?.onShow?.(view.versions[at - 1])}
 						disabled={at === 0 || !photos?.onShow}
 						aria-label="Previous version"
 						class="rounded-full p-1 transition hover:bg-black/40 disabled:opacity-40"
 					>
 						<ChevronLeft class="size-3.5" aria-hidden="true" />
 					</button>
-					<span class="tabular-nums">{at + 1}/{state.versions.length}</span>
+					<span class="tabular-nums">{at + 1}/{view.versions.length}</span>
 					<button
 						type="button"
-						onclick={() => photos?.onShow?.(state.versions[at + 1])}
-						disabled={at === state.versions.length - 1 || !photos?.onShow}
+						onclick={() => photos?.onShow?.(view.versions[at + 1])}
+						disabled={at === view.versions.length - 1 || !photos?.onShow}
 						aria-label="Next version"
 						class="rounded-full p-1 transition hover:bg-black/40 disabled:opacity-40"
 					>
@@ -154,11 +157,11 @@
 		</div>
 		<!-- Developing it again failed: the photo on show is the last one
 	     that worked, so say why there's no new one. -->
-		{#if state.failedAgain && !state.developing}
-			<p class="text-xs text-danger">Couldn't {verb} again: {state.failedAgain}</p>
+		{#if view.failedAgain && !view.developing}
+			<p class="text-xs text-danger">Couldn't {verb} again: {view.failedAgain}</p>
 		{/if}
 	</div>
-{:else if !portrait || state.developing || state.failure}
+{:else if !portrait || view.developing || view.failure}
 	<div
 		class={[
 			'flex max-w-[85%] flex-col gap-1.5 rounded-2xl border border-dashed border-border-strong px-3.5 py-2.5',
@@ -176,13 +179,21 @@
 			{/if}
 		</div>
 		{#if !portrait}
-			<p class="line-clamp-4 text-sm italic text-fg-secondary">{description}</p>
+			<!-- Tap for the rest: with no image model there's no dialog to read it in. -->
+			<button
+				type="button"
+				onclick={() => (expanded = !expanded)}
+				aria-expanded={expanded}
+				class="text-left text-sm italic text-fg-secondary"
+			>
+				<span class={['block', !expanded && 'line-clamp-4']}>{description}</span>
+			</button>
 		{/if}
-		{#if state.developing}
+		{#if view.developing}
 			<p class="text-xs text-fg-muted">{working}</p>
 		{:else}
-			{#if state.failure}
-				<p class="text-xs text-danger">Couldn't {verb}: {state.failure}</p>
+			{#if view.failure}
+				<p class="text-xs text-danger">Couldn't {verb}: {view.failure}</p>
 			{/if}
 			{#if photos?.onDevelop}
 				<button
@@ -190,7 +201,7 @@
 					onclick={() => photos?.onDevelop?.(index)}
 					class="self-start rounded-md bg-surface-inverse px-3 py-1 text-xs font-medium text-fg-inverse transition hover:opacity-90"
 				>
-					{state.failure ? 'Try again' : 'Develop'}
+					{view.failure ? 'Try again' : 'Develop'}
 				</button>
 			{:else if photos?.noImageModel}
 				<p class="text-xs text-fg-muted">No image model is configured to {verb} it.</p>

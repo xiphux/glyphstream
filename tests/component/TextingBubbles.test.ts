@@ -247,6 +247,18 @@ describe('texting reply style', () => {
 			expect(screen.getAllByText('No image model is configured to develop it.')).toHaveLength(2);
 		});
 
+		it('shows the whole description on a tap', async () => {
+			render(MessageBubble, {
+				props: { ...bubbleProps, message: reply(PHOTOS), photos: photos() },
+			});
+			const description = screen.getByRole('button', { name: 'the dog' });
+			expect(description).toHaveAttribute('aria-expanded', 'false');
+			expect(screen.getByText('the dog')).toHaveClass('line-clamp-4');
+			await fireEvent.click(description);
+			expect(description).toHaveAttribute('aria-expanded', 'true');
+			expect(screen.getByText('the dog')).not.toHaveClass('line-clamp-4');
+		});
+
 		it('draws the version on show in the marker’s place, under its sender', async () => {
 			const onImageClick = vi.fn();
 			render(MessageBubble, {
