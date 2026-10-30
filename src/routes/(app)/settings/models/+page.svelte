@@ -66,14 +66,14 @@
 	let error = $state<string | null>(null);
 	let deletingId = $state<string | null>(null);
 
-	// Show only the toggles the composer will actually offer for this preset's base
-	// model — same rule as FeatureTogglesMenu. No base model picked yet → unknown
-	// kind → show everything.
 	// What develops a preset's photos. None listed means none configured only when
 	// every endpoint answered — one that didn't may be the one that has them.
 	const hasImageModel = $derived(data.models.some((m: ModelEntry) => m.kind === 'image'));
 	const noImageModel = $derived(!hasImageModel && !data.modelsError);
 
+	// Show only the toggles the composer will actually offer for this preset's base
+	// model — same rule as FeatureTogglesMenu. No base model picked yet → unknown
+	// kind → show everything.
 	const baseKind = $derived(
 		data.models.find((m: ModelEntry) => m.id === baseModelComposite)?.kind ?? null,
 	);
