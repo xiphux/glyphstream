@@ -50,3 +50,17 @@ ignore:
     package: { name: ip-address, location: /usr/local/lib/node_modules/npm/** }
   - vulnerability: GHSA-rj75-hqrm-r3gf
     package: { name: postcss-selector-parser, location: /usr/local/lib/node_modules/npm/** }
+  # Added 2026-11-02, same reasoning. npm 11.20.0 (still bundled by the
+  # node:26-alpine image on Node 26.13.0) carries undici 6.28.0, glob 13.0.6
+  # and minimatch 10.2.5. The glob and minimatch fixes are new majors (14.0.2,
+  # 11.0.1) that no npm release has adopted, 11.21.1 and 12.2.1 included.
+  - vulnerability: GHSA-9fm3-97px-rjf6
+    package: { name: undici, location: /usr/local/lib/node_modules/npm/** }
+  - vulnerability: GHSA-qrxm-fqhp-jwvm
+    package: { name: undici, location: /usr/local/lib/node_modules/npm/** }
+  - vulnerability: GHSA-2m5v-pch6-74hx
+    package: { name: undici, location: /usr/local/lib/node_modules/npm/** }
+  - vulnerability: GHSA-3g3m-2fjr-6pw4
+    package: { name: glob, location: /usr/local/lib/node_modules/npm/** }
+  - vulnerability: GHSA-g3hv-75wg-m249
+    package: { name: minimatch, location: /usr/local/lib/node_modules/npm/** }
