@@ -18,6 +18,10 @@ arrived.
 
 - An image endpoint that's down no longer makes the avatar menu say no image model is configured.
 
+### Security
+
+- The Docker image now runs Node 26.13, which fixes a critical, actively exploited flaw in its Brotli decoder (CVE-2026-111497) that a crafted compressed response from a fetched page could reach.
+
 ## v0.52.1
 
 ### Changed
