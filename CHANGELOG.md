@@ -19,6 +19,7 @@ arrived.
 ### Fixed
 
 - An image endpoint that's down no longer makes the avatar menu say no image model is configured.
+- Notifications reach an idle iPhone when they're sent, rather than hours later alongside the next one, and one sent while the phone was briefly offline arrives instead of being dropped.
 
 ### Security
 

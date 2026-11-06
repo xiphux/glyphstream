@@ -16,6 +16,9 @@ import { createLogger } from '../log';
 
 const log = createLogger('push');
 
+/** How long the push service holds an undelivered push: 4 hours. */
+const PUSH_TTL_SECONDS = 4 * 60 * 60;
+
 let initialized = false;
 let loadedConfig: LoadedNotificationsConfig | null = null;
 let initFailureLogged = false;
@@ -88,7 +91,21 @@ export async function sendPushNotification(
 		// web-push lib sets no default socket timeout, so a non-responsive push
 		// endpoint would leave the request (and its socket) pending indefinitely.
 		// These sends are fire-and-forget under Promise.allSettled, so bound them.
-		await webpush.sendNotification(subscription, payload, { TTL: 60, timeout: 10_000 });
+		//
+		// `urgency: 'high'` because anything lower lets Apple's push service
+		// deliver "with the device's power considerations": an idle iPhone held a
+		// check-in for hours and released it alongside the next notification. Every
+		// push here is an event the user asked to hear about, so there is no
+		// background traffic to save battery on. The TTL used to be 60s, which
+		// dropped a held or offline push outright. Hours outlasts the hold, but
+		// stops a phone that was off overnight replaying yesterday: the cross-device
+		// check can't recall a push already sent for a reply read on the desktop
+		// since (the per-thread `tag` keeps it to one per thread).
+		await webpush.sendNotification(subscription, payload, {
+			TTL: PUSH_TTL_SECONDS,
+			urgency: 'high',
+			timeout: 10_000,
+		});
 		return { ok: true };
 	} catch (e) {
 		// web-push throws a WebPushError with statusCode on HTTP failures;

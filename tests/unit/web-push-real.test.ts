@@ -198,7 +198,10 @@ describe('sendPushNotification (real web-push)', () => {
 		const [req] = received;
 		expect(req.method).toBe('POST');
 		expect(req.url).toBe('/push/sub-1');
-		expect(req.headers.ttl).toBe('60');
+		// High urgency, or an idle iPhone holds the push back for hours; a TTL in
+		// hours, so a held push is late rather than dropped.
+		expect(req.headers.urgency).toBe('high');
+		expect(req.headers.ttl).toBe(String(4 * 60 * 60));
 		expect(req.headers['content-encoding']).toBe('aes128gcm');
 		expect(req.body.includes(Buffer.from('Reply ready'))).toBe(false);
 		expect(decryptAes128gcm(req.body)).toBe(payload);
