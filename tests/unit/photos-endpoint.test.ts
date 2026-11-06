@@ -63,7 +63,7 @@ beforeEach(() => {
 		endpointId: 'local',
 		modelId: 'local::chat',
 		modelKind: 'chat',
-		replyStyle: 'texting',
+		replyStyle: 'character',
 		photos: true,
 	}).id;
 	const user = appendMessage({

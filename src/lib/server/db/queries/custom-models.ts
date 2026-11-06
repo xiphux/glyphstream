@@ -5,6 +5,7 @@ import type {
 	CustomModelParameters,
 	FeatureCategory,
 	ReplyStyle,
+	Scene,
 } from '#lib/types/api.js';
 import { getDb } from '../client';
 import { customModels, media } from '../schema';
@@ -23,6 +24,8 @@ interface CreateInput {
 	defaultDisabledFeatures?: FeatureCategory[];
 	/** Omit for 'standard'. */
 	replyStyle?: ReplyStyle;
+	/** Omit for 'texting'. */
+	startingScene?: Scene;
 	/** Omit for off. */
 	checkIns?: boolean;
 	/** Omit for off. */
@@ -38,6 +41,7 @@ interface UpdateInput {
 	parameters?: CustomModelParameters | null;
 	defaultDisabledFeatures?: FeatureCategory[];
 	replyStyle?: ReplyStyle;
+	startingScene?: Scene;
 	checkIns?: boolean;
 	photos?: boolean;
 }
@@ -53,6 +57,7 @@ function rowToCustomModel(row: typeof customModels.$inferSelect): CustomModel {
 		parameters: parseModelParameters(row.parametersJson),
 		defaultDisabledFeatures: parseDisabledFeatures(row.defaultDisabledFeaturesJson),
 		replyStyle: row.replyStyle,
+		startingScene: row.startingScene,
 		checkIns: row.checkIns,
 		photos: row.photos,
 		avatarMediaId: row.avatarMediaId,
@@ -94,6 +99,7 @@ export function createCustomModel(input: CreateInput): CustomModel {
 	const now = Date.now();
 	const defaultDisabledFeatures = input.defaultDisabledFeatures ?? [];
 	const replyStyle = input.replyStyle ?? 'standard';
+	const startingScene = input.startingScene ?? 'texting';
 	const checkIns = input.checkIns ?? false;
 	const photos = input.photos ?? false;
 	db.insert(customModels)
@@ -108,6 +114,7 @@ export function createCustomModel(input: CreateInput): CustomModel {
 			parametersJson: input.parameters ? JSON.stringify(input.parameters) : null,
 			defaultDisabledFeaturesJson: encodeDisabledFeatures(defaultDisabledFeatures),
 			replyStyle,
+			startingScene,
 			checkIns,
 			photos,
 			createdAt: now,
@@ -124,6 +131,7 @@ export function createCustomModel(input: CreateInput): CustomModel {
 		parameters: input.parameters,
 		defaultDisabledFeatures,
 		replyStyle,
+		startingScene,
 		checkIns,
 		photos,
 		// Avatars are never set at create time — the editor uploads or picks one
@@ -168,6 +176,7 @@ export function updateCustomModel(
 			patch.defaultDisabledFeaturesJson = encodeDisabledFeatures(input.defaultDisabledFeatures);
 		}
 		if (input.replyStyle !== undefined) patch.replyStyle = input.replyStyle;
+		if (input.startingScene !== undefined) patch.startingScene = input.startingScene;
 		if (input.checkIns !== undefined) patch.checkIns = input.checkIns;
 		if (input.photos !== undefined) patch.photos = input.photos;
 

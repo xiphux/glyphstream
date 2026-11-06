@@ -33,43 +33,65 @@ avatar shown beside its name above each reply. A preset is copied onto a
 conversation when the conversation is created, so editing the preset later
 doesn't change chats that already used it.
 
-### Texting reply style
+### Character reply style
 
-A preset's **Reply style** can be set to **Texting**, for presets meant to feel
-like a text conversation. Each paragraph of a reply then shows as its own chat
-bubble, as if the other side had sent several texts in a row. Glyphstream tells
-the model to write that way, so the preset's system prompt only needs to describe
-the character. While a reply is arriving, the text being written shows as a
-typing indicator, and appears whole once it's done.
+A preset's **Reply style** can be set to **Character**, for roleplay. A
+character chat moves between two scenes: texting, and being together in person.
+Glyphstream tells the model how to write each, so the preset's system prompt
+only needs to describe the character.
 
-The same preset can play more than one person. A text that starts with a name and
-a colon (`Sam: see you there`) shows under that name, with a coloured initial.
-The preset's own texts show its avatar, or an initial too if it has none.
-Texts with no name come from whoever sent the previous one; each reply starts
+- **Texting.** Each paragraph of a reply shows as its own chat bubble, as if the
+  other side had sent several texts in a row. While a reply is arriving, the
+  text being written shows as a typing indicator, and appears whole once it's
+  done.
+- **In person.** The reply reads as a scene: prose with no bubbles, with actions
+  (which the model sets in `*asterisks*`) muted so what's said stands out from
+  what's done.
+
+**Starts** in the preset picks the scene each new chat opens in. After that,
+either side can change it. The model writes `[texting]` or `[in person]` as a
+paragraph of its own where the story moves on: a friend dropping by, a date
+starting or ending. It's told to do that only when it would really happen for
+the character, so a long-distance partner doesn't turn up at your door. You
+change it from the line above the message box (**Meet up in person** / **Back
+to texting**), which puts the marker on top of your next message. Either way, a
+divider in the thread shows where the scene changed. A check-in always picks
+back up over text, since checking in means you're apart.
+
+The scene isn't a setting: it's whatever the last marker on the thread says. So
+retrying the reply where you met up, or switching to another branch above it,
+takes you back to where that branch was.
+
+The same preset can play more than one person. A paragraph that starts with a
+name and a colon (`Sam: see you there`) shows under that name, with a coloured
+initial. The preset's own paragraphs show its avatar, or an initial too if it has
+none. Paragraphs with no name come from whoever spoke last; each reply starts
 with the preset itself. If the model puts the preset's own name in front of a
-text, that text shows as the preset's. To keep ordinary sentences from reading as
-a speaker, a name counts only at the very start of a text, must be at most three
-words and 30 characters, and must be followed by a colon and a space.
+paragraph, it shows as the preset's. To keep ordinary sentences from reading as
+a speaker, a name counts only at the very start of a paragraph, must be at most
+three words and 30 characters, and must be followed by a colon and a space.
 
 This only changes how replies look. Each reply is still stored as one message, so
 retrying, editing and branching work as usual. The model also sees its earlier
-replies exactly as it wrote them, names included. Like the rest of a preset, the
-style is fixed when a conversation is created.
+replies exactly as it wrote them, names and markers included. Like the rest of a
+preset, the style and starting scene are fixed when a conversation is created.
+Chats from the earlier **Texting** style carry on as characters that start (and
+for now still are) texting.
 
 ### Photos
 
 A custom model can send photos. Turn on **Can send photos** in the preset (it's
-on by default for a texting preset and off for a standard one, like **Can check
-in**). Glyphstream then tells the model it can write a paragraph of its own as
+on by default for a character preset and off for a standard one, like **Can
+check in**). Glyphstream then tells the model it can write a paragraph of its own as
 `[photo: …]`, describing the picture in full along with its aspect ratio. That
 paragraph shows as a photo placeholder with the description and a **Develop**
-button — as a text of its own in a texting reply, or in place within a standard
-one. Chats without a preset don't send photos, and like the rest of a preset,
+button — as a text of its own while texting, part of the scene in person (the
+moment as you'd see it), or in place within a standard reply. Chats without a preset don't send photos, and like the rest of a preset,
 the setting is copied into each chat when it starts.
 
 Developing takes an image model. With none configured, the preset form says so
-under **Can send photos**, and a texting preset leaves it off unless you turn it
-on; a photo already sent says so in place of **Develop**. Tap a photo's
+under **Can send photos**, and a character preset leaves it off unless you turn
+it on; a photo already sent says so in place of **Develop**. Tap a photo's
 description to read all of it.
 
 **Develop** opens the same dialog as drawing an avatar, with the description
@@ -96,7 +118,7 @@ preset's prompt ("loves sending selfies").
 ### Check-ins
 
 A custom model can get back to you on its own. Turn on **Can check in** in the
-preset (it's on by default for a texting preset and off for a standard one,
+preset (it's on by default for a character preset and off for a standard one,
 which is more often a tool than a character). Then, when the model says it'll
 get back to you later, it ends its reply with `[later 2h: …]`: how long to wait
 (up to a day), and a note to itself about what it meant to say. That line isn't

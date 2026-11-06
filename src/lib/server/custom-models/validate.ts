@@ -16,8 +16,9 @@ import type {
 	CustomModelParameters,
 	FeatureCategory,
 	ReplyStyle,
+	Scene,
 } from '#lib/types/api.js';
-import { REPLY_STYLES } from '#lib/types/api.js';
+import { REPLY_STYLES, SCENES } from '#lib/types/api.js';
 
 export interface ValidatedCreate {
 	name: string;
@@ -28,6 +29,7 @@ export interface ValidatedCreate {
 	parameters: CustomModelParameters | null;
 	defaultDisabledFeatures: FeatureCategory[];
 	replyStyle: ReplyStyle;
+	startingScene: Scene;
 	checkIns: boolean;
 	photos: boolean;
 }
@@ -66,13 +68,16 @@ export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCr
 	const defaultDisabledFeatures = validateDefaultDisabledFeatures(body.defaultDisabledFeatures);
 	const replyStyle =
 		body.replyStyle === undefined ? 'standard' : validateReplyStyle(body.replyStyle);
-	// Unset follows the style: a texting partner checks in, a standard preset —
-	// more often a tool than a character — doesn't unless asked to.
+	const startingScene =
+		body.startingScene === undefined ? 'texting' : validateStartingScene(body.startingScene);
+	// Unset follows the style: a character checks in, a standard preset — more
+	// often a tool than a character — doesn't unless asked to.
 	const checkIns =
-		body.checkIns === undefined ? replyStyle === 'texting' : validateCheckIns(body.checkIns);
-	// The same for photos: a texting partner sends them, a standard preset
-	// doesn't unless asked to.
-	const photos = body.photos === undefined ? replyStyle === 'texting' : validatePhotos(body.photos);
+		body.checkIns === undefined ? replyStyle === 'character' : validateCheckIns(body.checkIns);
+	// The same for photos: a character sends them, a standard preset doesn't
+	// unless asked to.
+	const photos =
+		body.photos === undefined ? replyStyle === 'character' : validatePhotos(body.photos);
 
 	return {
 		name,
@@ -83,6 +88,7 @@ export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCr
 		parameters,
 		defaultDisabledFeatures,
 		replyStyle,
+		startingScene,
 		checkIns,
 		photos,
 	};
@@ -99,10 +105,20 @@ export function validatePhotos(raw: unknown): boolean {
 }
 
 export function validateReplyStyle(raw: unknown): ReplyStyle {
+	// 'texting' became 'character' (which starts out texting). A settings page
+	// cached in an installed app from before still sends the old name.
+	if (raw === 'texting') return 'character';
 	if (!REPLY_STYLES.includes(raw as ReplyStyle)) {
 		error(400, `'replyStyle' must be one of: ${REPLY_STYLES.join(', ')}`);
 	}
 	return raw as ReplyStyle;
+}
+
+export function validateStartingScene(raw: unknown): Scene {
+	if (!SCENES.includes(raw as Scene)) {
+		error(400, `'startingScene' must be one of: ${SCENES.join(', ')}`);
+	}
+	return raw as Scene;
 }
 
 /** Same shape rules as the per-conversation field — undefined / null → []

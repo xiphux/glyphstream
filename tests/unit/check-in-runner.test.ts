@@ -140,7 +140,7 @@ const T0 = Date.UTC(2026, 9, 27, 15, 0);
 
 function thread(
 	replyText = 'gtg, work\n\n[later 1h: ask how the meeting went]',
-	style: 'texting' | 'standard' = 'texting',
+	style: 'character' | 'standard' = 'character',
 	checkIns = true,
 	isPrivate = false,
 ) {
@@ -289,7 +289,7 @@ describe('firing', () => {
 	});
 
 	it("is dropped in a conversation that can't check in", async () => {
-		const t = thread(undefined, 'texting', false);
+		const t = thread(undefined, 'character', false);
 		scheduled(t);
 		expect(await runCheckInSweep(T0 + HOUR)).toBe(0);
 		expect(getCheckIn(t.conversationId, t.userId)).toBeNull();
@@ -308,7 +308,7 @@ describe('firing', () => {
 	});
 
 	it('keeps a private chat sealed, as any other turn in it is', async () => {
-		const t = thread(undefined, 'texting', true, true);
+		const t = thread(undefined, 'character', true, true);
 		scheduled(t);
 		mocks.upstream.push(reply('hey'));
 		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);

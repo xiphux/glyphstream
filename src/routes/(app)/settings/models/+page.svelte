@@ -15,6 +15,7 @@
 		type FeatureCategoryEntry,
 		type ModelEntry,
 		type ReplyStyle,
+		type Scene,
 	} from '#lib/types/api.js';
 
 	let {
@@ -43,7 +44,8 @@
 	let maxTokensStr = $state('');
 	let defaultDisabledFeatures = $state<FeatureCategory[]>([]);
 	let replyStyle = $state<ReplyStyle>('standard');
-	// Check-ins default with the style — on for a texting partner, off for a
+	let startingScene = $state<Scene>('texting');
+	// Check-ins default with the style — on for a character, off for a
 	// standard preset (more often a tool than a character) — until the user sets
 	// them by hand, after which a style change leaves them alone.
 	let checkIns = $state(false);
@@ -106,6 +108,7 @@
 		maxTokensStr = '';
 		defaultDisabledFeatures = [];
 		replyStyle = 'standard';
+		startingScene = 'texting';
 		checkIns = false;
 		checkInsTouched = false;
 		photos = false;
@@ -128,10 +131,11 @@
 		maxTokensStr = m.parameters?.max_tokens !== undefined ? String(m.parameters.max_tokens) : '';
 		defaultDisabledFeatures = [...m.defaultDisabledFeatures];
 		replyStyle = m.replyStyle;
+		startingScene = m.startingScene;
 		checkIns = m.checkIns;
-		checkInsTouched = m.checkIns !== (m.replyStyle === 'texting');
+		checkInsTouched = m.checkIns !== (m.replyStyle === 'character');
 		photos = m.photos;
-		photosTouched = m.photos !== (m.replyStyle === 'texting');
+		photosTouched = m.photos !== (m.replyStyle === 'character');
 		setAvatarFile(null);
 		avatarMediaId = m.avatarMediaId;
 		avatarCleared = false;
@@ -282,6 +286,7 @@
 					// The selector is hidden for non-chat bases; don't keep a style the
 					// user can no longer see (or that means nothing for an image model).
 					replyStyle: baseKind === null || baseKind === 'chat' ? replyStyle : 'standard',
+					startingScene,
 					checkIns: (baseKind === null || baseKind === 'chat') && checkIns,
 					photos: (baseKind === null || baseKind === 'chat') && photos,
 				};
@@ -559,26 +564,50 @@
 							bind:value={replyStyle}
 							onchange={(e) => {
 								// The event's value: the binding may not have caught up yet.
-								if (!checkInsTouched) checkIns = e.currentTarget.value === 'texting';
+								replyStyle = e.currentTarget.value as ReplyStyle;
+								if (!checkInsTouched) checkIns = e.currentTarget.value === 'character';
 								// Not where nothing could develop them.
-								if (!photosTouched) photos = e.currentTarget.value === 'texting' && !noImageModel;
+								if (!photosTouched) {
+									photos = e.currentTarget.value === 'character' && !noImageModel;
+								}
 							}}
 							disabled={busy}
 							class="w-full rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
 						>
 							<option value="standard">Standard</option>
-							<option value="texting">Texting</option>
+							<option value="character">Character</option>
 						</select>
 						<p class="mt-1.5 text-[11px] text-fg-muted">
-							{#if replyStyle === 'texting'}
-								Replies arrive as a run of short text bubbles, one per paragraph. The model is told
-								how to format them; to have it play more than one person, describe them in the
-								system prompt and it can start a text with <code>Name:</code>.
+							{#if replyStyle === 'character'}
+								For roleplay. The chat moves between texting, where replies arrive as short text
+								bubbles, and being together in person, where they read as a scene. The model can
+								meet up or part when the story calls for it, and so can you, from above the message
+								box. To have it play more than one person, describe them in the system prompt and it
+								can start a paragraph with <code>Name:</code>.
 							{:else}
 								Replies render as a single message.
 							{/if}
 						</p>
 					</div>
+
+					{#if replyStyle === 'character'}
+						<div>
+							<label class="mb-1 block text-xs font-medium" for="starting-scene">Starts</label>
+							<select
+								id="starting-scene"
+								bind:value={startingScene}
+								onchange={(e) => (startingScene = e.currentTarget.value as Scene)}
+								disabled={busy}
+								class="w-full rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
+							>
+								<option value="texting">Texting</option>
+								<option value="in_person">In person</option>
+							</select>
+							<p class="mt-1.5 text-[11px] text-fg-muted">
+								Where each new chat opens. You can change scene before your first message too.
+							</p>
+						</div>
+					{/if}
 
 					<label class="flex cursor-pointer items-start gap-2 text-xs">
 						<input

@@ -29,22 +29,25 @@ afterEach(() => closeTestDb());
 
 it('switches photos on for texting presets and chats, and only those', () => {
 	const userId = seedUser().id;
-	const preset = (replyStyle: 'texting' | 'standard') =>
+	// Rows as they stood when this migration ran, before 'texting' became
+	// 'character' (`*_character_scenes`): written as standard, then given the old
+	// style by hand, since nothing can write it any more.
+	const preset = (name: string) =>
 		createCustomModel({
 			userId,
-			name: replyStyle,
+			name,
 			description: null,
 			baseEndpointId: 'e',
 			baseModelId: 'm',
 			systemPrompt: null,
 			parameters: null,
-			replyStyle,
 		}).id;
-	const chat = (replyStyle: 'texting' | 'standard') =>
-		createConversation({ userId, endpointId: 'e', modelId: 'e::m', modelKind: 'chat', replyStyle })
-			.id;
+	const chat = () =>
+		createConversation({ userId, endpointId: 'e', modelId: 'e::m', modelKind: 'chat' }).id;
 	const presets = { texting: preset('texting'), standard: preset('standard') };
-	const chats = { texting: chat('texting'), standard: chat('standard') };
+	const chats = { texting: chat(), standard: chat() };
+	db.run(sql`UPDATE custom_models SET reply_style = 'texting' WHERE id = ${presets.texting}`);
+	db.run(sql`UPDATE conversations SET reply_style = 'texting' WHERE id = ${chats.texting}`);
 
 	expect(BACKFILL).toHaveLength(2);
 	for (const statement of BACKFILL) db.run(sql.raw(statement));

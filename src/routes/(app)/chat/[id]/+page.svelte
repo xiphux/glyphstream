@@ -77,6 +77,13 @@
 	import { CheckInController } from '#lib/check-in-controller.svelte.js';
 	import { isCheckInMessage, type PendingCheckInNote } from '#lib/check-ins.js';
 	import { withoutCheckInText } from '#lib/texting-check-ins.js';
+	import {
+		lastSceneInParts,
+		sceneMarkerText,
+		withoutSceneMarkers,
+		type Scene,
+	} from '#lib/scenes.js';
+	import SceneSwitch from '#lib/components/chat/SceneSwitch.svelte';
 	import { ChatLightbox } from '#lib/chat-lightbox.svelte.js';
 	import { MediaFavorites } from '#lib/media-favorites.svelte.js';
 	import FanoutColumns from '#lib/components/chat/FanoutColumns.svelte';
@@ -149,7 +156,7 @@
 		preferredFirstName(data.prefs?.name, data.user.displayName, data.user.email ?? 'You'),
 	);
 	const assistantLabel = $derived(data.assistantLabel);
-	const texting = $derived(data.conversation.replyStyle === 'texting');
+	const character = $derived(data.conversation.replyStyle === 'character');
 	// The conversation's own face, as the light photo read last reported it —
 	// a portrait going on show changes it, and that read is how the page hears
 	// (a reload of this route re-sends the whole window). Cleared whenever the
@@ -306,6 +313,16 @@
 	// reader scrolls up.
 	// svelte-ignore state_referenced_locally
 	let hasEarlier = $state(data.conversation.hasEarlierMessages ?? false);
+	// The scene at the top of what's loaded: the last marker above it, or the
+	// conversation's starting scene. Each message's scene follows from it (see
+	// `scenes`).
+	// A scene change the user has asked for with the composer's switch: it goes
+	// on top of their next message as a marker, so the model (and the thread)
+	// sees where it happened. Cleared once sent.
+	let sceneSwitch = $state<Scene | null>(null);
+
+	// svelte-ignore state_referenced_locally
+	let sceneBefore = $state<Scene>(data.conversation.sceneBefore ?? data.conversation.startingScene);
 	// A load of earlier messages failed: the sentinel stops asking and offers a
 	// retry instead of hammering a failing request on every scroll.
 	let earlierFailed = $state(false);
@@ -469,6 +486,7 @@
 		// the older messages the reader already loaded above it, unless the
 		// branch changed up there (see mergeRefreshedWindow).
 		const fresh = data.conversation.hasEarlierMessages ?? false;
+		const freshScene = data.conversation.sceneBefore ?? data.conversation.startingScene;
 		if (data.conversation.id === untrack(() => convId)) {
 			const merged = mergeRefreshedWindow(
 				untrack(() => messages),
@@ -477,6 +495,7 @@
 			messages = merged.messages;
 			if (!merged.keptEarlier) {
 				hasEarlier = fresh;
+				sceneBefore = freshScene;
 				// A new window: a failure loading above the old one is no reason
 				// for this one's sentinel to stand down.
 				earlierFailed = false;
@@ -484,6 +503,8 @@
 		} else {
 			messages = data.conversation.messages;
 			hasEarlier = fresh;
+			sceneBefore = freshScene;
+			sceneSwitch = null;
 			earlierFailed = false;
 		}
 		title = data.conversation.title;
@@ -587,6 +608,19 @@
 	// messages array via a single pass to avoid three walks per update.
 	const rendered = $derived(buildRenderedConversation(messages, { truncatedAbove: hasEarlier }));
 	const visibleMessages = $derived(rendered.visibleMessages);
+	// A character chat's scenes, read off the loaded thread (`#lib/scenes.ts`):
+	// the scene each message opens in, and the one a new turn is in. Folded
+	// over `messages` rather than stored, so a retry or branch switch brings
+	// its own.
+	const scenes = $derived.by(() => {
+		const at = new Map<string, Scene>();
+		let scene = sceneBefore;
+		for (const m of messages) {
+			at.set(m.id, scene);
+			scene = lastSceneInParts(m.parts) ?? scene;
+		}
+		return { at, now: scene };
+	});
 	const toolResultsByCallId = $derived(rendered.toolResultsByCallId);
 	const pendingApprovals = $derived(rendered.pendingApprovals);
 
@@ -1081,6 +1115,7 @@
 			prependingEarlier = true;
 			messages = [...body.messages, ...messages];
 			hasEarlier = body.hasEarlier;
+			sceneBefore = body.sceneBefore ?? data.conversation.startingScene;
 			earlierFailed = false;
 			await tick();
 			prependingEarlier = false;
@@ -2052,12 +2087,14 @@
 		// no message strips to empty text and isn't sendable; a non-matching
 		// `/token` (e.g. a file path) is left untouched.
 		const skillsActive = modelKind === 'chat' && !disabledFeatures.includes('skills');
-		const { text, activatedSkillNames } = skillsActive
+		const { text: typed, activatedSkillNames } = skillsActive
 			? stripSkillCommand(composerText.trim(), data.enabledSkills)
 			: {
 					text: composerText.trim(),
 					activatedSkillNames: [] as string[],
 				};
+		const switchTo = character && sceneSwitch !== scenes.now ? sceneSwitch : null;
+		const text = switchTo && typed ? `${sceneMarkerText(switchTo)}\n\n${typed}` : typed;
 
 		if ((!text && attachments.items.length === 0) || generating || compaction.compacting) return;
 		if (attachments.blocksSend) return;
@@ -2110,6 +2147,7 @@
 		}
 
 		composerText = '';
+		sceneSwitch = null;
 		// The message is committed — drop the saved draft so it isn't restored
 		// after a reload. cancel() drops the pending write; clearDraft() removes
 		// the stored key now (load-bearing: setting composerText='' above re-fires
@@ -2359,9 +2397,10 @@
 	let copyTimer: ReturnType<typeof setTimeout> | null = null;
 
 	async function copyMessage(m: ChatMessage) {
-		// A check-in marker isn't drawn, so it isn't copied either.
-		const text =
-			m.role === 'assistant' ? withoutCheckInText(partsToText(m.parts)) : partsToText(m.parts);
+		// A check-in or scene marker isn't drawn as text, so it isn't copied either.
+		const text = withoutSceneMarkers(
+			m.role === 'assistant' ? withoutCheckInText(partsToText(m.parts)) : partsToText(m.parts),
+		);
 		if (!text.trim()) return;
 		try {
 			await navigator.clipboard.writeText(text);
@@ -2807,7 +2846,7 @@
 									reaction={m.role === 'user' ? reactionFor(m.id) : null}
 									bottomCanvasCards={canvasCardsByGroupLast.get(m.id) ?? []}
 									onOpenCanvas={(artifactId: string | null) => canvas.show(artifactId ?? undefined)}
-									{texting}
+									scene={character ? scenes.at.get(m.id) : undefined}
 									photos={photosFor(m, identity.label)}
 									portrait={portraitFor(m)}
 									checkIn={checkInNoteFor(m)}
@@ -2861,7 +2900,7 @@
 							mergeWithPrev={fuseWithPrevAssistant}
 							mcpUnavailable={turn.inFlightMcpUnavailable}
 							onOpenCanvas={(artifactId: string | null) => canvas.show(artifactId ?? undefined)}
-							{texting}
+							scene={character ? scenes.now : undefined}
 							typing={!turn.inFlightDone}
 							photos={data.conversation.photos}
 						/>
@@ -2960,6 +2999,9 @@
 							conversationId={convId}
 							revision={messages[messages.length - 1]?.id ?? ''}
 						/>
+					{/if}
+					{#if character}
+						<SceneSwitch now={scenes.now} bind:next={sceneSwitch} disabled={generating} />
 					{/if}
 					<ChatComposer
 						bind:this={composerRef}

@@ -31,7 +31,7 @@ beforeEach(() => {
 		endpointId: 'bridge',
 		modelId: 'bridge::m',
 		modelKind: 'chat',
-		replyStyle: 'texting',
+		replyStyle: 'character',
 		checkIns: true,
 	}).id;
 	const reply = appendMessage({

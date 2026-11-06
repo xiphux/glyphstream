@@ -85,6 +85,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 		supportsTools,
 		baseSystemPrompt,
 		replyStyle: meta.replyStyle,
+		startingScene: meta.startingScene,
 		checkIns: meta.checkIns,
 		photos: meta.photos,
 		branch,

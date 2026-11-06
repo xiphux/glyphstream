@@ -845,9 +845,23 @@ read before anyone re-optimizes from an estimate.
   to an in-page outbox that only flushes while the tab is alive, which buys little
   over the draft that already survives the kill. Low priority.
 
-- **Texting, photos and check-ins — what v1 left out.** The texting reply
-  style, developed `[photo: …]` markers and check-ins (`[later 1h: …]`) all
-  shipped (see `docs/models.md`). Deferred, each with why:
+- **Characters, photos and check-ins — what v1 left out.** The character
+  reply style (texting and in-person scenes, `[texting]` / `[in person]`),
+  developed `[photo: …]` markers and check-ins (`[later 1h: …]`) all shipped
+  (see `docs/models.md`). Deferred, each with why:
+  - _Scenes._
+    - _A texting look of its own._ Texting and in person differ by bubbles vs
+      prose and the divider between them. Your own messages could become
+      right-aligned coloured bubbles while texting, and the scene switch could
+      sit in the header as a chip. Wait to see whether the divider is enough.
+    - _Time between texts._ A small timestamp over a text that follows a long
+      gap, as a messaging app shows, so texting reads as time passing apart.
+    - _Editing a message that changed scene._ The editor shows the marker the
+      switch put on top (`[in person]`) as text. Deleting it undoes the switch,
+      which is right, but a control would be friendlier than a bracket.
+    - _More scenes._ A phone call, letters. The marker and the renderer take
+      another value without new plumbing; each wants its own look and a
+      sentence of instructions, which is rent.
   - _Texting._
     - _A pause before each bubble._ The typing indicator shipped without one,
       so nothing that has arrived is held back. Add it if replies feel too
@@ -856,8 +870,8 @@ read before anyone re-optimizes from an estimate.
       preset gets a coloured initial hued from its name. Uploading one per
       character can come later as an optional extra without changing the
       format.
-    - _Texting style on scheduled runs._ A scheduled task built on a texting
-      preset creates a standard chat (no instructions, one bubble). Fixing it is
+    - _Character style on scheduled runs._ A scheduled task built on a
+      character preset creates a standard chat (no instructions, one bubble). Fixing it is
       a `reply_style` on `scheduled_tasks`, or reading the preset's at run time;
       out of scope as an unlikely use case.
     - _A stoplist for false speaker names._ Speaker matching is deliberately

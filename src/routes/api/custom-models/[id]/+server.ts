@@ -17,6 +17,7 @@ import {
 	validateCheckIns,
 	validatePhotos,
 	validateReplyStyle,
+	validateStartingScene,
 } from '#lib/server/custom-models/validate.js';
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
 import type { UpdateCustomModelRequest } from '#lib/types/api.js';
@@ -87,6 +88,9 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	}
 	if (body.replyStyle !== undefined) {
 		patch.replyStyle = validateReplyStyle(body.replyStyle);
+	}
+	if (body.startingScene !== undefined) {
+		patch.startingScene = validateStartingScene(body.startingScene);
 	}
 	if (body.photos !== undefined) {
 		patch.photos = validatePhotos(body.photos);

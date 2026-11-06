@@ -49,6 +49,7 @@ import { getConversationMeta } from '../db/queries/conversations';
 import { fenceCode, renderMarkdown } from '../markdown/render';
 import { notifyConversationComplete } from '../push/notify';
 import { withoutCheckInText } from '#lib/texting-check-ins.js';
+import { withoutSceneMarkers } from '#lib/scenes.js';
 import { isCheckInMessage } from '#lib/check-ins.js';
 import type { NotifyModality } from '#lib/types/push.js';
 import { startTitleTaskIfFirstExchange } from '../tasks/title-task-runner';
@@ -679,7 +680,7 @@ async function runChatTurn(
 					conversationTitle: params.conversationTitle ?? 'New conversation',
 					// A check-in marker is the model's note to itself; the bubbles hide
 					// it, and so must the lock screen.
-					previewText: withoutCheckInText(finalTextPreview),
+					previewText: withoutSceneMarkers(withoutCheckInText(finalTextPreview)),
 					modality: relayModalityFor(params.modelKind),
 				}).catch((e) => log.warn('notify failed:', e));
 			}

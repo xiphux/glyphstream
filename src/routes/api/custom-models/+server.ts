@@ -29,6 +29,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		parameters: validated.parameters,
 		defaultDisabledFeatures: validated.defaultDisabledFeatures,
 		replyStyle: validated.replyStyle,
+		startingScene: validated.startingScene,
 		checkIns: validated.checkIns,
 		photos: validated.photos,
 	});

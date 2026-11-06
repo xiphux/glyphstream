@@ -9,6 +9,10 @@ arrived.
 
 ## Unreleased
 
+### Changed
+
+- The **Texting** reply style is now **Character**: a chat moves between texting and being together in person, where replies read as a scene instead of bubbles. The model can meet up or part when the story calls for it, you can switch from above the message box, and a preset picks the scene its chats start in. Existing texting presets and chats carry on as characters that start texting.
+
 ## v0.52.2
 
 ### Changed

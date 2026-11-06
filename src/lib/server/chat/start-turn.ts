@@ -142,6 +142,7 @@ export async function startChatTurn(
 		supportsTools,
 		baseSystemPrompt,
 		replyStyle: meta.replyStyle,
+		startingScene: meta.startingScene,
 		checkIns: meta.checkIns,
 		photos: meta.photos,
 		branch,

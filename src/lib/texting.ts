@@ -1,6 +1,7 @@
 /**
- * The 'texting' reply style's view of a reply: each top-level markdown block
- * (in practice, each paragraph) is its own text, and a text that opens with
+ * The 'character' reply style's view of a reply: each top-level markdown block
+ * (in practice, each paragraph) is its own text — a bubble while texting, a
+ * paragraph of the scene in person — and a text that opens with
  * `Name: ` is from that person. Display-only — the stored message, and what the
  * model is sent back, is the reply exactly as written, prefixes included, so
  * it can keep track of who said what. `chat/reply-style.ts` is the other half:
@@ -17,10 +18,14 @@
  *
  * A text that is nothing but `[later 1h: …]` sets a check-in (see
  * `check-ins.ts`). It isn't a text anyone sent, so it never shows as one.
+ *
+ * A text that is nothing but `[texting]` or `[in person]` changes the scene
+ * (see `scenes.ts`): what follows it is texts, or prose in person.
  */
 import { checkInMarker, type CheckInMarker } from './check-ins';
+import { sceneMarker } from './scenes';
 import type { RenderBlock } from './chat-render';
-import type { MessageImage } from './types/api';
+import type { MessageImage, Scene } from './types/api';
 
 export type TextingItem =
 	| {
@@ -40,6 +45,8 @@ export type TextingItem =
 	| { kind: 'photo'; speaker: string | null; description: string; index: number }
 	/** A `[later …]` check-in marker, shown (if at all) as a note, not a text. */
 	| ({ kind: 'later' } & CheckInMarker)
+	/** A `[texting]` / `[in person]` marker: the scene changes here. */
+	| { kind: 'scene'; scene: Scene }
 	/** Everything else in the reply (tool calls, images, reasoning…), rendered
 	 *  as it would be in a standard bubble. Consecutive ones are grouped. */
 	| { kind: 'blocks'; blocks: RenderBlock[] };
@@ -204,6 +211,11 @@ export function textingItems(blocks: RenderBlock[], defaultName: string): Textin
 		return speaker;
 	};
 	const push = (from: string | null, text: { html: string } | { text: string }) => {
+		const scene = sceneMarker(text);
+		if (scene) {
+			items.push({ kind: 'scene', scene });
+			return;
+		}
 		const later = checkInMarker(text);
 		if (later) {
 			items.push({ kind: 'later', ...later });

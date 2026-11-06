@@ -315,13 +315,22 @@ export const conversations = sqliteTable(
 		// without another migration.
 		parametersJson: text('parameters_json'),
 		// How assistant replies are presented (`ReplyStyle`), snapshotted from the
-		// custom model at create time like the prompt above. 'texting' renders each
-		// paragraph as its own bubble and adds the texting instructions to the system
-		// prompt at send time (`chat/reply-style.ts`). Display + prompt only: the
-		// stored message is the reply exactly as the model wrote it.
-		replyStyle: text('reply_style', { enum: ['standard', 'texting'] })
+		// custom model at create time like the prompt above. 'character' moves
+		// between texting (each paragraph its own bubble) and in person (prose),
+		// and adds the character instructions to the system prompt at send time
+		// (`chat/reply-style.ts`). Display + prompt only: the stored message is the
+		// reply exactly as the model wrote it. 'texting', its predecessor, was
+		// migrated to 'character' starting in texting.
+		replyStyle: text('reply_style', { enum: ['standard', 'character'] })
 			.notNull()
 			.default('standard'),
+		// The `Scene` a 'character' chat opens in, snapshotted from the custom
+		// model. After that the scene is the thread's last marker (`#lib/scenes.ts`),
+		// never this column: it's stated once in the system prompt, so it can't
+		// change after creation without moving the prefix.
+		startingScene: text('starting_scene', { enum: ['texting', 'in_person'] })
+			.notNull()
+			.default('texting'),
 		// Whether the assistant may set itself a check-in (`#lib/check-ins.ts`),
 		// snapshotted from the custom model at create time; always off for a chat
 		// with no preset. Gates the instruction in the system prompt and the runner.
@@ -438,6 +447,13 @@ export const messages = sqliteTable(
 		contentJson: text('content_json').notNull(),
 		// Server-rendered cached HTML (markdown-it + shiki). Hot-path read concern.
 		contentHtml: text('content_html'),
+		// The last scene marker in this row's text (`#lib/scenes.ts`), or NULL for
+		// none — derived from `content_json` on every write (`appendMessage`,
+		// `updateMessageParts`), never set on its own. A cache, so the branch
+		// skeleton can find the scene at the top of a window without reading the
+		// content of every message above it. Rows from before the column have no
+		// markers to find: scenes arrived with it.
+		scene: text('scene', { enum: ['texting', 'in_person'] }),
 		// Reasoning text denormalized for quick separate display.
 		reasoningText: text('reasoning_text'),
 		finishReason: text('finish_reason'),
@@ -522,6 +538,13 @@ export const messages = sqliteTable(
 		// heavy columns too, so without this the DISTINCT walked every row's
 		// overflow chain — the whole conversation's bytes, on every open.
 		index('idx_messages_conv_model').on(t.conversationId, t.modelUsed),
+		// The scene at the top of a branch window (`sceneBeforeWindow`): only the
+		// rows that change scene, so a handful per conversation. Kept out of
+		// `idx_messages_conv_created`, whose skeleton scan would otherwise grow a
+		// column for every row to find them.
+		index('idx_messages_conv_scene')
+			.on(t.conversationId, t.id, t.scene)
+			.where(sql`${t.scene} is not null`),
 	],
 );
 
@@ -552,12 +575,17 @@ export const customModels = sqliteTable(
 		defaultDisabledFeaturesJson: text('default_disabled_features'),
 		// `ReplyStyle` copied onto each conversation created from this preset (see
 		// `conversations.reply_style`). Editing it doesn't change existing chats.
-		replyStyle: text('reply_style', { enum: ['standard', 'texting'] })
+		replyStyle: text('reply_style', { enum: ['standard', 'character'] })
 			.notNull()
 			.default('standard'),
 		// Copied onto each conversation created from this preset (see
+		// `conversations.starting_scene`).
+		startingScene: text('starting_scene', { enum: ['texting', 'in_person'] })
+			.notNull()
+			.default('texting'),
+		// Copied onto each conversation created from this preset (see
 		// `conversations.check_ins`). A create that doesn't say defaults it on for
-		// a texting preset and off otherwise (`validateCreateInput`, and the editor
+		// a character preset and off otherwise (`validateCreateInput`, and the editor
 		// to match).
 		checkIns: integer('check_ins', { mode: 'boolean' }).notNull().default(false),
 		// Copied onto each conversation created from this preset (see

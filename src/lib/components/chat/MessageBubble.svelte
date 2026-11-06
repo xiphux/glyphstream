@@ -16,7 +16,9 @@
 	import MessageReaction from './MessageReaction.svelte';
 	import TextingBubbles from './TextingBubbles.svelte';
 	import { messageToBlocks, type RenderBlock, type ToolResultEntry } from '#lib/chat-render.js';
-	import type { ChatMessage } from '#lib/types/api.js';
+	import type { ChatMessage, Scene } from '#lib/types/api.js';
+	import { sceneMarker } from '#lib/scenes.js';
+	import SceneDivider from './SceneDivider.svelte';
 	import type { ApprovalAction } from '#lib/approval-workflow.js';
 	import { withoutCheckInMarkers, type TextingPhotos } from '#lib/texting.js';
 	import { splitAtPhotos, type PhotoSegment } from '#lib/texting-photos.js';
@@ -51,12 +53,15 @@
 		 *  artifact reads as the turn's result rather than buried mid-reply. */
 		bottomCanvasCards?: RenderBlock[];
 		onOpenCanvas?: (artifactId: string | null) => void;
-		/** The conversation's 'texting' reply style: an assistant row renders as
-		 *  a run of text bubbles (TextingBubbles) instead of one bubble. */
-		texting?: boolean;
+		/** A character chat's scene as this message opens (`#lib/scenes.ts`):
+		 *  an assistant row renders as texts or in-person prose
+		 *  (TextingBubbles) instead of one bubble, and a user row that changes
+		 *  scene shows where. Absent for a standard chat. */
+		scene?: Scene;
 		/** This reply's photos, and what can be done with them — set where the
-		 *  chat may send photos. A texting reply draws them as texts; a standard
-		 *  one in its bubble, where each `[photo: …]` was (see PhotoSlot). */
+		 *  chat may send photos. A character reply draws them among its texts or
+		 *  its scene; a standard one in its bubble, where each `[photo: …]` was
+		 *  (see PhotoSlot). */
 		photos?: TextingPhotos;
 		/** The avatar portraits drawn from this reply, as one picture (its
 		 *  versions under index 0) — set where any are, or are drawing. Shown at
@@ -82,7 +87,7 @@
 		reaction = null,
 		bottomCanvasCards = [],
 		onOpenCanvas,
-		texting = false,
+		scene,
 		photos,
 		portrait,
 		checkIn,
@@ -101,18 +106,36 @@
 
 	// A standard reply cut around its photos, where the chat may send them, so
 	// each is drawn where the model put it. Anything else is one run, as ever.
+	// A user row in a character chat: its scene markers (the composer's switch
+	// puts one on top) show as a divider above the bubble, not as words in it.
+	const userScenes = $derived.by(() => {
+		if (!scene || message.role !== 'user') return null;
+		const switches: Scene[] = [];
+		const parts = message.parts.map((p) => {
+			if (p.type !== 'text') return p;
+			const kept = p.text.split(/\n\s*\n/).filter((para) => {
+				const to = sceneMarker({ text: para });
+				if (to) switches.push(to);
+				return !to;
+			});
+			return { ...p, text: kept.join('\n\n').trim() };
+		});
+		return switches.length ? { switches, message: { ...message, parts } } : null;
+	});
+
 	const segments = $derived.by((): PhotoSegment[] => {
-		const blocks = messageToBlocks(message, toolResultsByCallId);
+		const blocks = messageToBlocks(userScenes?.message ?? message, toolResultsByCallId);
 		if (message.role !== 'assistant') return [{ kind: 'blocks', blocks }];
 		const shown = withoutCheckInMarkers(blocks);
 		return photos ? splitAtPhotos(shown) : [{ kind: 'blocks', blocks: shown }];
 	});
 </script>
 
-{#if texting && message.role === 'assistant'}
+{#if scene && message.role === 'assistant'}
 	<article class="min-w-0">
 		<TextingBubbles
 			blocks={messageToBlocks(message, toolResultsByCallId)}
+			{scene}
 			{assistantLabel}
 			{assistantAvatarMediaId}
 			{onImageClick}
@@ -143,6 +166,13 @@
 		{/each}
 	</article>
 {:else}
+	{#if userScenes}
+		<!-- Only a real change: a switch to the scene already in effect says
+		     nothing. -->
+		{#each userScenes.switches.filter((to, i, all) => to !== (i === 0 ? scene : all[i - 1])) as to, i (i)}
+			<SceneDivider scene={to} />
+		{/each}
+	{/if}
 	<article
 		class={[
 			// `relative` anchors the reaction badge, which hangs outside the bubble's

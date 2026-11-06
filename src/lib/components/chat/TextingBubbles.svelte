@@ -1,6 +1,10 @@
 <!--
-	An assistant reply in the 'texting' reply style: one bubble per text, as
-	`textingItems` splits it, under the name (and face) of whoever sent it. A
+	An assistant reply in a character chat, scene by scene (`#lib/scenes.ts`).
+	It opens in `scene`, and a `[texting]` / `[in person]` marker in it moves
+	on, drawn as a divider where it is.
+
+	Texting: one bubble per text, as `textingItems` splits it, under the name
+	(and face) of whoever sent it. A
 	header shows wherever the sender changes, so a run of texts from one person
 	carries one name, as in a messaging app. The first text always gets one, even
 	when this row continues a tool turn from the row above: speakers start over
@@ -20,6 +24,11 @@
 	shows only while that check-in is pending — as a quiet line saying when, with
 	a way to call it off.
 
+	In person: the same paragraphs as prose, with no bubbles and no typing
+	indicator — nobody is typing. Actions, which the model sets in *asterisks*,
+	are muted, so what's said stands out from what's done. Speakers and photos
+	work as they do in texts.
+
 	Anything else — tool calls, other images, reasoning — keeps its standard
 	rendering in a bubble of its own.
 
@@ -37,9 +46,13 @@
 	import { codeCopyClicks, withCodeCopyButtons } from '#lib/code-copy.js';
 	import { speakerHue, textingItems, type TextingItem, type TextingPhotos } from '#lib/texting.js';
 	import type { PendingCheckInNote } from '#lib/check-ins.js';
+	import type { Scene } from '#lib/types/api.js';
+	import SceneDivider from './SceneDivider.svelte';
 
 	interface Props {
 		blocks: RenderBlock[];
+		/** The scene the reply opens in. */
+		scene?: Scene;
 		assistantLabel: string;
 		assistantAvatarMediaId?: string | null;
 		onImageClick: (mediaId: string) => void;
@@ -66,6 +79,7 @@
 
 	let {
 		blocks,
+		scene = 'texting',
 		assistantLabel,
 		assistantAvatarMediaId = null,
 		onImageClick,
@@ -81,39 +95,67 @@
 		checkIn,
 	}: Props = $props();
 
-	// Each item paired with whether it opens a new sender's run. `undefined`
-	// as the starting sender makes the first text always differ from it.
+	type Shown = TextingItem | { kind: 'typing'; speaker: string | null };
+
+	// Each item paired with the scene it's in and whether it opens a new
+	// sender's run. `undefined` as the starting sender makes the first text
+	// always differ from it.
 	const rows = $derived.by(() => {
-		let prev: string | null | undefined = undefined;
 		// Without the successful canvas edits, which the caller renders as cards
 		// at the bottom: left in, a canvas-only reply would draw an empty bubble.
-		// Only the last marker sets the check-in, and only while it's pending.
-		const all: Array<TextingItem | { kind: 'typing'; speaker: string | null }> = textingItems(
-			splitCanvasCards(blocks).body,
-			assistantLabel,
-		).map((item) =>
-			item.kind === 'photo' && !photosOn
-				? { kind: 'text', speaker: item.speaker, text: `[photo: ${item.description}]` }
-				: item,
+		const parsed: Shown[] = textingItems(splitCanvasCards(blocks).body, assistantLabel).map(
+			(item) =>
+				item.kind === 'photo' && !photosOn
+					? { kind: 'text', speaker: item.speaker, text: `[photo: ${item.description}]` }
+					: item,
 		);
+		// The scene each item is in, and whether it changes it.
+		let at = scene;
+		const all = parsed.map((item) => {
+			const from = at;
+			if (item.kind === 'scene') at = item.scene;
+			return { item, scene: from };
+		});
 		// Still being written: a text (or a marker, half-typed) at the end of a
 		// live reply. Tool calls and the like show as they go, as ever. A
-		// finished check-in marker has no sender and is never shown, so typing
-		// it would flash the preset's name under someone else's run.
+		// finished check-in or scene marker has no sender and is never shown, so
+		// typing it would flash the preset's name under someone else's run. In
+		// person nobody is typing: the prose shows as it arrives, all but a
+		// marker being written, which would flash as words.
 		const last = all.at(-1);
-		if (typing && last && last.kind !== 'blocks' && last.kind !== 'later') {
-			all[all.length - 1] = { kind: 'typing', speaker: 'speaker' in last ? last.speaker : null };
+		if (typing && last && 'speaker' in last.item) {
+			if (last.scene === 'texting') {
+				all[all.length - 1] = { ...last, item: { kind: 'typing', speaker: last.item.speaker } };
+			} else if (
+				last.item.kind === 'text' &&
+				/^(?:<p>)?\[/.test('html' in last.item ? last.item.html : last.item.text)
+			) {
+				all.pop();
+			}
 		}
+		// Only the last marker sets the check-in, and only while it's pending.
 		const items = all.filter(
-			(item, i, all) =>
-				item.kind !== 'later' || (!!checkIn && !all.slice(i + 1).some((x) => x.kind === 'later')),
+			({ item }, i, all) =>
+				(item.kind !== 'later' ||
+					(!!checkIn && !all.slice(i + 1).some((x) => x.item.kind === 'later'))) &&
+				// A switch to the scene already in effect says nothing.
+				(item.kind !== 'scene' || item.scene !== all[i].scene),
 		);
-		if (items.length === 0 && pending) items.push({ kind: 'text', speaker: null, text: '' });
-		return items.map((item) => {
-			if (item.kind === 'blocks' || item.kind === 'later') return { item, header: false };
+		if (items.length === 0 && pending) {
+			items.push({ item: { kind: 'text', speaker: null, text: '' }, scene });
+		}
+		let prev: string | null | undefined = undefined;
+		return items.map(({ item, scene }) => {
+			if (item.kind === 'scene') {
+				// A new scene starts its senders over: the first line after the
+				// divider says who it is.
+				prev = undefined;
+				return { item, scene, header: false };
+			}
+			if (item.kind === 'blocks' || item.kind === 'later') return { item, scene, header: false };
 			const header = item.speaker !== prev;
 			prev = item.speaker;
-			return { item, header };
+			return { item, scene, header };
 		});
 	});
 </script>
@@ -145,8 +187,10 @@
 {/snippet}
 
 <div class="flex min-w-0 flex-col items-start gap-1 text-sm">
-	{#each rows as { item, header }, i (i)}
-		{#if item.kind === 'later'}
+	{#each rows as { item, scene: here, header }, i (i)}
+		{#if item.kind === 'scene'}
+			<SceneDivider scene={item.scene} />
+		{:else if item.kind === 'later'}
 			{#if checkIn}
 				<CheckInNote {checkIn} />
 			{/if}
@@ -187,7 +231,14 @@
 					{openingLightboxFor}
 				/>
 			{:else}
-				<div class="max-w-[85%] min-w-0 rounded-2xl bg-surface-raised px-3.5 py-2">
+				<div
+					class={[
+						'min-w-0',
+						here === 'texting'
+							? 'max-w-[85%] rounded-2xl bg-surface-raised px-3.5 py-2'
+							: 'w-full py-0.5 [&_em]:text-fg-muted',
+					]}
+				>
 					{#if pending && blocks.length === 0}
 						{@render pending()}
 					{:else if 'html' in item}

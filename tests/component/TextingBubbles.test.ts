@@ -1,15 +1,16 @@
 /**
- * The 'texting' reply style through the bubbles that render it: a stored reply
- * (MessageBubble) and a live one (InFlightBubble) split into one bubble per
- * text, with a sender header only where the sender changes. The splitting rules
- * themselves are covered in tests/unit/texting.test.ts.
+ * The 'character' reply style through the bubbles that render it: a stored
+ * reply (MessageBubble) and a live one (InFlightBubble) split into one bubble
+ * per text while texting, or prose in person, with a sender header only where
+ * the sender changes and a divider where the scene does. The splitting rules
+ * themselves are covered in tests/unit/texting.test.ts and scenes.test.ts.
  */
 
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import MessageBubble from '#lib/components/chat/MessageBubble.svelte';
 import InFlightBubble from '#lib/components/chat/InFlightBubble.svelte';
-import type { ChatMessage, MessageImage } from '#lib/types/api.js';
+import type { ChatMessage, MessageImage, Scene } from '#lib/types/api.js';
 import type { TextingPhotos } from '#lib/texting.js';
 
 function reply(contentHtml: string): ChatMessage {
@@ -35,7 +36,7 @@ const bubbleProps = {
 	mergeWithPrev: false,
 	mergeWithNext: false,
 	onImageClick: vi.fn(),
-	texting: true,
+	scene: 'texting' as Scene | undefined,
 };
 
 const GROUP = '<p>hey</p>\n<p>Sam: yo</p>\n<p>whats up</p>\n<p>Chloe: nm</p>';
@@ -70,7 +71,7 @@ describe('texting reply style', () => {
 
 	it('leaves the standard bubble alone when the style is off', () => {
 		render(MessageBubble, {
-			props: { ...bubbleProps, texting: false, message: reply(GROUP) },
+			props: { ...bubbleProps, scene: undefined, message: reply(GROUP) },
 		});
 		expect(screen.getByText('Sam: yo')).toBeInTheDocument();
 		expect(screen.getAllByText('Chloe')).toHaveLength(1);
@@ -95,7 +96,7 @@ describe('texting reply style', () => {
 				progress: null,
 				elapsedSeconds: 0,
 				onImageClick: vi.fn(),
-				texting: true,
+				scene: 'texting' as const,
 				blocks: [
 					{
 						type: 'tool_call',
@@ -118,7 +119,7 @@ describe('texting reply style', () => {
 			progress: null,
 			elapsedSeconds: 0,
 			onImageClick: vi.fn(),
-			texting: true,
+			scene: 'texting' as const,
 		};
 		const { unmount } = render(InFlightBubble, { props: { ...live, blocks: [] } });
 		expect(screen.getByText('Thinking')).toBeInTheDocument();
@@ -145,7 +146,7 @@ describe('texting reply style', () => {
 				progress: null,
 				elapsedSeconds: 0,
 				onImageClick: vi.fn(),
-				texting: true,
+				scene: 'texting' as const,
 				typing: false,
 				blocks: [{ type: 'plain-text', text: 'hey\n\nwhat' }],
 			},
@@ -163,7 +164,7 @@ describe('texting reply style', () => {
 				progress: null,
 				elapsedSeconds: 0,
 				onImageClick: vi.fn(),
-				texting: true,
+				scene: 'texting' as const,
 				blocks: [{ type: 'plain-text', text: 'one sec\n\n[photo: me at th' }],
 			},
 		});
@@ -181,7 +182,7 @@ describe('texting reply style', () => {
 				progress: null,
 				elapsedSeconds: 0,
 				onImageClick: vi.fn(),
-				texting: true,
+				scene: 'texting' as const,
 				blocks: [{ type: 'plain-text', text: 'hey\n\nSam: yo\n\n[later 1h: ask about work]' }],
 			},
 		});
@@ -466,7 +467,7 @@ describe('texting check-ins', () => {
 		render(MessageBubble, {
 			props: {
 				...bubbleProps,
-				texting: false,
+				scene: undefined,
 				message: reply(MARKED),
 				checkIn: { fireAt: Date.now() + 3_600_000, onCancel: vi.fn() },
 			},
@@ -527,5 +528,88 @@ describe('photos in a standard reply', () => {
 		});
 		expect(screen.getByText('Here.')).toBeInTheDocument();
 		expect(screen.queryByText(/\[photo/)).toBeNull();
+	});
+});
+
+describe('scenes', () => {
+	const MET_UP =
+		'<p>on my way</p>\n<p>[in person]</p>\n<p><em>She waves from the door.</em> Hey, you made it.</p>';
+
+	it('draws a divider where a reply moves in person, then prose instead of bubbles', () => {
+		const { container } = render(MessageBubble, {
+			props: { ...bubbleProps, message: reply(MET_UP) },
+		});
+		expect(screen.getByRole('separator')).toHaveTextContent('In person');
+		expect(screen.queryByText(/\[in person\]/)).toBeNull();
+		// The text before it is a bubble; the scene after it isn't.
+		expect(screen.getByText('on my way').closest('.rounded-2xl')).not.toBeNull();
+		const prose = screen.getByText('She waves from the door.');
+		expect(prose.closest('.rounded-2xl')).toBeNull();
+		// The new scene says who's speaking again.
+		expect(screen.getAllByText('Chloe')).toHaveLength(2);
+		expect(container.textContent).toMatch(/on my way.*In person.*Hey, you made it\./s);
+	});
+
+	it('opens in the scene it is given, with no divider for a switch to where it already is', () => {
+		render(MessageBubble, {
+			props: {
+				...bubbleProps,
+				scene: 'in_person',
+				message: reply('<p>[in person]</p>\n<p>Sit down, the tea’s ready.</p>'),
+			},
+		});
+		expect(screen.queryByRole('separator')).toBeNull();
+		expect(screen.getByText('Sit down, the tea’s ready.').closest('.rounded-2xl')).toBeNull();
+	});
+
+	it('shows a user message’s switch as a divider above it, not as words', () => {
+		render(MessageBubble, {
+			props: {
+				...bubbleProps,
+				message: {
+					...reply(''),
+					role: 'user',
+					contentHtml: null,
+					parts: [{ type: 'text', text: '[in person]\n\n*knocks on your door*' }],
+				},
+			},
+		});
+		expect(screen.getByRole('separator')).toHaveTextContent('In person');
+		expect(screen.queryByText(/\[in person\]/)).toBeNull();
+		expect(screen.getByText('*knocks on your door*')).toBeInTheDocument();
+	});
+
+	it('shows prose as it arrives in person, with no typing indicator', () => {
+		render(InFlightBubble, {
+			props: {
+				assistantLabel: 'Chloe',
+				label: 'Thinking',
+				status: null,
+				progress: null,
+				elapsedSeconds: 0,
+				onImageClick: vi.fn(),
+				scene: 'in_person',
+				blocks: [{ type: 'plain-text', text: 'She smiles.\n\nSo, how was' }],
+			},
+		});
+		expect(screen.getByText('So, how was')).toBeInTheDocument();
+		expect(screen.queryByRole('status')).toBeNull();
+	});
+
+	it('holds back a marker still being written in person', () => {
+		render(InFlightBubble, {
+			props: {
+				assistantLabel: 'Chloe',
+				label: 'Thinking',
+				status: null,
+				progress: null,
+				elapsedSeconds: 0,
+				onImageClick: vi.fn(),
+				scene: 'in_person',
+				blocks: [{ type: 'plain-text', text: 'See you.\n\n[tex' }],
+			},
+		});
+		expect(screen.getByText('See you.')).toBeInTheDocument();
+		expect(screen.queryByText(/\[tex/)).toBeNull();
 	});
 });

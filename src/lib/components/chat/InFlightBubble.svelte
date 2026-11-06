@@ -17,7 +17,7 @@
 	import TextingBubbles from './TextingBubbles.svelte';
 	import { splitCanvasCards, type RenderBlock } from '#lib/chat-render.js';
 	import type { ApprovalAction } from '#lib/approval-workflow.js';
-	import type { McpUnavailableServer } from '#lib/types/api.js';
+	import type { McpUnavailableServer, Scene } from '#lib/types/api.js';
 
 	interface Props {
 		blocks: RenderBlock[];
@@ -56,8 +56,9 @@
 		 *  silent. Empty = no notice. */
 		mcpUnavailable?: McpUnavailableServer[];
 		onOpenCanvas?: (artifactId: string | null) => void;
-		/** The 'texting' reply style — see MessageBubble. */
-		texting?: boolean;
+		/** A character chat's scene as this reply opens — see MessageBubble.
+		 *  Absent for a standard reply. */
+		scene?: Scene;
 		/** The chat may send photos: a standard reply draws each `[photo: …]` as
 		 *  a placeholder where it is, and holds back one still being written. */
 		photos?: boolean;
@@ -83,7 +84,7 @@
 		mergeWithPrev = false,
 		mcpUnavailable = [],
 		onOpenCanvas,
-		texting = false,
+		scene,
 		typing = true,
 		photos = false,
 	}: Props = $props();
@@ -148,7 +149,7 @@
 	</div>
 {/snippet}
 
-{#if texting}
+{#if scene}
 	<article class="min-w-0">
 		{@render mcpNotice()}
 		<TextingBubbles
@@ -161,6 +162,7 @@
 			{approvalBusy}
 			{onApprovalSelect}
 			codeCopy={false}
+			{scene}
 			{typing}
 			photosOn={photos}
 			pending={split.body.length === 0 && split.cards.length === 0 ? placeholder : undefined}

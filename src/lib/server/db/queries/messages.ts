@@ -9,8 +9,10 @@ import type {
 	MessageImage,
 	MessagePart,
 	MessageRole,
+	Scene,
 } from '#lib/types/api.js';
 import { isReactionTool } from '#lib/chat-render.js';
+import { lastSceneInParts } from '#lib/scenes.js';
 import { parseDispatchedModels, parseMessageParts } from './json-columns';
 import { getDb, type DB, type Tx } from '../client';
 import { conversations, media, messages } from '../schema';
@@ -114,6 +116,7 @@ export function appendMessage(input: AppendInput): ChatMessage {
 				parentMessageId: input.parentMessageId,
 				role: input.role,
 				contentJson: JSON.stringify(input.parts),
+				scene: lastSceneInParts(input.parts),
 				contentHtml: input.contentHtml ?? null,
 				reasoningText: input.reasoningText ?? null,
 				finishReason: input.finishReason ?? null,
@@ -231,7 +234,7 @@ export function updateMessageParts(
 	const db = getDb();
 	const result = db
 		.update(messages)
-		.set({ contentJson: JSON.stringify(parts) })
+		.set({ contentJson: JSON.stringify(parts), scene: lastSceneInParts(parts) })
 		.where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId)))
 		.run();
 	return result.changes > 0;
@@ -569,6 +572,36 @@ export interface BranchWindow {
 	messages: ChatMessage[];
 	/** Whether the branch has messages older than these. */
 	hasEarlier: boolean;
+	/** The last scene marker above the window, or null for none (the
+	 *  conversation's starting scene then holds). See `#lib/scenes.ts`. */
+	sceneBefore: Scene | null;
+}
+
+/**
+ * The last scene marker on the branch at or above `branch[from]` (the branch
+ * leaf → root), or null for none. Reads only the rows that change scene,
+ * through `idx_messages_conv_scene`, never any message's content.
+ */
+function sceneAtOrAbove(
+	conversationId: string,
+	branch: readonly SkeletonRow[],
+	from: number,
+): Scene | null {
+	if (from >= branch.length) return null;
+	const changes = new Map(
+		getDb()
+			.select({ id: messages.id, scene: messages.scene })
+			.from(messages)
+			.where(and(eq(messages.conversationId, conversationId), isNotNull(messages.scene)))
+			.all()
+			.map((r) => [r.id, r.scene]),
+	);
+	if (changes.size === 0) return null;
+	for (let i = from; i < branch.length; i++) {
+		const scene = changes.get(branch[i].id);
+		if (scene) return scene;
+	}
+	return null;
 }
 
 /**
@@ -585,7 +618,7 @@ export function walkActiveBranchWindow(
 	const skeleton = loadBranchSkeleton(conversationId);
 	if (!skeleton) {
 		return options.before === undefined && options.through === undefined
-			? { messages: [], hasEarlier: false }
+			? { messages: [], hasEarlier: false, sceneBefore: null }
 			: null;
 	}
 	const bounds = branchWindowBounds(skeleton.branch, options);
@@ -596,6 +629,7 @@ export function walkActiveBranchWindow(
 	return {
 		messages: hydrated,
 		hasEarlier: bounds.end < skeleton.branch.length,
+		sceneBefore: sceneAtOrAbove(conversationId, skeleton.branch, bounds.end),
 	};
 }
 

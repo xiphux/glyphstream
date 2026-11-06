@@ -24,7 +24,8 @@
  */
 import { partsToText } from '#lib/message-parts.js';
 import { isReactionTool, lastReplyMessage, parseReactionEmoji } from '#lib/chat-render.js';
-import type { ChatMessage, ReplyStyle } from '#lib/types/api.js';
+import type { ChatMessage, ReplyStyle, Scene } from '#lib/types/api.js';
+import { lastSceneInParts, sceneMarker, sceneMarkerText } from '#lib/scenes.js';
 import { friendlyModelName } from '#lib/model-ids.js';
 import { withoutCheckInText } from '#lib/texting-check-ins.js';
 import { extractPlainSpeaker, photoDescription } from '#lib/texting.js';
@@ -158,6 +159,13 @@ function fireCheckIn(row: CheckInRow, now: number): FireResult {
 	deleteCheckInIfUnchanged(row.id, row.fireAt);
 	const updatedAt = getConversationUpdatedAt(conversationId, userId);
 	const prefs = getUserPreferences(userId);
+	// A check-in is getting in touch while apart, so a character that last
+	// left off in person picks back up over text: the reminder carries the
+	// marker, and the reply (and the scene after it) follows.
+	const backToTexting =
+		meta.replyStyle === 'character' &&
+		(branch.reduce<Scene | null>((at, m) => lastSceneInParts(m.parts) ?? at, null) ??
+			meta.startingScene) === 'in_person';
 	const reminder = appendMessage({
 		conversationId,
 		parentMessageId: leaf.id,
@@ -165,7 +173,9 @@ function fireCheckIn(row: CheckInRow, now: number): FireResult {
 		parts: [
 			{
 				type: 'text',
-				text: reminderText(row, now, prefs?.timezone ?? null, meta.replyStyle),
+				text:
+					(backToTexting ? `${sceneMarkerText('texting')}\n\n` : '') +
+					reminderText(row, now, prefs?.timezone ?? null, meta.replyStyle),
 				checkIn: true,
 			},
 		],
@@ -226,7 +236,7 @@ export function reminderText(
 	row: Pick<CheckInRow, 'note' | 'createdAt'>,
 	now: number,
 	timeZone: string | null,
-	style: ReplyStyle = 'texting',
+	style: ReplyStyle = 'character',
 ): string {
 	const when = new Intl.DateTimeFormat('en-US', {
 		weekday: 'long',
@@ -241,7 +251,7 @@ export function reminderText(
 			: `${Math.round(minutes / 60)} hours`;
 	const note = row.note.replace(/[.!\s]+$/, '');
 	const [last, act] =
-		style === 'texting' ? ['text', 'Text them now'] : ['message', 'Reach out now'];
+		style === 'character' ? ['text', 'Text them now'] : ['message', 'Reach out now'];
 	return (
 		`(Check-in: it's ${when}, ${elapsed} since your last ${last}, and they haven't replied. ` +
 		`You meant to: ${note}. ${act} if it still fits; if it no longer makes sense, ` +
@@ -400,14 +410,19 @@ function isPass(parts: ChatMessage['parts']): boolean {
 	return isCheckInSkip(partsToText(parts)) && !parts.some((p) => 'mediaId' in p);
 }
 
-/** A reply's texts, without the markers that aren't texts (photos' too) —
- *  for the notification's preview. */
+/** A reply's texts, without the markers that aren't texts (photos' and
+ *  scenes' too) — for the notification's preview. */
 function replyText(parts: Parameters<typeof partsToText>[0]): string {
 	return partsToText(parts)
 		.split(/\n\s*\n/)
 		.filter((p) => {
 			const text = extractPlainSpeaker(p.trim());
-			return text.text && !checkInMarker(text) && photoDescription(text) === null;
+			return (
+				text.text &&
+				!checkInMarker(text) &&
+				photoDescription(text) === null &&
+				sceneMarker(text) === null
+			);
 		})
 		.join('\n\n');
 }

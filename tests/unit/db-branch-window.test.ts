@@ -143,6 +143,65 @@ describe('walkActiveBranchWindow', () => {
 		expect(walkActiveBranchWindow(conv.id, { limit: 4 })).toEqual({
 			messages: [],
 			hasEarlier: false,
+			sceneBefore: null,
 		});
+	});
+});
+
+describe('the scene above a window', () => {
+	function thread(texts: string[]) {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'e',
+			modelId: 'e::m',
+			modelKind: 'chat',
+			replyStyle: 'character',
+		});
+		let parent: string | null = null;
+		const ids: string[] = [];
+		texts.forEach((text, i) => {
+			const m = appendMessage({
+				conversationId: conv.id,
+				parentMessageId: parent,
+				role: i % 2 === 0 ? 'user' : 'assistant',
+				parts: [{ type: 'text', text }],
+			});
+			ids.push(m.id);
+			parent = m.id;
+		});
+		return { conversationId: conv.id, ids };
+	}
+
+	it('is the last marker above it, or none', () => {
+		const { conversationId, ids } = thread([
+			'hey',
+			'omw\n\n[in person]\n\nhi!',
+			'so good to see you',
+			'you too',
+			'bye',
+			'[texting]\n\nhome safe?',
+		]);
+		const newest = walkActiveBranchWindow(conversationId, { limit: 2 })!;
+		expect(newest.messages.map((m) => m.id)).toEqual(ids.slice(4));
+		expect(newest.sceneBefore).toBe('in_person');
+		const all = walkActiveBranchWindow(conversationId, { limit: 50 })!;
+		expect(all.sceneBefore).toBeNull();
+	});
+
+	it('follows the branch on show, not a sibling’s marker', () => {
+		const { conversationId, ids } = thread(['hey', 'hi', 'come over', 'ok']);
+		// A retry that met up, left off the branch on show.
+		appendMessage({
+			conversationId,
+			parentMessageId: ids[2],
+			role: 'assistant',
+			parts: [{ type: 'text', text: '[in person]\n\n*opens the door*' }],
+			advanceActiveLeaf: false,
+		});
+		const sibling = walkActiveBranchWindow(conversationId, { limit: 50 })!;
+		expect(sibling.messages.map((m) => m.id)).toEqual(ids);
+		const top = walkActiveBranchWindow(conversationId, { limit: 50, before: ids[2] })!;
+		expect(top.sceneBefore).toBeNull();
 	});
 });

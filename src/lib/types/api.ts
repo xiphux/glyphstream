@@ -1025,6 +1025,9 @@ export interface ConversationDetail extends ConversationSummary {
 	avatarMediaId: string | null;
 	/** Snapshotted from the custom model at create time; 'standard' otherwise. */
 	replyStyle: ReplyStyle;
+	/** The scene a 'character' chat opens in, before any marker. Snapshotted
+	 *  from the custom model; 'texting' (and unused) for any other chat. */
+	startingScene: Scene;
 	/** Whether the assistant may set itself check-ins (`#lib/check-ins.ts`).
 	 *  Snapshotted from the custom model; false for a chat with no preset. */
 	checkIns: boolean;
@@ -1038,6 +1041,9 @@ export interface ConversationDetail extends ConversationSummary {
 	/** Set when `messages` is a window: whether older messages exist before it,
 	 *  to be fetched from GET /api/conversations/:id/messages. */
 	hasEarlierMessages?: boolean;
+	/** Set when `messages` is a window: the scene in effect at its top — the
+	 *  last marker above it, or `startingScene` (see `#lib/scenes.ts`). */
+	sceneBefore?: Scene;
 	/**
 	 * Per-conversation opt-outs (see FEATURE_CATEGORIES). Always normalized
 	 * to an array (never null) so consumers don't have to branch — an empty
@@ -1054,6 +1060,9 @@ export interface EarlierMessagesResponse {
 	messages: ChatMessage[];
 	/** Whether the branch has messages older than these. */
 	hasEarlier: boolean;
+	/** The last scene marker above these; absent for none (the conversation's
+	 *  starting scene then holds). */
+	sceneBefore?: Scene;
 }
 
 /** POST /api/conversations request body.
@@ -1099,13 +1108,21 @@ export interface CustomModelParameters {
 }
 
 /**
- * How a conversation's assistant replies are presented. 'texting' shows each
- * paragraph as its own chat bubble, optionally prefixed `Name: ` to speak as
- * someone else (see `#lib/texting.ts`), and tells the model so at send time.
+ * How a conversation's assistant replies are presented. 'character' is for
+ * roleplay: the conversation moves between scenes (`Scene`) — texting, where
+ * each paragraph is its own chat bubble, and in person, where it reads as prose
+ * — and a paragraph prefixed `Name: ` speaks as someone else (see
+ * `#lib/texting.ts`, `#lib/scenes.ts`). The model is told so at send time.
  */
-export type ReplyStyle = 'standard' | 'texting';
+export type ReplyStyle = 'standard' | 'character';
 
-export const REPLY_STYLES: readonly ReplyStyle[] = ['standard', 'texting'];
+export const REPLY_STYLES: readonly ReplyStyle[] = ['standard', 'character'];
+
+/** Where a 'character' conversation's two sides are: apart and texting, or
+ *  together in person. Changed by a marker in the thread (`#lib/scenes.ts`). */
+export type Scene = 'texting' | 'in_person';
+
+export const SCENES: readonly Scene[] = ['texting', 'in_person'];
 
 export interface CustomModel {
 	id: string;
@@ -1122,6 +1139,9 @@ export interface CustomModel {
 	defaultDisabledFeatures: FeatureCategory[];
 	/** Copied onto each conversation created from the preset. */
 	replyStyle: ReplyStyle;
+	/** The scene a 'character' preset's chats open in. Copied onto each
+	 *  conversation created from the preset; unused for 'standard'. */
+	startingScene: Scene;
 	/** Whether its chats may check in on the user (`#lib/check-ins.ts`). Copied
 	 *  onto each conversation created from the preset. */
 	checkIns: boolean;
@@ -1156,9 +1176,11 @@ export interface CreateCustomModelRequest {
 	defaultDisabledFeatures?: FeatureCategory[];
 	/** Defaults to 'standard'. */
 	replyStyle?: ReplyStyle;
-	/** Defaults to on for a texting preset, off otherwise. */
+	/** Defaults to 'texting'. */
+	startingScene?: Scene;
+	/** Defaults to on for a character preset, off otherwise. */
 	checkIns?: boolean;
-	/** Defaults to on for a texting preset, off otherwise. */
+	/** Defaults to on for a character preset, off otherwise. */
 	photos?: boolean;
 }
 

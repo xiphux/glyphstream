@@ -49,6 +49,7 @@ function makeCustom(overrides: Partial<CustomModel> = {}): CustomModel {
 		parameters: null,
 		defaultDisabledFeatures: overrides.defaultDisabledFeatures ?? [],
 		replyStyle: overrides.replyStyle ?? 'standard',
+		startingScene: overrides.startingScene ?? 'texting',
 		checkIns: overrides.checkIns ?? false,
 		photos: overrides.photos ?? false,
 		avatarMediaId: overrides.avatarMediaId ?? null,
@@ -297,21 +298,44 @@ describe('custom models — reply style', () => {
 			}),
 		);
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		renderPage([makeCustom({ name: 'Chloe', baseModelId, replyStyle: 'texting' })]);
+		renderPage([makeCustom({ name: 'Chloe', baseModelId, replyStyle: 'character' })]);
 		await user.click(screen.getByRole('button', { name: /^Chloe/ }));
 		await user.click(screen.getByRole('button', { name: 'Save changes' }));
 		const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1];
 		return (JSON.parse(init.body as string) as { replyStyle: unknown }).replyStyle;
 	}
 
-	it('keeps a chat preset’s texting style', async () => {
-		expect(await savedReplyStyle('gpt-4o')).toBe('texting');
+	it('keeps a chat preset’s character style', async () => {
+		expect(await savedReplyStyle('gpt-4o')).toBe('character');
 	});
 
 	// The selector is hidden for a non-chat base, so a style left over from an
 	// earlier chat base mustn't be saved invisibly.
 	it('saves standard once the base is no longer a chat model', async () => {
 		expect(await savedReplyStyle('flux')).toBe('standard');
+	});
+
+	it('asks where a character starts, and saves it', async () => {
+		const user = userEvent.setup();
+		const fetchMock = vi.fn(() =>
+			Promise.resolve({
+				ok: true,
+				status: 200,
+				json: () => Promise.resolve({ customModel: { id: 'cm-1' } }),
+			}),
+		);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		renderPage([makeCustom({ name: 'Chloe', replyStyle: 'standard' })]);
+		await user.click(screen.getByRole('button', { name: /^Chloe/ }));
+		expect(screen.queryByLabelText('Starts')).toBeNull();
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'character');
+		await user.selectOptions(await screen.findByLabelText('Starts'), 'in_person');
+		await user.click(screen.getByRole('button', { name: 'Save changes' }));
+		const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1];
+		expect(JSON.parse(init.body as string)).toMatchObject({
+			replyStyle: 'character',
+			startingScene: 'in_person',
+		});
 	});
 });
 
@@ -322,13 +346,13 @@ describe('custom models — check-ins', () => {
 		const user = userEvent.setup();
 		renderPage([]);
 		expect(checkbox()).not.toBeChecked();
-		await user.selectOptions(screen.getByLabelText('Reply style'), 'texting');
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'character');
 		expect(checkbox()).toBeChecked();
 		await user.selectOptions(screen.getByLabelText('Reply style'), 'standard');
 		expect(checkbox()).not.toBeChecked();
 
 		await user.click(checkbox());
-		await user.selectOptions(screen.getByLabelText('Reply style'), 'texting');
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'character');
 		await user.selectOptions(screen.getByLabelText('Reply style'), 'standard');
 		expect(checkbox()).toBeChecked();
 	});
@@ -337,7 +361,7 @@ describe('custom models — check-ins', () => {
 		const user = userEvent.setup();
 		renderPage([makeCustom({ name: 'Editor', replyStyle: 'standard', checkIns: false })]);
 		await user.click(screen.getByRole('button', { name: /^Editor/ }));
-		await user.selectOptions(screen.getByLabelText('Reply style'), 'texting');
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'character');
 		// Off was the standard default, so it still follows the style.
 		expect(checkbox()).toBeChecked();
 	});
@@ -350,12 +374,12 @@ describe('custom models — photos', () => {
 		const user = userEvent.setup();
 		renderPage([]);
 		expect(checkbox()).not.toBeChecked();
-		await user.selectOptions(screen.getByLabelText('Reply style'), 'texting');
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'character');
 		expect(checkbox()).toBeChecked();
 
 		await user.click(checkbox());
 		await user.selectOptions(screen.getByLabelText('Reply style'), 'standard');
-		await user.selectOptions(screen.getByLabelText('Reply style'), 'texting');
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'character');
 		expect(checkbox()).not.toBeChecked();
 	});
 
@@ -364,7 +388,7 @@ describe('custom models — photos', () => {
 		renderPage([makeCustom({ name: 'Guide', replyStyle: 'standard', photos: true })]);
 		await user.click(screen.getByRole('button', { name: /^Guide/ }));
 		expect(checkbox()).toBeChecked();
-		await user.selectOptions(screen.getByLabelText('Reply style'), 'texting');
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'character');
 		await user.selectOptions(screen.getByLabelText('Reply style'), 'standard');
 		expect(checkbox()).toBeChecked();
 	});
@@ -374,7 +398,7 @@ describe('custom models — photos', () => {
 	it('says so where nothing could develop them, and doesn’t turn them on unasked', async () => {
 		const user = userEvent.setup();
 		renderPage([], { models: noImage });
-		await user.selectOptions(screen.getByLabelText('Reply style'), 'texting');
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'character');
 		expect(checkbox()).not.toBeChecked();
 		expect(screen.getByText(/No image model is configured/)).toBeInTheDocument();
 		// Still the user's to turn on — one may be configured later.
@@ -385,7 +409,7 @@ describe('custom models — photos', () => {
 	it('doesn’t call an endpoint that didn’t answer “none configured”', async () => {
 		const user = userEvent.setup();
 		renderPage([], { models: noImage, modelsError: 'images: unreachable' });
-		await user.selectOptions(screen.getByLabelText('Reply style'), 'texting');
+		await user.selectOptions(screen.getByLabelText('Reply style'), 'character');
 		expect(checkbox()).toBeChecked();
 		expect(screen.queryByText(/No image model is configured/)).toBeNull();
 		expect(screen.getByText(/Couldn't check for an image model/)).toBeInTheDocument();

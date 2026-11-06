@@ -18,6 +18,7 @@ import type {
 	GeneratingConversationsResponse,
 	ModelKind,
 	ReplyStyle,
+	Scene,
 } from '#lib/types/api.js';
 import { validateDisabledFeaturesOrThrow400 } from '#lib/server/util/validate-features.js';
 import type { RequestHandler } from './$types';
@@ -64,6 +65,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	let resolvedParameters: CustomModelParameters | null = null;
 	let resolvedCustomModelId: string | null = null;
 	let resolvedReplyStyle: ReplyStyle = 'standard';
+	let resolvedStartingScene: Scene = 'texting';
 	let resolvedCheckIns = false;
 	let resolvedPhotos = false;
 
@@ -94,6 +96,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		resolvedParameters = cm.parameters;
 		resolvedCustomModelId = cm.id;
 		resolvedReplyStyle = cm.replyStyle;
+		resolvedStartingScene = cm.startingScene;
 		resolvedCheckIns = cm.checkIns;
 		resolvedPhotos = cm.photos;
 	} else {
@@ -141,6 +144,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		parameters: resolvedParameters,
 		customModelId: resolvedCustomModelId,
 		replyStyle: resolvedReplyStyle,
+		startingScene: resolvedStartingScene,
 		checkIns: resolvedCheckIns,
 		photos: resolvedPhotos,
 		title:

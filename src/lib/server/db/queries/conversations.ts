@@ -8,6 +8,7 @@ import type {
 	FeatureCategory,
 	ModelKind,
 	ReplyStyle,
+	Scene,
 } from '#lib/types/api.js';
 import { getDb } from '../client';
 import { conversations, media, messages } from '../schema';
@@ -44,6 +45,8 @@ interface CreateInput {
 	parameters?: CustomModelParameters | null;
 	/** From the custom model; omit for 'standard'. */
 	replyStyle?: ReplyStyle;
+	/** From the custom model; omit for 'texting'. */
+	startingScene?: Scene;
 	/** From the custom model; omit for off. */
 	checkIns?: boolean;
 	/** From the custom model; omit for off. */
@@ -77,6 +80,7 @@ export function createConversation(input: CreateInput): ConversationDetail {
 			systemPrompt: input.systemPrompt ?? null,
 			parametersJson: input.parameters ? JSON.stringify(input.parameters) : null,
 			replyStyle: input.replyStyle ?? 'standard',
+			startingScene: input.startingScene ?? 'texting',
 			checkIns: input.checkIns ?? false,
 			photos: input.photos ?? false,
 			title: input.title ?? null,
@@ -104,6 +108,7 @@ export function createConversation(input: CreateInput): ConversationDetail {
 		systemPrompt: input.systemPrompt ?? null,
 		parameters: input.parameters ?? null,
 		replyStyle: input.replyStyle ?? 'standard',
+		startingScene: input.startingScene ?? 'texting',
 		checkIns: input.checkIns ?? false,
 		photos: input.photos ?? false,
 		activeLeafMessageId: null,
@@ -285,7 +290,7 @@ function branchFor(
 	id: string,
 	userId: string,
 	messageWindow: number | undefined,
-): Pick<ConversationDetail, 'messages' | 'hasEarlierMessages'> {
+): Pick<ConversationDetail, 'messages' | 'hasEarlierMessages' | 'sceneBefore'> {
 	if (messageWindow === undefined) {
 		const messages = walkActiveBranch(id);
 		attachImageDimensions(messages, userId);
@@ -295,9 +300,14 @@ function branchFor(
 	const slice = walkActiveBranchWindow(id, { limit: messageWindow }) ?? {
 		messages: [],
 		hasEarlier: false,
+		sceneBefore: null,
 	};
 	attachImageDimensions(slice.messages, userId);
-	return { messages: slice.messages, hasEarlierMessages: slice.hasEarlier };
+	return {
+		messages: slice.messages,
+		hasEarlierMessages: slice.hasEarlier,
+		...(slice.sceneBefore ? { sceneBefore: slice.sceneBefore } : {}),
+	};
 }
 
 /**
@@ -324,6 +334,7 @@ export function getConversationDetail(
 			systemPrompt: conversations.systemPrompt,
 			parametersJson: conversations.parametersJson,
 			replyStyle: conversations.replyStyle,
+			startingScene: conversations.startingScene,
 			checkIns: conversations.checkIns,
 			photos: conversations.photos,
 			activeLeafMessageId: conversations.activeLeafMessageId,
@@ -350,6 +361,7 @@ export function getConversationDetail(
 		systemPrompt: row.systemPrompt,
 		parameters: parseModelParameters(row.parametersJson),
 		replyStyle: row.replyStyle,
+		startingScene: row.startingScene,
 		checkIns: row.checkIns,
 		photos: row.photos,
 		activeLeafMessageId: row.activeLeafMessageId,
@@ -373,6 +385,7 @@ export function getConversationMeta(
 	systemPrompt: string | null;
 	parameters: CustomModelParameters | null;
 	replyStyle: ReplyStyle;
+	startingScene: Scene;
 	checkIns: boolean;
 	photos: boolean;
 	title: string | null;
@@ -394,6 +407,7 @@ export function getConversationMeta(
 			systemPrompt: conversations.systemPrompt,
 			parametersJson: conversations.parametersJson,
 			replyStyle: conversations.replyStyle,
+			startingScene: conversations.startingScene,
 			checkIns: conversations.checkIns,
 			photos: conversations.photos,
 			title: conversations.title,
@@ -415,6 +429,7 @@ export function getConversationMeta(
 		systemPrompt: row.systemPrompt,
 		parameters: parseModelParameters(row.parametersJson),
 		replyStyle: row.replyStyle,
+		startingScene: row.startingScene,
 		checkIns: row.checkIns,
 		photos: row.photos,
 		title: row.title,

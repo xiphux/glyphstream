@@ -45,6 +45,7 @@ function makePreset(
 		parameters: null,
 		defaultDisabledFeatures: [],
 		replyStyle: 'standard',
+		startingScene: 'texting',
 		checkIns: false,
 		photos: false,
 		avatarMediaId: null,

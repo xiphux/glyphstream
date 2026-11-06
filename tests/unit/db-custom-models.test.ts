@@ -290,9 +290,9 @@ describe('custom-models CRUD', () => {
 			parameters: null,
 		};
 		expect(createCustomModel({ ...base, name: 'A' }).replyStyle).toBe('standard');
-		const cm = createCustomModel({ ...base, name: 'B', replyStyle: 'texting' });
-		expect(getCustomModelForUser(cm.id, u.id)?.replyStyle).toBe('texting');
-		expect(updateCustomModel(cm.id, u.id, { name: 'C' })?.replyStyle).toBe('texting');
+		const cm = createCustomModel({ ...base, name: 'B', replyStyle: 'character' });
+		expect(getCustomModelForUser(cm.id, u.id)?.replyStyle).toBe('character');
+		expect(updateCustomModel(cm.id, u.id, { name: 'C' })?.replyStyle).toBe('character');
 		expect(updateCustomModel(cm.id, u.id, { replyStyle: 'standard' })?.replyStyle).toBe('standard');
 	});
 
@@ -362,10 +362,10 @@ describe('custom-models CRUD', () => {
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
 			modelKind: 'chat',
-			replyStyle: 'texting',
+			replyStyle: 'character',
 		});
-		expect(conv.replyStyle).toBe('texting');
-		expect(getConversationDetail(conv.id, u.id)?.replyStyle).toBe('texting');
+		expect(conv.replyStyle).toBe('character');
+		expect(getConversationDetail(conv.id, u.id)?.replyStyle).toBe('character');
 		const plain = createConversation({
 			userId: u.id,
 			endpointId: 'bridge',

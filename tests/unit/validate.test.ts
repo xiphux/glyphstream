@@ -123,18 +123,36 @@ describe('validateCreateInput', () => {
 
 	it('defaults replyStyle to standard and refuses an unknown one', () => {
 		expect(validateCreateInput(valid).replyStyle).toBe('standard');
-		expect(validateCreateInput({ ...valid, replyStyle: 'texting' }).replyStyle).toBe('texting');
+		expect(validateCreateInput({ ...valid, replyStyle: 'character' }).replyStyle).toBe('character');
 		expect(() => validateCreateInput({ ...valid, replyStyle: 'sms' } as never)).toThrow(
+			expect.objectContaining({ status: 400 }),
+		);
+	});
+
+	// A settings page cached in an installed app from before the rename still
+	// saves the old name; it means the same preset.
+	it("takes the old 'texting' style as a character", () => {
+		expect(validateCreateInput({ ...valid, replyStyle: 'texting' } as never).replyStyle).toBe(
+			'character',
+		);
+	});
+
+	it('defaults startingScene to texting and refuses an unknown one', () => {
+		expect(validateCreateInput(valid).startingScene).toBe('texting');
+		expect(validateCreateInput({ ...valid, startingScene: 'in_person' }).startingScene).toBe(
+			'in_person',
+		);
+		expect(() => validateCreateInput({ ...valid, startingScene: 'beach' } as never)).toThrow(
 			expect.objectContaining({ status: 400 }),
 		);
 	});
 
 	it('defaults checkIns with the style, and refuses a non-boolean', () => {
 		expect(validateCreateInput(valid).checkIns).toBe(false);
-		expect(validateCreateInput({ ...valid, replyStyle: 'texting' }).checkIns).toBe(true);
-		expect(validateCreateInput({ ...valid, replyStyle: 'texting', checkIns: false }).checkIns).toBe(
-			false,
-		);
+		expect(validateCreateInput({ ...valid, replyStyle: 'character' }).checkIns).toBe(true);
+		expect(
+			validateCreateInput({ ...valid, replyStyle: 'character', checkIns: false }).checkIns,
+		).toBe(false);
 		expect(validateCreateInput({ ...valid, checkIns: true }).checkIns).toBe(true);
 		expect(() => validateCreateInput({ ...valid, checkIns: 'yes' } as never)).toThrow(
 			expect.objectContaining({ status: 400 }),
@@ -143,8 +161,8 @@ describe('validateCreateInput', () => {
 
 	it('defaults photos with the style, and refuses a non-boolean', () => {
 		expect(validateCreateInput(valid).photos).toBe(false);
-		expect(validateCreateInput({ ...valid, replyStyle: 'texting' }).photos).toBe(true);
-		expect(validateCreateInput({ ...valid, replyStyle: 'texting', photos: false }).photos).toBe(
+		expect(validateCreateInput({ ...valid, replyStyle: 'character' }).photos).toBe(true);
+		expect(validateCreateInput({ ...valid, replyStyle: 'character', photos: false }).photos).toBe(
 			false,
 		);
 		expect(validateCreateInput({ ...valid, photos: true }).photos).toBe(true);

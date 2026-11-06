@@ -121,7 +121,7 @@ beforeEach(() => {
 		endpointId: 'ep',
 		modelId: 'ep::chat',
 		modelKind: 'chat',
-		replyStyle: 'texting',
+		replyStyle: 'character',
 	}).id;
 	const user = add(null, 'user', text('send pics'));
 	replyId = add(user, 'assistant', text('ok\n\n[photo: one]\n\n[photo: two]'));

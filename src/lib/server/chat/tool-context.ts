@@ -18,6 +18,7 @@ import type {
 	FeatureCategory,
 	McpUnavailableServer,
 	ReplyStyle,
+	Scene,
 	ScheduledToolPolicy,
 } from '#lib/types/api.js';
 import { policyNeedsApproval, toolPermitter } from '../scheduled/tool-policy';
@@ -68,6 +69,9 @@ export interface ChatToolContextInput {
 	/** The conversation's reply style; a non-standard one adds its formatting
 	 *  instructions right after `baseSystemPrompt`. Omitted = 'standard'. */
 	replyStyle?: ReplyStyle;
+	/** A 'character' conversation's starting scene, stated in its
+	 *  instructions. Omitted = 'texting'. */
+	startingScene?: Scene;
 	/** Whether the conversation may check in — adds the check-in marker's
 	 *  instruction alongside the style's. Omitted = off. */
 	checkIns?: boolean;
@@ -151,6 +155,7 @@ export async function buildChatToolContext(input: ChatToolContextInput): Promise
 		input.replyStyle ?? 'standard',
 		input.checkIns ?? false,
 		input.photos ?? false,
+		input.startingScene ?? 'texting',
 	);
 	let systemPrompt: string | null = [environmentBlock, baseSystemPrompt, styleInstructions]
 		.filter(Boolean)

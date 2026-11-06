@@ -67,6 +67,7 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 	return Response.json({
 		messages: slice.messages,
 		hasEarlier: slice.hasEarlier,
+		...(slice.sceneBefore ? { sceneBefore: slice.sceneBefore } : {}),
 	} satisfies EarlierMessagesResponse);
 };
 
