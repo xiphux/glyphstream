@@ -93,8 +93,9 @@ export async function sendPushNotification(
 		// These sends are fire-and-forget under Promise.allSettled, so bound them.
 		//
 		// `urgency: 'high'` because anything lower lets Apple's push service
-		// deliver "with the device's power considerations": an idle iPhone held a
-		// check-in for hours and released it alongside the next notification. Every
+		// "prioritize the recipient's device power considerations for delivery":
+		// an idle iPhone held a check-in for hours and released it alongside the
+		// next notification. Every
 		// push here is an event the user asked to hear about, so there is no
 		// background traffic to save battery on. The TTL used to be 60s, which
 		// dropped a held or offline push outright. Hours outlasts the hold, but
