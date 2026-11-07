@@ -27,7 +27,7 @@
 <div class="mb-1.5 flex items-center gap-2 px-1 text-xs text-fg-muted">
 	<span>
 		{#if pending}
-			Your next message moves {other === 'in_person' ? 'in person' : 'back to texting'}
+			Your next message moves {other === 'in_person' ? 'in person' : 'to texting'}
 		{:else}
 			{now === 'in_person' ? 'In person' : 'Texting'}
 		{/if}
@@ -43,7 +43,7 @@
 		{#if pending}
 			Stay {now === 'in_person' ? 'in person' : 'texting'}
 		{:else}
-			{other === 'in_person' ? 'Meet up in person' : 'Back to texting'}
+			{other === 'in_person' ? 'Meet up in person' : 'Switch to texting'}
 		{/if}
 	</button>
 </div>
