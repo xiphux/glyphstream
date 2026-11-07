@@ -25,7 +25,12 @@
 import { partsToText } from '#lib/message-parts.js';
 import { isReactionTool, lastReplyMessage, parseReactionEmoji } from '#lib/chat-render.js';
 import type { ChatMessage, ReplyStyle, Scene } from '#lib/types/api.js';
-import { lastSceneInParts, sceneMarker, sceneMarkerText } from '#lib/scenes.js';
+import {
+	lastSceneInParts,
+	sceneMarker,
+	sceneMarkerText,
+	withoutSceneMarkers,
+} from '#lib/scenes.js';
 import { friendlyModelName } from '#lib/model-ids.js';
 import { withoutCheckInText } from '#lib/texting-check-ins.js';
 import { extractPlainSpeaker, photoDescription } from '#lib/texting.js';
@@ -284,7 +289,7 @@ function settleCheckIn(
 			// A reply that only put the check-in off again ([later …] and nothing
 			// else) stays, so its new check-in does. It has nothing to notify of
 			// itself, but a line the turn wrote before a tool call does.
-			if (!withoutCheckInText(partsToText(reply.parts)).trim()) {
+			if (!withoutSceneMarkers(withoutCheckInText(partsToText(reply.parts)))) {
 				notifyTurn(row, turnRows(conversationId, reply.id, reminderId));
 				return;
 			}
@@ -405,9 +410,13 @@ function turnRows(conversationId: string, leaf: string, reminderId: string): Cha
 }
 
 /** Whether a row says nothing: a `[no text]` pass or no text at all (a tool
- *  call or its result), and no media either. */
+ *  call or its result), and no media either. A scene marker beside a pass is
+ *  still a pass — an in-person check-in's reminder opens with `[texting]`,
+ *  and a model may echo it — but a reply that is only a marker moved the
+ *  scene, and stays. */
 function isPass(parts: ChatMessage['parts']): boolean {
-	return isCheckInSkip(partsToText(parts)) && !parts.some((p) => 'mediaId' in p);
+	const text = partsToText(parts);
+	return isCheckInSkip(withoutSceneMarkers(text) || text) && !parts.some((p) => 'mediaId' in p);
 }
 
 /** A reply's texts, without the markers that aren't texts (photos' and

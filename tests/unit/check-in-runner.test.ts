@@ -770,6 +770,42 @@ describe('fairness and accounts', () => {
 	});
 });
 
+describe('in person', () => {
+	const MET_UP =
+		'omw\n\n[in person]\n\n*hugs you* gtg soon\n\n[later 1h: ask how the meeting went]';
+	const textOf = (m: { parts: { type: string; text?: string }[] }) =>
+		m.parts.map((p) => p.text ?? '').join('');
+
+	it('picks back up over text', async () => {
+		const t = thread(MET_UP);
+		scheduled(t);
+		mocks.upstream.push(reply('how did it go?'));
+		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
+		await idle(t.conversationId);
+		const reminder = walkActiveBranch(t.conversationId).at(-2)!;
+		expect(textOf(reminder)).toMatch(/^\[texting\]\n\n\(Check-in:/);
+	});
+
+	it('still takes a pass back out when the model echoes the scene', async () => {
+		const t = thread(MET_UP);
+		scheduled(t);
+		mocks.upstream.push(reply('[texting]\n\n[no text]'));
+		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
+		await idle(t.conversationId);
+		expect(roles(walkActiveBranch(t.conversationId))).toEqual(['user', 'assistant']);
+		expect(notify).not.toHaveBeenCalled();
+	});
+
+	it('keeps a reply that only changes scene', async () => {
+		const t = thread(MET_UP);
+		scheduled(t);
+		mocks.upstream.push(reply('[in person]'));
+		expect(await runCheckInSweep(T0 + HOUR)).toBe(1);
+		await idle(t.conversationId);
+		expect(walkActiveBranch(t.conversationId)).toHaveLength(4);
+	});
+});
+
 describe('reminderText', () => {
 	it('says when it is, how long it has been, and how to pass', () => {
 		const at = Date.UTC(2026, 9, 27, 16, 0);
