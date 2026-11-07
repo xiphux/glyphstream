@@ -538,7 +538,7 @@ export const messages = sqliteTable(
 		// heavy columns too, so without this the DISTINCT walked every row's
 		// overflow chain — the whole conversation's bytes, on every open.
 		index('idx_messages_conv_model').on(t.conversationId, t.modelUsed),
-		// The scene at the top of a branch window (`sceneBeforeWindow`): only the
+		// The scene at the top of a branch window (`sceneAtOrAbove`): only the
 		// rows that change scene, so a handful per conversation. Kept out of
 		// `idx_messages_conv_created`, whose skeleton scan would otherwise grow a
 		// column for every row to find them.

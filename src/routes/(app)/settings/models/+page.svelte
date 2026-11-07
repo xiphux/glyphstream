@@ -603,9 +603,7 @@
 								<option value="texting">Texting</option>
 								<option value="in_person">In person</option>
 							</select>
-							<p class="mt-1.5 text-[11px] text-fg-muted">
-								Where each new chat opens. You can change scene before your first message too.
-							</p>
+							<p class="mt-1.5 text-[11px] text-fg-muted">Where each new chat opens.</p>
 						</div>
 					{/if}
 
