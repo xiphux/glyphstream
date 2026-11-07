@@ -83,6 +83,7 @@
 		withoutSceneMarkers,
 		type Scene,
 	} from '#lib/scenes.js';
+	import SceneDivider from '#lib/components/chat/SceneDivider.svelte';
 	import SceneSwitch from '#lib/components/chat/SceneSwitch.svelte';
 	import { ChatLightbox } from '#lib/chat-lightbox.svelte.js';
 	import { MediaFavorites } from '#lib/media-favorites.svelte.js';
@@ -2726,6 +2727,13 @@
 							<span>{assistantLabel} checked in · {checkInTime.format(m.createdAt)}</span>
 							<span class="h-px flex-1 bg-border" aria-hidden="true"></span>
 						</div>
+						<!-- One that fired in person carries the move back to texting
+						 (`check-ins/runner.ts`); this row is never a bubble, so the
+						 divider a user row would draw for its marker goes here. -->
+						{@const moved = character ? lastSceneInParts(m.parts) : null}
+						{#if moved && moved !== scenes.at.get(m.id)}
+							<SceneDivider scene={moved} />
+						{/if}
 					{:else if isCompactionSummary(m)}
 						<!-- A compaction summary: collapsed divider, not a bubble. The
 						 real messages it stands in for stay visible above/below it.
