@@ -773,7 +773,7 @@ describe('fairness and accounts', () => {
 describe('in person', () => {
 	const MET_UP =
 		'omw\n\n[in person]\n\n*hugs you* gtg soon\n\n[later 1h: ask how the meeting went]';
-	const textOf = (m: { parts: { type: string; text?: string }[] }) =>
+	const textOf = (m: { parts: Array<{ type: string; text?: string }> }) =>
 		m.parts.map((p) => p.text ?? '').join('');
 
 	it('picks back up over text', async () => {
