@@ -2094,7 +2094,15 @@
 					activatedSkillNames: [] as string[],
 				};
 		const switchTo = character && sceneSwitch !== scenes.now ? sceneSwitch : null;
-		const text = switchTo && typed ? `${sceneMarkerText(switchTo)}\n\n${typed}` : typed;
+		// A photo sent on its own still moves the scene: the marker is its text.
+		// Nothing at all to send still sends nothing.
+		const marker = switchTo ? sceneMarkerText(switchTo) : null;
+		const text =
+			marker && typed
+				? `${marker}\n\n${typed}`
+				: marker && attachments.items.length > 0
+					? marker
+					: typed;
 
 		if ((!text && attachments.items.length === 0) || generating || compaction.compacting) return;
 		if (attachments.blocksSend) return;
