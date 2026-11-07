@@ -6,6 +6,7 @@ import {
 	sceneMarkerText,
 	withoutSceneMarkers,
 } from '#lib/scenes.js';
+import { textingItems } from '#lib/texting.js';
 
 describe('sceneMarker', () => {
 	it.each([
@@ -52,6 +53,17 @@ describe('lastSceneIn', () => {
 				{ type: 'text', text: 'see you\n\n[texting]' },
 			]),
 		).toBe('texting');
+	});
+
+	it('reads a marker the model signed, as the bubbles draw it', () => {
+		const reply = 'omw\n\nMia: [in person]\n\nMia: *waves*';
+		expect(lastSceneIn(reply)).toBe('in_person');
+		expect(withoutSceneMarkers(reply)).toBe('omw\n\nMia: *waves*');
+		const html = '<p>omw</p>\n<p>Mia: [in person]</p>\n<p>Mia: <em>waves</em></p>';
+		const scenes = textingItems([{ type: 'html', html }], 'Mia')
+			.filter((i) => i.kind === 'scene')
+			.map((i) => i.scene);
+		expect(scenes).toEqual(['in_person']);
 	});
 });
 

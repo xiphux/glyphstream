@@ -16,6 +16,7 @@
  * Client-safe: the server reads the stored text with these, the chat page the
  * same text, so the two never disagree about where a scene changed.
  */
+import { extractPlainSpeaker } from './speaker';
 import type { MessagePart, Scene } from './types/api';
 
 export type { Scene };
@@ -45,10 +46,18 @@ export function sceneMarkerText(scene: Scene): string {
 	return scene === 'texting' ? '[texting]' : '[in person]';
 }
 
+/** The scene a plain-text paragraph switches to. A `Name: ` in front still
+ *  counts — a model signing its lines signs its markers too — because the
+ *  bubbles read it that way (`textingItems`), and the scene the thread is in
+ *  must be the one it was drawn in. */
+function paragraphScene(para: string): Scene | null {
+	return sceneMarker(extractPlainSpeaker(para.trim()));
+}
+
 /** The last scene marker in some text, split into paragraphs on blank lines. */
 export function lastSceneIn(text: string): Scene | null {
 	let scene: Scene | null = null;
-	for (const para of text.split(/\n\s*\n/)) scene = sceneMarker({ text: para }) ?? scene;
+	for (const para of text.split(/\n\s*\n/)) scene = paragraphScene(para) ?? scene;
 	return scene;
 }
 
@@ -67,7 +76,7 @@ export function lastSceneInParts(parts: readonly MessagePart[]): Scene | null {
 export function withoutSceneMarkers(text: string): string {
 	return text
 		.split(/\n\s*\n/)
-		.filter((para) => sceneMarker({ text: para }) === null)
+		.filter((para) => paragraphScene(para) === null)
 		.join('\n\n')
 		.trim();
 }
