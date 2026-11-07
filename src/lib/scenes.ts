@@ -50,7 +50,7 @@ export function sceneMarkerText(scene: Scene): string {
  *  counts — a model signing its lines signs its markers too — because the
  *  bubbles read it that way (`textingItems`), and the scene the thread is in
  *  must be the one it was drawn in. */
-function paragraphScene(para: string): Scene | null {
+export function paragraphScene(para: string): Scene | null {
 	return sceneMarker(extractPlainSpeaker(para.trim()));
 }
 

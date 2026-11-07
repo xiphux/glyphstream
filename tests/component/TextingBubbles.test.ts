@@ -579,6 +579,22 @@ describe('scenes', () => {
 		expect(screen.getByText('*knocks on your door*')).toBeInTheDocument();
 	});
 
+	it('reads a user’s signed switch the way the scene logic does', () => {
+		render(MessageBubble, {
+			props: {
+				...bubbleProps,
+				message: {
+					...reply(''),
+					role: 'user',
+					contentHtml: null,
+					parts: [{ type: 'text', text: 'Bob: [in person]\n\nhey' }],
+				},
+			},
+		});
+		expect(screen.getByRole('separator')).toHaveTextContent('In person');
+		expect(screen.queryByText(/\[in person\]/)).toBeNull();
+	});
+
 	it('shows prose as it arrives in person, with no typing indicator', () => {
 		render(InFlightBubble, {
 			props: {

@@ -17,7 +17,7 @@
 	import TextingBubbles from './TextingBubbles.svelte';
 	import { messageToBlocks, type RenderBlock, type ToolResultEntry } from '#lib/chat-render.js';
 	import type { ChatMessage, Scene } from '#lib/types/api.js';
-	import { sceneMarker } from '#lib/scenes.js';
+	import { paragraphScene } from '#lib/scenes.js';
 	import SceneDivider from './SceneDivider.svelte';
 	import type { ApprovalAction } from '#lib/approval-workflow.js';
 	import { withoutCheckInMarkers, type TextingPhotos } from '#lib/texting.js';
@@ -114,7 +114,7 @@
 		const parts = message.parts.map((p) => {
 			if (p.type !== 'text') return p;
 			const kept = p.text.split(/\n\s*\n/).filter((para) => {
-				const to = sceneMarker({ text: para });
+				const to = paragraphScene(para);
 				if (to) switches.push(to);
 				return !to;
 			});
