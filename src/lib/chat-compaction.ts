@@ -23,7 +23,8 @@
  * Both are pure over `ChatMessage[]` (root → leaf order) and unit-tested.
  */
 
-import type { ChatMessage } from '#lib/types/api.js';
+import { lastSceneInParts, sceneMarkerText } from './scenes.ts';
+import type { ChatMessage, Scene } from '#lib/types/api.js';
 
 /** How many trailing turns (each beginning at a user message) compaction keeps
  *  verbatim below the summary, so the model continues with sharp recent
@@ -134,10 +135,33 @@ export function splitAtCompaction(branch: ChatMessage[]): CompactionSplit {
  * The sequence to serialize upstream: `[summary, ...live]` when compacted, or
  * the untouched branch otherwise. This is the single trim point — feed it to
  * `serializeBranchForUpstream`.
+ *
+ * A character chat's scene lives only in its markers (`#lib/scenes.ts`), and
+ * the system prompt names just the one it started in. So when the summarized
+ * history held the last scene change, the summary goes up ending in that
+ * marker, or the model would be told the chat is where it started while the
+ * app draws it where it is. Derived from the branch alone, so the same branch
+ * always sends the same bytes.
  */
 export function upstreamBranch(branch: ChatMessage[]): ChatMessage[] {
-	const { summary, live } = splitAtCompaction(branch);
-	return summary ? [summary, ...live] : live;
+	const { summarized, summary, live } = splitAtCompaction(branch);
+	if (!summary) return live;
+	const scene = summarized.reduce<Scene | null>((at, m) => lastSceneInParts(m.parts) ?? at, null);
+	return [scene ? withSceneAfter(summary, scene) : summary, ...live];
+}
+
+/** A summary whose text ends in a scene, as the summarized history did. */
+function withSceneAfter(summary: ChatMessage, scene: Scene): ChatMessage {
+	if (lastSceneInParts(summary.parts) === scene) return summary;
+	const marker = sceneMarkerText(scene);
+	const last = summary.parts.findLastIndex((p) => p.type === 'text');
+	if (last === -1) return { ...summary, parts: [...summary.parts, { type: 'text', text: marker }] };
+	return {
+		...summary,
+		parts: summary.parts.map((p, i) =>
+			i === last && p.type === 'text' ? { ...p, text: `${p.text.trimEnd()}\n\n${marker}` } : p,
+		),
+	};
 }
 
 /**

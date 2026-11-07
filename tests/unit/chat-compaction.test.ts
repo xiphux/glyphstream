@@ -169,6 +169,40 @@ describe('upstreamBranch', () => {
 		const branch = turns(2);
 		expect(upstreamBranch(branch)).toBe(branch);
 	});
+
+	describe('a scene the summary folded away', () => {
+		const textOf = (m: ChatMessage) =>
+			m.parts.map((p) => (p.type === 'text' ? p.text : '')).join('');
+		const say = (m: ChatMessage, text: string): ChatMessage => ({
+			...m,
+			parts: [{ type: 'text', text }],
+		});
+
+		it('ends the summary in the last scene it stands in for', () => {
+			const t = turns(3);
+			t[1] = say(t[1], 'omw\n\n[in person]\n\n*waves*');
+			const up = upstreamBranch([...t, summary('S', 'u1', 100)]);
+			expect(textOf(up[0])).toBe('S\n\n[in person]');
+			// The same branch, the same bytes.
+			expect(upstreamBranch([...t, summary('S', 'u1', 100)])).toEqual(up);
+		});
+
+		it('adds nothing when no scene changed before the cut, or the summary says it', () => {
+			const plain = [...turns(3), summary('S', 'u1', 100)];
+			expect(upstreamBranch(plain)[0]).toBe(plain.at(-1));
+			const t = turns(3);
+			t[1] = say(t[1], '[in person]');
+			const s = say(summary('S', 'u1', 100), 'notes\n\n[in person]');
+			expect(upstreamBranch([...t, s])[0]).toBe(s);
+		});
+
+		it('leaves a scene the tail changes to the tail', () => {
+			const t = turns(3);
+			t[3] = say(t[3], '[in person]');
+			const up = upstreamBranch([...t, summary('S', 'u1', 100)]);
+			expect(textOf(up[0])).toBe('S');
+		});
+	});
 });
 
 describe('arrangeForDisplay', () => {

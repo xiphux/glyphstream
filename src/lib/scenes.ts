@@ -16,8 +16,8 @@
  * Client-safe: the server reads the stored text with these, the chat page the
  * same text, so the two never disagree about where a scene changed.
  */
-import { extractPlainSpeaker } from './speaker';
-import type { MessagePart, Scene } from './types/api';
+import { extractPlainSpeaker } from './speaker.ts';
+import type { MessagePart, Scene } from './types/api.ts';
 
 export type { Scene };
 
