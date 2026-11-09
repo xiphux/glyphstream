@@ -126,10 +126,19 @@
 	// One shared fetch for the trigger's prefetch and the open below.
 	let panelLoad: Promise<void> | null = null;
 	let Panel = $state<Component<PanelProps> | null>(null);
+	// A failed fetch (offline, or a tab that outlived a redeploy and its hashed
+	// chunk) is forgotten rather than cached, so the next hover or press retries
+	// instead of the menu never opening again until a reload.
 	const loadPanel = () =>
-		(panelLoad ??= import('./FeatureTogglesPanel.svelte').then((m) => {
-			Panel = m.default;
-		}));
+		(panelLoad ??= import('./FeatureTogglesPanel.svelte').then(
+			(m) => {
+				Panel = m.default;
+			},
+			(err: unknown) => {
+				panelLoad = null;
+				console.warn('Failed to load the feature toggles panel', err);
+			},
+		));
 	const prefetchPanel = () => void loadPanel();
 
 	// Opening waits for the panel (see the header comment); closing is immediate.
@@ -137,7 +146,11 @@
 	function setOpen(next: boolean) {
 		if (!next) open = false;
 		else if (Panel) open = true;
-		else void loadPanel().then(() => (open = true));
+		// A failed load resolves too; opening then would show an empty shell.
+		else
+			void loadPanel().then(() => {
+				if (Panel) open = true;
+			});
 	}
 </script>
 
