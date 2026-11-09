@@ -150,6 +150,12 @@ jobs:
           # don't fight over the same cache entries.
           cache-from: type=gha,scope=build-${{ steps.prepare.outputs.pair }}
           cache-to: type=gha,mode=max,scope=build-${{ steps.prepare.outputs.pair }}
+          # Always re-run runtime-base: its `apk upgrade` is how Alpine security
+          # fixes reach the image, and a cached layer would keep the old packages
+          # until the node:26-alpine digest changes (a zlib CVE fixed in the 3.24
+          # repo sat in published images this way). The stage costs seconds; the
+          # ffmpeg compile is its own stage and stays cached.
+          no-cache-filters: runtime-base
 
       # Step outputs go through `env:`, not `${{ }}` inside the script:
       # an expression is pasted into the shell source before bash parses it.

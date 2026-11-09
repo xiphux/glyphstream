@@ -298,9 +298,10 @@ FROM node:26-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a
 # libssl3/libcrypto3 3.5.7 when 3.5.8 was out). The app doesn't link them —
 # the official node binary bundles its own OpenSSL, and tini, sqlite3, libdav1d
 # and our ffmpeg don't either; apk-tools and busybox's ssl_client do — but the
-# image scan reports them, and a stale package is a stale package. The layer
-# cache can hold an older upgrade until the base image changes; the weekly
-# image-scan.yml run is what notices.
+# image scan reports them, and a stale package is a stale package. A cached
+# layer would hold an older upgrade until the base image changes, so docker.yml
+# builds this stage with `no-cache-filters: runtime-base`. A local build with a
+# warm cache still reuses it unless given `--no-cache-filter runtime-base`.
 #
 # libdav1d is for our ffmpeg (copied in by the runtime stage): the one codec
 # library it links against rather than implements — ffmpeg's own AV1 decoder
