@@ -19,10 +19,21 @@
 	with built-ins + every connected MCP server); the help text lives in an
 	(i) hover/focus tooltip, and the list scrolls within the viewport rather
 	than clipping off the top.
+
+	The open body lives in FeatureTogglesPanel and loads on first open: it's the
+	chat route's only user of bits-ui's Switch and Tooltip, and the popover stays
+	closed on almost every page view. Hovering, focusing or pressing the trigger
+	starts the fetch, and the popover doesn't open until it has landed. Opening
+	an empty shell and filling it later is NOT equivalent: the trigger sits at the
+	bottom of the viewport, so an empty Content measures as fitting below it, gets
+	placed there, and is clamped by `--bits-popover-content-available-height` to
+	the sliver left — which keeps it from ever growing enough to flip, leaving the
+	list stuck mostly off-screen.
 -->
 <script lang="ts">
-	import { Popover, Switch, Tooltip } from 'bits-ui';
-	import { Sliders, Info, Lock } from '@lucide/svelte';
+	import type { Component, ComponentProps } from 'svelte';
+	import { Popover } from 'bits-ui';
+	import { Sliders } from '@lucide/svelte';
 	import {
 		featureCategoryAppliesToModelKind,
 		isCategorySealedByPrivate,
@@ -110,15 +121,36 @@
 	// hidden toggle (e.g. `web` off on an image model), and using the DISPLAYED
 	// state so a private chat's sealed-off rows light the dot too.
 	const anyDisabled = $derived(visibleCategories.some((c) => !displayEnabled(c.id)));
+
+	type PanelProps = ComponentProps<typeof import('./FeatureTogglesPanel.svelte').default>;
+	// One shared fetch for the trigger's prefetch and the open below.
+	let panelLoad: Promise<void> | null = null;
+	let Panel = $state<Component<PanelProps> | null>(null);
+	const loadPanel = () =>
+		(panelLoad ??= import('./FeatureTogglesPanel.svelte').then((m) => {
+			Panel = m.default;
+		}));
+	const prefetchPanel = () => void loadPanel();
+
+	// Opening waits for the panel (see the header comment); closing is immediate.
+	let open = $state(false);
+	function setOpen(next: boolean) {
+		if (!next) open = false;
+		else if (Panel) open = true;
+		else void loadPanel().then(() => (open = true));
+	}
 </script>
 
 <!-- No applicable toggles for this model (e.g. an embedding model, or a media
      model whose enhancer category isn't configured) → hide the whole control
      rather than open an empty popover. -->
 {#if visibleCategories.length > 0}
-	<Popover.Root>
+	<Popover.Root bind:open={() => open, setOpen}>
 		<Popover.Trigger
 			{disabled}
+			onpointerenter={prefetchPanel}
+			onpointerdown={prefetchPanel}
+			onfocus={prefetchPanel}
 			aria-label="Feature toggles"
 			title={anyDisabled ? 'Feature toggles (some features off)' : 'Feature toggles'}
 			class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-fg-muted transition hover:bg-surface-raised hover:text-fg-secondary disabled:opacity-30"
@@ -142,70 +174,9 @@
 				onOpenAutoFocus={(e) => e.preventDefault()}
 				class="z-overlay flex max-h-[min(70vh,var(--bits-popover-content-available-height))] w-[min(320px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-border surface-glass gs-pop shadow-lg"
 			>
-				<Tooltip.Provider delayDuration={150} disableHoverableContent>
-					<div
-						class="shrink-0 px-3 pb-1.5 pt-3 text-xs font-medium uppercase tracking-wide text-fg-muted"
-					>
-						This conversation
-					</div>
-					<!-- Scrolls instead of clipping when the list outgrows the viewport
-				     (many built-ins + connected MCP servers). -->
-					<div class="flex flex-col gap-0.5 overflow-y-auto overscroll-contain px-2 pb-2">
-						{#each visibleCategories as meta (meta.id)}
-							{@const sealed = isSealed(meta.id)}
-							{@const enabled = displayEnabled(meta.id)}
-							<!-- A <label> so a tap anywhere on the row toggles the switch — a
-						     much bigger touch target than the switch alone (matters on
-						     mobile). The Switch is FIRST in DOM so it's the label's
-						     forwarded control; `order-last ml-auto` puts it back on the
-						     right. The (i) tooltip trigger sits AFTER it in DOM, so a row
-						     tap forwards to the switch, never the info button.
-						     A private-sealed row is dimmed + not-allowed and its switch is
-						     disabled — off and locked. -->
-							<label
-								class="flex items-center gap-1.5 rounded-md px-2 py-1.5 transition {sealed
-									? 'cursor-not-allowed opacity-60'
-									: 'cursor-pointer hover:bg-surface-raised'}"
-							>
-								<Switch.Root
-									checked={enabled}
-									disabled={sealed}
-									onCheckedChange={(checked) => toggle(meta.id, checked)}
-									aria-label={meta.label}
-									class="relative order-last ml-auto inline-flex h-5 w-9 shrink-0 items-center rounded-full transition data-[state=checked]:bg-surface-inverse data-[state=unchecked]:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface-panel disabled:cursor-not-allowed"
-								>
-									<Switch.Thumb
-										class="block h-4 w-4 translate-x-0.5 rounded-full bg-surface-panel shadow-sm transition data-[state=checked]:translate-x-[1.125rem]"
-									/>
-								</Switch.Root>
-								<span class="text-sm font-medium text-fg">{meta.label}</span>
-								{#if sealed}
-									<!-- Lock glyph so the reason a row is off-and-fixed reads at a
-								     glance; the tooltip below carries the explanation. -->
-									<Lock size={12} strokeWidth={2.25} class="shrink-0 text-fg-muted" />
-								{/if}
-								<Tooltip.Root>
-									<Tooltip.Trigger
-										aria-label={`About ${meta.label}`}
-										class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-fg-muted transition hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
-									>
-										<Info size={13} strokeWidth={2.25} />
-									</Tooltip.Trigger>
-									<Tooltip.Portal>
-										<Tooltip.Content
-											side="top"
-											sideOffset={6}
-											collisionPadding={12}
-											class="z-popover-nested max-w-[16rem] rounded-md border border-border surface-glass gs-pop px-2.5 py-1.5 text-xs leading-snug text-fg-secondary shadow-lg"
-										>
-											{sealed ? 'Off in private chat — this chat is sealed off.' : meta.description}
-										</Tooltip.Content>
-									</Tooltip.Portal>
-								</Tooltip.Root>
-							</label>
-						{/each}
-					</div>
-				</Tooltip.Provider>
+				{#if Panel}
+					<Panel categories={visibleCategories} {isSealed} {displayEnabled} onToggle={toggle} />
+				{/if}
 			</Popover.Content>
 		</Popover.Portal>
 	</Popover.Root>
