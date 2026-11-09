@@ -10,6 +10,11 @@
  *   expects.
  * - bits-ui Switch.Root carries role="switch" + data-state="checked"
  *   | "unchecked"; we assert against the attribute, not visual state.
+ * - The popover's body (FeatureTogglesPanel) is a lazy import, and the menu
+ *   doesn't open until it lands — so open through `openMenu`, which waits for
+ *   the rows. A synchronous query straight after the click passes only when
+ *   the module happens to be transformed already (a warm vitest cache) and
+ *   fails on a cold CI runner; a `queryBy…toBeNull()` there passes vacuously.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -17,6 +22,16 @@ import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import FeatureTogglesMenu from '#lib/components/FeatureTogglesMenu.svelte';
 import type { FeatureCategoryEntry } from '#lib/types/api.js';
+
+type User = ReturnType<typeof userEvent.setup>;
+
+/** Click the trigger and wait for the lazily-loaded rows. Every case that
+ *  opens the menu has at least one visible category (otherwise the trigger
+ *  is hidden), so a switch is the signal that the panel has rendered. */
+async function openMenu(user: User): Promise<void> {
+	await user.click(screen.getByLabelText('Feature toggles'));
+	await screen.findAllByRole('switch');
+}
 
 /** Test fixture mirroring what the layout server load ships to the client. */
 const CATEGORIES: FeatureCategoryEntry[] = [
@@ -109,7 +124,7 @@ describe('FeatureTogglesMenu — popover content', () => {
 		render(FeatureTogglesMenu, {
 			props: { disabledFeatures: [], categories: CATEGORIES, onChange: vi.fn() },
 		});
-		await user.click(screen.getByLabelText('Feature toggles'));
+		await openMenu(user);
 		for (const meta of CATEGORIES) {
 			expect(screen.getByText(meta.label)).toBeInTheDocument();
 			// The description now lives in an (i) hover/focus tooltip rather than
@@ -127,7 +142,7 @@ describe('FeatureTogglesMenu — popover content', () => {
 				onChange: vi.fn(),
 			},
 		});
-		await user.click(screen.getByLabelText('Feature toggles'));
+		await openMenu(user);
 		expect(screen.getByText('Filesystem')).toBeInTheDocument();
 		expect(screen.getByRole('switch', { name: 'Filesystem' })).toHaveAttribute(
 			'data-state',
@@ -140,7 +155,7 @@ describe('FeatureTogglesMenu — popover content', () => {
 		render(FeatureTogglesMenu, {
 			props: { disabledFeatures: [], categories: CATEGORIES, onChange: vi.fn() },
 		});
-		await user.click(screen.getByLabelText('Feature toggles'));
+		await openMenu(user);
 		for (const meta of CATEGORIES) {
 			const sw = screen.getByRole('switch', { name: meta.label });
 			expect(sw).toHaveAttribute('data-state', 'checked');
@@ -152,7 +167,7 @@ describe('FeatureTogglesMenu — popover content', () => {
 		render(FeatureTogglesMenu, {
 			props: { disabledFeatures: ['web'], categories: CATEGORIES, onChange: vi.fn() },
 		});
-		await user.click(screen.getByLabelText('Feature toggles'));
+		await openMenu(user);
 		const sw = screen.getByRole('switch', { name: 'Web access' });
 		expect(sw).toHaveAttribute('data-state', 'unchecked');
 	});
@@ -169,7 +184,7 @@ describe('FeatureTogglesMenu — model-kind filtering', () => {
 				onChange: vi.fn(),
 			},
 		});
-		await user.click(screen.getByLabelText('Feature toggles'));
+		await openMenu(user);
 		expect(screen.queryByText('Image prompt enhancement')).toBeNull();
 		expect(screen.getByText('Web access')).toBeInTheDocument();
 	});
@@ -184,7 +199,7 @@ describe('FeatureTogglesMenu — model-kind filtering', () => {
 				onChange: vi.fn(),
 			},
 		});
-		await user.click(screen.getByLabelText('Feature toggles'));
+		await openMenu(user);
 		expect(screen.getByText('Image prompt enhancement')).toBeInTheDocument();
 		expect(screen.queryByText('Video prompt enhancement')).toBeNull();
 		expect(screen.queryByText('Web access')).toBeNull();
@@ -201,7 +216,7 @@ describe('FeatureTogglesMenu — model-kind filtering', () => {
 				onChange: vi.fn(),
 			},
 		});
-		await user.click(screen.getByLabelText('Feature toggles'));
+		await openMenu(user);
 		expect(screen.getByText('Video prompt enhancement')).toBeInTheDocument();
 		expect(screen.queryByText('Image prompt enhancement')).toBeNull();
 		expect(screen.queryByText('Web access')).toBeNull();
@@ -239,7 +254,7 @@ describe('FeatureTogglesMenu — model-kind filtering', () => {
 		render(FeatureTogglesMenu, {
 			props: { disabledFeatures: [], categories: CATEGORIES_WITH_IMG, onChange: vi.fn() },
 		});
-		await user.click(screen.getByLabelText('Feature toggles'));
+		await openMenu(user);
 		expect(screen.getByText('Image prompt enhancement')).toBeInTheDocument();
 		expect(screen.getByText('Web access')).toBeInTheDocument();
 	});
@@ -281,7 +296,7 @@ describe('FeatureTogglesMenu — private chat locking', () => {
 				onChange: vi.fn(),
 			},
 		});
-		await user.click(screen.getByLabelText('Feature toggles'));
+		await openMenu(user);
 
 		for (const name of ['Web access', 'Personalization', 'Filesystem']) {
 			const sw = screen.getByRole('switch', { name });
@@ -300,7 +315,7 @@ describe('FeatureTogglesMenu — private chat locking', () => {
 		render(FeatureTogglesMenu, {
 			props: { disabledFeatures: [], categories: CATEGORIES, private: true, onChange },
 		});
-		await user.click(screen.getByLabelText('Feature toggles'));
+		await openMenu(user);
 		await user.click(screen.getByRole('switch', { name: 'Web access' }));
 		expect(onChange).not.toHaveBeenCalled();
 	});
@@ -317,7 +332,7 @@ describe('FeatureTogglesMenu — private chat locking', () => {
 		render(FeatureTogglesMenu, {
 			props: { disabledFeatures: [], categories: CATEGORIES, onChange: vi.fn() },
 		});
-		await user.click(screen.getByLabelText('Feature toggles'));
+		await openMenu(user);
 		const sw = screen.getByRole('switch', { name: 'Web access' });
 		expect(sw).toHaveAttribute('data-state', 'checked');
 		expect(sw).not.toBeDisabled();
@@ -331,7 +346,7 @@ describe('FeatureTogglesMenu — toggle callbacks', () => {
 		render(FeatureTogglesMenu, {
 			props: { disabledFeatures: [], categories: CATEGORIES, onChange },
 		});
-		await user.click(screen.getByLabelText('Feature toggles'));
+		await openMenu(user);
 		await user.click(screen.getByRole('switch', { name: 'Web access' }));
 		expect(onChange).toHaveBeenCalledWith(['web']);
 	});
@@ -342,7 +357,7 @@ describe('FeatureTogglesMenu — toggle callbacks', () => {
 		render(FeatureTogglesMenu, {
 			props: { disabledFeatures: ['web'], categories: CATEGORIES, onChange },
 		});
-		await user.click(screen.getByLabelText('Feature toggles'));
+		await openMenu(user);
 		await user.click(screen.getByRole('switch', { name: 'Web access' }));
 		expect(onChange).toHaveBeenCalledWith([]);
 	});
@@ -353,7 +368,7 @@ describe('FeatureTogglesMenu — toggle callbacks', () => {
 		render(FeatureTogglesMenu, {
 			props: { disabledFeatures: [], categories: CATEGORIES_WITH_MCP, onChange },
 		});
-		await user.click(screen.getByLabelText('Feature toggles'));
+		await openMenu(user);
 		await user.click(screen.getByRole('switch', { name: 'Filesystem' }));
 		expect(onChange).toHaveBeenCalledWith(['mcp:filesystem']);
 	});

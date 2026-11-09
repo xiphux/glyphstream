@@ -235,7 +235,8 @@ describe('ChatComposer — callbacks', () => {
 		const onFeaturesChange = vi.fn();
 		render(ChatComposer, { props: baseProps({ onFeaturesChange }) });
 		await user.click(screen.getByLabelText('Feature toggles'));
-		await user.click(screen.getByRole('switch', { name: 'Web access' }));
+		// findBy: the toggles' body is a lazy import the popover waits on.
+		await user.click(await screen.findByRole('switch', { name: 'Web access' }));
 		expect(onFeaturesChange).toHaveBeenCalledWith(['web']);
 	});
 
