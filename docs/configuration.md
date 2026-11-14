@@ -572,6 +572,7 @@ instructions, for nuance the styles can't carry — and for `json` it's where th
 | Anima                         | `hybrid`           | tags→prose; spaces not underscores; `@artist`                  |
 | Ideogram 4                    | `json`             | the JSON field schema (see below)                              |
 | MOSS-Image                    | `natural-language` | long English prose; quote visible text verbatim — see below    |
+| MiniMax H3 Image              | `natural-language` | one long English paragraph; layout by region — see below       |
 
 Style follows the **base model, not the checkpoint family** — a fine-tune keeps
 its base's prompt regime, and a checkpoint that rebases changes style with it.
@@ -608,6 +609,26 @@ the enhancer is never told. A hint distilled from MOSS's own
 
 GlyphStream sends no negative prompt, so set MOSS's recommended one in the
 workflow.
+
+**MiniMax H3 Image** reads a long English description of the whole image (up to
+4096 tokens through the Qwen3-VL text encoder) and has no negative prompt, so
+anything to avoid must go in the prompt. A hint distilled from MiniMax's own
+[prompt expander](https://huggingface.co/MiniMaxAI/MiniMax-H3-Image-PE)
+(`prompt/t2i/task_prompt.txt`):
+
+```toml
+[endpoints.model_prompt_hints]
+  "minimax-h3-image" = "MiniMax-H3-Image wants a long, complete English description of the whole image in one paragraph, and has no negative prompt, so state anything to avoid inside the description. Describe only what is visible. For a photo or scene: subject identity, pose and contact, scale, environment, light direction, lens or medium. For a poster, card, UI, chart, diagram, infographic or packaging: describe the layout region by region in reading order, giving each region's position, exact text, what it shows and its styling. Quote any text the image should show exactly, in its original language, and say where it sits. Preserve counts and left/right/top/bottom order. For a figure in motion, state its orientation to the camera (front-facing, back-facing, left or right profile, front or rear three-quarter) and its direction of travel on screen. Say which hand touches what. Replace mood adjectives with visible cues such as lighting, materials and lens. No tags, weights, JSON or aspect-ratio notes."
+```
+
+Two parts of the official expander don't carry over. It picks an aspect ratio,
+but GlyphStream's enhancer returns only the prompt, so the size comes from the
+request or the workflow. Keep that in the model's range: it degrades on small
+canvases and is best around 16 MP (4096×4096 at 1:1). The official expander
+also adds supporting elements that weren't asked for, such as legends,
+subtitles or logo placeholders on a poster. GlyphStream's enhancer rules forbid
+adding text or objects, and the hint leaves that rule in place. Don't confuse this model with
+the H3 _video_ model, which uses the `multimodal-script` video style.
 
 #### Video styles
 
@@ -679,7 +700,8 @@ video models alike, and the config override above still wins.
 
 > **Double-enhancement caveat:** some upstreams run their _own_ prompt enhancer
 > (Qwen on DashScope via `prompt_extend`, ERNIE-Image via `use_pe`, both
-> default-on; some MOSS-Image ComfyUI workflows build one in). Stacking
+> default-on; some MOSS-Image ComfyUI workflows build one in, and the official
+> MiniMax H3 Image templates have an `enable_PE` switch). Stacking
 > GlyphStream's enhancer on top double-expands and dilutes intent — disable the
 > upstream one, or turn GlyphStream enhancement off for those models.
 
