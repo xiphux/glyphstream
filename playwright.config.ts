@@ -5,8 +5,8 @@ import { defineConfig, devices } from '@playwright/test';
 import { SERVER_ERRORS_LOG } from './tests/e2e/fixtures/paths';
 
 // Foundry allocates a unique port block per worktree so parallel e2e runs
-// don't fight over the same sockets. Each var falls back to its historical
-// hardcoded default, so a plain `pnpm test:e2e` outside Foundry is unchanged.
+// don't fight over the same sockets. Each var falls back to a fixed default for
+// a plain `pnpm test:e2e` outside Foundry.
 const appPort = Number(process.env.E2E_PORT ?? 3000); // the compiled app
 const mockPort = Number(process.env.MOCK_UPSTREAM_PORT ?? 3001); // mock upstream
 const baseURL = `http://localhost:${appPort}`;
@@ -14,7 +14,7 @@ const baseURL = `http://localhost:${appPort}`;
 // The fixture config.toml points the mock endpoint at :3001. When Foundry
 // hands us a different mock port, rewrite base_url into a generated sibling
 // config so the app dials the right upstream. At the default port we use the
-// fixture verbatim — no file written, byte-for-byte the prior behaviour.
+// fixture verbatim, with no file written.
 const FIXTURE_CONFIG = resolve('./tests/e2e/fixtures/config.toml');
 let configPath = FIXTURE_CONFIG;
 if (mockPort !== 3001) {
@@ -51,11 +51,11 @@ export default defineConfig({
 	use: {
 		baseURL,
 		storageState: './tests/.e2e-data/auth.json',
-		// `on-first-retry` was a no-op: `retries` is unset, so it defaults to 0 and
-		// there is never a first retry. A CI failure therefore arrived with page
+		// Not `on-first-retry`, which is a no-op: `retries` is unset, so it defaults
+		// to 0 and there is never a first retry. A CI failure would arrive with page
 		// snapshots and nothing else — no network waterfall, no timeline — and
-		// diagnosing it took a round trip through the maintainer to fetch artifacts
-		// that could not contain the answer.
+		// diagnosing it would take a round trip through the maintainer to fetch
+		// artifacts that cannot contain the answer.
 		//
 		// `retain-on-failure` records every test and keeps only the ones that
 		// failed. Gated on CI because that is where a failure cannot be reproduced

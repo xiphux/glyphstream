@@ -33,7 +33,7 @@ WORKDIR /app
 # needs vite.config.ts, which we haven't copied yet, and pnpm
 # blocks unapproved native-module builds in non-interactive contexts).
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-# node:alpine stopped bundling corepack as of Node 26, so install pnpm
+# node:alpine doesn't bundle corepack from Node 26 on, so install pnpm
 # directly. Read the version from package.json's `packageManager` field
 # (the same field corepack consults) so the Dockerfile stays in sync
 # with the rest of the toolchain without a second pin to maintain.
@@ -93,9 +93,9 @@ RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
 # costs ~5 MB (a 4.8 MB stripped binary) where `apk add ffmpeg` and a prebuilt
 # static binary each cost upwards of 130 MB — roughly 25-30x more.
 #
-# Stated as a ratio on purpose. Absolute deltas were in here and went stale
-# within weeks: they move with every base-image and package refresh, and the
-# figure that matters is the order of magnitude, not the megabyte.
+# Stated as a ratio on purpose: absolute deltas go stale within weeks, moving
+# with every base-image and package refresh, and the figure that matters is the
+# order of magnitude, not the megabyte.
 #
 # `--disable-autodetect` is what buys most of that: without it, configure links
 # every codec library it finds sitting in the build stage — x264, x265, and the
@@ -108,7 +108,7 @@ RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
 # writes it back out with the index moved to the front, and nothing decodes.
 # See media/faststart.ts for why that matters. The added surface is a muxer
 # rather than a decoder, which is the safer half of the pair — but it is worth
-# saying plainly that "decode-only" is now "decode and re-wrap".
+# saying plainly that "decode-only" really means "decode and re-wrap".
 #
 # The narrow codec set is also a security property, not just a size one. A video
 # decoder is a well-known source of memory-safety CVEs, and this path feeds it
@@ -130,7 +130,7 @@ RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
 # AV1 comes from libdav1d, NOT from ffmpeg's built-in `av1` decoder. That one is
 # a hwaccel-only wrapper: it builds and it lists in `-decoders`, and then every
 # software decode fails with "Your platform doesn't support hardware accelerated
-# AV1 decoding". Enabling it here bought exactly nothing and read as coverage —
+# AV1 decoding". Enabling it here would buy nothing and read as coverage —
 # which is why the runtime-base stage installs libdav1d rather than the decoder list
 # simply naming `av1`. libdav1d ships shared-only on Alpine, so it is apk-managed
 # on both sides instead of copied; that also keeps it picking up CVE fixes when
@@ -280,7 +280,7 @@ RUN apk add --no-cache ffmpeg \
 # node binary links the base's libstdc++, the ffmpeg stage's libdav1d must match
 # this one's (see there), and a pinned `alpine:3.x` would be bumped by Renovate
 # on a different schedule from `node:26-alpine` — as a minor, which automerges.
-# Deriving from node:26-alpine keeps one moving part, exactly as before.
+# Deriving from node:26-alpine keeps one moving part.
 FROM node:26-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS runtime-base
 
 # tini = PID 1 with proper signal handling. Without it, SIGTERM doesn't
@@ -344,7 +344,7 @@ COPY --from=runtime-base / /
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Decode-and-remux, ~5 MB. See the ffmpeg stage for why it isn't
-# `apk add ffmpeg`, and for why "decode-only" stopped being the right word.
+# `apk add ffmpeg`, and for why "decode-only" isn't quite the right word.
 COPY --from=ffmpeg /opt/ff/bin/ffmpeg /usr/local/bin/ffmpeg
 # Prove the copied binary execs and resolved libdav1d. The end-to-end pipeline is
 # proved in the ffmpeg stage instead, where a throwaway full ffmpeg can generate
@@ -363,9 +363,8 @@ ENV NODE_ENV=production \
     PORT=3000 \
     # SvelteKit adapter-node's request body cap defaults to 512KB —
     # way too low for image uploads. /api/uploads' own largest cap (25 MiB)
-    # plus 64 KiB for the multipart framing; exactly 25 MiB refused a file at
-    # the cap. User can override
-    # via .env or compose environment if they want.
+    # plus 64 KiB for the multipart framing; exactly 25 MiB refuses a file at
+    # the cap. Overridable via .env or compose environment.
     BODY_SIZE_LIMIT=26279936 \
     # Pinned, not left to Docker: it derives HOME from /etc/passwd, and a uid
     # override (see the USER block) has no entry there, so HOME would be `/`.

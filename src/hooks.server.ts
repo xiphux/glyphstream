@@ -143,7 +143,7 @@ startEmbeddingBackfiller();
 startTopicBackfiller();
 
 // Record the pixel size of images stored before `media.width`/`height` existed
-// (every insert measures its own now). Self-stops once that backlog is drained.
+// (every insert measures its own). Self-stops once that backlog is drained.
 startDimensionsBackfiller();
 
 // Memory consolidation ("dreaming"): during a configured quiet-hours window, a
@@ -185,9 +185,9 @@ void bootstrapMcp();
 // Warm the model-list cache in the background for the same reason. The cache is
 // stale-while-revalidate, so steady state is free — but a COLD miss awaits a
 // real /v1/models round trip to every configured endpoint, and the send path
-// consults it before dispatching. That put the full round trip (or, for a down
-// endpoint, its entire `request_timeout_seconds`) in front of the first message
-// after every restart — precisely the send someone is watching right after a
+// consults it before dispatching. Unwarmed, that puts the full round trip (or,
+// for a down endpoint, its entire `request_timeout_seconds`) in front of the
+// first message after every restart — precisely the send someone is watching right after a
 // deploy. Failures are already cached per endpoint, so a warm attempt that
 // fails costs nothing extra.
 void listAllModels().catch(() => {});
@@ -222,14 +222,14 @@ const SHUTDOWN_BACKSTOP_MS = 60_000;
 
 // Drain at the signal too, not only in the hook: adapter-node emits the hook
 // once every connection has closed, up to SHUTDOWN_TIMEOUT later, and in that
-// window the queue went on granting jobs that a supervisor's stop timeout then
-// killed — each costing the job its one interruption (generation/jobs.ts). The
+// window the queue would go on granting jobs that a supervisor's stop timeout
+// then kills — each costing the job its one interruption (generation/jobs.ts). The
 // hook still drains, for a shutdown that didn't come from a signal.
 //
 // SIGTERM only, and not under `pnpm dev`: a signal listener replaces Node's
 // default exit, so it's safe only where something else already handles the
 // signal. adapter-node handles SIGTERM and SIGINT; `vite preview` only
-// SIGTERM, and `vite dev` neither — a SIGINT listener here made Ctrl-C stop
+// SIGTERM, and `vite dev` neither — a SIGINT listener here would stop Ctrl-C
 // working there. Supervisors (`docker stop`, systemd) send SIGTERM anyway.
 if (!import.meta.env.DEV) process.once('SIGTERM', drainEndpointGates);
 
@@ -261,7 +261,7 @@ process.on('sveltekit:shutdown', async () => {
 // service worker (or manifest) and mask new versions from clients long
 // after a deploy. Explicit `no-cache` lets the bytes still be cached and
 // served on 304s after ETag revalidation, but forces the revalidation.
-// (The manifest is a route now, not a static file, so it has no ETag and a
+// (The manifest is a route, not a static file, so it has no ETag and a
 // revalidation re-sends its ~1 KB in full — cheap enough not to matter.)
 //
 // Note: SvelteKit's adapter-node already correctly tags `/_app/immutable/*`
@@ -292,9 +292,9 @@ const AUTH_RATE_LIMIT_PATH_PREFIX = '/api/auth/';
  *
  * Two things do NOT reset it: static assets, which adapter-node serves ahead of
  * the SSR handler and which therefore never reach this hook, and the container's health
- * probe (see HEALTH_PROBE_PATH). Enumerating only the first of those is what
- * shipped this field capped at 30 seconds — if another unattended poller is ever
- * added, it belongs on that list too.
+ * probe (see HEALTH_PROBE_PATH). Missing the second caps this field at the
+ * probe's 30 seconds — if another unattended poller is ever added, it belongs on
+ * that list too.
  *
  * Any real client resets it, including another user and a presence heartbeat —
  * at household scale that is the intended meaning ("was anyone using this?"),
@@ -349,7 +349,7 @@ const timings = new WeakMap<App.Locals, RequestTimings>();
  */
 const headerBudget: Handle = async ({ event, resolve }) => {
 	const response = await resolve(event);
-	// Dormant since SvelteKit 3, which puts the modulepreload hints in the
+	// Dormant under SvelteKit 3, which puts the modulepreload hints in the
 	// document's <head> unless `output.linkHeaderPreload` is on (it isn't — see
 	// tests/e2e/proxy-header-budget.spec.ts), so no Link header reaches here.
 	// Kept as the guard for that option: a Link header restates every client
@@ -394,9 +394,9 @@ const serverTiming: Handle = async ({ event, resolve }) => {
 	const usageStart = process.resourceUsage();
 	// Sub-spans of the same total (`authMs` / `renderMs` / `zipMs`, declared at
 	// the points they're measured) are reported alongside it. One opaque `ssr`
-	// number said a cold launch spent 2.35s on the server and nothing about
-	// WHERE, which left "the container had just restarted", "a load blocked on
-	// an upstream" and "compressing a large document" indistinguishable from a
+	// number can say a cold launch spent 2.35s on the server and nothing about
+	// WHERE, leaving "the container had just restarted", "a load blocked on an
+	// upstream" and "compressing a large document" indistinguishable from a
 	// reading taken hours after the fact — the only kind this panel can get.
 
 	// Every path-prefix gate in these hooks compares against `routedPathname`,
@@ -413,9 +413,9 @@ const serverTiming: Handle = async ({ event, resolve }) => {
 		lastRequestAt === 0 ? process.uptime() * 1000 : Math.max(0, Date.now() - lastRequestAt);
 	// The container's own HEALTHCHECK must not count as activity. `/api/health`
 	// is a dynamic route, so unlike a static asset it DOES reach this hook, and
-	// the Dockerfile polls it every 30s — which silently capped this metric at
-	// the probe interval, in exactly the containerised deployment it was written
-	// for. It kept rendering a plausible number that was never the real one.
+	// the Dockerfile polls it every 30s. Counted, it would silently cap this
+	// metric at the probe interval in exactly the containerised deployment it
+	// exists for, rendering a plausible number that is never the real one.
 	// Only the write is skipped: a probe response is not a document, so it never
 	// reports `idleMs` in the first place.
 	if (path !== HEALTH_PROBE_PATH) lastRequestAt = Date.now();
@@ -441,8 +441,8 @@ const serverTiming: Handle = async ({ event, resolve }) => {
 	// question it answers is the first one to ask of a slow SSR: was this the
 	// first request a freshly-started container ever served? A 2.3s render on a
 	// process that booted four seconds ago is a cold start; the same number on
-	// one that's been up nine hours is a different bug entirely, and nothing in
-	// the reading distinguished them.
+	// one that's been up nine hours is a different bug entirely, and nothing
+	// else in the reading distinguishes them.
 	if (response.headers.get('content-type')?.startsWith('text/html')) {
 		const dur = (v: number) => v.toFixed(1);
 		const metrics = [
@@ -526,7 +526,7 @@ const serverTiming: Handle = async ({ event, resolve }) => {
 			const swapped = swapBytes();
 			if (swapped !== null) metrics.push(`swap;dur=${swapped}`);
 			// Database size against the mapping actually in force. Together these
-			// answer the one question the panel has been inferring: whether reads are
+			// answer the one question the panel would otherwise infer: whether reads are
 			// being served from the mapping or through `read(2)`, which bills to
 			// blocked wall time and registers no fault at all. `mmap` is the value
 			// SQLite reported back after the PRAGMA, not the one we asked for — it
@@ -850,9 +850,7 @@ export const handle: Handle = chainHandles(
  *   - `unknown`: an unexpected throw, i.e. a 500. Log it.
  *   - `framework`: SvelteKit's own errors. Log only a 5xx; a 404 is the noise.
  *   - `app` / `validation`: a deliberate `error(...)` or a rejected argument.
- *     Skipped — the code that raised it already decided what it meant, and
- *     SvelteKit 2 never sent these here at all, so logging them now would only
- *     add lines the logs never had.
+ *     Skipped — the code that raised it already decided what it meant.
  */
 export const handleError: HandleServerError = (input) => {
 	if (input.kind === 'app' || input.kind === 'validation') return undefined;

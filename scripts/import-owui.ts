@@ -4,7 +4,7 @@
  * Local dev:
  *   pnpm import:owui <export.json> --user-id <uuid>
  *
- * Inside a running Docker container (once the deploy scaffolding lands):
+ * Inside a running Docker container:
  *   docker compose exec glyphstream node /app/build/scripts/import-owui.js \
  *     /imports/owui-export.json --user-id <uuid>
  *
@@ -14,10 +14,8 @@
  * `./data/glyphstream.db` to match the SvelteKit runtime default).
  *
  * The CLI sets up its own node:sqlite connection rather than going
- * through `src/lib/server/db/client`. That was forced while the client read
- * SvelteKit's `$env/dynamic/private`, which doesn't resolve outside the
- * SvelteKit runtime; since SvelteKit 3 the env layer is plain process.env,
- * so it's now just the smaller dependency surface for a standalone bundle.
+ * through `src/lib/server/db/client`, for a smaller dependency surface in the
+ * standalone bundle.
  */
 
 import { DatabaseSync } from 'node:sqlite';

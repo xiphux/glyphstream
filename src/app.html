@@ -107,9 +107,9 @@
 			 The meta is frozen at install time: an already-installed app keeps
 			 black-translucent until it's removed and re-added to the Home
 			 Screen, which is why the safe-area paddings stay — they're what
-			 keeps that install correct. (The app-shell's 100vh override, kept
-			 for the same reason, did not survive contact with a real iOS 27
-			 install; see .app-shell in app.css.)
+			 keeps that install correct. (The app-shell does NOT get a 100vh
+			 override for the same reason: on a real iOS 27 install it overshoots;
+			 see .app-shell in app.css.)
 			 Source: reddit.com/r/PWA/comments/1w5mqj1 (beta 8, real device). -->
 		<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 		<meta name="apple-mobile-web-app-title" content="GlyphStream" />
@@ -127,10 +127,9 @@
 			 render-blocking reference on the page, and the generated block below
 			 is ~21 KB of markup. Below it, the preload scanner couldn't reach the
 			 CSS until byte ~27,000 instead of ~6,300 — and with COMPRESS_DYNAMIC
-			 off and no compressing proxy (the default until it was flipped on, and
-			 a state this project has shipped in) that pushes it out of the
-			 initial congestion window,
-			 costing a round trip on exactly the cold launch the splash exists to
+			 off and no compressing proxy (a state this project has shipped in)
+			 that pushes it out of the initial congestion window, costing a round
+			 trip on exactly the cold launch the splash exists to
 			 improve. It must still come AFTER the favicon link above, though:
 			 the root layout emits its own hashed `rel="icon"` inside this
 			 placeholder, and later wins.

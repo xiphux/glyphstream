@@ -5,9 +5,9 @@
  *
  * `pnpm audit --audit-level=high` on its own fails whenever any such advisory
  * exists, so one published against a package already locked -- with or
- * without a fix -- failed every pull request until someone dealt with it,
- * whatever the pull request changed. Worse, two Renovate PRs that each fixed
- * one advisory could never merge: each still carried the other's. The
+ * without a fix -- fails every pull request until someone deals with it,
+ * whatever the pull request changed. Worse, two Renovate PRs that each fix
+ * one advisory can never merge: each still carries the other's. The
  * question a pull request can answer is whether it makes things worse, so
  * that is what this asks.
  *
@@ -26,7 +26,7 @@
  * that reach them: a routine update that reshuffles the tree around a
  * package already flagged -- eslint-plugin-n 18.4.0 added seven paths to a
  * brace-expansion advisory glyphstream already had -- must not fail, or this
- * is the blocking it replaced. So another copy of an advisory the baseline
+ * reintroduces the blocking it exists to avoid. So another copy of an advisory the baseline
  * already had, on a new path or at another version, only warns. One
  * distinction is kept: an advisory the baseline had only in devDependencies
  * counts as new once HEAD reaches it from production dependencies, so the

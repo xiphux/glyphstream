@@ -83,7 +83,6 @@ try {
 	await settle(page);
 	await shoot(page, 'image-chat');
 
-	// Gallery.
 	await page.goto(`${BASE}/gallery`);
 	await settle(page);
 	await shoot(page, 'gallery');

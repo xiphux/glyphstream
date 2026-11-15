@@ -8,15 +8,14 @@
  * the GitHub release body to stdout and FAILS when the version has no entry,
  * which is what stops a release publishing empty notes.
  *
- * Why this exists: docker.yml used to pass `generate_release_notes: true`, and
- * GitHub's generator lists PULL REQUESTS only. Work here lands as direct commits
- * to main and the only PRs are Renovate bumps, which .github/release.yml
- * excluded by label -- so every candidate was filtered out and 105 of the first
- * 106 releases published a body with no "What's Changed" section at all --
- * GitHub omits the heading when nothing matches rather than printing an empty
- * one. A hand-written
- * changelog is also the only source that can tell a shipped change from one
- * that was fixed again before any release carried it.
+ * Why this rather than `generate_release_notes: true`: GitHub's generator lists
+ * PULL REQUESTS only. Work here lands as direct commits to main and the only PRs
+ * are Renovate bumps, which .github/release.yml excludes by label -- so every
+ * candidate is filtered out, and 105 of the first 106 releases published a body
+ * with no "What's Changed" section at all (GitHub omits the heading when nothing
+ * matches rather than printing an empty one). A hand-written changelog is also
+ * the only source that can tell a shipped change from one that was fixed again
+ * before any release carried it.
  *
  * Plain .mjs importing nothing outside node: builtins, so the release and
  * checks jobs run it straight from a checkout with no pnpm install. It is still
@@ -31,12 +30,12 @@ import { pathToFileURL } from 'node:url';
 
 // `vX.Y.Z` exactly. Prereleases are NOT supported, deliberately: this project
 // has never shipped one and does not intend to -- anything unreleased is run
-// from git or from a `sha-` image tag. Accepting the suffix here meant ordering
-// it, and semver prerelease precedence is a surprising amount of machinery
-// (numeric identifiers rank below alphanumeric, numerics compare numerically,
-// a longer identifier list wins a tie) for a shape nothing produces. A
-// `v1.0.0-rc.1` heading is now reported as not a version, which is the honest
-// answer rather than a half-implemented one.
+// from git or from a `sha-` image tag. Accepting the suffix here would mean
+// ordering it, and semver prerelease precedence is a surprising amount of
+// machinery (numeric identifiers rank below alphanumeric, numerics compare
+// numerically, a longer identifier list wins a tie) for a shape nothing
+// produces. A `v1.0.0-rc.1` heading is reported as not a version, which is the
+// honest answer rather than a half-implemented one.
 const VERSION = /^v(\d+)\.(\d+)\.(\d+)$/;
 const UNRELEASED = 'Unreleased';
 
@@ -57,14 +56,12 @@ function fenceOf(line) {
 	const match = /^ {0,3}(`{3,}|~{3,})/.exec(line);
 	if (!match) return undefined;
 	// `line.slice`, NOT a `(.*)$` capture. `.` does not match `\r` and `$` is
-	// end-of-input without the `m` flag, so a capture failed on every line of a
+	// end-of-input without the `m` flag, so a capture fails on every line of a
 	// CRLF file -- switching fence tracking off for the whole document, and
 	// silently, since nothing downstream can tell "no fences" from "no fence
 	// tracking". Splitting on `\n` leaves the `\r` on every line, so this path
 	// has to tolerate it.
 	const info = line.slice(match[0].length).replace(/\r$/, '');
-	// CommonMark: a backtick fence's info string may not contain a backtick, so
-	// ```text with `code` is prose rather than a fence opener.
 	if (match[1][0] === '`' && info.includes('`')) return undefined;
 	return { marker: match[1], info };
 }
@@ -115,8 +112,6 @@ export function parseChangelog(text) {
 	let fence = null;
 
 	for (const line of text.split('\n')) {
-		// CommonMark allows up to three spaces of indent, and a closing fence
-		// must use the same character and be at least as long as the opener.
 		const step = nextFence(fence, line);
 		fence = step.fence;
 		if (step.isFenceLine) {
@@ -127,9 +122,9 @@ export function parseChangelog(text) {
 		// `##\s` cannot match `### `: the third `#` is not whitespace. The
 		// `{0,3}` matches the fence rule above, and CommonMark: an ATX heading
 		// may carry up to three spaces of indent and still be a heading, which is
-		// how GitHub renders it. Anchoring at column 0 meant `  ## v1.0.0`
-		// rendered as a section everywhere a reader looked while the parser read
-		// it as body text -- the third way to lose a heading silently.
+		// how GitHub renders it. Anchored at column 0, `  ## v1.0.0` would render
+		// as a section everywhere a reader looks while the parser reads it as body
+		// text -- the third way to lose a heading silently.
 		const heading = fence === null ? /^ {0,3}##\s+(\S.*?)\s*$/.exec(line) : null;
 		if (heading) {
 			sections.push({ heading: heading[1], lines: [] });
@@ -276,9 +271,9 @@ export function validate(text) {
 		if (!hasEntries(body)) problems.push(`"## ${heading}" has no entries`);
 	});
 
-	// The Rust port asserts this and these two did not, which is a divergence
-	// in a rule all three claim to share. A file holding only `## Unreleased`
-	// is structurally fine and still cannot produce a release.
+	// The Rust port asserts this too; all three share the rule. A file holding
+	// only `## Unreleased` is structurally fine and still cannot produce a
+	// release.
 	if (seen.size === 0) problems.push('no released versions found');
 
 	return problems;
@@ -426,7 +421,7 @@ function main(argv) {
 		const usage = 'usage: changelog.mjs release <tag> [--repo owner/name] [--previous tag]';
 		const tag = rest[0];
 		// A tag is positional and comes first. Without this check
-		// `release --repo x/y v1.0.0` took `--repo` as the tag and failed with
+		// `release --repo x/y v1.0.0` would take `--repo` as the tag and fail with
 		// `no "## --repo" section`, which describes the wrong problem.
 		if (!tag || tag.startsWith('--')) {
 			console.error(usage);
@@ -473,22 +468,23 @@ function main(argv) {
 // Not `import.meta.main`, which needs Node 24.2. NONE of the jobs that run
 // this script use `actions/setup-node` -- they need no pnpm install -- so each
 // gets whatever Node its runner image ships, while every other job here pins
-// 26. Stated as a property rather than a count on purpose: this said "the two
-// jobs" until a third call site was added and nobody updated it, and one leg
-// of that third job runs on ubuntu-22.04-arm, a different image again.
+// 26. Stated as a property rather than a count on purpose: a count goes stale
+// as call sites are added, and one leg of one job runs on ubuntu-22.04-arm, a
+// different image again.
 //
 // On an older runtime `import.meta.main` is `undefined`, so this block
 // would be skipped, the process would exit 0 having printed nothing, and
 // `validate` would pass on any changelog while `release` wrote an empty
 // notes.md for the release action to publish. Silently, which is the failure
 // this whole file exists to prevent. This form has no version floor.
+//
 // realpathSync because Node resolves a module's OWN url through symlinks while
 // process.argv[1] is only made absolute, so the two disagree whenever any
 // component of the invocation path is a link -- macOS /tmp and /var both are.
 // The guard would then be false, main() would never run, and the process would
 // exit 0 having printed nothing: `validate` green on any changelog, `release`
-// writing an empty notes.md. That is the silent no-op this guard replaced
-// `import.meta.main` to avoid, so getting it wrong here costs the whole point.
+// writing an empty notes.md. That is the silent no-op this guard avoids
+// `import.meta.main` for, so getting it wrong here costs the whole point.
 //
 // process.exitCode rather than process.exit(): stdout is asynchronous when it
 // is a pipe, and process.exit() does not flush it, so `... | less` could

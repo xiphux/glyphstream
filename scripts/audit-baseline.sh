@@ -35,7 +35,7 @@
 # With none on the target branch, the default branch's runs are searched the
 # same way: where a new branch forked off is a sound baseline. With none
 # there either, there is no baseline, and the audit counts every advisory as
-# new -- the old fail-on-any gate, for the case where nothing can vouch for
+# new -- a fail-on-any gate, for the case where nothing can vouch for
 # the starting point. A failed API call or git error fails the script: an
 # unknown baseline is not a reason to assume a recent one.
 #

@@ -8,15 +8,15 @@
  * the URL but doesn't emit a .js file it references (it reads as "import this
  * code", not "this is an asset"), so the build copies it in afterwards.
  *
- * It used to copy to a fixed `build/server/chunks/`, which is where that chunk
- * sat until adapter-node 5.5.6 started preserving Vite's own `chunks/` folder
- * inside its chunk names (sveltejs/kit#16092). The pool code moved to
- * `build/server/chunks/chunks/`, the copy didn't, and every `run_python` call
- * in a production build failed to start its worker — silently, since nothing
- * but a live call ever spawns one. So this finds the chunk by what it
- * contains rather than where it is expected to be, and FAILS the build when it
- * finds none: a refactor that renames the file or changes how the URL is
- * written should break here, not in production.
+ * A fixed destination breaks without warning: adapter-node 5.5.6 started
+ * preserving Vite's own `chunks/` folder inside its chunk names
+ * (sveltejs/kit#16092), which moved the pool code from `build/server/chunks/`
+ * to `build/server/chunks/chunks/`. A copy to the old path left every
+ * `run_python` call in a production build unable to start its worker —
+ * silently, since nothing but a live call ever spawns one. So this finds the
+ * chunk by what it contains rather than where it is expected to be, and FAILS
+ * the build when it finds none: a refactor that renames the file or changes how
+ * the URL is written should break here, not in production.
  *
  * Plain .mjs importing nothing outside node: builtins, like changelog.mjs.
  */

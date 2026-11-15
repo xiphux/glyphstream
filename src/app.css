@@ -33,15 +33,14 @@
  * only the variable's value changes. That's the same mechanism shiki already
  * uses for code-block colors (see the `--shiki-*` swap further down).
  *
- * The `[data-theme='claude' | 'chatgpt']` overrides have since landed (below),
- * so a component that hardcodes `neutral-*` is no longer merely inconsistent —
- * it is unreachable by the theme, and stays cool-grey while everything around
- * it turns Claude's warm cream. The default values also no longer equal
- * Tailwind's stock `neutral` (the Signature palette is cool-tinted, hue ~250),
- * so that swap is not the pixel-identical no-op this comment used to promise.
- * Chrome that sits on top of user MEDIA rather than the app canvas is the one
- * legitimate exception, and it has its own scheme-independent token family —
- * see `--color-media-*` further down.
+ * Because the `[data-theme='claude' | 'chatgpt']` blocks (below) override these,
+ * a component that hardcodes `neutral-*` is not merely inconsistent — it is
+ * unreachable by the theme, and stays cool-grey while everything around it turns
+ * Claude's warm cream. Nor is swapping `neutral-*` for a token a pixel-identical
+ * no-op: the defaults are the cool-tinted Signature palette (hue ~250), not
+ * Tailwind's stock `neutral`. Chrome that sits on top of user MEDIA rather than
+ * the app canvas is the one legitimate exception, and it has its own
+ * scheme-independent token family — see `--color-media-*` further down.
  */
 @theme {
 	/* GlyphStream Signature palette. Cool-tinted neutrals (a faint blue,
@@ -184,8 +183,8 @@
 	--glass-bg: color-mix(in oklch, var(--color-surface-panel) 95%, transparent);
 	--glass-bg-soft: color-mix(in oklch, var(--color-surface-panel) 92%, transparent);
 
-	/* Motion tokens — the animation pass references these so timing stays
-	 * consistent across the app (and a theme can retune feel in one place). */
+	/* Motion tokens, so timing stays consistent across the app and a theme can
+	 * retune feel in one place. */
 	--motion-fast: 120ms;
 	--motion-base: 200ms;
 	--motion-slow: 320ms;
@@ -450,11 +449,9 @@
  * with the scheme (light chip in dark mode), which is right for a button on the
  * canvas and wrong for one on a photograph.
  *
- * They were 35 hardcoded `neutral-*` classes across MediaLightbox and
- * AttachmentThumbnails. Defined as the stock Tailwind neutral vars they already
- * resolved to, so the swap is pixel-identical — but the concept now has a name,
- * and a theme can tune its media chrome by overriding these under
- * `[data-theme=…]` instead of not being able to reach it at all. */
+ * Defined as stock Tailwind neutral vars, but named, so a theme can tune its
+ * media chrome by overriding these under `[data-theme=…]` — a hardcoded
+ * `neutral-*` class would be out of its reach entirely. */
 @theme {
 	--color-media-surface: var(--color-neutral-800);
 	--color-media-surface-hover: var(--color-neutral-700);
@@ -476,10 +473,10 @@
  *   status-bar       the strip iOS colors the standalone status bar from, on
  *                    the (auth) routes only — inside (app) the mobile top bar
  *                    is the sampled element instead. The one tier that isn't
- *                    about what a human sees. Its rank no longer settles
- *                    anything (the drawer and the lightbox it was placed
- *                    between don't exist on those routes); it is pinned here
- *                    because nothing argues for moving it. See the rule.
+ *                    about what a human sees. Its rank settles nothing (the
+ *                    drawer and the lightbox it sits between don't exist on
+ *                    those routes); it is pinned here because nothing argues
+ *                    for moving it. See the rule.
  *   sidebar          the sidebar itself, and CanvasPane's mobile sheet
  *   overlay          modals, popovers, menus, the lightbox: the busy tier
  *   popover-nested   a tooltip opened from inside something already at overlay
@@ -487,16 +484,15 @@
  *                    modal backdrop that is still on screen
  *   update           the new-version prompt: not transient, not dismissible by
  *                    waiting, and the one control the service-worker update
- *                    flow exists to reach. (It once shared the toast's bottom
- *                    anchor; the toast is top-anchored now, so the order is
- *                    defensive rather than load-bearing.)
+ *                    flow exists to reach. (The toast is top-anchored, so this
+ *                    order is defensive rather than load-bearing.)
  *   app-lock         the app-lock privacy cover — covers everything, the
  *                    update prompt included, because its whole job is that
  *                    nothing underneath is readable
  *
- * These exist because the ordering was previously carried only by bare numbers
- * scattered across a dozen components, and it broke: the toast and the dialog
- * backdrop both sat at 50, the tie fell to paint order, and the toast rendered
+ * Named tiers, not bare numbers per component: with the ordering carried only
+ * by numbers scattered across a dozen components, it broke — the toast and the
+ * dialog backdrop both sat at 50, the tie fell to paint order, and the toast rendered
  * *behind* a `bg-black/60 backdrop-blur` — laid out, reported visible by the
  * DOM and by Playwright, and unreadable to a human. Naming the tiers puts the
  * order in one place; `tests/unit/z-index-ladder.test.ts` stops the next
@@ -518,9 +514,8 @@
 	--z-index-app-lock: 90;
 }
 
-/* The standard raised panel: a bordered card on the app canvas. This chrome
- * (rounded-lg + border + border-border + bg-surface-panel) was repeated
- * verbatim ~18 times across settings, dialogs and the gallery. Padding is
+/* The standard raised panel: a bordered card on the app canvas
+ * (rounded-lg + border + border-border + bg-surface-panel). Padding is
  * deliberately NOT included — callers use p-3/p-4/p-6 as their density needs,
  * and the class composes onto <section>, <div> and <form> alike. */
 @utility panel-card {
@@ -531,8 +526,7 @@
 }
 
 /* Soft "alert box" fills, derived from the state tokens via color-mix so a
- * single class replaces the old six-class red/amber + dark-variant trio and
- * stays theme-correct. Pair with `border` (width) + your own rounding /
+ * single class stays theme-correct. Pair with `border` (width) + your own rounding /
  * padding / text-size; these set only the three colors. The tint is mixed
  * over --color-surface so it sits right on each theme's canvas in both
  * schemes. */
@@ -549,7 +543,7 @@
 
 /* Solid destructive button: strong scheme-stable fill + readable foreground,
  * with a hover that deepens the fill (theme-aware via color-mix toward
- * black). Replaces the bg-red-600 / text-white / hover:bg-red-700 cluster. */
+ * black). */
 @utility btn-danger {
 	background-color: var(--color-danger-emphasis);
 	color: var(--color-danger-fg);
@@ -622,14 +616,15 @@ body {
 }
 
 /* App shell height. 100dvh, unconditionally — including in an installed
-   (standalone) PWA, which used to be overridden to 100vh.
+   (standalone) PWA, with no 100vh override.
 
-   That override was a workaround for one specific iOS bug: under the
-   black-translucent status bar the view was offset up by the status-bar height
+   Such an override is the workaround for one specific iOS bug: under the
+   black-translucent status bar the view is offset up by the status-bar height
    WITHOUT the viewport growing, so 100dvh — which resolves like 100%, against
-   the offset-but-not-grown box — came up SHORT by that height and left a "chin
-   gap" at the bottom. Because dvh is dynamic it healed only sometimes, which is
-   why the gap was intermittent. 100vh, the full physical viewport, covered it.
+   the offset-but-not-grown box — comes up SHORT by that height and leaves a
+   "chin gap" at the bottom. Because dvh is dynamic it heals only sometimes,
+   which is why the gap is intermittent. 100vh, the full physical viewport,
+   covers it.
    Credit: https://www.reddit.com/r/PWA/comments/1sdhsbu/ (Edit 2).
 
    Under the `default` bar that reverses, and measurably rather than by
@@ -640,12 +635,12 @@ body {
    status bar the moment anything is dragged. There, 100dvh is what iOS reports
    as the viewport and 100vh is larger than it.
 
-   What this does NOT claim is that the old bug is extinct. The measurement
+   What this does NOT claim is that the black-translucent bug is extinct. The measurement
    could only be taken on a `default` install, and app.html explains why the
    other kind still exists: the status-bar meta is frozen at install time, so an
    app added to the Home Screen before that switch is still black-translucent
-   until it is removed and re-added. Such an install is no longer compensated
-   and plausibly gets the chin gap back. That was the deliberate trade — the
+   until it is removed and re-added. Such an install is not compensated and
+   plausibly gets the chin gap. That is the deliberate trade — the
    over-tall shell is the worse of the two and the one reachable today — but it
    is a trade, not a fix for both. The debug panel's Viewport row reports the
    top inset, which is what says which kind is in front of you.
@@ -682,11 +677,10 @@ body {
        pseudo-elements aren't hit-tested, so a body::before plate does nothing.
      - It must span >= 0.9x the viewport width (minimumRatio), and must not
        carry a negative z-index or a backdrop-filter anywhere in its ancestor
-       chain. NOT "must be opaque", as this said before someone checked:
-       a hidden or near-transparent box is rejected, but a merely translucent
-       one is blended over the page background (below
-       minimumOpacityThresholdToClampToSolidColor, 0.75) and otherwise clamped
-       to opaque. Translucency costs you the colour you chose, not the bar.
+       chain. NOT "must be opaque": a hidden or near-transparent box is rejected,
+       but a merely translucent one is blended over the page background (below
+       minimumOpacityThresholdToClampToSolidColor, 0.75) and otherwise clamped to
+       opaque. Translucency costs you the colour you chose, not the bar.
 
    Hence 12px, comfortably past the 10px floor and containing the y=4 probe.
    That is real on-screen content under the `default` status-bar style (the
@@ -698,7 +692,7 @@ body {
    IgnoreCSSPointerEventsProperty set, and only retries honouring it when it
    lands on an INVISIBLE pointer-events:none box. This one is opaque.
 
-   oklch is fine here, contrary to what this comment used to claim. The gate is
+   oklch is fine here. The gate is
    `styleColor.isResolvedColor()`, which excludes unresolved values like
    currentColor, not modern colour spaces. syncSurfaceChrome() still overwrites
    this inline with resolved rgb(), and that write still has to be re-run by
@@ -707,13 +701,12 @@ body {
    is added without it — but it is belt-and-braces for the sampler and the real
    work for `<meta name="theme-color">`, which iOS does NOT consult for this.
 
-   The z-index tier is now inertia rather than reasoning, and the reasoning it
-   replaced is worth not resurrecting: the tier used to sit above
-   drawer-backdrop so the mobile drawer's scrim couldn't mask the sampler, and
-   below the overlay tier so it didn't draw a hairline across the lightbox.
-   Neither pressure exists on these three routes — there is no drawer and no
-   lightbox — so the tier is kept only because nothing here argues for moving
-   it. z-index-ladder.test.ts still pins the ordering. */
+   The z-index tier is inertia rather than reasoning, and its old reasoning is
+   worth not resurrecting: above drawer-backdrop so the mobile drawer's scrim
+   can't mask the sampler, below overlay so it doesn't draw a hairline across
+   the lightbox. Neither pressure exists on these three routes — there is no
+   drawer and no lightbox — so the tier is kept only because nothing here
+   argues for moving it. z-index-ladder.test.ts still pins the ordering. */
 .status-bar-sampler {
 	display: none;
 }
