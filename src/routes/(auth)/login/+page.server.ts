@@ -30,10 +30,9 @@ export const load: PageServerLoad = ({ locals, url }) => {
 	if (countUsers() === 0) redirect(302, '/setup');
 	const errorCode = url.searchParams.get('error');
 	const errorMessage = errorCode ? (ERROR_MESSAGES[errorCode] ?? 'Login failed.') : null;
-	// Expose which login methods are enabled so the page can render the
-	// right buttons. validateAuthMethodsEnabled() at boot guarantees at
-	// least one usable method here — a provider with credentials, or
-	// passkeys — so the page can never render with zero controls.
+	// validateAuthMethodsEnabled() at boot guarantees at least one usable
+	// method here — a provider with credentials, or passkeys — so the page can
+	// never render with zero controls.
 	return {
 		errorMessage,
 		methods: {

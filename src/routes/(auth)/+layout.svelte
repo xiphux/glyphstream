@@ -2,7 +2,7 @@
 	let { children }: { children: import('svelte').Snippet } = $props();
 </script>
 
-<!-- The status-bar sampler, and the ONLY place it still exists.
+<!-- The status-bar sampler, used only by this group.
 
 	 Inside (app) the mobile top bar does this job itself (see its comment in
 	 (app)/+layout.svelte): it is real chrome, already the right colour, and

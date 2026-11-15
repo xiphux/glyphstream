@@ -35,9 +35,7 @@ export const POST: RequestHandler = async ({ locals, cookies, request }) => {
 	);
 
 	// Name is captured pre-ceremony in the UI (the WebAuthn prompt doesn't carry
-	// it); trim + length-cap server-side so a stray client-only check can't bypass
-	// it. Transports come from the browser's response.transports (the helper
-	// already filtered them) so the login picker can surface relevant authenticators.
+	// it); trimmed and length-capped here so a client-only check can't be bypassed.
 	const name = sanitizeName(body.name);
 
 	try {
@@ -46,6 +44,8 @@ export const POST: RequestHandler = async ({ locals, cookies, request }) => {
 			userId: locals.user.id,
 			publicKey: credential.publicKey,
 			counter: credential.counter,
+			// Already filtered by the helper; kept so the login picker can surface
+			// relevant authenticators.
 			transports,
 			backedUp,
 			deviceType,

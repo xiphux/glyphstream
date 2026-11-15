@@ -132,16 +132,14 @@
 	});
 
 	// Bring the browser chrome in step with whatever this page actually
-	// painted. Here, in the ROOT layout, so it covers every route including any
-	// group added later: /login, /join/<token> and /setup were keeping
-	// app.html's static default for their whole lifetime, so a dark-scheme
-	// user got a near-white iOS status bar over a dark page — on the first
-	// screens a new or re-authenticating user sees.
+	// painted. Without it, /login, /join/<token> and /setup keep app.html's
+	// static default for their whole lifetime, so a dark-scheme user gets a
+	// near-white iOS status bar over a dark page — on the first screens a new
+	// or re-authenticating user sees.
 	//
-	// This used to say "because the `(auth)` group has no layout of its own".
-	// It has one now — it carries the status-bar sampler — and it has a
-	// `<script>` block, so an effect there would be mechanically easy. Covering
-	// a group nobody has written yet is the reason that actually holds.
+	// Here in the ROOT layout rather than in `(auth)`'s own layout (which
+	// exists, for the status-bar sampler, and could host an effect) so it also
+	// covers any route group added later.
 	//
 	// One call at mount, not a live subscription, and that is deliberate: those
 	// pages resolve `data-scheme` once from app.html's pre-paint script and
@@ -250,12 +248,11 @@
 					// (a desktop tab left open all day) where visibilitychange
 					// never fires. Suspended on iOS, so it can't be the only
 					// mechanism — the focus listener above carries that case.
-					setInterval(checkForUpdate, 60 * 60 * 1000); // hourly
+					setInterval(checkForUpdate, 60 * 60 * 1000);
 				},
 			});
 			// activate() hands control to the waiting SW, and the page reloads
-			// once it takes over. We pin it to a state slot so the banner's
-			// click handler can call it.
+			// once it takes over.
 			triggerUpdate = activate;
 		}
 
