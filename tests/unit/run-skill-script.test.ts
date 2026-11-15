@@ -21,6 +21,7 @@ vi.mock('#lib/server/code-interpreter/config.js', () => ({
 }));
 vi.mock('#lib/server/code-interpreter/pool.js', () => ({
 	runPython: (...a: unknown[]) => mocks.runPython(...a),
+	reserveInterpreterTurn: () => ({ ready: Promise.resolve(), release: () => {} }),
 }));
 vi.mock('#lib/server/code-interpreter/files.js', () => ({
 	collectConversationFiles: (...a: unknown[]) => mocks.collectConversationFiles(...a),
@@ -179,6 +180,21 @@ describe('run_skill_script — execution', () => {
 		expect(r.isError).toBeUndefined();
 		expect(r.parsed.stdout).toBe('out');
 		expect(r.attachedMediaIds).toEqual(['media-1']);
+	});
+
+	it('names unsaved files in stderr when persisting them fails', async () => {
+		mocks.runPython.mockResolvedValue({
+			stdout: 'out',
+			stderr: '',
+			result: null,
+			newFiles: [{ filename: 'chart.png', bytes: new Uint8Array(), sha256: 'h' }],
+		});
+		mocks.persistGeneratedFiles.mockRejectedValue(new Error('media store down'));
+		const r = await run({ name: 'review', path: 'scripts/extract.py' });
+		expect(r.isError).toBeUndefined();
+		expect(r.attachedMediaIds).toBeUndefined();
+		expect(r.parsed.files).toBeUndefined();
+		expect(r.parsed.stderr).toBe('[could not save chart.png; these files are NOT attached]');
 	});
 
 	it('surfaces a worker error as a recoverable result', async () => {

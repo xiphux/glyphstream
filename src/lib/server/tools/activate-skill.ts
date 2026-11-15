@@ -33,8 +33,9 @@ import {
 	materializeSkillScript,
 } from '../skills/script-materialize';
 import { isCodeInterpreterEnabled } from '../code-interpreter/config';
-import { runPython, type RunPythonPreFile } from '../code-interpreter/pool';
+import { reserveInterpreterTurn, runPython, type RunPythonPreFile } from '../code-interpreter/pool';
 import { collectConversationFiles, persistGeneratedFiles } from '../code-interpreter/files';
+import { appendUnsavedFilesWarning } from '../code-interpreter/unsaved-files';
 import { register } from './registry';
 import type { OpenAIToolDefinition, Tool, ToolContext, ToolExecution } from './types';
 import { createLogger } from '../log';
@@ -233,62 +234,74 @@ export const runSkillScriptTool: Tool = {
 		const ref = getEnabledSkillByName(ctx.userId, parsed.name);
 		if (!ref) return errorResult(`No enabled skill named "${parsed.name}".`);
 
-		const materialized = await materializeSkillScript(
-			getSkillStore(),
-			ref.storagePath,
-			parsed.path,
-		);
-		if (!materialized.ok) return errorResult(materialized.error);
-
-		// Mount conversation files too (so a script can process user uploads),
-		// best-effort like run_python. Skill files win on a basename collision.
-		let conversationFiles: RunPythonPreFile[] = [];
+		// Reserved before the first await, so a turn's parallel interpreter calls
+		// run in tool-call order.
+		const turn = reserveInterpreterTurn(ctx.conversationId);
 		try {
-			conversationFiles = await collectConversationFiles(ctx.conversationId, ctx.userId);
-		} catch (e) {
-			log.warn('collectConversationFiles failed:', e);
-		}
-		const preFiles = dedupeByFilename([...conversationFiles, ...materialized.value.preFiles]);
+			const materialized = await materializeSkillScript(
+				getSkillStore(),
+				ref.storagePath,
+				parsed.path,
+			);
+			if (!materialized.ok) return errorResult(materialized.error);
 
-		try {
-			const result = await runPython({
-				conversationId: ctx.conversationId,
-				userId: ctx.userId,
-				code: buildScriptBootstrap(materialized.value.entryBasename, parsed.argv),
-				disabledFeatures: ctx.disabledFeatures,
-				preFiles,
-				ctxSignal: ctx.signal,
-			});
+			// Mount conversation files too (so a script can process user uploads),
+			// best-effort like run_python. Skill files win on a basename collision.
+			let conversationFiles: RunPythonPreFile[] = [];
+			try {
+				conversationFiles = await collectConversationFiles(ctx.conversationId, ctx.userId);
+			} catch (e) {
+				log.warn('collectConversationFiles failed:', e);
+			}
+			const preFiles = dedupeByFilename([...conversationFiles, ...materialized.value.preFiles]);
 
-			let attachedMediaIds: string[] | undefined;
-			if (result.newFiles.length > 0) {
-				try {
-					attachedMediaIds = await persistGeneratedFiles({
-						userId: ctx.userId,
-						files: result.newFiles,
-					});
-				} catch (e) {
-					log.warn('persistGeneratedFiles failed:', e);
+			try {
+				const result = await runPython({
+					conversationId: ctx.conversationId,
+					userId: ctx.userId,
+					code: buildScriptBootstrap(materialized.value.entryBasename, parsed.argv),
+					disabledFeatures: ctx.disabledFeatures,
+					preFiles,
+					ctxSignal: ctx.signal,
+					turn,
+				});
+
+				let stderr = result.stderr;
+				let attachedMediaIds: string[] | undefined;
+				if (result.newFiles.length > 0) {
+					try {
+						attachedMediaIds = await persistGeneratedFiles({
+							userId: ctx.userId,
+							files: result.newFiles,
+						});
+					} catch (e) {
+						// The stderr the model gets names the unsaved files, so it
+						// doesn't tell the user they're attached.
+						log.warn('persistGeneratedFiles failed:', e);
+						stderr = appendUnsavedFilesWarning(stderr, result.newFiles);
+					}
 				}
-			}
 
-			const payload: Record<string, unknown> = {
-				stdout: result.stdout,
-				stderr: result.stderr,
-				value: result.result,
-			};
-			if (attachedMediaIds && attachedMediaIds.length > 0) {
-				payload.files = attachedMediaIds.map((id, i) => ({
-					media_id: id,
-					filename: result.newFiles[i].filename,
-				}));
+				const payload: Record<string, unknown> = {
+					stdout: result.stdout,
+					stderr,
+					value: result.result,
+				};
+				if (attachedMediaIds && attachedMediaIds.length > 0) {
+					payload.files = attachedMediaIds.map((id, i) => ({
+						media_id: id,
+						filename: result.newFiles[i].filename,
+					}));
+				}
+				return {
+					content: JSON.stringify(payload),
+					...(attachedMediaIds && attachedMediaIds.length > 0 ? { attachedMediaIds } : {}),
+				};
+			} catch (e) {
+				return errorResult(e instanceof Error ? e.message : String(e));
 			}
-			return {
-				content: JSON.stringify(payload),
-				...(attachedMediaIds && attachedMediaIds.length > 0 ? { attachedMediaIds } : {}),
-			};
-		} catch (e) {
-			return errorResult(e instanceof Error ? e.message : String(e));
+		} finally {
+			turn.release();
 		}
 	},
 };

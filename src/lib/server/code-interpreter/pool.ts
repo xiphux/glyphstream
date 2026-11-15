@@ -190,6 +190,9 @@ export interface RunPythonParams {
 	callTimeoutMs?: number;
 	/** External abort signal (e.g. the streaming-relay turn signal). */
 	ctxSignal?: AbortSignal;
+	/** A turn the caller reserved before its own awaits, and releases itself.
+	 *  Without one, the call reserves its turn on entry. */
+	turn?: InterpreterTurn;
 	/** Status callback for the cold-start path; fires before/after
 	 *  `loadPyodide` on a `starting` entry. `run_python` bridges it to the
 	 *  `tool_call_executing.status` SSE event. */
@@ -207,15 +210,78 @@ export interface WorkerRunResult {
 }
 
 /**
- * Execute Python in this conversation's worker. Per-conversation mutex
- * means parallel calls to the same conversation queue; calls to different
- * conversations execute concurrently against separate workers.
+ * A reserved place in a conversation's line for the interpreter. Calls run in
+ * the order their turns were reserved, which is why a tool reserves one before
+ * its first await: the mutex alone orders calls by when they reach it, and a
+ * cold start or a file collection lets a later call get there first.
+ */
+export interface InterpreterTurn {
+	/** Resolves once every turn reserved earlier has been released. Never rejects. */
+	ready: Promise<void>;
+	/** Gives up the place in line. Idempotent, and safe before `ready`
+	 *  settles: later turns still wait for the earlier ones. */
+	release(): void;
+}
+
+interface TurnQueue {
+	tail: Promise<void>;
+	/** Reserved turns not yet released; the queue is dropped at zero. */
+	holders: number;
+}
+
+const turnQueues = new Map<string, TurnQueue>();
+
+/** Reserve the next place in this conversation's line, synchronously. */
+export function reserveInterpreterTurn(conversationId: string): InterpreterTurn {
+	let queue = turnQueues.get(conversationId);
+	if (!queue) {
+		queue = { tail: Promise.resolve(), holders: 0 };
+		turnQueues.set(conversationId, queue);
+	}
+	const q = queue;
+	q.holders++;
+	const ready = q.tail;
+	let done!: () => void;
+	q.tail = new Promise<void>((resolve) => {
+		done = resolve;
+	});
+	let released = false;
+	return {
+		ready,
+		release() {
+			if (released) return;
+			released = true;
+			void ready.then(() => {
+				done();
+				if (--q.holders === 0 && turnQueues.get(conversationId) === q) {
+					turnQueues.delete(conversationId);
+				}
+			});
+		},
+	};
+}
+
+/**
+ * Execute Python in this conversation's worker. Calls to the same
+ * conversation run one at a time, in the order their turns were reserved;
+ * calls to different conversations execute concurrently against separate
+ * workers.
  *
  * On timeout: the worker is terminated, the entry is transitioned to
  * `failed`, and the next call spawns a fresh worker (variables gone —
  * the tool description tells the model this can happen).
  */
 export async function runPython(params: RunPythonParams): Promise<WorkerRunResult> {
+	const turn = params.turn ?? reserveInterpreterTurn(params.conversationId);
+	try {
+		await turn.ready;
+		return await runInWorker(params);
+	} finally {
+		if (turn !== params.turn) turn.release();
+	}
+}
+
+async function runInWorker(params: RunPythonParams): Promise<WorkerRunResult> {
 	const cfg = getCodeInterpreterConfig();
 	const timeoutMs = params.callTimeoutMs ?? cfg.callTimeoutSeconds * 1000;
 
@@ -792,5 +858,6 @@ export async function resetCodeInterpreterPoolForTests(): Promise<void> {
 		}
 	}
 	entries.clear();
+	turnQueues.clear();
 	nextCallId = 1;
 }

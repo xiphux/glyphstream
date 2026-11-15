@@ -15,9 +15,8 @@
  * tools (memory, reactions, clock) also complete in that order. Async
  * side-effecting tools guard themselves: update_canvas is a compare-and-swap
  * on the current version, and run_python/run_skill_script serialize on the
- * conversation's interpreter mutex, though not necessarily in tool-call order.
- * MCP tools get no ordering guarantee. Results are persisted serially
- * afterwards, in tool-call order.
+ * conversation's interpreter mutex. MCP tools get no ordering guarantee.
+ * Results are persisted serially afterwards, in tool-call order.
  */
 
 import type { ChatMessage, MessagePart, StreamEvent } from '#lib/types/api.js';

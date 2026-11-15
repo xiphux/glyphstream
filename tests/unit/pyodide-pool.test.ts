@@ -42,6 +42,7 @@ vi.mock('#lib/server/code-interpreter/config.js', () => ({
 import {
 	listWorkerStates,
 	type ManagedWorker,
+	reserveInterpreterTurn,
 	resetCodeInterpreterPoolForTests,
 	runPython,
 	setWorkerFactoryForTests,
@@ -308,13 +309,8 @@ describe('mutex — serializes concurrent calls in the same conversation', () =>
 		// Parked-reply mode: onRun records the callId but never replies.
 		// We then watch dispatchedRuns to see exactly which messages have
 		// been forwarded to the worker — only one at a time should appear
-		// while the in-flight call is unresolved.
-		//
-		// Note on ordering: with two parallel runPython() calls to the
-		// same conversation, the async chain doesn't guarantee which one
-		// acquires the mutex first (both await ensureReady through
-		// different hop counts), so the test treats the dispatch order
-		// as opaque and only asserts the serialization invariant.
+		// while the in-flight call is unresolved. Call order is covered by
+		// the `turn order` tests.
 		const dispatchedRuns: number[] = [];
 		setWorkerFactoryForTests(() => {
 			const w = new MockWorker();
@@ -375,6 +371,83 @@ describe('mutex — serializes concurrent calls in the same conversation', () =>
 		await new Promise((r) => setTimeout(r, 30));
 		expect(settled).toHaveLength(2);
 		expect(settled[1].value).toBe('reply-2');
+	});
+});
+
+describe('turn order — same-conversation calls run in call order', () => {
+	/** A worker that replies after a short delay, recording what it ran. */
+	function recordingFactory(ran: string[], readyDelayMs = 0) {
+		setWorkerFactoryForTests(() => {
+			const w = new MockWorker();
+			w.readyDelayMs = readyDelayMs;
+			w.onRun = ({ callId, code }) => {
+				ran.push(code);
+				setTimeout(() => replyOk(w, callId), 5);
+			};
+			createdWorkers.push(w);
+			return w;
+		});
+	}
+
+	function call(code: string, extra: Partial<Parameters<typeof runPython>[0]> = {}) {
+		return runPython({
+			conversationId: 'order',
+			userId: 'u-order',
+			code,
+			disabledFeatures: [],
+			...extra,
+		});
+	}
+
+	it('runs A, B, C in order on a cold worker, though A alone goes through startup', async () => {
+		const ran: string[] = [];
+		recordingFactory(ran, 20);
+		await Promise.all([call('A'), call('B'), call('C')]);
+		expect(ran).toEqual(['A', 'B', 'C']);
+	});
+
+	it('honours turns reserved before the caller’s own awaits', async () => {
+		// The tools reserve, then collect files (async), then call runPython.
+		// A call whose file collection is slower must still run first.
+		const ran: string[] = [];
+		recordingFactory(ran);
+		const tA = reserveInterpreterTurn('order');
+		const tB = reserveInterpreterTurn('order');
+		const run = async (code: string, turn: typeof tA, delayMs: number) => {
+			try {
+				await new Promise((r) => setTimeout(r, delayMs));
+				return await call(code, { turn });
+			} finally {
+				turn.release();
+			}
+		};
+		await Promise.all([run('A', tA, 30), run('B', tB, 0)]);
+		expect(ran).toEqual(['A', 'B']);
+	});
+
+	it('a turn released without running neither wedges the line nor lets a later call jump it', async () => {
+		// A is still cold-starting, so it holds no mutex yet: only the turn
+		// keeps C behind it once B gives up its place.
+		const ran: string[] = [];
+		recordingFactory(ran, 20);
+		const a = call('A');
+		const skipped = reserveInterpreterTurn('order');
+		const c = call('C');
+		skipped.release();
+		await Promise.all([a, c]);
+		expect(ran).toEqual(['A', 'C']);
+	});
+
+	it('a failed call releases its turn', async () => {
+		const ran: string[] = [];
+		recordingFactory(ran);
+		const ac = new AbortController();
+		ac.abort();
+		const first = call('A', { ctxSignal: ac.signal });
+		const second = call('B');
+		await expect(first).rejects.toThrow(/aborted/);
+		await second;
+		expect(ran).toEqual(['B']);
 	});
 });
 

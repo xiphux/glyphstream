@@ -20,6 +20,9 @@ const mocks = vi.hoisted(() => ({
 	runPython: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	collectConversationFiles: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 	persistGeneratedFiles: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+	reserveInterpreterTurn: vi.fn(),
+	/** Every pool interaction, in order: reserve, run, release. */
+	poolEvents: [] as string[],
 	config: {
 		enabled: true,
 		poolMax: 10,
@@ -36,7 +39,15 @@ vi.mock('#lib/server/code-interpreter/config.js', () => ({
 }));
 
 vi.mock('#lib/server/code-interpreter/pool.js', () => ({
-	runPython: (...args: unknown[]) => mocks.runPython(...args),
+	runPython: (...args: unknown[]) => {
+		mocks.poolEvents.push('run');
+		return mocks.runPython(...args);
+	},
+	reserveInterpreterTurn: (conversationId: string) => {
+		mocks.poolEvents.push('reserve');
+		mocks.reserveInterpreterTurn(conversationId);
+		return { ready: Promise.resolve(), release: () => mocks.poolEvents.push('release') };
+	},
 }));
 
 vi.mock('#lib/server/code-interpreter/files.js', () => ({
@@ -62,6 +73,8 @@ beforeEach(() => {
 	mocks.runPython.mockReset();
 	mocks.collectConversationFiles.mockReset();
 	mocks.persistGeneratedFiles.mockReset();
+	mocks.reserveInterpreterTurn.mockReset();
+	mocks.poolEvents = [];
 	mocks.collectConversationFiles.mockResolvedValue([]);
 	mocks.runPython.mockResolvedValue({
 		stdout: 'hello\n',
@@ -220,6 +233,29 @@ describe('runPythonTool — file round-trip', () => {
 		expect(call.preFiles).toEqual([]);
 	});
 
+	it('names unsaved files in stderr when persisting them fails', async () => {
+		// Otherwise the model believes its files were saved and tells the user
+		// they're attached.
+		mocks.runPython.mockResolvedValue({
+			stdout: '',
+			stderr: 'UserWarning: x',
+			result: null,
+			newFiles: [
+				{ filename: 'out.png', bytes: new Uint8Array([0]), sha256: 'a' },
+				{ filename: 'out.csv', bytes: new Uint8Array([1]), sha256: 'b' },
+			],
+		});
+		mocks.persistGeneratedFiles.mockRejectedValue(new Error('media store down'));
+		const r = await runPythonTool.execute({ code: 'save()' }, ctx());
+		expect(r.isError).toBeUndefined();
+		expect(r.attachedMediaIds).toBeUndefined();
+		const parsed = JSON.parse(r.content) as { stderr: string; files?: unknown };
+		expect(parsed.files).toBeUndefined();
+		expect(parsed.stderr).toBe(
+			'UserWarning: x\n[could not save out.png, out.csv; these files are NOT attached]',
+		);
+	});
+
 	it('returns the worker failure as isError when runPython rejects', async () => {
 		mocks.runPython.mockRejectedValue(new Error('run_python: exceeded 30s wall-clock budget'));
 		const r = await runPythonTool.execute({ code: 'while True: pass' }, ctx());
@@ -234,5 +270,31 @@ describe('runPythonTool — abort signal hand-off', () => {
 		await runPythonTool.execute({ code: 'print(1)' }, ctx({ signal: ac.signal }));
 		const call = mocks.runPython.mock.calls[0][0] as { ctxSignal: AbortSignal };
 		expect(call.ctxSignal).toBe(ac.signal);
+	});
+});
+
+describe('runPythonTool — interpreter turn', () => {
+	it('reserves its turn before its first await and hands it to runPython', async () => {
+		// A turn's tool calls are started in tool-call order; reserving before
+		// collectConversationFiles is what keeps them in that order.
+		let resolveCollect!: (files: unknown[]) => void;
+		mocks.collectConversationFiles.mockReturnValue(
+			new Promise((resolve) => {
+				resolveCollect = resolve;
+			}),
+		);
+		const pending = runPythonTool.execute({ code: 'print(1)' }, ctx());
+		expect(mocks.reserveInterpreterTurn).toHaveBeenCalledWith('c1');
+		resolveCollect([]);
+		await pending;
+		expect(mocks.poolEvents).toEqual(['reserve', 'run', 'release']);
+		const call = mocks.runPython.mock.calls[0][0] as { turn?: unknown };
+		expect(call.turn).toBeDefined();
+	});
+
+	it('releases its turn when runPython rejects', async () => {
+		mocks.runPython.mockRejectedValue(new Error('boom'));
+		await runPythonTool.execute({ code: 'x' }, ctx());
+		expect(mocks.poolEvents).toEqual(['reserve', 'run', 'release']);
 	});
 });

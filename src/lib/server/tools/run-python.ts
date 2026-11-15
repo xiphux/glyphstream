@@ -22,11 +22,12 @@
  */
 
 import { register } from './registry';
-import type { Tool, ToolExecution } from './types';
+import type { Tool, ToolContext, ToolExecution } from './types';
 import { getCodeInterpreterConfig, isCodeInterpreterEnabled } from '../code-interpreter/config';
-import { runPython } from '../code-interpreter/pool';
+import { reserveInterpreterTurn, runPython } from '../code-interpreter/pool';
 import { collectConversationFiles, persistGeneratedFiles } from '../code-interpreter/files';
-import type { RunPythonPreFile } from '../code-interpreter/pool';
+import { appendUnsavedFilesWarning } from '../code-interpreter/unsaved-files';
+import type { InterpreterTurn, RunPythonPreFile } from '../code-interpreter/pool';
 import { createLogger } from '../log';
 import { memoizeConfig } from '../util/config-cache';
 
@@ -141,68 +142,85 @@ export const runPythonTool: Tool = {
 			};
 		}
 
-		let preFiles: RunPythonPreFile[];
+		// Reserved before the first await, so a turn's parallel calls run in
+		// tool-call order.
+		const turn = reserveInterpreterTurn(ctx.conversationId);
 		try {
-			preFiles = await collectConversationFiles(ctx.conversationId, ctx.userId);
-		} catch (e) {
-			// Collecting files shouldn't be fatal: run with an empty workspace so
-			// pure-compute code still works. The model sees no files in /workspace/,
-			// as with a skipped over-budget file.
-			preFiles = [];
-			log.warn('collectConversationFiles failed:', e);
-		}
-
-		try {
-			const result = await runPython({
-				conversationId: ctx.conversationId,
-				userId: ctx.userId,
-				code,
-				disabledFeatures: ctx.disabledFeatures,
-				preFiles,
-				ctxSignal: ctx.signal,
-			});
-
-			let attachedMediaIds: string[] | undefined;
-			if (result.newFiles.length > 0) {
-				try {
-					attachedMediaIds = await persistGeneratedFiles({
-						userId: ctx.userId,
-						files: result.newFiles,
-					});
-				} catch (e) {
-					// Persistence failure shouldn't lose the call's other
-					// output — surface the filenames in stderr-ish form so
-					// the model knows the files were produced but couldn't
-					// be saved, and the user can re-ask.
-					log.warn('persistGeneratedFiles failed:', e);
-				}
-			}
-
-			const payload: Record<string, unknown> = {
-				stdout: result.stdout,
-				stderr: result.stderr,
-				value: result.result,
-			};
-			if (attachedMediaIds && attachedMediaIds.length > 0) {
-				payload.files = attachedMediaIds.map((id, i) => ({
-					media_id: id,
-					filename: result.newFiles[i].filename,
-				}));
-			}
-
-			return {
-				content: JSON.stringify(payload),
-				...(attachedMediaIds && attachedMediaIds.length > 0 ? { attachedMediaIds } : {}),
-			};
-		} catch (e) {
-			return {
-				content: JSON.stringify({
-					error: e instanceof Error ? e.message : String(e),
-				}),
-				isError: true,
-			};
+			return await runWithTurn(code, ctx, turn);
+		} finally {
+			turn.release();
 		}
 	},
 };
+
+async function runWithTurn(
+	code: string,
+	ctx: ToolContext,
+	turn: InterpreterTurn,
+): Promise<ToolExecution> {
+	let preFiles: RunPythonPreFile[];
+	try {
+		preFiles = await collectConversationFiles(ctx.conversationId, ctx.userId);
+	} catch (e) {
+		// Collecting files shouldn't be fatal: run with an empty workspace so
+		// pure-compute code still works. The model sees no files in /workspace/,
+		// as with a skipped over-budget file.
+		preFiles = [];
+		log.warn('collectConversationFiles failed:', e);
+	}
+
+	try {
+		const result = await runPython({
+			conversationId: ctx.conversationId,
+			userId: ctx.userId,
+			code,
+			disabledFeatures: ctx.disabledFeatures,
+			preFiles,
+			ctxSignal: ctx.signal,
+			turn,
+		});
+
+		let stderr = result.stderr;
+		let attachedMediaIds: string[] | undefined;
+		if (result.newFiles.length > 0) {
+			try {
+				attachedMediaIds = await persistGeneratedFiles({
+					userId: ctx.userId,
+					files: result.newFiles,
+				});
+			} catch (e) {
+				// Persistence failure shouldn't lose the call's other output. The
+				// stderr the model gets names the unsaved files, so it doesn't tell
+				// the user they're attached.
+				log.warn('persistGeneratedFiles failed:', e);
+				stderr = appendUnsavedFilesWarning(stderr, result.newFiles);
+			}
+		}
+
+		const payload: Record<string, unknown> = {
+			stdout: result.stdout,
+			stderr,
+			value: result.result,
+		};
+		if (attachedMediaIds && attachedMediaIds.length > 0) {
+			payload.files = attachedMediaIds.map((id, i) => ({
+				media_id: id,
+				filename: result.newFiles[i].filename,
+			}));
+		}
+
+		return {
+			content: JSON.stringify(payload),
+			...(attachedMediaIds && attachedMediaIds.length > 0 ? { attachedMediaIds } : {}),
+		};
+	} catch (e) {
+		return {
+			content: JSON.stringify({
+				error: e instanceof Error ? e.message : String(e),
+			}),
+			isError: true,
+		};
+	}
+}
 
 register(runPythonTool);
