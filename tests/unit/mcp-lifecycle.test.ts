@@ -141,11 +141,9 @@ describe('idle reaper', () => {
 		mocks.connectImpl.mockResolvedValueOnce(conn1).mockResolvedValueOnce(conn2);
 		await initializeMcpServers();
 
-		// Reap the connection.
 		await vi.advanceTimersByTimeAsync(61_000);
 		expect(listGlobalServerStates()[0].state).toBe('idle');
 
-		// Next call re-establishes; conn2.callTool runs.
 		const ac = new AbortController();
 		const result = await callMcpTool('fs', 'user-1', 'do_thing', {}, ac.signal);
 		expect(result.isError).toBe(false);
@@ -195,7 +193,6 @@ describe('reconnect on call failure', () => {
 		const ac = new AbortController();
 		ac.abort();
 		await expect(callMcpTool('fs', 'user-1', 'do_thing', {}, ac.signal)).rejects.toThrow();
-		// Only the first attempt — no reconnect on abort.
 		expect(conn.callTool).toHaveBeenCalledTimes(1);
 	});
 });
@@ -255,7 +252,6 @@ describe('retryMcpServer', () => {
 
 		const result = await retryMcpServer('fs', 'user-1');
 		expect(result.state).toBe('connected');
-		// Old client gets closed; new client is what's live.
 		expect(conn1.close).toHaveBeenCalledTimes(1);
 		expect(conn2.listTools).toHaveBeenCalledTimes(1);
 	});

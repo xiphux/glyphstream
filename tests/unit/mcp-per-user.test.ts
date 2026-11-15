@@ -125,7 +125,7 @@ describe('send-path connect does not wait for a server whose tools are known', (
 	 * advertise its known surface immediately while the handshake runs in the
 	 * background.
 	 *
-	 * Waiting instead put the handshake at the front of time-to-first-token on
+	 * Waiting would put the handshake at the front of time-to-first-token on
 	 * the first turn after every idle reap, forever. Shortening the budget would
 	 * be the wrong trade: a handshake that misses a tighter deadline drops that
 	 * server's tools from `tools[]` for the turn, and a tool surface that changes
@@ -169,9 +169,9 @@ describe('send-path connect does not wait for a server whose tools are known', (
 	 * The settings page passes a budget but NOT `backgroundKnownServers`: its
 	 * whole purpose is reporting whether a server is reachable *now*, so it has
 	 * to wait for the handshake it triggered. Keying the no-wait split off
-	 * `connectBudgetMs` instead made an idle-reaped server (which keeps its tool
-	 * list) render as "Reconnecting" with a stale surface — including after it
-	 * had gone down.
+	 * `connectBudgetMs` instead would render an idle-reaped server (which keeps its
+	 * tool list) as "Reconnecting" with a stale surface — even after it had gone
+	 * down.
 	 */
 	it('still awaits a known server when only a budget is given', async () => {
 		mocks.credentials.set('userA:mail', 'tok-a');
@@ -203,8 +203,8 @@ describe('send-path connect does not wait for a server whose tools are known', (
 describe('executing a per-user tool call nothing has registered yet', () => {
 	// Per-user tools only enter the tool registry while a request builds its
 	// tool list. A call persisted before a restart and approved after it is
-	// executed before anything has done that — it used to fail as
-	// "Unknown tool" and overwrite the pending row, losing the approval.
+	// executed before anything has done that; failing it as "Unknown tool" would
+	// overwrite the pending row and lose the approval.
 	it("registers the caller's per-user tools and runs the call", async () => {
 		mocks.credentials.set('userA:mail', 'token-A');
 		const connA = fakeConnection('A');

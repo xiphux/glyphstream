@@ -2,14 +2,12 @@
  * Route-handler tests for POST /api/conversations/[id]/messages. The
  * handler's setup window (between registerInFlight and the start*Relay /
  * sseResponse return) has several throwing awaits that would leak in-flight
- * registry entries without the outer try/catch block (finding A3). These
- * tests verify the fix by making a setup await throw and asserting the
- * registry is clean afterward — not just the HTTP response.
+ * registry entries without the outer try/catch block. These tests make a
+ * setup await throw and assert the registry is clean afterward — not just the
+ * HTTP response.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getInFlightEntries, resetInFlight } from '#lib/server/streaming/in-flight.js';
-
-// ---- hoisted mocks --------------------------------------------------------
 
 const mocks = vi.hoisted(() => ({
 	getConversationMeta: vi.fn<(...a: unknown[]) => unknown>(),
@@ -38,11 +36,7 @@ vi.mock('#lib/server/endpoints/list-models.js', () => ({
 
 vi.mock('#lib/server/env.js', () => ({}));
 
-// ---- imports after mocks --------------------------------------------------
-
 import { POST } from '../../src/routes/api/conversations/[id]/messages/+server';
-
-// ---- helpers --------------------------------------------------------------
 
 function endpointStub() {
 	return {
@@ -75,13 +69,9 @@ function call() {
 	>[0]);
 }
 
-// ---- setup / teardown -----------------------------------------------------
-
 afterEach(() => {
 	resetInFlight();
 });
-
-// ---- tests ----------------------------------------------------------------
 
 describe('POST /messages — setup window cleanup (A3 fix)', () => {
 	beforeEach(() => {

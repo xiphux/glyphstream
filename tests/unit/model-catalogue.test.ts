@@ -202,9 +202,9 @@ describe('adopt', () => {
 	});
 
 	it('records a definitive NO when told which ids were looked up', () => {
-		// Without this, a server that looked an id up and found nothing had no way
-		// to say so: adopt can only add entries, so the id stayed 'unsure' forever
-		// and the chat page's invalid-model submit gate failed open — Send enabled
+		// Without this, a server that looked an id up and found nothing has no way
+		// to say so: adopt can only add entries, so the id would stay 'unsure' forever
+		// and the chat page's invalid-model submit gate would fail open — Send enabled
 		// on a conversation whose model the config no longer serves.
 		const c = make();
 		c.adopt([], ['ep::deconfigured']);
@@ -262,11 +262,11 @@ describe('resilience', () => {
 	});
 
 	it('DOES latch a negative when the server reports no endpoint errors', async () => {
-		// The other half of the pair above, and the reason both are pinned: for a
-		// while the client's outage guard was unreachable because the server always
-		// sent `endpoint_errors: []`, and only the failing-endpoint test existed — so
-		// it passed against a shape production never produced. These two now assert
-		// the shapes are treated DIFFERENTLY.
+		// The other half of the pair above, and the reason both are pinned: with only
+		// the failing-endpoint test, a server that always sent `endpoint_errors: []`
+		// would leave the client's outage guard unreachable while the test passed
+		// against a shape production never produced. Together they assert the shapes
+		// are treated DIFFERENTLY.
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(() =>
@@ -352,7 +352,7 @@ describe('resilience', () => {
 	});
 
 	it('keeps entries adopted from a page load when the picker loads the catalogue', async () => {
-		// `#loadAll` used to replace `#extra` outright, dropping a conversation's own
+		// Replacing `#extra` outright in `#loadAll` would drop a conversation's own
 		// models — resolved server-side precisely because they are not in the seed.
 		vi.stubGlobal('fetch', stubFetch([entry('ep::remote')]));
 		const c = make();

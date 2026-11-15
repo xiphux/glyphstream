@@ -335,9 +335,9 @@ mcp_servers = "not an array"
 
 describe('loadMcpServers — a missing config file', () => {
 	it('means "no MCP servers configured", not an error', () => {
-		// The norm, not a failure. Before this, a config-less deployment booted fine
-		// but logged an MCP bootstrap error on every single start. Mirrors the ENOENT
-		// tolerance in endpoints/config.ts and code-interpreter/config.ts.
+		// The norm, not a failure: a config-less deployment must boot without logging an
+		// MCP bootstrap error on every start. Mirrors the ENOENT tolerance in
+		// endpoints/config.ts and code-interpreter/config.ts.
 		expect(loadMcpServers('/nonexistent/path/config.toml')).toEqual([]);
 	});
 

@@ -209,9 +209,7 @@ describe('callMcpTool retry narrowing', () => {
 		const signal = new AbortController().signal;
 		await expect(callMcpTool(sid, 'user1', 'my_tool', {}, signal)).rejects.toThrow(timeoutErr);
 
-		// callTool was called exactly once — no retry attempted
 		expect(conn.callTool).toHaveBeenCalledTimes(1);
-		// connectImpl was called exactly once (init only, no reconnect)
 		expect(mocks.connectImpl).toHaveBeenCalledTimes(1);
 		// Entry state is still 'connected' — markIdle was NOT called
 		const states = listGlobalServerStates();
@@ -307,11 +305,8 @@ describe('callMcpTool retry narrowing', () => {
 		const result = await callMcpTool(sid, 'user1', 'my_tool', {}, signal);
 
 		expect(result).toEqual({ content: [{ type: 'text', text: 'ok' }], isError: false });
-		// First connection's callTool was called once and failed
 		expect(conn1.callTool).toHaveBeenCalledTimes(1);
-		// Second (fresh) connection's callTool was called once and succeeded
 		expect(conn2.callTool).toHaveBeenCalledTimes(1);
-		// connectImpl was called twice: init + reconnect
 		expect(mocks.connectImpl).toHaveBeenCalledTimes(2);
 	});
 });

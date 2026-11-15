@@ -3,7 +3,7 @@
  *
  * Enhancement runs before the branch asks for its generation slot, so it never
  * reaches the queue that reports a pause to the client. Without its own status,
- * pausing the utility-model endpoint left every image send reading
+ * pausing the utility-model endpoint would leave every image send reading
  * "Enhancing prompt…" for as long as the pause lasted — indistinguishable from
  * a hang.
  */

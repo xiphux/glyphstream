@@ -3,8 +3,8 @@
  *
  * A `global` server has ONE process-wide connection shared by every user, and
  * retry closes it before re-handshaking. Left open to any signed-in user, that
- * was a lever to drop everyone else's connection — loopable, so it could break
- * other users' in-flight tool calls. A `per_user` retry only touches the
+ * would be a lever to drop everyone else's connection — loopable, so it could
+ * break other users' in-flight tool calls. A `per_user` retry only touches the
  * caller's own connection, so it stays open to its owner.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

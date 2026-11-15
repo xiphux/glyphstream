@@ -1,14 +1,14 @@
 /**
  * Thumbnail generation is lazy and disk-cached, so the miss path only runs on a
  * library's first view — but that's exactly when a virtualized gallery asks for
- * 30-60 tiles at once. Every one of those was starting an independent `sharp`
- * pipeline: dozens of concurrent libvips decodes of multi-MB PNGs competing for
- * sharp's own thread pool, at first paint. Two requests for the same id also
- * both generated, and both wrote the same path with no tmp+rename, racing on the
- * output file.
+ * 30-60 tiles at once. Left uncoordinated, each would start an independent
+ * `sharp` pipeline: dozens of concurrent libvips decodes of multi-MB PNGs
+ * competing for sharp's own thread pool, at first paint. Two requests for the
+ * same id would also both generate and both write the same path with no
+ * tmp+rename, racing on the output file.
  *
- * These tests pin the two properties that fix it: identical requests share one
- * generation, and generations are globally capped.
+ * These tests pin the two properties that prevent it: identical requests share
+ * one generation, and generations are globally capped.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
@@ -146,7 +146,7 @@ describe('getOrCreateThumbnail', () => {
 			Array.from({ length: 12 }, (_, i) => getOrCreateThumbnail(`ab/cd/m${i}.png`, 'image')),
 		);
 		// Wait for the semaphore to saturate before reading the peak. A bare tick
-		// let this pass vacuously: if the fs stats hadn't resolved yet nothing had
+		// lets this pass vacuously: if the fs stats hadn't resolved yet nothing had
 		// started, and `0 <= 3` is true for a cap that isn't working at all.
 		expect(
 			await waitFor(() => state.started >= 3),

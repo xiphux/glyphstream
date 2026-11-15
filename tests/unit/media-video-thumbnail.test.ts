@@ -3,9 +3,10 @@
  *
  * ffmpeg is mocked rather than executed. What's ours is the invocation and the
  * fallbacks around it: whether a video takes the ffmpeg path at all, what gets
- * asked of it, that its frame then goes through sharp to become the WebP, and — the parts with teeth — that a clip too short to seek into
- * still produces a tile, and that a decode failure comes back as null instead of
- * escaping into the request. Whether ffmpeg itself can turn an mp4 into a JPEG is
+ * asked of it, that its frame then goes through sharp to become the WebP, and —
+ * the parts with teeth — that a clip too short to seek into still produces a
+ * tile, and that a decode failure comes back as null instead of escaping into
+ * the request. Whether ffmpeg itself can turn an mp4 into a JPEG is
  * ffmpeg's business, verified against real files when the build was chosen.
  *
  * The mocked binary WRITES A FILE, because the code deliberately doesn't trust
@@ -312,10 +313,9 @@ describe('video thumbnails', () => {
 
 	it('shares one timeout budget across both attempts', async () => {
 		// The semaphore shares three slots with the image path on the stated
-		// grounds that video is bounded by FFMPEG_TIMEOUT_MS. That was only true
-		// per attempt: a file that burned most of the budget and then errored used
-		// to get a second full one, holding a slot for about twice the number the
-		// comment names.
+		// grounds that video is bounded by FFMPEG_TIMEOUT_MS. That holds only if the
+		// retry shares the budget: otherwise a file that burned most of it and then
+		// errored gets a second full one, holding a slot for about twice the timeout.
 		vi.useFakeTimers();
 		try {
 			state.outcomes = ['fail', 'ok'];

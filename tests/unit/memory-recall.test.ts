@@ -226,8 +226,8 @@ describe('recallMemoryTool — the lexical leg must not drown the dense leg', ()
 		mockQueryVec([0.97, 0.05]);
 		const { parsed } = await run('preferred hot beverage');
 
-		// Every decoy outranks the answer lexically (they were saved first), so the
-		// old behaviour surfaced them ahead of it.
+		// Every decoy outranks the answer lexically (they were saved first), so
+		// fusing the unfiltered ranking would surface them ahead of it.
 		expect(parsed?.matches[0].id).toBe(answer.id);
 	});
 

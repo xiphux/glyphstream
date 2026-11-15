@@ -123,7 +123,7 @@ describe('runBackfillSweep', () => {
 		createMemory(u.id, 'aaa');
 		createMemory(u.id, 'bbb');
 		// Some OpenAI-compatible servers return vectors in input order with no
-		// `index`. Every vector used to be dropped, stalling the queue silently.
+		// `index`. Dropping those vectors would stall the queue silently.
 		embeddingsMock.mockImplementation(async (_ep: unknown, body: { input: string[] }) => ({
 			data: body.input.map(() => ({ embedding: [1, 0] })),
 		}));

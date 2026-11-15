@@ -3,12 +3,11 @@
  *
  * A chat retry moves the active leaf onto the retried turn's user message so
  * the history for the new attempt ends there. If the attempt then ends without
- * persisting a reply — Stop before the first token, a setup error — the leaf
- * used to stay on the user message: the reply being retried disappeared from
- * the thread (it is a child of the leaf, not a sibling of anything on-branch,
- * so no ‹N/M› control reached it) and the next send hung a user message off a
- * user message. A media retry has no history to build, so it doesn't need the
- * rewind at all.
+ * persisting a reply — Stop before the first token, a setup error — a leaf
+ * left on the user message hides the reply being retried (it is a child of the
+ * leaf, not a sibling of anything on-branch, so no ‹N/M› control reaches it)
+ * and makes the next send hang a user message off a user message. A media
+ * retry has no history to build, so it doesn't need the rewind at all.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
