@@ -89,9 +89,8 @@ async function getOrFetch(
 	const cached = cache.get(endpoint.id);
 
 	if (cached) {
-		// Past TTL: kick off a background refresh (deduped) but return the
-		// stale entry immediately. The refresh updates `cache` for the next
-		// caller. We deliberately don't await it.
+		// Past TTL: return the stale entry now; the deduped refresh updates
+		// `cache` for the next caller.
 		if (cached.expiresAt <= now) {
 			void refreshInBackground(endpoint);
 		}

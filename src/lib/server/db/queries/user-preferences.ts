@@ -207,11 +207,9 @@ function coerceUserPreferences(
 	};
 }
 
-/** Generic non-mixed-array string coercer — used for trustedMcpTools and
- *  defaultDisabledFeatures. Same
- *  defensive shape as coerceFavoriteModels: reject non-arrays / mixed-type
- *  arrays outright (those indicate a caller bug, not recoverable noise),
- *  de-dupe while preserving first-occurrence order. */
+/** Same defensive shape as coerceFavoriteModels: reject non-arrays and
+ *  mixed-type arrays outright (those indicate a caller bug, not recoverable
+ *  noise), de-dupe while preserving first-occurrence order. */
 function coerceStringArray(input: unknown, fallback: string[]): string[] {
 	if (!Array.isArray(input)) return fallback;
 	if (!input.every((v) => typeof v === 'string')) return fallback;

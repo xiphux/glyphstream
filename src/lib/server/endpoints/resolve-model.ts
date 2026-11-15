@@ -1,12 +1,9 @@
 /**
  * Shared resolution for the "a config block names a model" slots — `task_model`,
- * `[image_enhancement]`, `[memory_model]`.
- *
- * All three did the identical five-step dance: memoize, load the block, bail on
+ * `[image_enhancement]`, `[memory_model]`: memoize, load the block, bail on
  * unset, `parseModelId`, look the endpoint up in the registry — warning once and
  * degrading to null at each failure — then map the block's extra knobs onto the
- * resolved object. Their comments admitted the copying ("Mirrors `task-model.ts`",
- * "Mirrors `image-enhancer-model.ts`").
+ * resolved object.
  *
  * ## The failure contract, in one place
  *
@@ -23,9 +20,8 @@
  * user-visible errors when the model is gone — callers just take their
  * "not configured" path.
  *
- * The resolved endpoint is memoized along with everything else, matching what all
- * three resolvers already did: config doesn't reload at runtime, so neither does
- * the registry lookup behind it.
+ * The resolved endpoint is memoized along with everything else: config doesn't
+ * reload at runtime, so neither does the registry lookup behind it.
  */
 
 import { getEndpoint } from './registry';

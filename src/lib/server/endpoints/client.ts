@@ -182,8 +182,7 @@ function wrapFetchFailure(e: unknown, prefix: string, status: number | null): ne
 /**
  * Throw an UpstreamError when `res` is not ok. Always captures the
  * upstream's response body so formatUpstreamError can surface the
- * upstream's own error text — the video/media fetchers previously
- * passed null here and silently dropped that detail.
+ * upstream's own error text.
  */
 async function ensureOk(res: Response, httpErrorMessage: string): Promise<void> {
 	if (res.ok) return;
@@ -379,7 +378,6 @@ function withIdleWatchdog(
 		timer.unref?.();
 	};
 	return new ReadableStream<Uint8Array>({
-		// Intentionally NOT armed on start — see the doc above (prefill is unbounded).
 		async pull(controller) {
 			try {
 				const { done, value } = await reader.read();
@@ -388,7 +386,6 @@ function withIdleWatchdog(
 					controller.close();
 					return;
 				}
-				// Arm/re-arm only once bytes are actually flowing.
 				arm();
 				controller.enqueue(value);
 			} catch (e) {
@@ -415,9 +412,8 @@ function withIdleWatchdog(
  * restart. So we arm an IDLE watchdog: once tokens are flowing, if no further
  * bytes arrive for `requestTimeoutSeconds` (re-armed on every chunk — active
  * generation streams far faster than that) the fetch is aborted and the read
- * errors out. Time-to-first-token is deliberately NOT bounded by this — a
- * large-context prefill on a cold local model can be slow, and aborting that
- * would kill a healthy generation. Use `signal` to abort externally (Stop).
+ * errors out. Time-to-first-token is deliberately NOT bounded by this (see
+ * `withIdleWatchdog`). Use `signal` to abort externally (Stop).
  */
 export async function chatCompletionStream(
 	endpoint: LoadedEndpoint,
@@ -561,10 +557,6 @@ export async function imageEdit(
 	const fd = new FormData();
 	fd.append('model', body.model);
 	fd.append('prompt', body.prompt);
-	// Buffer is a Uint8Array<ArrayBufferLike> at the type level, but DOM
-	// Blob's BlobPart wants the narrower ArrayBuffer-backed Uint8Array.
-	// Slicing into a fresh ArrayBuffer satisfies the typecheck and copies
-	// the bytes exactly once.
 	for (const img of body.images) {
 		fd.append('image', toBlob(img.bytes, img.contentType), filenameFor(img.contentType));
 	}
@@ -614,6 +606,11 @@ function filenameFor(contentType: string): string {
 	}
 }
 
+/**
+ * Buffer is a Uint8Array<ArrayBufferLike> at the type level, but DOM Blob's
+ * BlobPart wants the narrower ArrayBuffer-backed Uint8Array. Slicing into a
+ * fresh ArrayBuffer satisfies the typecheck and copies the bytes exactly once.
+ */
 function toBlob(buffer: Buffer, contentType: string): Blob {
 	const ab = buffer.buffer.slice(
 		buffer.byteOffset,

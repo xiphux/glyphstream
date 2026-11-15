@@ -124,7 +124,7 @@ export interface LoadedEndpoint {
 	 * Endpoints that contend for the same physical resource — in practice one
 	 * GPU's VRAM — share a name here, and then share one concurrency gate
 	 * instead of one each. Defaults to the endpoint's own id, which makes every
-	 * endpoint its own group and preserves the pre-existing behaviour exactly.
+	 * endpoint its own group.
 	 *
 	 * The case this exists for: a llama.cpp endpoint and a ComfyUI-bridging
 	 * endpoint on one box. Their per-endpoint gates each correctly serialize
@@ -498,7 +498,7 @@ export const DEFAULT_MEMORY_OVERVIEW_MAX_CHARS = 2500;
 
 /**
  * The optional `[memory_model]` block — the capable model + schedule for the
- * phase-4 memory-consolidation ("dreaming") worker. Returns null when absent, in
+ * memory-consolidation ("dreaming") worker. Returns null when absent, in
  * which case dreaming is disabled (`getMemoryModel` → null → the worker no-ops).
  *
  * - `model`: required, `"endpoint_id::model_id"`. Like the other model slots the
@@ -600,11 +600,9 @@ export function loadMemoryModelConfig(path = configPath()): LoadedMemoryModelCon
  * Read one scalar setting out of a TOML table, with a default for both "table
  * absent" and "key absent".
  *
- * The `[tools]` readers below were byte-for-byte identical down to the table
- * type-check and the missing-key early return, differing only in key, default and
- * the final predicate. `validate` receives the raw value plus a pre-built `at`
- * prefix (`'[tools] max_tool_result_chars' in /path/config.toml`) so each reader
- * still writes its own specific error message — the part that genuinely differs.
+ * `validate` receives the raw value plus a pre-built `at` prefix
+ * (`'[tools] max_tool_result_chars' in /path/config.toml`) so each reader still
+ * writes its own specific error message.
  */
 function readTableScalar<T>(
 	path: string,
@@ -630,9 +628,9 @@ export const DEFAULT_MAX_TOOL_LOOP_ITERATIONS = 8;
 /**
  * Read `[tools] max_tool_loop_iterations` — the hard cap on upstream
  * round-trips in one turn's tool loop (a runaway-`tool_calls` backstop, not a
- * normal limit). Bumped from the original 5 because deferred-tool search adds a
- * round-trip (search, then call). Defaults to {@link DEFAULT_MAX_TOOL_LOOP_ITERATIONS};
- * must be a positive integer.
+ * normal limit). Deferred-tool search spends a round-trip of its own (search,
+ * then call), so the default leaves room for it. Defaults to
+ * {@link DEFAULT_MAX_TOOL_LOOP_ITERATIONS}; must be a positive integer.
  */
 export function loadMaxToolLoopIterations(path = configPath()): number {
 	return readTableScalar(
@@ -704,7 +702,7 @@ export const MIN_MAX_TOOL_RESULT_CHARS = 1024;
 
 /**
  * Read `[tools] max_tool_result_chars`. 0 disables capping (re-send every tool
- * result in full, forever — the old behavior). Otherwise it must be an integer of
+ * result in full, forever). Otherwise it must be an integer of
  * at least {@link MIN_MAX_TOOL_RESULT_CHARS}.
  */
 export function loadMaxToolResultChars(path = configPath()): number {
@@ -764,9 +762,9 @@ export interface VisionConfig {
  * inlined into chat requests — NOT what's stored: the original upload is kept
  * untouched, and image-to-image still dispatches full-resolution bytes.
  *
- * Set `max_image_dim = 0` to disable downscaling and inline originals (the old
- * behavior) — useful if a model genuinely needs full resolution, at the cost of
- * re-sending those bytes on every turn.
+ * Set `max_image_dim = 0` to disable downscaling and inline originals — useful if
+ * a model genuinely needs full resolution, at the cost of re-sending those bytes
+ * on every turn.
  */
 export function loadVisionConfig(path = configPath()): VisionConfig {
 	const { parsed, absolutePath } = readConfigToml(path);
@@ -1139,14 +1137,10 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 		for (const [modelId, v] of Object.entries(tbl)) {
 			const field = `model_prompt_styles."${modelId}"`;
 			const s = requireString(v, field, at);
-			// Validate the value is a known image OR video style so an operator
-			// typo surfaces at boot — but store the RAW string, NOT the canonical.
-			// A few aliases (structured/narrative/prose) canonicalize differently
-			// per medium, and this loader can't see the model's kind; `models.ts`
-			// normalizes against the model's own kind, which resolves the alias
-			// correctly (e.g. `structured` → structured-cinematic for a video
-			// model). Canonicalizing here would collapse it to the image key and
-			// silently downgrade the video model to clarify-only.
+			// Validate as a known image OR video style so an operator typo surfaces
+			// at boot — but store the RAW string, NOT the canonical: canonicalizing
+			// here can't see the model's kind and would downgrade a video model's
+			// `structured` to clarify-only (see `normalizeAnyStyle`).
 			if (normalizeAnyStyle(s) === null) {
 				throw new ConfigError(
 					`${at}: '${field}' = "${s}" is not a known prompt style (one of ${ALL_PROMPT_STYLES.join(', ')})`,

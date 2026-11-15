@@ -150,8 +150,7 @@ export function normalizeUpstreamModel(endpoint: LoadedEndpoint, m: UpstreamMode
 	// When the endpoint opts into owned_by grouping AND the model actually
 	// reports an owner, bucket by that. Otherwise (default mode, or
 	// owned_by mode with no owner field) fall back to the endpoint's own
-	// display name — which is also a UX upgrade over the previous code,
-	// which used the raw endpoint id as the group label.
+	// display name.
 	const useOwner = endpoint.groupBy === 'owned_by' && owner !== null;
 	const group = useOwner ? owner : endpoint.displayName;
 	const groupKey = useOwner ? owner : endpoint.id;

@@ -84,9 +84,9 @@ function toSlotInfo(s: SlotSnapshot): EndpointSlotInfo {
  * Callers legitimately hold different things: a chat turn carries the
  * conversation-facing `endpoint::model` id, while compaction, dreaming, memory,
  * prompt enhancement and title generation resolve their model from config and
- * hold the bare upstream id. Passed through unchanged, one endpoint's card showed the same
- * model two ways in the same list — `dirac::gemma-4-26b` on a chat slot and
- * `gemma-4-26b` on a compaction slot directly below it. Normalizing at the call
+ * hold the bare upstream id. Passed through unchanged, one endpoint's card
+ * showed the same model two ways in the same list — `dirac::gemma-4-26b` on a
+ * chat slot and `gemma-4-26b` on a compaction slot directly below it. Normalizing at the call
  * sites instead would mean nine places agreeing forever; doing it here is one.
  *
  * The prefix is dropped rather than added because `endpointId` is already its

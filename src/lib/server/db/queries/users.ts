@@ -1,10 +1,9 @@
 /**
- * User-row queries. The model has shifted: the row no longer carries
- * any provider-specific identity (those moved to `oauth_accounts`),
- * and creation is a deliberate one-shot driven by PR 2's `/setup`
- * wizard. Login flows no longer create users; they look them up via
- * `findUserByOAuth` (OAuth) or `findUserForCredential` (passkey) and
- * call `bumpUserLastLogin` if successful.
+ * User-row queries. The row carries no provider-specific identity (that lives
+ * in `oauth_accounts`), and users are created only by the `/setup` wizard and
+ * invite redemption. Login flows never create users; they look them up via
+ * `findUserByOAuth` (OAuth) or `findUserForCredential` (passkey) and call
+ * `bumpUserLastLogin` if successful.
  */
 import { and, asc, count, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
@@ -65,12 +64,6 @@ export function createUser(input: CreateUserInput, tx?: Tx): string {
 }
 
 /**
- * Create the very-first user via the `/setup` wizard, as an admin. Refuses
- * with a thrown error when a user already exists — that's the setup-cap
- * backstop against a race. Callers (`/setup`-verify endpoints) check
- * `countUsers() === 0` first for a clean 4xx; this throw is defense-in-depth.
- */
-/**
  * Thrown by {@link createInitialUser} when a user already exists. Both setup
  * flows check the gate before an `await` (the provider's profile fetch, the
  * passkey ceremony), so two tabs finishing setup together both pass it and the
@@ -83,6 +76,12 @@ export class SetupClosedError extends Error {
 	}
 }
 
+/**
+ * Create the very-first user via the `/setup` wizard, as an admin. Refuses
+ * with a thrown error when a user already exists — that's the setup-cap
+ * backstop against a race. Callers (`/setup`-verify endpoints) check
+ * `countUsers() === 0` first for a clean 4xx; this throw is defense-in-depth.
+ */
 export function createInitialUser(input: CreateInitialUserInput): string {
 	if (countUsers() > 0) throw new SetupClosedError();
 	return createUser({ ...input, role: 'admin' });
@@ -97,7 +96,7 @@ export function createInitialUser(input: CreateInitialUserInput): string {
 export function countUsers(): number {
 	const db = getDb();
 	// `count()` rather than materializing every row to read `.length`: this runs
-	// on the (app) layout's unauthenticated path, so every logged-out hit paid it.
+	// on the (app) layout's unauthenticated path, so every logged-out hit pays it.
 	return db.select({ n: count() }).from(users).get()?.n ?? 0;
 }
 

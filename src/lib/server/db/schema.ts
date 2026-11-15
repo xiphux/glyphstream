@@ -36,9 +36,8 @@ export const users = sqliteTable('users', {
 		.default('user'),
 	// Operator-disabled flag — when non-null, this user's sessions are
 	// invalidated at the next request and new logins (via any method) are
-	// refused with 403. Replaces the GitHub-numeric-ID allowlist's
-	// revocation semantics: there's no list to maintain in sync with
-	// reality; toggling this column is the single source of truth.
+	// refused with 403. This column is the single source of truth for
+	// revocation: there's no allowlist to keep in sync with reality.
 	disabledAt: integer('disabled_at'),
 	// Which admin's invite created this account (denormalized from the invite,
 	// which is deleted on redemption — see the `invites` table). The one bit of
@@ -57,7 +56,7 @@ export const users = sqliteTable('users', {
 	// so adding new preferences isn't migration-gated; the parsing layer
 	// validates each field defensively with fallbacks.
 	preferencesJson: text('preferences_json'),
-	// Watermark for the phase-4 memory-consolidation ("dreaming") worker: when it
+	// Watermark for the memory-consolidation ("dreaming") worker: when it
 	// last processed this user's memories. Null = never dreamed. The worker only
 	// re-processes a user whose live memories have a `updated_at` newer than this,
 	// so a settled store isn't re-consolidated every window.
@@ -249,8 +248,8 @@ export const pushSubscriptions = sqliteTable(
 	(t) => [
 		// Explicit uniqueIndex (not column `.unique()`) so drizzle-kit v1 emits a
 		// standalone UNIQUE INDEX matching the existing DB object — column
-		// `.unique()` now generates an inline table constraint, which would
-		// force a no-op table rebuild on upgrade. Name pinned to the original
+		// `.unique()` generates an inline table constraint, which would force a
+		// no-op table rebuild on upgrade. Name pinned to the original
 		// auto-generated one.
 		uniqueIndex('push_subscriptions_endpoint_unique').on(t.endpoint),
 		index('idx_push_subscriptions_user_id').on(t.userId),
@@ -319,8 +318,8 @@ export const conversations = sqliteTable(
 		// between texting (each paragraph its own bubble) and in person (prose),
 		// and adds the character instructions to the system prompt at send time
 		// (`chat/reply-style.ts`). Display + prompt only: the stored message is the
-		// reply exactly as the model wrote it. 'texting', its predecessor, was
-		// migrated to 'character' starting in texting.
+		// reply exactly as the model wrote it. There is no 'texting' value: rows
+		// with that style were migrated to 'character' starting in texting.
 		replyStyle: text('reply_style', { enum: ['standard', 'character'] })
 			.notNull()
 			.default('standard'),
@@ -354,8 +353,9 @@ export const conversations = sqliteTable(
 		// When set, this conversation has an UNRESOLVED multi-model fan-out:
 		// the leaf is pinned at this ANCHOR message while its N sibling assistant
 		// responses await the user's pick (text) or pruning (image). Set by
-		// .../messages/prepare. Cleared by selectBranch (pick / dismiss / continue), truncateAtMessage,
-		// leaf-advancing appendMessage, and deleteBranch when the anchor is deleted. Lets the page rehydrate the
+		// .../messages/prepare. Cleared by selectBranch (pick / dismiss /
+		// continue), truncateAtMessage, leaf-advancing appendMessage, and
+		// deleteBranch when the anchor is deleted. Lets the page rehydrate the
 		// compare grid after a reload without guessing from sibling counts.
 		// NOTE: this column was added via ALTER TABLE (migration 0019), which
 		// drizzle-kit can't emit an ON DELETE clause on — so the live FK is NO
@@ -414,9 +414,9 @@ export const conversations = sqliteTable(
 			.on(t.userId, t.updatedAt)
 			.where(sql`${t.archivedAt} is not null`),
 		// The background summary sweep picks the oldest conversations needing a
-		// summary across ALL users, so it had nothing to seek on: a full table scan
-		// plus a temp b-tree sort to satisfy `ORDER BY updated_at ASC LIMIT n`. This
-		// turns it into an index walk that stops at the limit.
+		// summary across ALL users, so without this it has nothing to seek on: a full
+		// table scan plus a temp b-tree sort to satisfy `ORDER BY updated_at ASC
+		// LIMIT n`. This turns it into an index walk that stops at the limit.
 		index('idx_conversations_summary_queue')
 			.on(t.updatedAt)
 			.where(sql`${t.private} = 0`),
@@ -593,8 +593,7 @@ export const customModels = sqliteTable(
 		photos: integer('photos', { mode: 'boolean' }).notNull().default(false),
 		// The preset's avatar — a media row shown beside the model name above
 		// each of its replies, so a preset roleplaying a character reads as a
-		// someone rather than a name. NULL = no avatar (the label renders alone,
-		// exactly as before).
+		// someone rather than a name. NULL = no avatar (the label renders alone).
 		//
 		// A real, fully-live FK — worth stating explicitly because three older
 		// columns here (`invited_by_user_id`, `sourceMediaId`,
@@ -608,9 +607,9 @@ export const customModels = sqliteTable(
 		//
 		// The action is belt-and-braces regardless: media rows are only ever
 		// SOFT deleted (a delete stamps `deleted_at`, the purger later clears
-		// the bytes and stamps `purged_at`; nothing DELETEs the row), so in practice the referenced row always
-		// survives and a stale avatar degrades to a 404 the UI hides, not a
-		// dangling id.
+		// the bytes and stamps `purged_at`; nothing DELETEs the row), so in
+		// practice the referenced row always survives and a stale avatar
+		// degrades to a 404 the UI hides, not a dangling id.
 		//
 		// Lifetime: setting an avatar takes a REFERENCE on the media row
 		// (`linkAvatarMedia` bumps `ref_count` and clears `unreferenced_since`,
@@ -628,9 +627,8 @@ export const customModels = sqliteTable(
 		updatedAt: integer('updated_at').notNull(),
 	},
 	(t) => [
-		// The only user-scoped table whose read had no supporting index: the (app)
-		// layout lists a user's presets on EVERY authenticated page load, which was a
-		// full scan plus a temp b-tree for the `ORDER BY name`.
+		// The (app) layout lists a user's presets on EVERY authenticated page load;
+		// without this that is a full scan plus a temp b-tree for the `ORDER BY name`.
 		//
 		// Deliberately NOT unique, unlike prompt_snippets. Nothing has ever enforced
 		// name uniqueness here — `validateCustomModelBody` only checks presence and
@@ -661,7 +659,7 @@ export const customModels = sqliteTable(
 // `topic` is a short model-authored label (set as a tool parameter on
 // save_memory / update_memory) shown in the index in place of the full body.
 // NULL on rows that predate the field; the index falls back to a content
-// snippet for those until the phase-3 dreaming pass backfills them.
+// snippet for those until the topic-backfill worker fills them in.
 // `recallCount` / `lastRecalledAt` record recall hits (bumped by recall_memory)
 // and feed the tiering score (scoreMemory in server/memory/tiering.ts) that
 // decides which memories stay inlined.
@@ -679,7 +677,7 @@ export const memories = sqliteTable(
 		embeddingModel: text('embedding_model'),
 		recallCount: integer('recall_count').notNull().default(0),
 		lastRecalledAt: integer('last_recalled_at'),
-		// Phase-4 soft-delete: the dreaming pass never hard-deletes. `deleted_at`
+		// Soft-delete: the dreaming pass never hard-deletes. `deleted_at`
 		// (null = live) tombstones a merged/pruned row so a bad consolidation is
 		// recoverable/auditable until a retention purge reaps it; every request-path
 		// reader filters `deleted_at IS NULL`. `superseded_by_memory_id` is the
@@ -696,10 +694,10 @@ export const memories = sqliteTable(
 		index('idx_memories_user_created').on(t.userId, t.createdAt),
 		// Soft-deleted rows: the "Recently tidied" list (user-scoped, newest-first)
 		// and the purge sweep (`deleted_at < cutoff`, cross-user, every 15 minutes in
-		// the foreground). Neither had an index — the list read every one of the
-		// user's memory rows INCLUDING `content` and sorted them in a temp b-tree to
-		// return 20, and the purge scanned the whole table on every tick. Partial, so
-		// it holds only tombstones, which are a small minority and get purged.
+		// the foreground). Without it the list reads every one of the user's memory
+		// rows INCLUDING `content` and sorts them in a temp b-tree to return 20, and
+		// the purge scans the whole table on every tick. Partial, so it holds only
+		// tombstones, which are a small minority and get purged.
 		index('idx_memories_deleted')
 			.on(t.deletedAt, t.userId)
 			.where(sql`${t.deletedAt} is not null`),
@@ -715,8 +713,8 @@ export const memories = sqliteTable(
 			.on(t.id)
 			.where(sql`${t.embedding} is null`),
 		// Partial index over the topic-backfill work queue: the null-topic rows the
-		// phase-3 worker drains (pre-topic-field rows — save_memory/update_memory now
-		// always supply a topic, so this is a fixed, shrinking historical backlog).
+		// topic-backfill worker drains (rows predating the field — save_memory and
+		// update_memory always supply a topic, so this is a fixed, shrinking backlog).
 		// Same rationale as idx_memories_unembedded (incl. the deleted_at note).
 		index('idx_memories_untopiced')
 			.on(t.id)
@@ -992,6 +990,21 @@ export const media = sqliteTable(
 		// range column last lets SQLite use index-only equality probes on
 		// origin + deletedAt before walking unreferenced_since rows.
 		index('idx_media_unreferenced').on(t.origin, t.deletedAt, t.unreferencedSince),
+		// The trash: rows deleted from the library whose bytes haven't been purged
+		// yet. Partial, so it holds only what is currently restorable — every
+		// historical tombstone (the overwhelming majority of deleted rows) stays
+		// out of it. Serves both reads: the per-user "Recently deleted" list seeks
+		// it, and the cross-user expiry sweep scans an index that is, by
+		// construction, at most 30 days of deletes.
+		//
+		// `origin` sits second because the list filters on it, and without it
+		// `idx_media_user_gallery` (user_id, origin, deleted_at, …) out-ranks this
+		// one on equality columns — so the list walked every tombstone the user had
+		// ever made, then sorted. With it, the list's seek and its
+		// `ORDER BY deleted_at DESC, id DESC` are both served here (no temp b-tree).
+		index('idx_media_trash')
+			.on(t.userId, t.origin, t.deletedAt, t.id)
+			.where(sql`${t.deletedAt} is not null and ${t.purgedAt} is null`),
 		// Backfill work queue: only embeddable rows that still need a vector
 		// (generated, with a prompt, not soft-deleted, not yet embedded). Scoping
 		// the partial index this tightly keeps uploads / null-prompt / tombstoned
@@ -1008,21 +1021,6 @@ export const media = sqliteTable(
 		// 30k media, and it grew with the library). Leading with the same two
 		// equality columns lets it compete as a seek; trailing `prompt_full` makes
 		// it covering. Constant columns cost almost nothing to store.
-		// The trash: rows deleted from the library whose bytes haven't been purged
-		// yet. Partial, so it holds only what is currently restorable — every
-		// historical tombstone (the overwhelming majority of deleted rows) stays
-		// out of it. Serves both reads: the per-user "Recently deleted" list seeks
-		// it, and the cross-user expiry sweep scans an index that is, by
-		// construction, at most 30 days of deletes.
-		//
-		// `origin` sits second because the list filters on it, and without it
-		// `idx_media_user_gallery` (user_id, origin, deleted_at, …) out-ranks this
-		// one on equality columns — so the list walked every tombstone the user had
-		// ever made, then sorted. With it, the list's seek and its
-		// `ORDER BY deleted_at DESC, id DESC` are both served here (no temp b-tree).
-		index('idx_media_trash')
-			.on(t.userId, t.origin, t.deletedAt, t.id)
-			.where(sql`${t.deletedAt} is not null and ${t.purgedAt} is null`),
 		index('idx_media_unembedded')
 			.on(t.origin, t.deletedAt, t.id, t.promptFull)
 			.where(
@@ -1057,13 +1055,12 @@ export const messageMedia = sqliteTable(
 // A picture drawn FOR a message rather than as one: a reply's photo, developed
 // from a `[photo: …]` the reply wrote, or an avatar portrait drawn from the
 // reply that describes how the assistant looks. It belongs to the reply, so it
-// hangs off
-// that row instead of being a message of its own — which is what lets it be
-// developed long after the conversation moved on (nothing in the thread
+// hangs off that row instead of being a message of its own — which is what lets
+// it be developed long after the conversation moved on (nothing in the thread
 // changes, and nothing here is ever sent upstream). Each row is one VERSION:
 // developing again, or comparing models, adds rows; the shown one is the row
-// with the latest `shown_at`, else the newest. A failed attempt is a row with an `error` and no
-// media, until the next attempt replaces it.
+// with the latest `shown_at`, else the newest. A failed attempt is a row with an
+// `error` and no media, until the next attempt replaces it.
 //
 // The image is also linked to the reply through `message_media`, so the ref
 // count, the gallery and branch deletion treat it as the reply's own media.
@@ -1197,8 +1194,8 @@ export const artifacts = sqliteTable(
 // (diff-encoding can replace `content` later with no migration). The chain is a
 // self-FK linked list via `parent_version_id`, mirroring `messages.parent_message_id`.
 //
-// `created_by_message_id` and `edit_source` are captured from day one even
-// though Phase 1 uses neither for behavior: the former lets a later branching
+// `created_by_message_id` and `edit_source` are captured even though nothing
+// uses either for behavior yet: the former lets a later branching
 // UI restore the doc state matching a navigated leaf (resolve the version whose
 // producing message is the nearest ancestor of the active leaf); the latter
 // distinguishes agent edits from the user edits that land in a later phase.

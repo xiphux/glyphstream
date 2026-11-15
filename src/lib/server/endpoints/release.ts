@@ -72,12 +72,12 @@ const POLL_MS = 250;
 /**
  * Ceiling on the WHOLE handover, not per model.
  *
- * The per-model budgets are what a single stubborn model is worth waiting; they
- * were also, accidentally, the only bound — so N resident models cost N times
- * that, serially, with the group's slot held and every other member's requests
- * queued behind it. Set just above one model's worst case (60s busy + 30s
- * unload + 120s confirm), so the common single-model path is unchanged and only
- * the pathological multi-model one is capped.
+ * The per-model budgets are what a single stubborn model is worth waiting; as
+ * the only bound, N resident models would cost N times that, serially, with the
+ * group's slot held and every other member's requests queued behind it. Set just
+ * above one model's worst case (60s busy + 30s unload + 120s confirm), so the
+ * common single-model path is unaffected and only the pathological multi-model
+ * one is capped.
  */
 const RELEASE_BUDGET_MS = 240_000;
 
@@ -120,8 +120,8 @@ async function loadedModels(
 ): Promise<string[]> {
 	const body = await getJson<{ data?: ModelRow[] }>(`${root}/models`, endpoint, signal);
 	const rows = body.data;
-	// "Nothing is loaded" and "this response has no residency information" both
-	// used to come back as an empty list — i.e. as a successful handover. The
+	// "Nothing is loaded" and "this response has no residency information" must
+	// not both come back as an empty list — i.e. as a successful handover. The
 	// realistic way to hit the second is pointing `release` at a plain
 	// llama-server instead of one in router mode: `/models` answers 200 with
 	// rows that carry no `status`, so the feature validates, does nothing, and
@@ -206,7 +206,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 			// Only a real abort is meant to escape this module; a caller passing
 			// `AbortSignal.timeout(…)` (the title generator does) aborts with a
 			// TimeoutError, which is meant to be swallowed like any other failure.
-			// Minting an AbortError here laundered it into the one error we
+			// Minting an AbortError here would launder it into the one error we
 			// rethrow — and since the poll loops spend most of their wall clock in
 			// these 250ms sleeps, that is where such a signal usually lands.
 			reject(
@@ -271,8 +271,8 @@ export async function releaseEndpointResources(
 			warnRelease(endpoint, `gave up after ${RELEASE_BUDGET_MS}ms with models still loaded`);
 			return false;
 		}
-		// Per model, not per call: one model's transient 503 used to abandon every
-		// model after it, silently leaving them resident — the exact OOM this
+		// Per model, not per call: otherwise one model's transient 503 abandons
+		// every model after it, silently leaving them resident — the exact OOM this
 		// exists to prevent, on a router holding more than one.
 		try {
 			const idle = await waitUntilIdle(root, endpoint, model, budgetEnd, signal);

@@ -24,10 +24,12 @@ import { parseDisabledFeatures, parseModelParameters } from './json-columns';
 type TaskRow = typeof scheduledTasks.$inferSelect;
 type RunRow = typeof scheduledRuns.$inferSelect;
 
+/**
+ * Written only by this module from a parsed cadence, so a parse failure is a
+ * corrupt row; an empty weekday set gives it no slots, which the runner treats
+ * as "never" rather than crashing the sweep.
+ */
 function parseCadenceColumn(raw: string): ScheduleCadence {
-	// Written only by this module from a parsed cadence, so a parse failure is a
-	// corrupt row; an empty weekday set gives it no slots, which the runner
-	// treats as "never" rather than crashing the sweep.
 	try {
 		return JSON.parse(raw) as ScheduleCadence;
 	} catch {

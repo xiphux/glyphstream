@@ -53,6 +53,23 @@ function extractToolCalls(parts: MessagePart[]): ChatCompletionRequestToolCall[]
 }
 
 /**
+ * Whether a part reaches the model at all.
+ *
+ * A `displayOnly` image (a photo or portrait draw's) is shown in the thread
+ * but has no place in the request — see the flag's note on why that's decided
+ * once, at persist time.
+ *
+ * Exported because the serializer is not the only place that has to know. The
+ * messages route pre-warms image reads for the branch it's about to send, and
+ * warming an image the serializer then discards is exactly the rent the flag
+ * exists to avoid. One predicate, both call sites — a second copy of the rule
+ * is how they drift.
+ */
+export function isModelVisiblePart(p: MessagePart): boolean {
+	return !(p.type === 'image' && p.displayOnly);
+}
+
+/**
  * Serialize one stored message into the upstream wire shape. Handles:
  *
  *  - `role: 'tool'` — picks the first `tool_result` part and emits
@@ -66,23 +83,6 @@ function extractToolCalls(parts: MessagePart[]): ChatCompletionRequestToolCall[]
  *    content array, inlining bytes as data URLs via `resolveMediaUrl`.
  *  - Everything else — bare-string content from concatenated text parts.
  */
-/**
- * Whether a part reaches the model at all.
- *
- * A `displayOnly` image (a photo or portrait draw's) is shown in the thread
- * but has no place in the request — see the flag's note
- * on why that's decided once, at persist time.
- *
- * Exported because the serializer is not the only place that has to know. The
- * messages route pre-warms image reads for the branch it's about to send, and
- * warming an image the serializer then discards is exactly the rent the flag
- * exists to avoid. One predicate, both call sites — a second copy of the rule
- * is how they drift.
- */
-export function isModelVisiblePart(p: MessagePart): boolean {
-	return !(p.type === 'image' && p.displayOnly);
-}
-
 export async function serializeMessageForUpstream(
 	m: ChatMessage,
 	resolveMediaUrl: MediaUrlResolver,
@@ -120,7 +120,7 @@ export async function serializeMessageForUpstream(
 	// Same reasoning, reached a different way: an avatar-generation row whose
 	// only content was the portrait has nothing left after the filter. Guard on
 	// the filter having actually removed something so this can't swallow a
-	// genuinely empty message and change behaviour that predates avatars.
+	// genuinely empty message.
 	if (parts.length === 0 && m.parts.length > 0) return null;
 
 	const toolCalls = m.role === 'assistant' ? extractToolCalls(parts) : [];
@@ -387,6 +387,20 @@ function jsonLen(s: string): number {
 	return JSON.stringify(s).length;
 }
 
+/** `JSON.rawJSON` / source-carrying revivers are ES2025 (Node 22+). TypeScript's
+ *  bundled lib doesn't declare them yet, so type the two we use rather than move
+ *  the whole project's lib target for this. */
+interface JsonWithRaw {
+	rawJSON?: (text: string) => unknown;
+	isRawJSON?: (v: unknown) => boolean;
+	parse: (
+		text: string,
+		reviver?: (key: string, value: unknown, context?: { source?: string }) => unknown,
+	) => unknown;
+}
+const RawJSON = JSON as unknown as JsonWithRaw;
+const RAW_JSON_SUPPORTED = typeof RawJSON.rawJSON === 'function';
+
 /**
  * Parse preserving NUMBER LITERALS exactly.
  *
@@ -410,20 +424,6 @@ function jsonLen(s: string): number {
  * that to stop a snowflake id being silently rounded is the right trade; it's noted
  * because it's send-path rent, not because it's free.
  */
-/** `JSON.rawJSON` / source-carrying revivers are ES2025 (Node 22+). TypeScript's
- *  bundled lib doesn't declare them yet, so type the two we use rather than move
- *  the whole project's lib target for this. */
-interface JsonWithRaw {
-	rawJSON?: (text: string) => unknown;
-	isRawJSON?: (v: unknown) => boolean;
-	parse: (
-		text: string,
-		reviver?: (key: string, value: unknown, context?: { source?: string }) => unknown,
-	) => unknown;
-}
-const RawJSON = JSON as unknown as JsonWithRaw;
-const RAW_JSON_SUPPORTED = typeof RawJSON.rawJSON === 'function';
-
 function parseJsonPreservingNumbers(text: string): unknown {
 	if (!RAW_JSON_SUPPORTED) return JSON.parse(text);
 	return RawJSON.parse(text, (_key, value, context) =>
@@ -457,8 +457,8 @@ function parseJsonPreservingNumbers(text: string): unknown {
  * The guarantee isn't absolute — a caller within a few hundred frames of blowing the
  * stack outright (~12,400) could still diverge — but nothing in this codebase comes
  * within an order of magnitude of that, and such a caller is one call from dying
- * anyway. The old bug fired across ordinary depths (0–1,500); this one needs a stack
- * already 96% spent.
+ * anyway. Unbounded, the divergence fires across ordinary depths (0–1,500); bounded,
+ * it needs a stack already 96% spent.
  */
 const MAX_JSON_DEPTH = 100;
 
@@ -521,12 +521,11 @@ function collectArrays(node: unknown, out: unknown[][]): void {
  * slack is `maxChars - floorLength`. Each leaf is then priced on its own with
  * `jsonLen`, never by re-serializing the payload.
  *
- * The first cut of this called `JSON.stringify(root)` INSIDE a per-leaf binary
- * search — ~13 full serializations per leaf, for every leaf. On an 850 KB
- * many-leaf result that blocked the (single) Node process for 4.6 SECONDS, and
- * the payloads it worked hardest on were exactly the ones it then gave up on. On
- * a self-hosted box that stall is a worse failure than the corrupt JSON this was
- * curing.
+ * Calling `JSON.stringify(root)` INSIDE a per-leaf binary search instead costs
+ * ~13 full serializations per leaf, for every leaf: on an 850 KB many-leaf result
+ * that blocked the (single) Node process for 4.6 SECONDS, and the payloads it
+ * worked hardest on were exactly the ones it then gave up on. On a self-hosted box
+ * that stall is a worse failure than the corrupt JSON this is curing.
  *
  * Leaves are filled HEAD-first: a ranked list puts its best results first, so the
  * head is what's worth keeping and the tail degrades to a note.
@@ -772,7 +771,7 @@ function truncateJsonResult(result: string, maxChars: number): string | null {
 	// Only BULKY leaves are elidable. Short ones are identifiers and metadata — an
 	// `id`, a `topic`, a `url`, a status string — and cutting them is pure damage:
 	// a model that reads a half-truncated memory id and then passes it to
-	// forget_memory is exactly the misfire this whole change exists to prevent.
+	// forget_memory is exactly the misfire this file exists to prevent.
 	// (Below the floor there's nothing to win anyway: the note costs ~30 chars.)
 	const leaves = all.filter((l) => l.get().length > ELIDABLE_LEAF_MIN_CHARS);
 
@@ -787,14 +786,14 @@ function truncateJsonResult(result: string, maxChars: number): string | null {
  * Memo for `truncateToolResult`, keyed on its exact inputs.
  *
  * The function is a pure transform of (result, maxChars) over rows that never
- * change once persisted, but nothing cached it — so every oversized tool result
- * was re-truncated from scratch on every turn AND on every iteration of the
- * tool loop. That's not cheap work: per result it means a full-string nesting
+ * change once persisted; uncached, every oversized tool result is re-truncated
+ * from scratch on every turn AND on every iteration of the tool loop. That's not
+ * cheap work: per result it means a full-string nesting
  * scan, a `JSON.parse` with a number-boxing reviver (measured ~8x a plain parse
  * on number-heavy payloads), a whole-tree walk, and at least two whole-payload
  * `JSON.stringify` calls, plus a per-element prefix-sum for array elision.
  * Multiplicative: three 500 KB results on a turn running four tool-loop
- * iterations redid all of it twelve times, synchronously, in front of each
+ * iterations redo all of it twelve times, synchronously, in front of each
  * iteration's upstream call — and node:sqlite's single thread means that stalls
  * every other user's stream too.
  *
@@ -843,7 +842,7 @@ export function truncateToolResultUncached(result: string, maxChars: number): st
  * parse, shrink the biggest string leaves, re-stringify. A blind character slice
  * cuts through `\uXXXX` escapes and half-way through records, and the result stops
  * being parseable JSON at all. Nothing in the loop parses it (the HTTP body is
- * re-stringified downstream), so it wasn't a crash — but a model reading a
+ * re-stringified downstream), so it isn't a crash — but a model reading a
  * half-truncated memory id out of a `recall_memory` list and then passing it to
  * `forget_memory` is a very plausible misfire.
  *
@@ -905,7 +904,7 @@ export function capToolResults(
 	// for an earlier turn's result. When one of the two is a skill read (exempt
 	// from capping) and the other isn't, that either truncates an instruction
 	// block mid-sentence or leaves an oversized result uncapped forever. Same
-	// hazard, same fix, as `dropOrphanedToolCalls` above.
+	// hazard, same fix, as `dropOrphanedToolCalls` below.
 	//
 	// Tracked while walking rather than prebuilt: a tool row's calls are always
 	// the nearest preceding assistant's, and the run between them is contiguous.
@@ -978,8 +977,8 @@ export async function serializeBranchForUpstream(
  *
  *   - An upstream that reports a `finish_reason` other than `tool_calls`
  *     alongside a call. The relay breaks before executing anything, so the call
- *     is persisted with no answer and stays that way. This predates reactions
- *     and applies to every tool.
+ *     is persisted with no answer and stays that way. This applies to every
+ *     tool.
  *   - A row whose answering `tool` message is off the active branch. Before
  *     portraits moved onto their reply, one attached as a sibling of that row
  *     and took the leaf with it (and parking an avatar comparison rewound the

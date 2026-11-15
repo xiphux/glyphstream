@@ -97,14 +97,9 @@ export function searchConversations(
 	if (!match) return [];
 
 	const limit = Math.min(Math.max(1, opts.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
-	// Optional freshness floor. A separate bound because it filters the JOINed
-	// conversation row (c.updated_at), not the FTS MATCH — appended to the WHERE
-	// below only when set, so the sidebar's unfiltered search is byte-for-byte
-	// unchanged.
+	// Both filter the JOINed conversation row, not the FTS MATCH, and are appended
+	// only when set, so the sidebar's unfiltered search is byte-for-byte unchanged.
 	const sinceClause = opts.since != null ? sql`AND c.updated_at >= ${opts.since}` : sql``;
-	// Content seal (tool path only): drop rows from private conversations. Same
-	// JOINed-row filter shape as `sinceClause` — appended only when set, so the
-	// sidebar's unfiltered search stays byte-for-byte unchanged.
 	const privateClause = opts.excludePrivate ? sql`AND c.private = 0` : sql``;
 
 	// One pass through the FTS table; snippet() and bm25() must be
