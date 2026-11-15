@@ -180,12 +180,12 @@ describe('DiskMediaStore.putStream', () => {
 });
 
 /**
- * `open()`'s miss path. Untested until the blocking `existsSync` that used to
- * guard it was replaced by a caught `stat`, and worth pinning now precisely
- * because the two disagree on paper: `existsSync` answers false for ANY error,
- * while a bare `stat` would have thrown a permission error into the request.
- * The contract callers rely on is narrower than either — null means "no bytes",
- * whatever the reason — and both endpoints turn that into a 404.
+ * `open()`'s miss path, a caught `stat` rather than a blocking `existsSync`.
+ * Worth pinning precisely because the two disagree on paper: `existsSync`
+ * answers false for ANY error, while a bare `stat` would throw a permission
+ * error into the request. The contract callers rely on is narrower than either
+ * — null means "no bytes", whatever the reason — and both endpoints turn that
+ * into a 404.
  */
 describe('DiskMediaStore.open', () => {
 	it('returns null for a path with nothing behind it', async () => {

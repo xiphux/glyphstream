@@ -3,7 +3,7 @@
  * properties the onboarding flow leans on:
  *
  *   - createUser mints a normal ('user') OR admin account with no
- *     single-user cap (that cap now lives only in createInitialUser).
+ *     single-user cap (that cap lives only in createInitialUser).
  *   - An invite is single-use: findValidInvite gates on unused+unexpired,
  *     and consumeInvite's conditional UPDATE makes a double-redeem race
  *     resolve to exactly one winner.
@@ -116,8 +116,8 @@ describe('invites', () => {
 	it('findValidInvite refuses an invite whose issuer has been disabled', () => {
 		// Disabling an admin is the non-destructive revocation an operator
 		// reaches for when an account is compromised — chosen over delete
-		// precisely so the account's conversations and media survive. It used
-		// to leave every invite that admin had issued fully redeemable,
+		// precisely so the account's conversations and media survive. Without
+		// this check every invite that admin issued stays fully redeemable,
 		// including role:'admin' ones good for up to the 30-day cap.
 		const adminId = admin();
 		const inv = createInvite({ createdByUserId: adminId, role: 'admin', ttlMs: 60_000 });

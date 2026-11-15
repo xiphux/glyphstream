@@ -1,10 +1,8 @@
 /**
- * `users` is the single-row identity anchor after the PR 1 refactor:
- * provider-agnostic, created exactly once via `/setup`, never
- * upserted from a login path. These tests cover the single-user-cap
- * enforcement, the small read helpers used by session validation and
- * the `/setup` gate, and the lifecycle around `last_login_at` /
- * `disabled_at`.
+ * `users` is the provider-agnostic identity anchor, never upserted from a
+ * login path. These tests cover createInitialUser's single-user cap (the
+ * `/setup` user), the small read helpers used by session validation and the
+ * `/setup` gate, and the lifecycle around `last_login_at` / `disabled_at`.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

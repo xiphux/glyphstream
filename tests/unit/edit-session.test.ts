@@ -1,12 +1,12 @@
 /**
- * Unit tests for the extracted inline-edit session.
+ * Unit tests for the inline-edit session.
  *
  * The invariant worth holding is that a session has exactly ONE close path.
- * Inline in the chat page, four call sites (begin-over, cancel, save, and the
- * conversation-switch reset) each cleared the three pieces of state by hand, and
- * a site that forgot one would leave a stale editor target with the composer
- * unmounted — no way to type, unrecoverable without a reload. These tests assert
- * every exit leaves the session fully closed.
+ * There are four exits (begin-over, cancel, save, and the conversation-switch
+ * reset); one that clears the three pieces of state by hand and forgets one
+ * leaves a stale editor target with the composer unmounted — no way to type,
+ * unrecoverable without a reload. These tests assert every exit leaves the
+ * session fully closed.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 

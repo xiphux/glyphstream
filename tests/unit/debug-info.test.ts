@@ -199,8 +199,8 @@ describe('buildDebugSections', () => {
 /**
  * The breakdown behind the headline SSR number, and the server's uptime.
  *
- * One opaque `ssr` number reported that a cold launch spent 2.35s on the
- * server and nothing about where — leaving "the container had just restarted",
+ * One opaque `ssr` number (a cold launch once read 2.35s on the server) says
+ * nothing about where — leaving "the container had just restarted",
  * "a load blocked on an upstream" and "compressing a big document" impossible
  * to tell apart from a reading taken hours after the fact, which is the only
  * kind this panel can get.
@@ -685,10 +685,10 @@ describe('buildDebugSections — which worker is in charge', () => {
 });
 
 /**
- * The two rows added to tell page-cache pressure from swap, and to say whether
- * the database still fits its mapping.
+ * The two rows that tell page-cache pressure from swap, and say whether the
+ * database still fits its mapping.
  *
- * These exist because the panel had been INFERRING both. A large `Database`
+ * Without them the panel can only INFER both. A large `Database`
  * span with a small `Server CPU` proves the server was waiting; the major-fault
  * counter proves memory was fetched back. Neither says whether it came from the
  * page cache or from swap, and neither can see a read past the mmap cap at all

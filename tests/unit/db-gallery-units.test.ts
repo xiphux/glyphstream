@@ -363,14 +363,14 @@ describe('gallery units: cache invalidation on mutation', () => {
 	});
 
 	it('a restore is reflected even when a delete leaves the row counts unchanged', () => {
-		// The fingerprint was `total:live`, which can't tell "A trashed, B restored"
+		// A count-only fingerprint (`total:live`) can't tell "A trashed, B restored"
 		// from "nothing happened": both counts land where they started.
 		const u = seedUser();
 		const a = makeGen(u.id, at(2024, 6, 15), { promptFull: 'a', originalPrompt: null });
 		const b = makeGen(u.id, at(2024, 6, 14), { promptFull: 'b', originalPrompt: null });
 		makeGen(u.id, at(2024, 6, 13), { promptFull: 'c', originalPrompt: null });
 
-		// The clock is pinned per trash. What tells the two sets apart now is the sum
+		// The clock is pinned per trash. What tells the two sets apart is the sum
 		// of their `deleted_at` stamps, and both trashes below run in well under a
 		// millisecond — so on a real clock they shared a stamp about one run in
 		// three, the signature didn't move, and the stale list was (correctly, by
@@ -410,9 +410,9 @@ describe('gallery units: cache invalidation on mutation', () => {
 	});
 
 	it('a star is visible immediately, though it changes no row count', () => {
-		// The fingerprint behind these caches was `total:live`, which a toggle
-		// leaves untouched — so this is the regression guard for the feature's own
-		// main flow (star something, then filter to Favorites).
+		// A count-only fingerprint (`total:live`) is untouched by a toggle, so this
+		// is the regression guard for the feature's own main flow (star something,
+		// then filter to Favorites).
 		const u = seedUser();
 		const a = makeGen(u.id, at(2024, 6, 15), { promptFull: 'a', originalPrompt: null });
 		const b = makeGen(u.id, at(2024, 6, 14), { promptFull: 'b', originalPrompt: null });
@@ -501,11 +501,11 @@ describe('gallery units: tz bucketing', () => {
 describe('gallery drill-in shares the cached unit source', () => {
 	/**
 	 * `listGalleryUnitMembers` needs a prompt run's ordered member ids, which a
-	 * `GalleryUnit` doesn't carry (previews are capped at 4). It used to re-run
-	 * the library-wide source load and a full re-stack on every drill-in click,
-	 * bypassing the units cache entirely — the most expensive query in the app on
-	 * a routine action. It now reads the same memoized source the scroll uses.
-	 * These assertions pin the behaviour that memo has to preserve.
+	 * `GalleryUnit` doesn't carry (previews are capped at 4). It reads the same
+	 * memoized source the scroll uses: re-running the library-wide source load
+	 * and a full re-stack on every drill-in click bypasses the units cache — the
+	 * most expensive query in the app on a routine action. These assertions pin
+	 * the behaviour that memo has to preserve.
 	 */
 	it('returns every member of a prompt run in newest-first order', () => {
 		const u = seedUser();
@@ -560,8 +560,8 @@ describe('gallery drill-in under the favorites filter', () => {
 	 * fetch that drops the filter answers a different question — and for a prompt
 	 * run it answers the WRONG one, because the run's key is derived from whichever
 	 * member led the stream that was grouped. Each case below is a distinct way the
-	 * mismatch surfaced; the `{}` half of each assertion is what the client used to
-	 * send.
+	 * mismatch surfaced; the `{}` half of each assertion is the unfiltered fetch
+	 * that gets it wrong.
 	 */
 	it('returns only starred members of a conversation stack', () => {
 		const u = seedUser();
@@ -693,10 +693,10 @@ describe('gallery tz offset normalization', () => {
 	});
 
 	/**
-	 * Clamping to the `getTimezoneOffset()` sign (-840..+720) instead truncated
-	 * every zone east of UTC+12 down to +720, filing anything created in the
-	 * first hour after local midnight under the previous day's header. Auckland
-	 * is +780 for roughly half the year.
+	 * Clamping to the `getTimezoneOffset()` sign (-840..+720) instead would
+	 * truncate every zone east of UTC+12 down to +720, filing anything created in
+	 * the first hour after local midnight under the previous day's header.
+	 * Auckland is +780 for roughly half the year.
 	 */
 	it('does not truncate zones east of UTC+12', () => {
 		const u = seedUser();

@@ -1315,10 +1315,9 @@ describe('purger sweep queries', () => {
 	it('stampOrphanedZeroRefRows stamps zero-ref uploaded rows whose stamp is missing', () => {
 		const u = seedUser();
 		const { id } = makeMedia(u.id, { origin: 'uploaded' });
-		// Ref count is 0 by default, unreferencedSince is null — qualifies.
-		// But wait — insertMedia stamps `unreferenced_since = now` on uploads
-		// at insert time, so this row is already stamped. Re-clear it to
-		// exercise the crash-recovery path the stamp query is meant for.
+		// insertMedia stamps `unreferenced_since = now` on uploads at insert
+		// time, so re-clear it to exercise the crash-recovery path the stamp
+		// query is meant for.
 		mocks.testDb.update(media).set({ unreferencedSince: null }).where(eq(media.id, id)).run();
 
 		const stamped = stampOrphanedZeroRefRows();
