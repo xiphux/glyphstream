@@ -2,9 +2,7 @@
 	Skill-activation block (activate_skill / read_skill_file). A compact chip
 	(✨ Skill / 📄 Skill file) instead of the raw tool envelope; the activate body
 	is the instructions rendered as markdown, read_file shows the file text, and
-	errors show the clean message. The markdown render (`bodyHtml`) is read ONLY
-	inside the body snippet, so the shell's collapsed state means it never runs on
-	a large SKILL.md while collapsed.
+	errors show the clean message.
 -->
 <script lang="ts">
 	import { FileText, Sparkles } from '@lucide/svelte';

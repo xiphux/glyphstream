@@ -112,8 +112,6 @@ export class GalleryFeed {
 			this.#loadedPages.add(page);
 		} catch (e) {
 			if (gen === this.#generation) {
-				// Mark the page failed so the scroll-driven loader stops retrying it
-				// every frame; a reseed (Retry) clears it for another attempt.
 				this.#failedPages.add(page);
 				this.#onError?.(e instanceof Error ? e.message : 'Failed to load gallery');
 			}

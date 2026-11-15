@@ -3,9 +3,8 @@
  * dispatching each parsed StreamEvent to the supplied callbacks.
  *
  * Lives separately from the chat page so the event-loop semantics can be
- * unit-tested in isolation — the page used to inline this and any change
- * to event handling required spinning up an actual chat. The function
- * stays deliberately UI-agnostic: callers decide what each event does
+ * unit-tested without spinning up an actual chat. The function stays
+ * deliberately UI-agnostic: callers decide what each event does
  * (append text to a bubble, scroll, toast an error, etc.). The only
  * piece of stream semantics owned here is the `sawToolCalls`
  * accumulator that `done` reads — it informs the caller whether the
@@ -13,8 +12,7 @@
  * last iteration of a multi-step tool loop.
  *
  * Malformed SSE records (non-JSON `data:`) are skipped silently rather
- * than aborting the stream. The chat-page's pre-extraction behavior did
- * the same.
+ * than aborting the stream.
  */
 
 import { unhandled } from './exhaustive';
@@ -73,11 +71,10 @@ export interface ConsumeChatStreamCallbacks {
 	 *  turn ran the multi-iteration tool loop and the assistantMessage is
 	 *  just the LAST iteration's row (intermediate rows arrive via invalidate).
 	 *
-	 *  Named for how it was originally derived — seeing a `tool_call_start` go
-	 *  past — but the question it answers is the broader one in the sentence
-	 *  above, which is why the server's `done.multiIteration` now feeds it too.
-	 *  A tool whose frames are suppressed (a reaction) is invisible to the
-	 *  accumulator but not to the server's iteration count. */
+	 *  The name comes from seeing a `tool_call_start` go past, but the question
+	 *  it answers is the broader one above, so the server's `done.multiIteration`
+	 *  feeds it too: a tool whose frames are suppressed (a reaction) is invisible
+	 *  to the accumulator but not to the server's iteration count. */
 	onDone?(args: { assistantMessage: ChatMessage; sawToolCalls: boolean }): void;
 	/** The turn failed. `persistedMessageId` is the durable error sibling the
 	 *  server recorded for it, when it recorded one (media relay only) — the

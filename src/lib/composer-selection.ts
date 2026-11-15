@@ -3,10 +3,9 @@
  * models a send would go to, whether they need an image, the placeholder, the
  * split-attachments toggle, the `/skill` menu.
  *
- * The chat page's composer (`ChatComposer`) and the new-chat page each derived
- * all of this, and had to be told to "mirror" each other in comments. They call
- * these instead. Each resolves model ids its own way (the new-chat page through
- * custom presets), so these take resolved models, not ids.
+ * The chat page's composer (`ChatComposer`) and the new-chat page both call
+ * these, so they can't drift apart. Each resolves model ids its own way (the
+ * new-chat page through custom presets), so these take resolved models, not ids.
  */
 import type { ModelEntry, ModelKind } from '#lib/types/api.js';
 import { imageAttachment, type ImageAttachment } from '#lib/model-capabilities.js';

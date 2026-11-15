@@ -135,9 +135,6 @@ export function createDraftWriter() {
 
 	function save(conversationId: string | null, text: string) {
 		if (!browser) return;
-		// A pending write for a *different* conversation must land before we
-		// start debouncing this one — otherwise the reschedule below would strand
-		// the previous conversation's draft on a fast switch.
 		if (hasPending && pendingId !== conversationId) commit();
 		hasPending = true;
 		pendingId = conversationId;

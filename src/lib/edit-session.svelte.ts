@@ -6,24 +6,21 @@
  * message you're editing. Saving sends a new sibling of the edited message;
  * cancelling discards.
  *
- * Extracted from the chat page, where it was three pieces of state plus an
- * `AttachmentStore`, opened and cleared from four different places (begin,
- * cancel, save, and the conversation-switch reset). Every one of those had to
- * clear all of them, by hand — a clear-site that forgot one would leave the page
- * with a stale editor target and no composer, which is unrecoverable without a
- * reload. `#reset()` is now the only way to close a session.
+ * A session is three pieces of state plus an `AttachmentStore`, closed from
+ * three places (cancel, save, and the conversation-switch reset). A close that
+ * missed one would leave the page with a stale editor target and no composer,
+ * which is unrecoverable without a reload, so `#reset()` is the only way to
+ * close a session.
  *
  * Edit state is deliberately separate from the composer's own text so a
  * half-typed draft isn't clobbered by opening an editor.
  *
  * ## Why there is no `parentId` here
  *
- * The page used to track the edited message's `parentMessageId` and put it on
- * the wire. It doesn't anymore: the server resolves the parent from
- * `editedMessageId` and copies it onto the new sibling — including the null case
- * (editing the conversation's root), which the old client-resolved approach
- * silently dropped, causing root edits to append instead of branch. The field
- * outlived that change as dead state; it isn't reintroduced here.
+ * The server resolves the parent from `editedMessageId` and copies it onto the
+ * new sibling — including the null case (editing the conversation's root),
+ * which a client-resolved parent silently drops, making root edits append
+ * instead of branch. Don't put a parent id back on the wire.
  */
 
 import { AttachmentStore } from './attachments.svelte';
@@ -108,8 +105,7 @@ export class EditSession {
 		this.attachments.destroy();
 	}
 
-	/** The single close path — the four callers used to each clear every field
-	 *  by hand, and forgetting one wedged the composer. */
+	/** The single close path: a close that misses a field wedges the composer. */
 	#reset(): void {
 		this.messageId = null;
 		this.text = '';

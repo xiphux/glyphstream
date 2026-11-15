@@ -201,9 +201,6 @@ export class FanoutController {
 			return {
 				branchId: m.id,
 				modelId: m.modelUsed ?? '',
-				// Resolve the column's modality from the persisted parts first so a
-				// recovered video renders as video even if its model id no longer
-				// resolves; only then fall back to the model list / fan-out kind.
 				modelKind: kindFromParts(m) ?? kindById(m.modelUsed) ?? fallbackKind,
 				label: this.#modelDisplayName(m.modelUsed),
 				segments: [],
@@ -680,8 +677,7 @@ export class FanoutController {
 		// Tested on `!== 'error'` rather than `=== 'done'` because of the branch
 		// that lands `persisted` and THEN gets marked 'cancelled': a Stop arriving
 		// between the `done` event and the stream close. That column holds a real
-		// result, and while it was merely unpromotable this only cost a no-op
-		// Done — but now that the else-branch clears the marker, treating it as
+		// result, and since the else-branch clears the marker, treating it as
 		// nothing would take the anchor's children off the active branch for good.
 		const firstPersisted = this.columns.find((c) => c.persisted && c.status !== 'error');
 		// Clear optimistically but restore on failure (see pick).
@@ -696,10 +692,10 @@ export class FanoutController {
 				// Nothing to promote — every branch failed. Selecting anything here
 				// would be wrong (the only rows under the anchor are error siblings,
 				// and `selectBranch` walks to the newest of them), but doing nothing
-				// was worse: the marker stayed parked, so `refreshAll` below rebuilt
-				// the very grid this is meant to take down, and Done was a no-op the
-				// user could press forever. Clear the marker instead and leave the
-				// thread where it is.
+				// is worse: the marker stays parked, so `refreshAll` below would
+				// rebuild the very grid this is meant to take down, and Done would be
+				// a no-op the user could press forever. Clear the marker instead and
+				// leave the thread where it is.
 				await fetch(`/api/conversations/${convId}/fanout`, { method: 'DELETE' });
 			}
 			await refreshAll();
@@ -802,7 +798,7 @@ export class FanoutController {
 		// Drive the proxied element (not the raw `newColumn`) so the column's live
 		// state updates stay reactive. `reroll: true` marks this branch a re-roll on
 		// the wire; like any fan-out branch it defers to the single aggregate
-		// "N ready" notify, which now waits for a mid-flight re-roll instead of
+		// "N ready" notify, which waits for a mid-flight re-roll rather than
 		// firing when the original batch drains. A failed re-roll lands in 'error' (a
 		// discardable column) — nothing to restore, the original was never touched.
 		await this.#runBranch(convId, this.userMessageId, this.columns[insertAt], { reroll: true });
@@ -851,10 +847,6 @@ export class FanoutController {
 		this.picking = false;
 	}
 
-	/** Rebuild the compare grid from server-truth recovery state on a reload /
-	 *  conversation-switch into a parked fan-out. Skipped while THIS client drives
-	 *  the fan-out (live) or has a branch fetch in flight (a live regenerate), so
-	 *  it never clobbers the in-session grid. */
 	/** Safe to clobber the grid from server truth only when nothing client-driven
 	 *  owns it: not live-streaming, no in-flight aborts, not mid-pick, page idle.
 	 *  The single predicate, shared by syncFromServer + the recovery poll. */
@@ -889,6 +881,10 @@ export class FanoutController {
 	 */
 	#lastSynced: FanoutRecoveryState | null | undefined | typeof NOT_SYNCED = NOT_SYNCED;
 
+	/** Rebuild the compare grid from server-truth recovery state on a reload /
+	 *  conversation-switch into a parked fan-out. Skipped while THIS client drives
+	 *  the fan-out (live) or has a branch fetch in flight (a live regenerate), so
+	 *  it never clobbers the in-session grid. */
 	syncFromServer(fanout: FanoutRecoveryState | null | undefined): void {
 		if (fanout === this.#lastSynced) return;
 		this.#lastSynced = fanout;
@@ -915,10 +911,10 @@ export class FanoutController {
 	 *  caller's $effect.
 	 *
 	 *  Skips its ticks while the page is hidden: nothing is drawn, and the next
-	 *  tick after a return catches the grid up. And it
-	 *  downloads each finished branch once — `held` keeps the copies it has, by
-	 *  the key the server names them with, and `have=` tells the server not to
-	 *  send those again (see `ConversationRecoveryPoll`). */
+	 *  tick after a return catches the grid up. And it downloads each finished
+	 *  branch once — `held` keeps the copies it has, by the key the server names
+	 *  them with, and `have=` tells the server not to send those again (see
+	 *  `ConversationRecoveryPoll`). */
 	startRecoveryPoll(): () => void {
 		const id = this.#deps.convId();
 		let stopped = false;

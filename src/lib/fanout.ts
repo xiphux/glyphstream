@@ -51,9 +51,6 @@ export interface CompareSelection {
 	count: number;
 }
 
-/** Expand `{ modelId, count }[]` into one FanoutModel per count, resolving
- *  each model's display name + kind via `resolve` (skips ones that no longer
- *  resolve — e.g. an endpoint removed from config since selection). */
 /**
  * The model kind that's actually "active" for every kind-dependent piece of
  * composer UI — the placeholder, skill autocomplete, attachment/split
@@ -75,6 +72,9 @@ export function resolveActiveModelKind(
 	return compareActive && cartKinds.length > 0 ? cartKinds[0] : singleKind;
 }
 
+/** Expand `{ modelId, count }[]` into one FanoutModel per count, resolving
+ *  each model's display name + kind via `resolve` (skips ones that no longer
+ *  resolve — e.g. an endpoint removed from config since selection). */
 export function expandCompareSelections(
 	selections: readonly CompareSelection[],
 	resolve: (modelId: string) => { displayName: string; modelKind: ModelKind } | undefined,
@@ -120,7 +120,7 @@ export interface FanoutBranchSpec extends FanoutModel {
 
 /** Cross-product the picked models with the split input images. When
  *  `splitImageIds` is empty/null, splitting is off → one group per model with
- *  no input override (today's behavior). Ordered image-outer / model-inner, so
+ *  no input override. Ordered image-outer / model-inner, so
  *  each input image's variants sit together in the grid (and a single-model
  *  split reads as image 1, 2, 3, …). */
 export function expandFanoutBranches(
@@ -159,9 +159,9 @@ export interface FanoutColumn {
 	 * endpoint gate. Branches dispatch one at a time (each waits for the prior
 	 * one's first event; see `FanoutController.#dispatchColumns`), and a request
 	 * the browser hasn't delivered yet — held by that sequence, or stalled on
-	 * the connection — is not "queued" at any gate. Rendering both as QUEUED made
-	 * a stalled dispatch indistinguishable from a busy endpoint, so the grid shows
-	 * "Starting…" for this state instead. Always false for recovered and settled
+	 * the connection — is not "queued" at any gate. Rendering both as QUEUED would
+	 * make a stalled dispatch indistinguishable from a busy endpoint, so the grid
+	 * shows "Starting…" for this state instead. Always false for recovered and settled
 	 * columns: the server already knows about those.
 	 */
 	dispatching: boolean;
@@ -205,9 +205,8 @@ export interface FanoutColumn {
 	 * without re-deriving that.
 	 *
 	 * Null once settled for: a model that offered no ratios, a still-generating
-	 * recovered placeholder (no
-	 * media row yet, and the in-flight registry doesn't carry the request), and
-	 * media that predates the column.
+	 * recovered placeholder (no media row yet, and the in-flight registry doesn't
+	 * carry the request), and media that predates the column.
 	 */
 	aspectRatio: string | null;
 	/**
@@ -223,12 +222,11 @@ export interface FanoutColumn {
 	 *
 	 * Null on a column with no grid position to report. For a PERSISTED one —
 	 * anything persisted before the column shipped — that means sorting ahead of
-	 * every indexed column, chronologically, via
-	 * `getSiblingAssistants`. A recovered placeholder for a still-generating
-	 * branch is null too but isn't subject to that sort at all: it has no row
-	 * yet, and `#buildRecoveredColumns` appends every placeholder AFTER every
-	 * settled column, indexed or not. So it renders last, not first — and jumps
-	 * to its index once it lands.
+	 * every indexed column, chronologically, via `getSiblingAssistants`. A
+	 * recovered placeholder for a still-generating branch is null too but isn't
+	 * subject to that sort at all: it has no row yet, and `#buildRecoveredColumns`
+	 * appends every placeholder AFTER every settled column, indexed or not. So it
+	 * renders last, not first — and jumps to its index once it lands.
 	 */
 	dispatchIndex: number | null;
 	/** The persisted assistant message, set on the branch's `done` event (or
@@ -273,13 +271,13 @@ export interface FanoutColumn {
  * Closing that would need a minor key under the shared index; a run is a
  * couple of columns wide, so it isn't worth one.
  *
- * An un-indexed source (a column predating the index) can't name a run, so its re-roll just goes immediately
- * after it. Live and recovered part company here whenever there are two or
- * more un-indexed columns: the re-roll sends no index of its own, so the
- * server sorts it chronologically at the END of the null bucket rather than
- * beside its source. That's the same place it landed before this column
- * existed, so it's an un-narrowed gap rather than a regression — the indices
- * only ever moved indexed columns.
+ * An un-indexed source (a column predating the index) can't name a run, so its
+ * re-roll just goes immediately after it. Live and recovered part company here
+ * whenever there are two or more un-indexed columns: the re-roll sends no index
+ * of its own, so the server sorts it chronologically at the END of the null
+ * bucket rather than beside its source. That's where an un-indexed re-roll has
+ * always sorted, so it's an un-narrowed gap rather than a regression — the
+ * indices only move indexed columns.
  */
 export function rerollInsertIndex(columns: readonly FanoutColumn[], source: FanoutColumn): number {
 	const at = columns.findIndex((c) => c.branchId === source.branchId);
@@ -398,8 +396,8 @@ export function gridMediaIds(columns: readonly FanoutColumn[]): string[] {
  * COMPLETION order; a fan-out grid is displayed in the order the models were
  * ENQUEUED. Those agree only when the endpoint serializes the branches — run
  * them in parallel and it hands back 2, 4, 1, 3, so swiping through the
- * lightbox visited the same images in a different order than the grid the user
- * had just tapped. This makes the grid's order win for the images the grid
+ * lightbox would visit the same images in a different order than the grid the
+ * user had just tapped. This makes the grid's order win for the images the grid
  * shows, without touching the surrounding chronology: only that group's members
  * move, and only among themselves.
  */

@@ -1,8 +1,7 @@
 /**
- * Shared composer-textarea helpers used by the new-chat composer, the
- * chat composer, and the inline message editor — the three places that
- * each had their own copy of the auto-resize routine and the
- * drag/paste image-extraction logic.
+ * Composer-textarea helpers shared by the new-chat composer, the chat
+ * composer, and the inline message editor: auto-resize, atomic-undo text
+ * replacement, and drag/paste file extraction.
  */
 
 /** Max rendered height of a composer textarea before it scrolls. */
@@ -34,7 +33,7 @@ export function autoResizeTextarea(el: HTMLTextAreaElement): void {
  * The modern-looking alternative, `setRangeText()`, does NEITHER: no undo
  * entry and no `input` event. It is therefore the *wrong* tool here despite
  * being the un-deprecated one, and is used only as the fallback below — where
- * the manual event dispatch is what keeps the binding correct. Please don't
+ * the manual event dispatch is what keeps the binding correct. Don't
  * "modernize" this to setRangeText.
  */
 export function replaceRange(

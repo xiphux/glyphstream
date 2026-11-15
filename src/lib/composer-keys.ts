@@ -23,13 +23,11 @@ export function composerEnterHandler(
 	return (e: KeyboardEvent) => {
 		if (e.key !== 'Enter' || e.isComposing) return;
 		if (behavior === 'newline') {
-			// Newline mode: only the modifier-Enter combo sends.
 			if (e.metaKey || e.ctrlKey) {
 				e.preventDefault();
 				onSend(e);
 			}
 		} else {
-			// Send mode: bare Enter sends, Shift+Enter is the newline escape.
 			if (e.shiftKey) return;
 			e.preventDefault();
 			onSend(e);

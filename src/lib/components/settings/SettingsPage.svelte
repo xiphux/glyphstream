@@ -3,14 +3,6 @@
 	a fixed header (title + optional blurb + optional actions), and a scrolling
 	content region.
 
-	All nine settings pages had hand-rolled this identically — the same
-	`flex h-full flex-col overflow-hidden`, the same
-	`text-lg font-semibold tracking-tight` heading, the same
-	`flex-1 overflow-y-auto px-4 py-4` region — with no shared component between
-	them. Two of them (models, preferences) had drifted onto a flex header while
-	the rest used a block one, a difference that renders identically because
-	neither actually had header actions.
-
 	The INNER container stays with the caller. It's the one part that genuinely
 	varies (a max-w-2xl column, a max-w-5xl two-up grid, a bare card, a <form>),
 	so hoisting it would only produce a prop that every page overrides.
@@ -46,9 +38,8 @@
 
 <div class="flex h-full flex-col overflow-hidden">
 	<header class="flex shrink-0 items-start justify-between gap-3 px-4 py-3">
-		<!-- flex-1 + min-w-0 so the text block fills the row exactly as the old
-		     block-level header did, and long titles truncate rather than shove
-		     the actions off the edge. -->
+		<!-- flex-1 + min-w-0 so the text block fills the row and long titles
+		     truncate rather than shove the actions off the edge. -->
 		<div class="min-w-0 flex-1">
 			<h1 class="text-lg font-semibold tracking-tight">{title}</h1>
 			{#if description}

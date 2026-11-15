@@ -274,6 +274,14 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 		// rather than a skip.
 		if (zip !== null && zip >= 1) breakdown.push(`zip ${ms(zip)}`);
 
+		// Time inside synchronous SQLite, a SLICE of `render` rather than another
+		// part of the total — which is why it's a row and not a clause on the
+		// breakdown note, whose contract is that its parts sum to `ssr`. It answers
+		// the question `render` on its own can't: a big number here with a small
+		// Server CPU is the database blocking the loop on reads that miss the page
+		// cache, which on a database grown past the 30MB mmap cap goes through
+		// read(2) and never registers as a major fault.
+		const db = timing('db');
 		// CPU the server actually burned, against the wall clock `ssr` reports.
 		// A large gap means the process was WAITING rather than working — cold
 		// SQLite pages coming off the volume, or its own heap being faulted back
@@ -283,14 +291,6 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 		// Its own row rather than another clause on the breakdown note above,
 		// because that note's contract is "these sum to the total" and this is a
 		// second decomposition of the same span, not a fourth part of it.
-		// Time inside synchronous SQLite, a SLICE of `render` rather than another
-		// part of the total — which is why it's a row and not a clause on the
-		// breakdown note, whose contract is that its parts sum to `ssr`. It answers
-		// the question `render` on its own can't: a big number here with a small
-		// Server CPU is the database blocking the loop on reads that miss the page
-		// cache, which on a database grown past the 30MB mmap cap goes through
-		// read(2) and never registers as a major fault.
-		const db = timing('db');
 		const cpu = timing('cpu');
 		const faults = timing('fault');
 		// Read against `cpu` rather than on its own. A stall with `cpu` to match is
@@ -613,12 +613,12 @@ export async function readDebugSources(version: string): Promise<DebugSources> {
 	const online = navigator.onLine;
 
 	// A controller answers "is a worker driving this page", which is NOT the
-	// same question as "is one installed" — and the gap between them is now a
-	// normal, long-lived state: since the worker stopped calling skipWaiting()
-	// on install, an update sits in `waiting` until the user accepts it. Keying
-	// only off `controller` reported that device as having no worker at all,
-	// which is the wrong answer to the one thing this panel is for. Hence the
-	// async hop: registration state isn't available synchronously.
+	// same question as "is one installed" — and the gap between them is a
+	// normal, long-lived state: the worker doesn't call skipWaiting() on
+	// install, so an update sits in `waiting` until the user accepts it. Keying
+	// only off `controller` would report that device as having no worker at
+	// all, the wrong answer to the one thing this panel is for. Hence the async
+	// hop: registration state isn't available synchronously.
 	let serviceWorker: DebugSources['serviceWorker'] = 'unsupported';
 	const controller = 'serviceWorker' in navigator ? navigator.serviceWorker.controller : null;
 	if ('serviceWorker' in navigator) {

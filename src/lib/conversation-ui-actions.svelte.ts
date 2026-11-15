@@ -84,12 +84,9 @@ export class ConversationUiActions {
 		const wasViewingChat = this.#deps.getPathname() === `/chat/${id}`;
 		try {
 			await setArchived(id, true);
-			// Archive is "I'm done with this thread" in the same spirit
-			// as delete — the user is signaling they want it out of
-			// their immediate view. Mirror delete's behavior and send
-			// them to the new-chat surface rather than pulling them
-			// deeper into the archive. The toast below confirms the
-			// action and offers Undo so a misclick is one tap to recover
+			// Archive is "I'm done with this thread", like delete: send the
+			// user to the new-chat surface rather than deeper into the
+			// archive. The Undo toast makes a misclick one tap to recover
 			// instead of a trip through /archived.
 			if (wasViewingChat) {
 				await this.#deps.goto('/', { refreshAll: true });
@@ -106,9 +103,6 @@ export class ConversationUiActions {
 							// Restores the sidebar row; if they were viewing the
 							// thread, the goto below loads its page fresh anyway.
 							await this.#deps.invalidateConversations();
-							// Land the user back on the chat they were
-							// viewing when they archived. If they were on
-							// some other surface, leave them where they are.
 							if (wasViewingChat) {
 								await this.#deps.goto(`/chat/${id}`);
 							}
@@ -161,10 +155,10 @@ export class ConversationUiActions {
 	};
 
 	/**
-	 * Open the inline rename input for the given conversation. We avoid
-	 * optimistic-update gymnastics (mutating the load prop) — Enter
-	 * fires the PATCH, closes the input, and an invalidate pulls the
-	 * fresh title in. Esc / blur-without-change bail out silently.
+	 * Open the inline rename input for the given conversation. No optimistic
+	 * update (mutating the load prop): Enter fires the PATCH, closes the
+	 * input, and an invalidate pulls the fresh title in. Esc /
+	 * blur-without-change bail out silently.
 	 */
 	startRename = async (id: string, currentTitle: string | null): Promise<void> => {
 		this.renamingId = id;
@@ -189,10 +183,9 @@ export class ConversationUiActions {
 			this.cancelRename();
 			return;
 		}
-		// Optimistic-ish: close the input immediately so the UI feels
-		// responsive even before the PATCH round-trip resolves. The
-		// text shown in the sidebar reverts to the stale title until
-		// refreshAll() lands the new one — sub-300ms in practice.
+		// Close the input immediately so the UI feels responsive before the
+		// PATCH resolves. The sidebar shows the stale title until the
+		// refresh lands the new one — sub-300ms in practice.
 		this.renamingId = null;
 		this.renameDraft = '';
 		this.renameOriginal = '';

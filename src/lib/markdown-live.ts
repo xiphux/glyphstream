@@ -72,7 +72,7 @@ export function ensureLiveMarkdown(): Promise<typeof MarkdownItCtor | null> {
  *
  * markdown-it invokes `highlight` for EVERY fence in the document on every
  * render, and streaming re-renders the whole accumulated message per frame. So
- * a reply that has already written three finished code blocks re-highlighted
+ * a reply that has already written three finished code blocks would re-highlight
  * all three ~60 times a second for the rest of the reply — at roughly 7ms per
  * 100-line block that's the entire frame budget spent re-producing identical
  * HTML while trailing prose streams in.
@@ -186,9 +186,6 @@ function escapeHtml(s: string): string {
  */
 export function renderLiveMarkdown(text: string): string {
 	if (!text) return '';
-	// Tracked read for $derived reactivity. Without this, segments that
-	// finished arriving before shiki loaded would stay un-highlighted
-	// until the next text chunk pushed them through markdown-it again.
 	void liveHighlighterReady.value;
 	if (!markdownItCtor) {
 		void ensureLiveMarkdown();

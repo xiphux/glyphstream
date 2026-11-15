@@ -68,7 +68,7 @@ export interface ResponsiveImage {
 /**
  * `src` / `srcset` / `sizes` for an image shown fitted to the viewport (the
  * lightbox). Null without a known size: a `w` descriptor needs the real width,
- * and the caller then shows the original as before.
+ * and the caller then shows the original.
  *
  * Each candidate's width is what that copy actually is — the original scaled to
  * fit the size, never enlarged — so the browser's choice is honest. The list
@@ -110,8 +110,8 @@ export function lightboxImage(
  * phone, an iPad and a desktop with the caption strip; a wrapped caption or the
  * action rows take more, a lightbox with no caption strip less — 76). Used only
  * in `sizes`, to choose a copy: the drawn size comes from `drawWidth`. Assuming
- * the full viewport height instead overstated a desktop's image by a third,
- * enough to pick the original over the 2048 copy. The cost of these being off
+ * the full viewport height instead would overstate a desktop's image by a
+ * third, enough to pick the original over the 2048 copy. The cost of these being off
  * is only which copy is fetched — a larger one than needed where the furniture
  * is bigger, and where it's smaller (no caption strip) a copy picked for a box
  * up to 140 px shorter than the one it's drawn in.

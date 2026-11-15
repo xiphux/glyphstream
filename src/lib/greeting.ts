@@ -45,7 +45,7 @@ export const NIGHT = [
 	'Winding down, {name}?',
 ];
 
-// Time-neutral greetings — the bulk of the new variety. Eligible all day,
+// Time-neutral greetings — the bulk of the variety. Eligible all day,
 // blended into every daytime slot. Tones run from plain to casual to a touch
 // funny, some address the user and some don't; all stay warm and welcoming.
 export const ANYTIME = [

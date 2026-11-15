@@ -1,12 +1,10 @@
 /**
  * Shared readers over a message's `parts[]`.
  *
- * `partsToText` had two independent implementations — one in
- * `server/endpoints/serialize-upstream.ts` (what gets sent upstream) and one
- * inline in the chat page (what Copy puts on the clipboard). Functionally
- * identical, but nothing tied them together, so "the text of this message"
- * could quietly come to mean two different things on the two paths. It's a
- * small contract, and exactly the kind that should have one definition.
+ * `partsToText` is the one definition of "the text of this message", shared
+ * by `server/endpoints/serialize-upstream.ts` (what gets sent upstream) and
+ * the chat page (what Copy puts on the clipboard), so the two paths can't
+ * quietly come to mean different things.
  *
  * Client-safe on purpose: the server serializer and the browser both need it,
  * and `MessagePart` already lives in `#lib/types/api.js`.

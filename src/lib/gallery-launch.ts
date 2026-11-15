@@ -10,15 +10,12 @@
  *
  * Why sessionStorage rather than query params: prompts can be long
  * (low-thousands of chars is normal, occasionally more for detailed
- * style descriptions) and URLs would be unwieldy to copy/paste-share
- * even though that's not really a feature we want for transient
- * launch intents. Per-tab scope is the right isolation for this use
- * case: two tabs launching different intents don't race on the same
- * key.
+ * style descriptions), which makes for unwieldy URLs. Per-tab scope is
+ * the right isolation: two tabs launching different intents don't race
+ * on the same key.
  *
- * The pattern mirrors the existing `glyphstream:pendingFirstMessage:*`
- * handoff between the new-chat surface and the chat-id page (see
- * (app)/+page.svelte ~line 125).
+ * Same handoff pattern as `pending-first-message.ts` uses between the
+ * new-chat surface and the chat-id page.
  */
 
 export const GALLERY_LAUNCH_KEY = 'glyphstream:galleryLaunch';
