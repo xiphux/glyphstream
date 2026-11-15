@@ -18,11 +18,8 @@ test.beforeEach(() => resetData());
  * stream handoff, branch creation on edit, archive/undo, and the gallery
  * sessionStorage launch handoff.
  *
- * State note: workers=1 and the DB is wiped once in global-setup, so these
- * specs run after authenticated.spec (alphabetical) which asserts empty-
- * state surfaces — these create conversations + media, so they must not
- * precede those. Each test uses a unique title so it can target its own
- * conversation regardless of leftover state from sibling tests.
+ * Each test starts from the reset above, so spec order doesn't matter, and
+ * uses a unique title so it can target its own conversation by name.
  */
 
 test.describe('flow: send a chat message', () => {
@@ -46,8 +43,8 @@ test.describe('flow: edit a root message branches', () => {
 		// header reuse the same title text, so scope to the bubble.
 		const body = (text: string) => page.locator('div.whitespace-pre-wrap', { hasText: text });
 
-		// The single user message's edit button is opacity-0 until hover on
-		// desktop, but opacity-0 elements are still clickable.
+		// The message actions are hover-revealed (opacity-0 until hover) on a
+		// device that can hover, but opacity-0 elements are still clickable.
 		await page.getByRole('button', { name: 'Edit message' }).click();
 		const editor = page.locator('article', { hasText: 'Editing' });
 		await editor.locator('textarea').fill(edited);

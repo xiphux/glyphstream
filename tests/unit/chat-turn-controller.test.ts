@@ -475,14 +475,14 @@ describe('ChatTurnController — approval resume', () => {
 		await turn.submitApproval([{ toolCallId: 't1', action: 'allow' }]);
 
 		// Pin that the resume actually reached its success path (not an early fetch
-		// error, which would also yield a single invalidate but skip this) — so the
-		// single-invalidate assertion below genuinely exercises the guard.
+		// error, which would also yield a single refreshAll but skip this) — so the
+		// single-refreshAll assertion below genuinely exercises the guard.
 		expect(state.approvalCleared).toBe(1);
 		// The in-turn guard (deps.convId() === turnConvId) is false, so the inner
-		// post-stream invalidate is skipped — and submitApproval's outer one runs
+		// post-stream refreshAll is skipped — and submitApproval's outer one runs
 		// in its place, for the sidebar. Regression guard: a `convId` param that
 		// shadows the reactive one makes this check permanently true (a dead
-		// abandon-on-switch guard), and it invalidates twice.
+		// abandon-on-switch guard), and it refreshes twice.
 		expect(refreshAll).toHaveBeenCalledTimes(1);
 		vi.unstubAllGlobals();
 	});

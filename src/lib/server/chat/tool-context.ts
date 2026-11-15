@@ -1,17 +1,18 @@
 /**
- * Per-request chat tool assembly, shared by the two handlers that build an
- * upstream chat request — the message send (`/messages`) and the tool-approval
- * resume (`/tool-approval`). Both must wire up the SAME tool surface and system
- * prompt: agent-skills catalog + activation tools, the deferred-tool
- * `search_tools` advertisement + Tier-1 hint, the caller's per-user MCP tools,
- * and the cross-turn activation seed — plus an identical MCP approval gate.
+ * Per-request chat tool assembly for `startChatTurn`, which starts every turn:
+ * a message send, a tool-approval resume, a scheduled task and a check-in. Each
+ * must see the SAME tool surface and system prompt: agent-skills catalog +
+ * activation tools, the deferred-tool `search_tools` advertisement + Tier-1
+ * hint, the caller's per-user MCP tools, and the cross-turn activation seed —
+ * plus an identical MCP approval gate. One assembly is what keeps a per-user
+ * tool from appearing on one path and vanishing on another (e.g. mid-turn vs.
+ * after an approval pause). The context breakdown
+ * (`/api/conversations/:id/context`) calls it too, so the readout prices the
+ * same surface.
  *
- * Centralizing the assembly here is the anti-drift measure CLAUDE.md calls out:
- * "appended per request by the message / tool-approval handlers" is two code
- * paths that must not diverge, or a per-user tool appears in one and vanishes in
- * the other (e.g. mid-turn vs. after an approval pause). This builds on the
- * narrower `tool-search-context.ts` / `skills-context.ts` helpers — it owns the
- * orchestration that calls them in the right order with the right gating.
+ * This builds on the narrower `tool-search-context.ts` / `skills-context.ts`
+ * helpers — it owns the orchestration that calls them in the right order with
+ * the right gating.
  */
 import type {
 	ChatMessage,
@@ -347,9 +348,9 @@ function fenceCanvasContent(content: string): string {
  * call so within a turn the model always sees the latest state (create_canvas
  * then update_canvas). Multiple canvases are emitted in STABLE creation order
  * (see `buildCanvasInjection`) so editing one doesn't reorder the blocks. Called
- * by BOTH the message-send and tool-approval handlers — on the initial body and
- * inside their per-iteration `rebuildRequestBody` — so the two paths can't drift
- * and mid-turn creation arms the editor from the next iteration on.
+ * by `buildUpstreamRequest` for a turn's initial body and again inside every
+ * per-iteration `rebuildRequestBody`, so mid-turn creation arms the editor from
+ * the next iteration on.
  */
 export function augmentRequestForCanvas(
 	req: ChatCompletionRequest,

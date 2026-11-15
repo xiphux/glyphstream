@@ -11,11 +11,12 @@
  * that never retract, no matter how long the user looks at the thread they
  * point at.
  *
- * Two places re-derive state on resume and both had this hole. This file
- * covers the root layout's badge backstop; the chat route carries the twin
- * wiring for the notification acknowledgment (`onPageShow` beside
- * `onVisibilityChange` there), which is not reachable from a component test —
- * if you delete one of the two bindings, delete the other's reason too.
+ * Three places re-derive state on resume and pair the two events: the root
+ * layout's badge backstop, which this file covers; the (app) layout's
+ * conversation refresh; and the chat route's notification acknowledgment
+ * (`onPageShow` beside `onVisibilityChange` there), the badge's twin, which is
+ * not reachable from a component test — if you delete one of those two
+ * bindings, delete the other's reason too.
  *
  * The mount case is its own beat: a cold launch fires no resume event at all,
  * so a notification swiped away while the app wasn't running would leave its

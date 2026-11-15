@@ -1,11 +1,9 @@
 /**
- * Per-request tool-search context, shared by the two handlers that build an
- * upstream chat request — the message send (`/messages`) and the tool-approval
- * resume (`/tool-approval`). Both must advertise `search_tools` + inject the same
- * Tier-1 hint when the user/conversation has deferred tools, AND seed the
- * already-activated tools from the active branch — so a turn that searched up a
- * tool keeps it after an approval pause and across later turns. Centralizing the
- * logic here is the anti-drift measure (the `skills-context.ts` precedent).
+ * Per-request tool-search context, assembled through `buildChatToolContext` for
+ * every turn. It advertises `search_tools` + injects the Tier-1 hint when the
+ * user/conversation has deferred tools, AND seeds the already-activated tools
+ * from the active branch — so a turn that searched up a tool keeps it after an
+ * approval pause and across later turns.
  *
  * The hint lists every deferred tool by its short NAME, grouped under its server
  * (no descriptions, no schemas) — the Tier-1 discovery list. Names are cheap

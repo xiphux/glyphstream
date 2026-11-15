@@ -15,7 +15,7 @@
  * Content types: text/html -> extracted to plain text; text/plain &
  * text/markdown -> pass-through; application/json -> re-stringified;
  * anything else -> isError so the model gets clear in-band feedback.
- * Body capped at 256 KB, extracted text truncated to ~20 KB.
+ * Body capped at 2 MB, extracted text capped at 20K chars.
  */
 
 import { Readability } from '@mozilla/readability';

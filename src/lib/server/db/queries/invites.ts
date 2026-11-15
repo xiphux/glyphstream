@@ -1,7 +1,7 @@
 /**
  * Invite-token queries for admin-controlled onboarding. An admin mints an
  * invite (the raw token is returned ONCE and embedded in a /join/<token>
- * URL); the invitee redeems it by completing GitHub OAuth or passkey
+ * URL); the invitee redeems it by completing OAuth (any provider) or passkey
  * registration, which creates their user row in the same transaction that
  * DELETES the invite. The one durable fact — which admin issued it — is
  * denormalized onto the new user's `invited_by_user_id`, so the invite row

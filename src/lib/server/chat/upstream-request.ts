@@ -1,11 +1,10 @@
 /**
  * The chat completion request a turn sends upstream, built in one place.
  *
- * The send path (`/messages`) and the approval resume (`/tool-approval`) both
- * call this for their first request and again before every tool-loop
- * iteration, so the two can't drift: CLAUDE.md's "the upstream payload is
- * rent, and its prefix must be stable" holds only if the same branch always
- * produces the same request. The context readout prices the same pieces;
+ * `startChatTurn` calls this for every turn's first request and again before
+ * every tool-loop iteration: CLAUDE.md's "the upstream payload is rent, and its
+ * prefix must be stable" holds only if the same branch always produces the
+ * same request. The context readout prices the same pieces;
  * `request-pricing-parity.test.ts` checks it against what this builds.
  *
  * Layout, in send order:

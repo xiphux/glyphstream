@@ -3,9 +3,9 @@
  *
  * Singleton store: `toast.success() / .info() / .error()` show a brief
  * confirmation message at the top of the viewport with optional
- * dismiss + action buttons. Used today for archive feedback (with
- * Undo) and surfacing error states; designed to absorb the roadmap's
- * background-generation-complete notifications next.
+ * dismiss + action buttons. Used for action feedback (archive, with
+ * Undo), error states, and the in-app notice when a thread completes
+ * while the user is on a different page.
  *
  * Scope choices for v1 (intentional, revisit as pain emerges):
  *  - Single-slot: a new toast replaces the existing one. Users in

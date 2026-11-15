@@ -19,7 +19,8 @@
  *
  *   1. Environment. Under vitest's default `node` environment Svelte resolves to
  *      the SSR runtime, where effects never run — the test would assert nothing.
- *      Hence the happy-dom header above; see tests/component/README.md.
+ *      Hence living in tests/component, whose vitest project runs happy-dom
+ *      (vitest.config.ts); see tests/component/README.md.
  *   2. Reading the derived OUTSIDE an effect owner recomputes it eagerly, which
  *      masks the missing notification. The consumer below must therefore be a
  *      real `$effect` inside `$effect.root`, reading through `flushSync`.

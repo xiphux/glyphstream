@@ -44,7 +44,7 @@ export interface ModelResolverOptions<Cfg, Resolved extends ResolvedModelBase> {
 	 * malformed block — that propagates by design.
 	 */
 	load: () => Cfg | null;
-	/** Pull the `endpoint/model` string out of the loaded block. */
+	/** Pull the `endpoint::model` string out of the loaded block. */
 	modelIdOf: (cfg: Cfg) => string;
 	/** Decorate the resolved base with the block's extra knobs. */
 	build: (base: ResolvedModelBase, cfg: Cfg) => Resolved;

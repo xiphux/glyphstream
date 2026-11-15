@@ -41,10 +41,10 @@ export async function deleteConversation(id: string, deleteMedia: boolean): Prom
 }
 
 /**
- * Rename a conversation. Unlike archive/delete this reads the server's
- * error body (via errorMessageFromResponse) because a rename can fail
- * for validation reasons — empty title, max length, etc — and the user
- * benefits from seeing the specific message.
+ * Rename a conversation. Unlike archive/delete, a 404 is a failure: the
+ * title the user typed was not saved. The thrown message is the server's
+ * error body, since a rename can also fail validation (empty title, max
+ * length, etc) and the user benefits from seeing the specific reason.
  */
 export async function renameConversation(id: string, title: string): Promise<void> {
 	const res = await fetch(`/api/conversations/${id}`, {

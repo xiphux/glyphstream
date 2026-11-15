@@ -12,9 +12,9 @@
 
 	Implementation: a CSS `mask-image` linear-gradient on the scroll
 	element. The mask makes the top/bottom edge bands transparent,
-	revealing whatever the parent background is. Two CSS variables (set
-	via inline `style:` props) control the band heights, which collapse
-	to zero at the corresponding scroll extremes so the edges look sharp
+	revealing whatever the parent background is. The band heights, part of
+	the inline `style:mask-image` value, collapse to zero at the
+	corresponding scroll extremes so the edges look sharp
 	when you can't scroll further that way. Driving the visual via
 	transparency rather than absolute-positioned overlays keeps everything
 	on one element — no wrapper-sizing dance — which matters because the
@@ -80,9 +80,8 @@
 		};
 	});
 
-	// Animated transition on the mask sizes so the fade fades in/out as
-	// you start/stop scrolling rather than popping. Same duration as the
-	// rest of the sidebar's hover/transition affordances.
+	// Edge bands are `fadeTop`/`fadeBottom` tall; a zero-height band leaves
+	// that edge sharp. They switch with no transition.
 	const maskValue = $derived(
 		`linear-gradient(to bottom, transparent 0, black ${fadeTop}, black calc(100% - ${fadeBottom}), transparent 100%)`,
 	);

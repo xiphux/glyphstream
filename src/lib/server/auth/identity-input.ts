@@ -1,9 +1,9 @@
 /**
  * Validation for the prospective-user identity (display name + email) typed at
  * the start of every onboarding flow — the first-run `/setup` wizard and the
- * invited `/join` redemption, over both GitHub OAuth and passkeys. All four
- * start/options endpoints share these exact rules, so they live here rather than
- * being copy-pasted (with their magic length caps) per route.
+ * invited `/join` redemption, over both OAuth (any provider) and passkeys. All
+ * four start/options endpoints share these exact rules, so they live here rather
+ * than being copy-pasted (with their magic length caps) per route.
  */
 import { error } from '@sveltejs/kit';
 

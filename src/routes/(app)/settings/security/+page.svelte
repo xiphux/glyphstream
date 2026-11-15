@@ -323,11 +323,6 @@
 		}
 	}
 
-	// The link-start endpoints are plain GET navigations (anchor hrefs):
-	// POST-via-form would trip the CSP's `form-action 'self'` since the
-	// endpoint ultimately redirects to the external IdP; top-level
-	// navigations aren't policed the same way.
-
 	async function addPasskey() {
 		if (addBusy) return;
 		addBusy = true;
@@ -501,6 +496,12 @@
 			{/if}
 
 			{#if linkableProviders.length > 0}
+				<!--
+					The link-start endpoints are plain GET navigations (anchor hrefs):
+					POST-via-form would trip the CSP's `form-action 'self'` since the
+					endpoint ultimately redirects to the external IdP; top-level
+					navigations aren't policed the same way.
+				-->
 				<div class="mt-4 flex flex-wrap gap-2 border-t border-border pt-3">
 					{#each linkableProviders as provider (provider.id)}
 						<a

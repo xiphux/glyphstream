@@ -422,11 +422,10 @@
 	// list grows. New favorites land at the end (insertion order is the
 	// stored order), so bottom = latest. Tracked via a length cursor
 	// rather than the array reference so unrelated re-renders don't
-	// re-trigger the scroll. `untrack`ed on initial mount-pass: on first
-	// render the count goes from `undefined` to its real value, which
-	// we don't want to read as "the user just added one." `smooth`
-	// behavior is fine even on long lists — the browser caps the
-	// animation duration.
+	// re-trigger the scroll. The cursor starts at `null` so the first run
+	// only records the count: the initial value isn't "the user just
+	// added one." `smooth` behavior is fine even on long lists — the
+	// browser caps the animation duration.
 	let prevFavCount: number | null = null;
 	$effect(() => {
 		const count = data.prefs?.favoriteModels.length ?? 0;
@@ -537,10 +536,11 @@
 		invalidateConversations: () => invalidate('app:conversations'),
 	});
 
-	// Mobile drawer state. The aside is `hidden ... sm:flex` on wide
-	// viewports as before; on narrow viewports it slides in from the left
-	// when this flag is true. Auto-closes on navigation so picking a
-	// conversation doesn't leave the drawer covering the chat.
+	// Mobile drawer state. On wide viewports the aside is static and always
+	// shown (`sm:static sm:translate-x-0`); on narrow viewports it is fixed
+	// and slides in from the left when this flag is true. Auto-closes on
+	// navigation so picking a conversation doesn't leave the drawer
+	// covering the chat.
 	let drawerOpen = $state(false);
 
 	// Which conversation's overflow menu is currently open (if any). Used
@@ -1173,7 +1173,7 @@
 <!--
 	Shared delete-confirm dialog for the sidebar conversation list. It
 	asks the question (and offers the orphan-media checkbox); the
-	actual DELETE + post-delete navigation is performDelete() above.
+	actual DELETE + post-delete navigation is convUi.performDelete.
 	The same component backs the /archived list so both delete paths
 	are identical.
 -->

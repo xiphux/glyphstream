@@ -1,6 +1,6 @@
 /**
- * Shared title-task wiring used by the three response paths
- * (text stream, video stream, image sync). Centralizes:
+ * Shared title-task wiring used by every response path (the chat relay,
+ * the image/video media relay, and fan-out's /prepare). Centralizes:
  *   1. The "fire only on first exchange" gate (task_model configured
  *      AND conversation's title_source is still 'fallback').
  *   2. The bounded race used by callers that want to deliver the title
@@ -26,8 +26,8 @@ const log = createLogger('title-task');
  * promise that resolves to the persisted title or null. The promise
  * never rejects.
  *
- * Gated here (not at the four call sites) so every path — text/media relays,
- * sync send, fan-out prepare — and any future caller is covered at once.
+ * Gated here (not at the call sites) so every path — chat and media relays,
+ * fan-out prepare — and any future caller is covered at once.
  */
 export function startTitleTaskIfFirstExchange(
 	conversationId: string,

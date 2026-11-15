@@ -541,8 +541,8 @@ describe('messages: append + active-branch walk', () => {
 		expect(r?.newActiveLeaf).toBe(m1.id);
 
 		const detail = getConversationDetail(conv.id, u.id);
-		// Active branch is now just [m1] — m2 is orphaned but still in the DB
-		// (will become a sibling once the v2 branching UI lands).
+		// Active branch is now just [m1] — m2 leaves the active branch but stays
+		// in the DB, as a sibling of whatever is next appended under m1.
 		expect(detail?.messages.map((m) => m.id)).toEqual([m1.id]);
 	});
 

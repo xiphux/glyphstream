@@ -158,9 +158,8 @@ export interface AttachedItem {
 	contentType: string;
 	byteSize: number;
 	/** Kind of attachment — drives whether to render a thumbnail or a
-	 *  download chip. 'image' is the legacy case; 'file' covers xlsx /
-	 *  pdf / csv / etc.; 'video' is reserved for future use (video
-	 *  upload UI doesn't exist yet but the type is honest). */
+	 *  download chip. 'image' and 'video' are picked from the MIME type;
+	 *  'file' covers everything else (xlsx / pdf / csv / etc.). */
 	kind: AttachmentKind;
 	/** Original on-disk filename (only set for `kind: 'file'`). The chip
 	 *  UI uses this as its display label. */

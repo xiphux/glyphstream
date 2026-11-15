@@ -63,9 +63,9 @@
 	// The (app) layout defers this list to `[]` on a full-document load (see its
 	// `deferred` branch) and refills it from the client's post-mount invalidate.
 	// Every other consumer is a menu opened well after mount; this section is
-	// primary page content on first paint, so it needs the same emptiness guard
-	// `settings/models` uses — otherwise a bookmarked or refreshed visit paints a
-	// heading and explanation with no checkboxes under it, and offline it stays
+	// primary page content on first paint, so the template guards on emptiness
+	// and shows a loading line — otherwise a bookmarked or refreshed visit paints
+	// a heading and explanation with no checkboxes under it, and offline it stays
 	// that way.
 	const visibleFeatureCategories = $derived(data.featureCategories);
 

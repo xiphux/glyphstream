@@ -13,10 +13,10 @@ const tools = new Map<string, Tool>();
  *  this is the desired behavior under Vite HMR (the dev server re-
  *  evaluates the tools module and re-runs each `register()`; throwing
  *  would force a full restart on every edit). MCP tools register via
- *  the same path at startup; they don't re-register at runtime in v1,
- *  so the replace semantics are only exercised in dev mode HMR. The
- *  registry stays globally unique by construction — Map key collision
- *  means latest-wins, not coexistence. */
+ *  the same path and re-register at runtime too — a global server on
+ *  reconnect (`registerMcpServerTools`), a per-user server's tools on
+ *  every request — relying on the same replace semantics. The registry stays globally unique by
+ *  construction — Map key collision means latest-wins, not coexistence. */
 export function register(tool: Tool): void {
 	const name = tool.definition.function.name;
 	tools.set(name, tool);

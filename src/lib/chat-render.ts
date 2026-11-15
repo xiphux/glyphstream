@@ -784,9 +784,9 @@ export function computeMergeFlags(
 // `react_to_message` is the one tool whose call must never render as a tool
 // call. A reaction that announces itself — "calling react_to_message…" then an
 // emoji — is not a reaction; the whole effect is that it appears. So the name
-// is special-cased in four places, and lives HERE (client-safe, like
-// CODE_ARG_TOOLS above) so all three import the same constant instead of
-// re-spelling the string:
+// is special-cased in the four places below, and lives HERE (client-safe,
+// like CODE_ARG_TOOLS above) so every module that needs it imports the same
+// constant instead of re-spelling the string:
 //
 //   1. `relay.ts` drops its `tool_call_start` / `tool_call_args_delta` frames
 //      as they stream past.

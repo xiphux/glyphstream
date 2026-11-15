@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { parse } from 'yaml';
 
 /**
- * ci.yml's check jobs may skip, on master and on a release tag, when `gate`
+ * ci.yml's check jobs may skip, on main and on a release tag, when `gate`
  * finds that this content has already gone green. So `gate` is the only thing
  * standing between a commit and an image that verified nothing — docker.yml
  * runs `build` behind `needs: tests`, and nothing else re-checks.

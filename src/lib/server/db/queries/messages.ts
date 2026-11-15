@@ -1208,8 +1208,9 @@ export function deleteBranch(
 		// Clear the parked fan-out marker if its anchor message is itself in
 		// the delete set — otherwise the conversation UPDATE below (and the row
 		// delete) would dangle / FK-error on it. The DB-level FK is NO ACTION
-		// (drizzle-kit can't emit ON DELETE via ALTER TABLE ADD COLUMN), so the
-		// app must null the reference explicitly, like selectBranch/truncate do.
+		// (the drizzle-kit that generated migration 0019 emitted no ON DELETE
+		// clause), so the app must null the reference explicitly, like
+		// selectBranch/truncate do.
 		const clearFanoutMarker = convRow?.fanoutParent != null && toDelete.has(convRow.fanoutParent);
 
 		// Order matters:

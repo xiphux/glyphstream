@@ -590,9 +590,10 @@
 	/** Star / unstar one item from the lightbox.
 	 *
 	 * Optimistic, unlike the model-favorites star (which re-reads `data.prefs`):
-	 * there's no cheap load to re-run here. This page ships the whole visible
-	 * library, so an `invalidate` to move one star would re-serialize it, and a
-	 * feed reseed is two more round trips for a badge. So the local copies flip
+	 * there's no cheap load to re-run here. In search mode the page load is a
+	 * ranked search of up to 150 items plus a query embedding, so an
+	 * `invalidate` to move one star would redo it, and a feed reseed is two
+	 * more round trips for a badge. So the local copies flip
 	 * immediately and revert on failure. (A star doesn't invalidate the server's
 	 * memo for an UNFILTERED view — see `galleryUserFingerprint`'s split — so the
 	 * reseed this avoids is a round trip, not an O(library) restack. It is one
@@ -649,15 +650,15 @@
 					// grid until a manual reload. Only the unstar names an id, since nothing
 					// leaves the library on a re-star.
 					//
-					// Known gap while DRILLED IN: `refreshAfterMutation` was written for
-					// hard-delete, so it rebuilds `drillItems` by *filtering* the local
-					// array — it can remove a member but never re-add one. Unstar then
-					// re-star the same item inside an open stack and the grid behind the
-					// lightbox is correct while that stack's member list stays one short
-					// until you leave and re-enter it. Restoring it properly needs a member
-					// refetch, and the unit's key may itself have re-anchored in between
-					// (a prompt run is keyed off its filtered leader), so it is not a
-					// one-liner; left as-is deliberately rather than papered over.
+					// TODO: Known gap while DRILLED IN: `refreshAfterMutation` was written for
+					// hard-delete, so it rebuilds `drillItems` by *filtering* the local array
+					// — it can remove a member but never re-add one. Unstar then re-star the
+					// same item inside an open stack and the grid behind the lightbox is
+					// correct while that stack's member list stays one short until you leave
+					// and re-enter it. Restoring it properly needs a member refetch, and the
+					// unit's key may itself have re-anchored in between (a prompt run is keyed
+					// off its filtered leader), so it is not a one-liner; left as-is
+					// deliberately rather than papered over.
 					await refreshAfterMutation(next ? new Set<string>() : new Set([id]));
 					// Not invalidating the page load here is deliberate, and measured. The
 					// Model dropdown's counts come from that load and are narrowed by

@@ -237,7 +237,7 @@
 						// fires the instant the user swipes back into the PWA,
 						// which is exactly when a waiting version should be
 						// detected. update() rejects when offline — swallow it
-						// and we'll retry on the next focus or interval tick.
+						// and we'll retry on the next visibility or interval tick.
 						if (document.visibilityState === 'visible') {
 							registration.update().catch(() => {});
 						}
@@ -247,7 +247,7 @@
 					// Belt-and-suspenders for long-lived foreground sessions
 					// (a desktop tab left open all day) where visibilitychange
 					// never fires. Suspended on iOS, so it can't be the only
-					// mechanism — the focus listener above carries that case.
+					// mechanism — the visibilitychange listener above carries that case.
 					setInterval(checkForUpdate, 60 * 60 * 1000);
 				},
 			});

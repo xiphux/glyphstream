@@ -26,8 +26,7 @@ function makeItem(overrides: Partial<AttachedItem> = {}): AttachedItem {
 }
 
 function makeStore(items: AttachedItem[], remove = vi.fn()): AttachmentStore {
-	// Use $state for items so the component's reactivity sees mutations,
-	// though most tests don't need to mutate after render.
+	// A plain array, not $state: no test mutates the items after render.
 	return { items, remove } as unknown as AttachmentStore;
 }
 

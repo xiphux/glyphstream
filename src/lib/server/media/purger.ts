@@ -24,7 +24,8 @@
  * tick; at 30 days, a 15-minute granularity is noise.
  *
  * Lifecycle:
- *   - At startup we mount a setInterval; one tick = one sweep.
+ *   - At startup we mount it through `createSweeper` (util/sweeper.ts):
+ *     one sweep shortly after boot, then one per interval.
  *   - Each sweep does three things, in order:
  *       1. Stamp any zero-ref-count uploaded rows that lack
  *          `unreferenced_since` (e.g. orphans from a crash between
@@ -39,9 +40,9 @@
  *     downtime can't lock up the DB or blow the event loop with a single
  *     huge transaction. The next tick picks up where this one left off.
  *
- * Why setInterval and not a cron / job library: we're a single-Node
- * deploy with no other workers; a long-lived interval inside the
- * SvelteKit process is the smallest viable footprint. If we ever go
+ * Why an in-process timer and not a cron / job library: we're a
+ * single-Node deploy with no other workers; a long-lived timer inside
+ * the SvelteKit process is the smallest viable footprint. If we ever go
  * multi-node we'll move this to its own process.
  */
 

@@ -689,10 +689,9 @@ function enforcePoolCap(userId: string): void {
 
 	if (liveEntries.length < cap) return;
 
-	// LRU-evict a ready entry whose mutex isn't currently held. Skip
-	// starting entries (someone's actively waiting on them). If every
-	// slot is in-flight, the caller eats a clear error rather than
-	// silently queueing.
+	// LRU-evict a ready entry with no call in flight. Skip starting entries
+	// (someone's actively waiting on them). If every slot is in-flight, the
+	// caller eats a clear error rather than silently queueing.
 	const ready = liveEntries.filter((e): e is ReadyEntry => e.state === 'ready');
 
 	if (evictIdle(ready)) return;

@@ -912,7 +912,9 @@ export interface LoadedEmbeddingsConfig {
 
 /**
  * Parse the optional top-level `[embeddings]` block — the embedding model used
- * for hybrid retrieval (fetch_url relevance selection; later recall_memory).
+ * for hybrid retrieval (fetch_url relevance selection, search_tools) and for
+ * semantic search over persisted embeddings (recall_memory, gallery prompt
+ * search).
  *
  * Unlike `[search]`, this block carries no secret: baseUrl + apiKey come from
  * the referenced endpoint. And like `loadTaskModel`, it does NOT verify the

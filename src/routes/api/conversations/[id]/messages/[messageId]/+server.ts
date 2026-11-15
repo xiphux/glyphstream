@@ -4,9 +4,10 @@ import { truncateAtMessage } from '#lib/server/db/queries/messages.js';
 import type { RequestHandler } from './$types';
 
 /**
- * "Edit" v1 behavior: truncate the active branch at this message — set
+ * "Edit" behavior: truncate the active branch at this message — set
  * active_leaf to the message's parent. The message + descendants stay in
- * the DB (unreachable until v2's branch UI exposes them as siblings).
+ * the DB; once the follow-up POST adds a new child to that parent, they
+ * are a sibling branch the branch navigator can switch back to.
  *
  * Client is expected to follow up with a fresh POST /messages to continue.
  */

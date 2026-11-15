@@ -5,12 +5,12 @@
  * + tool(result) pair, the same rendering, sticky for later turns, and
  * read_skill_file works after.
  *
- * Called from the message-send handler AFTER the user message is created and
- * BEFORE the relay generates. Because each append advances the active leaf, the
- * handler's subsequent `walkActiveBranch` already includes this exchange in the
- * upstream request. The handler then passes the returned `leafMessageId` as the
- * relay's `initialParentMessageId` so the model's response continues off the
- * tool result instead of forking off the user message.
+ * Called from `startChatTurn` AFTER the user message is created and BEFORE the
+ * relay generates. Because each append advances the active leaf, its subsequent
+ * `walkActiveBranch` already includes this exchange in the upstream request. It
+ * then passes the returned `leafMessageId` as the relay's
+ * `initialParentMessageId` so the model's response continues off the tool
+ * result instead of forking off the user message.
  *
  * Server-authoritative: each name is re-validated via `getEnabledSkillByName`
  * (userId-scoped); a disabled/deleted/foreign name is skipped silently rather

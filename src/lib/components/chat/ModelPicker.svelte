@@ -57,8 +57,8 @@
 		 * Enable multi-model "compare" mode — a toggle in the dropdown header
 		 * that flips rows from single-select to add-to-comparison. Off by
 		 * default, so the settings/per-turn pickers are unaffected. Only base
-		 * chat models are compare-eligible in this cut (no presets, no
-		 * image/video); the rest are hidden while comparing.
+		 * models (no presets) of a chat, image or video kind are
+		 * compare-eligible; the rest are hidden while comparing.
 		 */
 		allowCompare?: boolean;
 		/** The compare "cart": model id → count. Bindable so the consumer can
@@ -607,8 +607,7 @@
 	});
 
 	// On open, jump highlight to the currently-selected row (or the first one
-	// if nothing matches). On filter change, snap highlight back to the top
-	// — otherwise the highlight could land out-of-bounds in the new list.
+	// if nothing matches).
 	$effect(() => {
 		if (open) {
 			const idx = filteredItems.findIndex((i) => i.value === value);
@@ -624,6 +623,8 @@
 	$effect(() => {
 		if (open) untrack(() => onOpen?.());
 	});
+	// On search change, snap highlight back to the top — otherwise the
+	// highlight could land out-of-bounds in the new list.
 	$effect(() => {
 		void search;
 		highlightedIndex = 0;

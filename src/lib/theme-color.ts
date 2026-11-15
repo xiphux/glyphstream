@@ -1,40 +1,4 @@
 /**
- * Sync the active surface color to the two places that can't read it from CSS.
- *
- * Named for the job rather than for one of its outputs: a function whose name
- * points at half its effects is one a later edit tidies down to that half.
- * "Surface chrome" is the two of them together — the browser's and the OS's,
- * both taking a color the page can only hand over, never delegate.
- *
- * The two places: `<meta name="theme-color">`, which tints browser chrome
- * (Safari tabs, Android) and non-iOS installed-app bars, and the
- * .status-bar-sampler element on the (auth) routes — inside (app) the mobile
- * top bar is what iOS samples, and it needs nothing from here because it takes
- * its colour from the cascade like any other row.
- *
- * Only the META needs toLegacyRgb. The sampler does not: iOS does not drop the
- * oklch the stylesheet sets — a theory that once misdiagnosed the status bar
- * coming up blurred on a cold launch. WebKit's gate is
- * `styleColor.isResolvedColor()`, which excludes unresolved values like
- * currentColor, not modern colour spaces (see the sampler rule in app.css for
- * what the real gates are). The sampler write is kept because it is free and
- * harmless, not because it is load-bearing.
- *
- * That last sentence is a claim worth keeping true rather than assuming. Nothing
- * downstream may depend on this write landing first: status-bar-probe
- * normalises for itself (it imports toLegacyRgb below) rather than relying on
- * the inline rgb() this leaves on the sampler.
- *
- * We read the *resolved* body background (the `--color-surface` token) rather
- * than the raw custom property, then normalise it to legacy `rgb()` — see
- * toLegacyRgb. Reading getComputedStyle forces a style flush, so calling this
- * right after flipping data-theme / data-scheme returns the new color.
- *
- * One JS-managed meta (created on first call) rather than the static
- * media-scoped tags in app.html, so it can reflect the forced scheme +
- * per-theme palette that prefers-color-scheme media queries can't see.
- */
-/**
  * Normalise a computed CSS colour to legacy `rgb()`.
  *
  * The browser does not hand back rgb() on its own: `--color-surface` is
@@ -126,6 +90,42 @@ const isFullyTransparent = (value: string): boolean => {
 	return alpha !== undefined && Number(alpha.trim()) === 0;
 };
 
+/**
+ * Sync the active surface color to the two places that can't read it from CSS.
+ *
+ * Named for the job rather than for one of its outputs: a function whose name
+ * points at half its effects is one a later edit tidies down to that half.
+ * "Surface chrome" is the two of them together — the browser's and the OS's,
+ * both taking a color the page can only hand over, never delegate.
+ *
+ * The two places: `<meta name="theme-color">`, which tints browser chrome
+ * (Safari tabs, Android) and non-iOS installed-app bars, and the
+ * .status-bar-sampler element on the (auth) routes — inside (app) the mobile
+ * top bar is what iOS samples, and it needs nothing from here because it takes
+ * its colour from the cascade like any other row.
+ *
+ * Only the META needs toLegacyRgb. The sampler does not: iOS does not drop the
+ * oklch the stylesheet sets — a theory that once misdiagnosed the status bar
+ * coming up blurred on a cold launch. WebKit's gate is
+ * `styleColor.isResolvedColor()`, which excludes unresolved values like
+ * currentColor, not modern colour spaces (see the sampler rule in app.css for
+ * what the real gates are). The sampler write is kept because it is free and
+ * harmless, not because it is load-bearing.
+ *
+ * That last sentence is a claim worth keeping true rather than assuming. Nothing
+ * downstream may depend on this write landing first: status-bar-probe
+ * normalises for itself (it imports toLegacyRgb) rather than relying on
+ * the inline rgb() this leaves on the sampler.
+ *
+ * We read the *resolved* body background (the `--color-surface` token) rather
+ * than the raw custom property, then normalise it to legacy `rgb()` — see
+ * toLegacyRgb. Reading getComputedStyle forces a style flush, so calling this
+ * right after flipping data-theme / data-scheme returns the new color.
+ *
+ * One JS-managed meta (created on first call) rather than the static
+ * media-scoped tags in app.html, so it can reflect the forced scheme +
+ * per-theme palette that prefers-color-scheme media queries can't see.
+ */
 export function syncSurfaceChrome(): void {
 	if (typeof document === 'undefined') return;
 	const bg = toLegacyRgb(getComputedStyle(document.body).backgroundColor);

@@ -2,12 +2,14 @@
  * Start a chat turn: assemble the system prompt, tools and upstream request
  * from the conversation's active branch, then hand them to the streaming relay.
  *
- * Shared by the three things that start one — a message send, a tool-approval
- * resume, and a scheduled task — so the per-request surface (prompt, tools[],
- * the approval gate, the request builder) can't drift between them.
+ * Shared by the four things that start one — a message send, a tool-approval
+ * resume, a scheduled task and a check-in — so the per-request surface
+ * (prompt, tools[], the approval gate, the request builder) can't drift
+ * between them.
  *
  * Takes no request: everything is keyed by `userId` and `conversationId`, which
- * is what lets the scheduled-task runner start a turn with nobody connected.
+ * is what lets the scheduled-task and check-in runners start a turn with nobody
+ * connected.
  * Admission (ownership, caps, model resolution, the user message itself) and
  * in-flight registration stay with the caller, which knows what kind of turn
  * this is.

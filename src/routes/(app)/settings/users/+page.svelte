@@ -41,8 +41,8 @@
 		});
 	}
 
-	// Used invites are filtered out server-side (a redeemed invite is inert and
-	// its user shows in the Users list), so only outstanding ones reach here.
+	// A redeemed invite is deleted (its user shows in the Users list), so every
+	// row here is outstanding.
 	function inviteStatus(inv: InviteRow): 'expired' | 'active' {
 		return inv.expiresAt <= Date.now() ? 'expired' : 'active';
 	}

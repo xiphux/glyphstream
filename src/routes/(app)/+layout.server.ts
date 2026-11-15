@@ -32,7 +32,7 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 	// Models + customModels also live here so the sidebar's "Favorites"
 	// section can resolve display labels for the user's favorited model
 	// ids without each (app) page having to re-fetch them. The home and
-	// chat pages then read them via `await parent()` instead of running
+	// chat pages read them from the merged page `data` instead of running
 	// their own copy of the same fetch loop.
 	//
 	// NOT awaited on MCP discovery. featureCategories reads the server catalog,

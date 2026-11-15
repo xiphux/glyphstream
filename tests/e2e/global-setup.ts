@@ -1,7 +1,7 @@
 /**
  * Playwright global setup — runs once before any tests.
  *
- * Opens the test DB at the path that the dev server (started by
+ * Opens the test DB at the path that the production server (started by
  * Playwright's webServer) will use, applies migrations, inserts a test
  * user + their GitHub OAuth binding + a session, and writes a
  * storage-state file containing the session cookie so every test
@@ -63,7 +63,7 @@ export default async function globalSetup() {
 	mkdirSync(DATA_DIR, { recursive: true });
 	mkdirSync(MEDIA_DIR, { recursive: true });
 
-	// Open + migrate the same DB the dev server will subsequently open.
+	// Open + migrate the same DB the production server will subsequently open.
 	const sqlite = new DatabaseSync(DB_PATH);
 	sqlite.exec('PRAGMA journal_mode = WAL');
 	sqlite.exec('PRAGMA foreign_keys = ON');

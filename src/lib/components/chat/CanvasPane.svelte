@@ -31,7 +31,7 @@
 	 * animate WIDTH (0 ↔ its natural width) — the chat column, being flex-1,
 	 * reflows smoothly to fill, mirroring the left sidebar's width collapse. On a
 	 * small viewport it's a full-screen overlay, so we slide it in from the right
-	 * with a translate. Respects prefers-reduced-motion (duration 0).
+	 * with a translate.
 	 *
 	 * `--pane-w` pins the inner content at its full width for the whole width
 	 * animation (the inner reads it, left-anchored + clipped) so the document

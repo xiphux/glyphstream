@@ -105,10 +105,11 @@ export interface ToolExecution {
 }
 
 /**
- * Optional UI-only metadata. Never sent upstream. `displayLabel` is a
- * future hook for showing "Clock" alongside `get_current_time` if the
- * raw function name proves too cryptic for some tools — v1 renders the
- * raw name only.
+ * Optional metadata, never part of the tool definition. `displayLabel` is a
+ * short human label ("Clock" for `get_current_time`; an MCP tool's bare,
+ * un-namespaced name). It rides the `tool_pending_approval` event, though the
+ * UI still renders the raw function name; the deferred-tool hint lists MCP
+ * tools by it.
  *
  * `category` groups tools for per-conversation opt-out (see
  * FEATURE_CATEGORIES in `#lib/types/api.js`). Tools sharing a category are

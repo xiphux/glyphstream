@@ -1347,8 +1347,8 @@
 		{:else if avatarSlot || launchSlots}
 			<!--
 				The act-on-this-image actions, in ONE row: "Regenerate" and "Edit" send
-				the user to / pre-loaded with the relevant intent (see the LAUNCH_KEY
-				pattern at the top of this file); "Set as avatar" is the cheapest path
+				the user to / pre-loaded with the relevant intent (stashed under
+				GALLERY_LAUNCH_KEY by stashIntent()); "Set as avatar" is the cheapest path
 				to a preset portrait (generate however you like, including a fan-out of
 				variants, then keep the one you want). They sit just below the prompt
 				strip so they read as actions *on* the prompt and image — the top

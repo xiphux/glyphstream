@@ -34,8 +34,9 @@ test.describe('settings/memories: forget a live memory', () => {
 		const row = page.getByText('prefers metric units');
 		await expect(row).toBeVisible();
 
-		// The trash affordance is hover-revealed (opacity-0) but still clickable —
-		// opacity doesn't gate Playwright actionability or pointer events.
+		// The trash affordance is hover-revealed (opacity-0 until hover) on a
+		// device that can hover, but still clickable — opacity doesn't gate
+		// Playwright actionability or pointer events.
 		await page.getByRole('button', { name: 'Forget memory' }).click();
 
 		// A real <ConfirmDialog> from the (app) layout host — not a per-page render.

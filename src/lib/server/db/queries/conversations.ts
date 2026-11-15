@@ -663,9 +663,10 @@ export class RenameValidationError extends Error {}
  * User-initiated rename. Scoped by `userId` (ownership check) and validates
  * the trimmed title is 1-200 chars. Sets `titleSource = 'user'`, which
  * locks the title against any future AI overwrite via
- * setConversationTitleIfFallback. Returns false on ownership mismatch
- * (404) or no-op (already same title); validation errors throw so the
- * caller can surface them as 400.
+ * setConversationTitleIfFallback. Returns false only when no owned row
+ * matched (the route's 404); an unchanged title still counts as a rename
+ * and bumps `updatedAt` (the client skips those). Validation errors throw
+ * so the caller can surface them as 400.
  */
 export function renameConversation(id: string, userId: string, newTitle: string): boolean {
 	const trimmed = newTitle.trim();
@@ -703,7 +704,7 @@ export interface FirstExchange {
  * branching here — at title-gen time there is exactly one path.
  *
  * Returns null if the conversation has no messages yet (shouldn't happen
- * at call time, but defensive). `assistantParts` is null when only the
+ * at call time, but defensive). `assistantText` is null when only the
  * user message exists (multimodal in-flight: the asset hasn't landed).
  */
 export function getConversationFirstExchange(id: string, userId: string): FirstExchange | null {

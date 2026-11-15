@@ -4,8 +4,8 @@
  *
  *  1. Whether any user exists. Once one does, setup is `closed` —
  *     every entry point (the page, the /api/auth/setup/* endpoints,
- *     the layout redirect) needs to honor that uniformly. Single-user
- *     cap, baked in.
+ *     the layout redirect) needs to honor that uniformly. Everyone
+ *     after the first (admin) user joins by invite instead.
  *
  *  2. Whether the request carries the matching `SETUP_TOKEN` in
  *     `?token=…`, compared in constant time.

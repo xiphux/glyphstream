@@ -53,10 +53,10 @@ export const MAX_CONVERSATION_TITLE_LENGTH = 200;
  *   2. The messages handler also consults the list directly for non-tool
  *      gates — notably `personalization`, which suppresses the
  *      prefs-derived persona system prompt (name / About you / Custom
- *      instructions) at request time. When MCP and memory land, their
- *      tools will categorize under `personalization` too so a single
- *      switch seals every avenue that ships personal context to the
- *      model.
+ *      instructions) at request time. The memory tools categorize under
+ *      `personalization` too, so a single switch seals every built-in
+ *      avenue that ships personal context to the model. MCP servers
+ *      each get their own opaque `mcp:<server-id>` category.
  *
  * Why category-level instead of per-tool? Privacy-sensitive opt-outs are
  * security boundaries, not UX groupings. Hiding `web_search` while
@@ -261,8 +261,8 @@ export interface ModelEntry {
 	supportsTools: boolean;
 	/**
 	 * Maximum context window in tokens (prompt + completion), when known.
-	 * Powers the "N / max tokens" budget readout and, later, compaction
-	 * triggers. Null when neither the upstream nor the endpoint config
+	 * Powers the "N / max tokens" budget readout and the auto-compaction
+	 * threshold. Null when neither the upstream nor the endpoint config
 	 * supplies one.
 	 *
 	 * Resolution order (in `normalizeUpstreamModel`):
@@ -1646,10 +1646,11 @@ export interface StreamCanvasVersionEvent {
 
 // --- compaction streaming events ----------------------------------------
 //
-// Emitted by the compaction relay (the manual /compact?stream=1 endpoint, and
-// later the just-in-time auto path inside a normal turn). The client renders
-// the streaming text into an expandable "Summarizing context…" block that
-// settles into the collapsed summary divider once `compaction_done` lands.
+// Emitted by the compaction relay behind /compact?stream=1, which serves both
+// the manual Compact button and the client's just-in-time auto pass before a
+// send. The client renders the streaming text into an expandable "Summarizing
+// context…" block that settles into the collapsed summary divider once
+// `compaction_done` lands.
 
 /** The summarization stream is starting — show the in-flight summary block. */
 export interface StreamCompactionStartEvent {

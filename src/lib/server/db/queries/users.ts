@@ -88,10 +88,11 @@ export function createInitialUser(input: CreateInitialUserInput): string {
 }
 
 /**
- * Counts the rows in `users`. Used by the single-user-cap check in
- * both the OAuth callback (refuse new bindings when count > 0 and the
- * external_id isn't already bound) and the `/setup` gate (only
- * reachable when count === 0).
+ * Counts the rows in `users`, which decides whether first-run setup is
+ * still open: the `/setup` gate (only reachable when count === 0),
+ * `createInitialUser`, the OAuth callback (the setup flow's parallel-tab
+ * race; an unbound login before any user exists), and the redirect to
+ * `/setup` from the (app) layout guard and `/login`.
  */
 export function countUsers(): number {
 	const db = getDb();

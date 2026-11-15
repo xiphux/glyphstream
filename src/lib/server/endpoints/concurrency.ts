@@ -779,8 +779,8 @@ export function isResourceGroupPaused(resourceGroup: string): boolean {
 }
 
 /** Live counts for a resource group — the test seam for the queue semantics.
- *  The `queued` event's `ahead` value is computed inline in
- *  acquireEndpointSlot, not from this. Returns zeros for a group never seen;
+ *  The `queued` event's `ahead` value is computed inline in `acquire`, not
+ *  from this. Returns zeros for a group never seen;
  *  `getResourceGroupSnapshot` is the richer read the admin view uses, and
  *  distinguishes "never seen" from "seen and idle". Pending declarations are
  *  deliberately absent: they take no capacity and hold no place in line, so

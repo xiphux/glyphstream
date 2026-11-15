@@ -538,11 +538,11 @@ function recentlyFailed(thumbAbs: string): boolean {
 }
 
 /**
- * `kind` is REQUIRED rather than defaulting to 'image'. The default existed
- * only to spare two older test call sites, and it was a live footgun: a caller
- * that forgot it for a video would hand an mp4 to sharp, which throws — and
- * that throw is now memoized, so the mistake would outlast the request. There
- * is one production caller and it always knew the kind.
+ * `kind` is required rather than defaulting to 'image': a caller that forgot
+ * it for a video would hand the mp4 to sharp, which can't decode it, so the
+ * video would never get a poster and the image fallback would stream the
+ * original. Both production callers (the thumbnail endpoint and the
+ * persister's prewarm) know the kind.
  *
  * Returns the cached thumbnail if it exists, otherwise generates one
  * lazily, writes it to disk, and returns it. If neither is possible

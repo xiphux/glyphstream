@@ -5,9 +5,9 @@
  * (no remaining OAuth bindings AND no registered passkeys).
  *
  * Check the binding exists BEFORE applying the last-method math.
- * A user with no bindings calling DELETE for an arbitrary provider
- * would otherwise hit a `count - 1` underflow and produce a
- * misleading 409 instead of 404.
+ * Otherwise a user with no other viable method calling DELETE for a
+ * provider they never bound would get a misleading 409 ("last sign-in
+ * method") instead of 404.
  */
 import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';

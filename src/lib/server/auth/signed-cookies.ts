@@ -1,9 +1,12 @@
 /**
- * HMAC-signed JSON payloads for short-lived flow-carry cookies. Used
- * by `/setup`'s GitHub round-trip (display name + email + token must
- * round-trip through GitHub) and its passkey flow (prospective user
- * id + display name + email must round-trip between the options and
- * verify endpoints) without trusting the cookie value alone.
+ * HMAC-signed JSON payloads for short-lived flow-carry cookies. Used by
+ * `/setup` and `/join`: their OAuth round-trip (display name + email, plus the
+ * invite token for `/join`, must round-trip through the provider) and their
+ * passkey flow (prospective user id + display name + email must round-trip
+ * between the options and verify endpoints), without trusting the cookie value
+ * alone. The module also owns the attributes every auth cookie is written and
+ * cleared with (`setCarryCookie`, `clearAuthCookie`), including the unsigned
+ * OAuth state cookies of the login, setup, join and link flows.
  *
  * Format: `<base64url(JSON payload)>.<base64url(HMAC-SHA256 of the
  * payload)>`. Verifying reads both halves, recomputes the HMAC over

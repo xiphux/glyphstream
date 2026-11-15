@@ -1,15 +1,13 @@
 /**
- * On-the-fly compression for dynamic responses.
- *
- * Only used when the deploy has no compression-capable reverse proxy in
- * front (Synology's built-in proxy is the canonical case — it doesn't
- * expose a compress option in the UI). Static assets are precompressed
- * at build time by adapter-node, so this only fires on SSR pages and
- * API responses.
+ * On-the-fly compression for dynamic responses. Static assets are
+ * precompressed at build time by adapter-node, so this only fires on SSR pages
+ * and API responses.
  *
  * Gated by the COMPRESS_DYNAMIC env var; default on (see its docstring in
  * env.ts — a proxy in front skips a response that is already encoded, so
- * nothing is compressed twice).
+ * nothing is compressed twice). It matters most where the deploy has no
+ * compression-capable reverse proxy in front (Synology's built-in proxy is the
+ * canonical case — it doesn't expose a compress option in the UI).
  *
  * Critical exclusion: text/event-stream MUST NOT be gzip-buffered. The
  * chat page relies on each SSE event reaching the browser at flush

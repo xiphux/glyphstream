@@ -96,9 +96,9 @@ export interface MemoryTierRow {
  * `createdAt` alone does NOT give that guarantee: it's `Date.now()` at insert, so
  * a consolidation pass (or any burst of saves) writes rows sharing a millisecond,
  * and SQLite is free to render tied rows in whichever order the chosen plan
- * happens to produce. The `id` tiebreak makes the order total — which also keeps
- * the system prompt byte-identical between turns, so the upstream's prefix cache
- * survives.
+ * happens to produce. The `INSERT_ORDER` tiebreak makes the order total — which
+ * also keeps the system prompt byte-identical between turns, so the upstream's
+ * prefix cache survives.
  */
 export function listMemoriesForUser(userId: string): Memory[] {
 	const db = getDb();

@@ -79,12 +79,12 @@ export interface PersonaPart {
 }
 
 /**
- * Compose the three personalization fields plus the saved-memory index
- * into a single system prompt for the model. Each non-empty field
- * becomes its own labeled section; empty fields are omitted (no "Name:
- * (blank)" leaks). Returns null when all four (name, about, custom,
- * memories) are empty — the caller (conversation-create handler)
- * treats null as "no system prompt for this conversation."
+ * Compose the three personalization fields, the saved-memory index and the
+ * conversation-topics overview into the labeled sections of the persona
+ * system prompt. Each non-empty field becomes its own section; empty fields
+ * are omitted (no "Name: (blank)" leaks). Returns an empty array when every
+ * section is empty, which `composePersonaPromptParts`' callers treat as "no
+ * persona prompt for this turn."
  *
  * Memories ride in the same prompt because they ride the same gate:
  * the conversation's `personalization` category toggle seals every
@@ -94,8 +94,9 @@ export interface PersonaPart {
  *
  * Returned as labeled parts rather than one pre-joined string so the context
  * breakdown can price each section separately (the memory index and the topic
- * overview are the two that grow without bound). `composePersonaSystemPrompt`
- * joins them for the wire; nothing else should depend on the split.
+ * overview are the two that grow without bound). `composePersonaPrompt`
+ * (persona-context.ts) joins them for the wire; nothing else should depend on
+ * the split.
  *
  * The labels are intentionally plain English rather than YAML/JSON
  * keys: we're authoring instructions for the model to read, and
@@ -157,8 +158,8 @@ export function composePersonaParts(
 	return parts;
 }
 
-/** Joined rendering of `composePersonaParts` — the string that actually ships
- *  as the system prompt. Null when every section is empty. */
+/** Joined rendering of `composePersonaParts`, with the same join
+ *  `composePersonaPrompt` puts on the wire. Null when every section is empty. */
 export function composePersonaSystemPrompt(
 	prefs: UserPreferences,
 	memories: Memory[] = [],

@@ -12,9 +12,8 @@ test.beforeEach(() => resetData());
  * and clearing on submit. The integration spans two route files plus the
  * shared composer, so a refactor could break it while unit tests stay green.
  *
- * State note: workers=1, DB wiped once in global-setup; these create
- * conversations, so they run after authenticated.spec's empty-state assertions
- * (alphabetical order). Each test resets first and uses unique titles.
+ * Each test starts from the reset above, so spec order doesn't matter, and
+ * uses a unique title.
  */
 
 const draftKey = (id: string | null) => `glyphstream:composerDraft:${id ?? 'new'}`;

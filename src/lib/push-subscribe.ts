@@ -8,7 +8,7 @@
  * iOS Web Push (16.4+) has two non-obvious constraints:
  *  1. The PWA must be installed to the Home Screen — Safari running
  *     in a normal tab can never receive push, even if the user grants
- *     permission. `isIosStandalone()` lets the UI gate the toggle.
+ *     permission. `isIosBeforeInstall()` lets the UI gate the toggle.
  *  2. `Notification.requestPermission()` must run inside a user
  *     gesture. That's why `subscribe()` accepts the public key as an
  *     argument rather than fetching it itself — the fetch can happen

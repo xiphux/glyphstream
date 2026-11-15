@@ -50,8 +50,8 @@ export function requireValidInvite(token: unknown): { inviteToken: string; invit
 export class InviteConsumedError extends Error {}
 
 /**
- * Create a user from a redeemed invite and bind a GitHub identity, marking
- * the invite (deleting it) — all in one transaction. `consumeInvite`'s DELETE
+ * Create a user from a redeemed invite and bind an OAuth identity, consuming
+ * (deleting) the invite — all in one transaction. `consumeInvite`'s DELETE
  * is the single-use guard: if a parallel redemption already removed the
  * invite, it matches zero rows and we throw to roll the whole thing back.
  * `invitedByUserId` (the issuing admin) is denormalized onto the new user.
@@ -90,7 +90,7 @@ export function finalizeOAuthJoin(args: {
 
 /**
  * Create a user from a redeemed invite and bind a passkey credential,
- * marking the invite used — all in one transaction. `userId` is the
+ * consuming (deleting) the invite — all in one transaction. `userId` is the
  * prospective id the authenticator already recorded as the userHandle, so
  * the credential's `userId` and the new `users.id` match.
  */

@@ -1337,12 +1337,6 @@
 		return { duration: 160, css: (t: number) => `opacity: ${t}` };
 	}
 
-	// The just-streamed message id (`turn.streamedMessageId`): its content was
-	// already on screen as the in-flight bubble, so when the persisted row mounts
-	// to replace it we suppress the arrival fade — otherwise the bubble visibly
-	// blinks out and re-fades on finalize. The in-flight bubble itself carries the
-	// fade (on stream start) instead.
-
 	// Land focus in the follow-up composer whenever the conversation
 	// becomes ready for input — on entering a conversation (including
 	// switching straight from another one), and the moment an in-flight
@@ -2629,7 +2623,7 @@
 			avatar={canGenerateAvatar
 				? {
 						// Server-computed, deliberately NOT `avatarWorkflow.imageModels.length > 0`
-						// like the list two lines below. This gates whether the affordance
+						// like AvatarDrawDialog's `models`. This gates whether the affordance
 						// appears at all, and the client holds a first-paint slice — it would
 						// count zero on a perfectly healthy install and silently remove the
 						// feature. The list behind the button is fetched on click.
@@ -2770,6 +2764,13 @@
 						`scrollTop = el.scrollHeight`, so a short estimate scrolls to
 						the bottom of a document that doesn't exist, and a row mounting
 						collapsed on stream-finalize snaps the view off the reply.
+					-->
+						<!--
+						The just-streamed message (`turn.streamedMessageId`) was already on
+						screen as the in-flight bubble, so when the persisted row mounts to
+						replace it the arrival fade is suppressed — otherwise the bubble
+						visibly blinks out and re-fades on finalize. The in-flight bubble
+						itself carries the fade (on stream start) instead.
 					-->
 						<div
 							id="msg-{m.id}"

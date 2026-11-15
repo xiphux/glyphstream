@@ -9,10 +9,15 @@
  * multi-iteration tool loop calls this same helper at each iteration
  * boundary.
  *
- * Tool execution is parallel via Promise.allSettled — every built-in
- * tool today (clock) is trivially side-effect-free. Future
- * side-effecting tools that need serial execution can carry an
- * opt-in flag on the Tool interface; we don't need it for v1.
+ * A turn's tool calls run concurrently (Promise.all; execute() failures are
+ * caught per call and become error results, so one tool can't sink its
+ * siblings). Every execute() is started in tool-call order, so synchronous
+ * tools (memory, reactions, clock) also complete in that order. Async
+ * side-effecting tools guard themselves: update_canvas is a compare-and-swap
+ * on the current version, and run_python/run_skill_script serialize on the
+ * conversation's interpreter mutex, though not necessarily in tool-call order.
+ * MCP tools get no ordering guarantee. Results are persisted serially
+ * afterwards, in tool-call order.
  */
 
 import type { ChatMessage, MessagePart, StreamEvent } from '#lib/types/api.js';

@@ -5,11 +5,11 @@ import { expect, type BrowserContextOptions, type Page } from '@playwright/test'
 import { TEST_USER } from './global-setup';
 
 /**
- * Shared actions for the flow specs. The pattern throughout: bootstrap a
- * conversation by *actually using the app* (sending through the mock
- * upstream) rather than seeding the DB directly — keeps the tests fully
- * black-box and exercises the real create→navigate→stream round-trip that
- * the flows depend on.
+ * Shared actions and seeders for the e2e specs. A flow that is ABOUT the
+ * create→navigate→stream round-trip bootstraps its conversation by actually
+ * using the app (sendChatFromHome / generateImageFromHome, through the mock
+ * upstream); state a spec only needs as a precondition is seeded straight into
+ * the DB by the `seed*` helpers.
  */
 
 /** The deterministic reply tests/e2e/fixtures/mock-upstream.mjs streams. */
@@ -90,19 +90,20 @@ export function resetData(): void {
 
 /**
  * Bulk-seed `count` generated image rows for the test user, straight into
- * the DB. The gallery paginates at page-size 60, so exercising infinite
- * scroll needs more rows than any happy-path flow would realistically
- * generate through the app — seeding directly is the only practical way to
- * cross several pages. We don't write any bytes to disk: the gallery grid
- * only renders <img> tags pointing at /api/media/<id>/thumbnail, and a
- * broken thumbnail still produces the DOM node the scroll assertions count.
+ * the DB. The gallery's layout-driven, demand-paged grid only shows its
+ * behaviour (reserved scroll height, bounded DOM, slices streaming in near the
+ * viewport) with far more rows than any happy-path flow would realistically
+ * generate through the app, so seeding directly is the only practical way.
+ * We don't write any bytes to disk: the gallery grid only renders <img> tags
+ * pointing at /api/media/<id>/thumbnail, and a broken thumbnail still
+ * produces the DOM node the scroll assertions count.
  *
  * Rows are dated with strictly-descending createdAt (newest = i 0) so the
- * keyset cursor (createdAt:id, DESC) paginates deterministically with no
- * same-millisecond ties. origin='generated' + kind='image' so they pass
- * listMediaForUser's gallery filter. Mirrors resetData's standalone
- * node:sqlite connection — safe because workers=1 means no request is in
- * flight at seed time.
+ * newest-first order is deterministic with no same-millisecond ties. Each has
+ * a distinct prompt and no conversation, so each is its own solo unit.
+ * origin='generated' + kind='image' so they pass the gallery filter. Mirrors
+ * resetData's standalone node:sqlite connection — safe because workers=1
+ * means no request is in flight at seed time.
  */
 export function seedMedia(count: number): void {
 	const db = new DatabaseSync(DB_PATH);

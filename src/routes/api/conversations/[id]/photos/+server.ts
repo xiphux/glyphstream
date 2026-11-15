@@ -22,8 +22,9 @@
  * already is, and the user picks with PATCH ./[photoId]. They notify once,
  * together.
  *
- * The model is chosen per draw and never written back to the conversation,
- * the same transient-override rule a portrait follows.
+ * The model is chosen per draw and never written back to the conversation: a
+ * photo is a side errand, not a decision to switch the chat to an image model.
+ * That's the same transient-override rule a fan-out branch follows.
  *
  * GET ?messages=a,b,… is those replies' photo state: their versions and the
  * draws still out (`PhotoStateResponse`). The page patches its copies of the
@@ -66,7 +67,13 @@ interface DevelopPhotoBody {
 	/** What to draw — the description, as the user left it in the dialog.
 	 *  Omitted (or blank) draws the description as written. */
 	prompt?: unknown;
-	/** May only turn the image-prompt enhancer off — see the portrait route. */
+	/**
+	 * Whether to run the prompt through the image-prompt enhancer. Explicit
+	 * because the conversation-level `image_prompt_enhancement` toggle is
+	 * kind-scoped to image conversations, so it never renders in the chat a
+	 * photo is drawn from. May only turn the enhancer off, never on — see the
+	 * private-seal check in POST.
+	 */
 	enhance?: unknown;
 	/** The photo's shape, `W:H`; the nearest the model offers is used. A
 	 *  portrait is square whatever this says. */
@@ -160,8 +167,13 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		error(400, `"${body.modelId}" is not an image model`);
 	}
 
-	// Through the private seal, which a raw read of the column misses — see the
-	// portrait route. The client may only turn enhancement off from there.
+	// Through `resolveDisabledFeatures`, not the raw column. A private chat's
+	// seal is DERIVED, never persisted — so the stored list doesn't contain
+	// `image_prompt_enhancement` and a raw read says "enabled". That category is
+	// sealed because the enhancer ships the prompt to a SECOND model on a
+	// possibly-third-party endpoint, which a private chat promises not to do.
+	// The client's flag may only turn enhancement off from there, never back
+	// on: it's a preference within what the conversation permits.
 	const enhancementAllowed = !resolveDisabledFeatures(meta).includes('image_prompt_enhancement');
 	const enhancementEnabled =
 		enhancementAllowed && (typeof body.enhance !== 'boolean' || body.enhance);

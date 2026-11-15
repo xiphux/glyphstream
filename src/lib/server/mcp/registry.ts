@@ -13,18 +13,19 @@ import { createLogger } from '../log';
 
 const log = createLogger('mcp');
 
-// --- connection keying ----------------------------------------------------
-//
-// Global servers (auth='global') share one connection across all users, keyed
-// by server id alone. Per-user servers (auth='per_user') get one connection
-// PER USER — keyed by `${serverId}\0${userId}` — each carrying that user's
-// own credential. NUL can't appear in a server id (validated alphanumeric+dash),
-// so the composite is unambiguous.
-//
-// Written as the ESCAPE `\0`, never as a literal NUL byte. A literal one makes
-// git and grep classify this entire file as binary, and BSD grep then reports no
-// matches at all rather than saying why — a silent, very confusing way to lose an
-// hour. The escape is the same character at runtime; it just keeps the file text.
+/**
+ * Connection key. Global servers (auth='global') share one connection across
+ * all users, keyed by server id alone. Per-user servers (auth='per_user') get
+ * one connection PER USER — keyed by `${serverId}\0${userId}` — each carrying
+ * that user's own credential. NUL can't appear in a server id (validated
+ * alphanumeric+dash), so the composite is unambiguous.
+ *
+ * Written as the ESCAPE `\0`, never as a literal NUL byte. A literal one makes
+ * git and grep classify this entire file as binary, and BSD grep then reports no
+ * matches at all rather than saying why — a silent, very confusing way to lose
+ * an hour. The escape is the same character at runtime; it just keeps the file
+ * text.
+ */
 function keyFor(serverId: string, userId: string | null): string {
 	return userId === null ? serverId : `${serverId}\0${userId}`;
 }

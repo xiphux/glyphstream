@@ -112,8 +112,8 @@ export const runPythonTool: Tool = {
 	 * call is still waiting in the pool mutex queue or during cold start.
 	 * The pool's internal timer (started after `ensureReady` + mutex
 	 * acquire) is the precise budget the model sees described; this outer
-	 * signal exists only to prevent stuck goroutines from hanging the
-	 * tool-call slot indefinitely.
+	 * signal exists only to prevent a stuck call from hanging the tool-call
+	 * slot indefinitely.
 	 *
 	 * Note: mutex queueing under heavy parallel `run_python` calls in one
 	 * conversation is unbounded and can't be fully covered by a static
@@ -145,10 +145,9 @@ export const runPythonTool: Tool = {
 		try {
 			preFiles = await collectConversationFiles(ctx.conversationId, ctx.userId);
 		} catch (e) {
-			// Collecting files shouldn't be fatal — execute with an empty
-			// workspace so the model can still run pure-compute code and
-			// log the collection failure in stderr-shape so the model
-			// knows files might be missing.
+			// Collecting files shouldn't be fatal: run with an empty workspace so
+			// pure-compute code still works. The model sees no files in /workspace/,
+			// as with a skipped over-budget file.
 			preFiles = [];
 			log.warn('collectConversationFiles failed:', e);
 		}

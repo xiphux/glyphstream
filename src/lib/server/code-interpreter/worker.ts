@@ -338,8 +338,8 @@ function materializeWorkspace(py: PyodideInterface, preFiles: PreFile[]): void {
 			FS.writeFile(`${WORKSPACE}/${f.filename}`, f.bytes);
 			materializedManifest.set(f.filename, f.sha256);
 		} catch (err) {
-			// One bad file shouldn't poison the whole run — log to stderr
-			// so the model can see it via captured stderr.
+			// One bad file shouldn't poison the whole run: skip it. This goes to the
+			// server log only; the model just sees the file absent from /workspace/.
 			console.warn(`[code-interpreter] failed to materialize ${f.filename}:`, err);
 		}
 	}

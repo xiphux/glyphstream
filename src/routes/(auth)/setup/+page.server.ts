@@ -7,13 +7,11 @@ import type { PageServerLoad } from './$types';
 const ERROR_MESSAGES: Record<string, string> = {
 	invalid_oauth_state: 'Setup attempt failed (state mismatch). Please try again.',
 	oauth_exchange_failed: 'Could not complete sign-in. Please try again.',
+	// Same operator-friendly wording the login page uses, so the callback
+	// can emit a single code that fits both contexts.
 	upstream_failure: 'The sign-in provider is unreachable right now. Please try again in a moment.',
 	setup_token_required: 'A setup token is required to continue.',
 };
-
-// `upstream_failure` reuses the same operator-friendly wording the
-// login page uses, so the callback can emit a single code that fits
-// both contexts.
 
 /**
  * First-run wizard load. Three branches keyed off the setupGate

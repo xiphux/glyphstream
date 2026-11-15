@@ -52,8 +52,9 @@ interface LoadedMcpServerCommon {
 	/** Per-server connect + per-call timeout in seconds. */
 	timeoutSeconds: number;
 	/**
-	 * For stdio: idle minutes after which the reaper closes the subprocess.
-	 * 0 disables reaping. Ignored for http (always 0).
+	 * Seconds of inactivity after which an idle connection is reaped (stdio
+	 * subprocesses, and per-user connections of either transport; global http
+	 * is never reaped). 0 disables reaping.
 	 */
 	idleTimeoutSeconds: number;
 	/**

@@ -45,11 +45,10 @@ export const users = sqliteTable('users', {
 	// from this row (join time = created_at, granted role = role). Null for the
 	// setup-wizard admin and any user not created via an invite.
 	//
-	// Deliberately a plain text id, NOT a FK: it's added via ALTER TABLE ADD
-	// COLUMN, where SQLite/drizzle-kit can't emit an ON DELETE clause, so a real
-	// FK would default to NO ACTION and make deleting an inviter fail. It's a
-	// soft reference — resolved against the user list for display; a dangling
-	// value (inviter since deleted) simply renders without a name.
+	// Deliberately a plain text id, NOT a FK: deleting an inviter must not
+	// fail or touch the accounts they invited. It's a soft reference, resolved
+	// against the user list for display; a dangling value (inviter since
+	// deleted) simply renders without a name.
 	invitedByUserId: text('invited_by_user_id'),
 	// User-level preferences serialized as JSON. Null when the user has
 	// never touched preferences (the parser fills in defaults). Schemaless
@@ -79,11 +78,11 @@ export const users = sqliteTable('users', {
 });
 
 // OAuth provider bindings. 1-to-many off `users` — a single user can
-// have zero, one, or several OAuth accounts (GitHub today; Google,
-// GitLab, etc. in the future), plus zero or more passkeys. The login
-// callback looks up by (provider, external_id); binding a new provider
-// happens only via the /setup wizard or the Settings → Security
-// "Link …" flow (no auto-create-on-first-login).
+// have zero, one, or several OAuth accounts (GitHub, Google, generic
+// OIDC), plus zero or more passkeys. The login callback looks up by
+// (provider, external_id); binding a new provider happens only via the
+// /setup wizard, an invite's /join redemption, or the Settings →
+// Security "Link …" flow (no auto-create-on-first-login).
 //
 // `external_id` is text rather than integer because GitHub gives
 // numeric ids but other providers (Google, generic OIDC) give string
@@ -187,14 +186,15 @@ export const sessions = sqliteTable(
 	],
 );
 
-// WebAuthn / passkey credentials. Bound to an existing user (always
-// bootstrapped via GitHub OAuth first), so this table only ever holds
-// additional sign-in methods — it is never the source of identity.
-// `id` is the credential ID returned by the authenticator (base64url,
-// globally unique per spec) so it's safe as the PK and as the lookup
-// key during usernameless discoverable-credential login. `public_key`
-// is COSE bytes from @simplewebauthn/server; stored as BLOB to avoid
-// round-tripping through base64 on every verify. `counter` is the
+// WebAuthn / passkey credentials. Bound to a user either at creation
+// (the passkey /setup and /join flows, where it may be the account's
+// only sign-in method) or later from Settings → Security; the `users`
+// row, not the credential, is the identity. `id` is the credential ID
+// returned by the authenticator (base64url, globally unique per spec)
+// so it's safe as the PK and as the lookup key during usernameless
+// discoverable-credential login. `public_key` is COSE bytes from
+// @simplewebauthn/server; stored as BLOB to avoid round-tripping
+// through base64 on every verify. `counter` is the
 // signature counter — bumped atomically with `last_used_at` after a
 // successful login; the verify path also clone-detects against the
 // stored value (when stored > 0; some authenticators always return 0).
@@ -357,11 +357,12 @@ export const conversations = sqliteTable(
 		// continue), truncateAtMessage, leaf-advancing appendMessage, and
 		// deleteBranch when the anchor is deleted. Lets the page rehydrate the
 		// compare grid after a reload without guessing from sibling counts.
-		// NOTE: this column was added via ALTER TABLE (migration 0019), which
-		// drizzle-kit can't emit an ON DELETE clause on — so the live FK is NO
-		// ACTION, not the `set null` declared here. The app therefore clears
-		// this reference explicitly in the query paths above rather than relying
-		// on the FK; do not assume the DB will null it for you.
+		// NOTE: this column was added via ALTER TABLE (migration 0019), and the
+		// drizzle-kit that generated it emitted no ON DELETE clause — so the
+		// live FK is NO ACTION, not the `set null` declared here. The app
+		// therefore clears this reference explicitly in the query paths above
+		// rather than relying on the FK; do not assume the DB will null it for
+		// you.
 		fanoutParentMessageId: text('fanout_parent_message_id').references(
 			(): AnySQLiteColumn => messages.id,
 			{
@@ -397,11 +398,9 @@ export const conversations = sqliteTable(
 		// (sealPrivateFeatures) so personalization/web/mcp/prompt-enhancement are off.
 		private: integer('private', { mode: 'boolean' }).notNull().default(false),
 		// The scheduled task whose run created this conversation (null for every
-		// chat a person started). A soft reference, not a foreign key: the column
-		// arrives by ALTER TABLE, and SQLite silently drops an ON DELETE added that
-		// way — so deleting a schedule clears it here itself
-		// (`deleteScheduledTask`), keeping its past runs' conversations as
-		// ordinary chats.
+		// chat a person started). A soft reference, not a foreign key, so
+		// deleting a schedule clears it here itself (`deleteScheduledTask`),
+		// keeping its past runs' conversations as ordinary chats.
 		scheduleId: text('schedule_id'),
 	},
 	(t) => [
@@ -595,11 +594,10 @@ export const customModels = sqliteTable(
 		// each of its replies, so a preset roleplaying a character reads as a
 		// someone rather than a name. NULL = no avatar (the label renders alone).
 		//
-		// A real, fully-live FK — worth stating explicitly because three older
-		// columns here (`invited_by_user_id`, `sourceMediaId`,
-		// `fanout_parent_message_id`) carry a note that an ALTER TABLE-added
-		// reference degrades to NO ACTION. That was true of the drizzle-kit
-		// version that generated THOSE migrations, not of ADD COLUMN itself:
+		// A real, fully-live FK — worth stating explicitly because two older
+		// columns here (`sourceMediaId`, `fanout_parent_message_id`) are live
+		// NO ACTION despite declaring `set null`. That comes from the drizzle-kit
+		// version that generated THOSE migrations, not from ADD COLUMN itself:
 		// drizzle-kit v1 emits the clause (see this column's migration), and
 		// SQLite honors it. Verified on node:sqlite with `foreign_keys = ON` —
 		// a bogus avatar id is rejected, and deleting the media row nulls the
@@ -682,9 +680,8 @@ export const memories = sqliteTable(
 		// recoverable/auditable until a retention purge reaps it; every request-path
 		// reader filters `deleted_at IS NULL`. `superseded_by_memory_id` is the
 		// survivor a merged/pruned row folded into (null for a plain prune) — merge
-		// lineage. A soft self-reference (like `invited_by_user_id`), not a FK: it's
-		// added via ALTER TABLE ADD COLUMN where SQLite can't emit ON DELETE. (User
-		// deletes via forget_memory / the settings UI stay HARD deletes.)
+		// lineage. A soft self-reference (like `invited_by_user_id`), not a FK.
+		// (User deletes via forget_memory / the settings UI stay HARD deletes.)
 		deletedAt: integer('deleted_at'),
 		supersededByMemoryId: text('superseded_by_memory_id'),
 		createdAt: integer('created_at').notNull(),
@@ -837,11 +834,12 @@ export const media = sqliteTable(
 		// by its source thumbnail) and survives a reload, so a recovered split
 		// fan-out keeps its input pairing + can regenerate the right input.
 		// Null for text-to-image / uploads / legacy rows. Added via ALTER TABLE
-		// (migration 0020), so the live FK is NO ACTION, not the `set null`
-		// declared here (drizzle-kit can't emit ON DELETE on ADD COLUMN). In
-		// practice this never bites: media rows are only ever soft-deleted (the
-		// row is stamped deleted_at, then purged_at, never DELETEd), so
-		// the source row a generated asset points at always survives.
+		// (migration 0020), and the drizzle-kit that generated it emitted no ON
+		// DELETE clause, so the live FK is NO ACTION, not the `set null` declared
+		// here. In practice this never bites: media rows are only ever
+		// soft-deleted (the row is stamped deleted_at, then purged_at, never
+		// DELETEd), so the source row a generated asset points at always
+		// survives.
 		sourceMediaId: text('source_media_id').references((): AnySQLiteColumn => media.id, {
 			onDelete: 'set null',
 		}),
@@ -1318,13 +1316,13 @@ export const modelUserUsage = sqliteTable(
 // table therefore holds the live queue and nothing else — its size tracks queue
 // depth, not history.
 //
-// Every FK is declared HERE, in the CREATE TABLE. An ON DELETE clause added
-// later by ALTER TABLE is silently dropped by SQLite (that is how
-// `conversations.fanout_parent_message_id` ended up NO ACTION), and these
-// cascades are load-bearing: deleting the anchor's branch, the conversation or
-// the user must take its queued work with it, or the runner would append a
-// result under a message that no longer exists (`messages.parent_message_id`
-// has no FK to stop it).
+// Every FK is declared HERE, in the CREATE TABLE, and these cascades are
+// load-bearing: deleting the anchor's branch, the conversation or the user must
+// take its queued work with it, or the runner would append a result under a
+// message that no longer exists (`messages.parent_message_id` has no FK to stop
+// it). Check the generated migration.sql for the ON DELETE clause on any FK
+// added later: the drizzle-kit that generated migrations 0019/0020 left it out,
+// which is how `conversations.fanout_parent_message_id` ended up NO ACTION.
 export const generationJobs = sqliteTable(
 	'generation_jobs',
 	{

@@ -14,6 +14,7 @@ import type { RequestHandler } from './$types';
  *   ?kind=image|video   restrict to a modality
  *   ?model=…            restrict to an exact source_model
  *   ?fav=1              restrict to starred media (ANDs with the above)
+ *   ?stack=false        count every media item as its own unit (no stacking)
  *   ?tzOffset=N         viewer's UTC offset in minutes (-getTimezoneOffset()),
  *                       so days bucket in local time (matches the unit dayKeys)
  */

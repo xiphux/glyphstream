@@ -31,13 +31,14 @@ export const MAX_UPLOAD_BYTES_IMAGE = 20 * 1024 * 1024;
 export const MAX_UPLOAD_BYTES_FILE = 25 * 1024 * 1024;
 
 /**
- * Allowlist of MIME types we accept as `kind: 'file'`. Drives both the
- * server-side classify path and the composer's `accept` attribute via
- * `ATTACHMENT_ACCEPT` (which is the same list with `image/*` prepended).
+ * Allowlist of MIME types we accept as `kind: 'file'`. Drives the
+ * server-side classify path; the composer's `accept` attribute
+ * (`ATTACHMENT_ACCEPT` in `#lib/attachments.svelte.ts`) is a hand-kept copy
+ * with `image/*` prepended, so keep the two in sync.
  *
- * Frozen because callers (tests, future schemas) should never reach in
- * and mutate it — every change should be a code edit reviewed against
- * the upload story.
+ * Typed read-only because callers (tests, future schemas) should never
+ * reach in and mutate it — every change should be a code edit reviewed
+ * against the upload story.
  */
 export const ALLOWED_FILE_TYPES: ReadonlySet<string> = new Set<string>([
 	'text/plain',

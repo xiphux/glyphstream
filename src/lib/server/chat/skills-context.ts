@@ -1,10 +1,8 @@
 /**
- * Per-request skills context, shared by the two handlers that build an
- * upstream chat request — the message send (`/messages`) and the tool-approval
- * resume (`/tool-approval`). Both must inject the same Tier-1 catalog into the
- * system prompt AND advertise the same per-user activation tools, so a turn
+ * Per-request skills context, assembled through `buildChatToolContext` for
+ * every turn. It injects the Tier-1 catalog into the system prompt AND
+ * advertises the per-user activation tools, the same on every path, so a turn
  * that activated a skill then paused on an MCP approval keeps both on resume.
- * Centralizing the logic here is the anti-drift measure.
  *
  * Skills ride their OWN `skills` feature-category gate (not personalization):
  * the catalog injects even for snapshotted custom-model conversations, because

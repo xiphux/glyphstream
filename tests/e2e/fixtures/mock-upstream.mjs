@@ -10,10 +10,11 @@
  * it.
  *
  * Deterministic by design — the assistant reply and generated image are
- * fixed so specs can assert on exact rendered text. Two models are
- * advertised so the picker shows both a chat and an image kind:
+ * fixed so specs can assert on exact rendered text. MODELS advertises both
+ * chat and image kinds: the baseline pair
  *   - mock-chat  (kind: "chat")
  *   - mock-image (kind: "image")
+ * plus variants that each give some spec a behaviour it needs (see each entry).
  * `kind` is the openai-api-bridge convention detectKind() reads first.
  *
  * No auth: the fixture endpoint omits api_key_env, so no Authorization
@@ -292,7 +293,7 @@ function sendJson(res, status, obj) {
 /** Per-chunk delay for `mock-chat-slow`. Picked long enough that a spec
  *  can race events (visibilitychange / offline / online) into the middle
  *  of the relay's stream while `busy=true`, but short enough that the
- *  whole 6-word reply still finishes well inside the default 30s test
+ *  whole 5-word reply still finishes well inside the default 30s test
  *  timeout. */
 const SLOW_CHUNK_DELAY_MS = 250;
 const FAST_CHUNK_DELAY_MS = 5;

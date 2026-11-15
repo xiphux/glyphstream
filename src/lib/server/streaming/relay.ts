@@ -1,7 +1,7 @@
 /**
  * Streaming chat relay. Drives the upstream chat-completion loop:
  *
- *   for each iteration (up to MAX_ITER):
+ *   for each iteration (up to maxToolLoopIterations):
  *     1. POST /chat/completions with stream=true and (current) messages
  *     2. tee the response into two branches:
  *        - "to-client": parse + normalize + forward as our SSE events
@@ -459,7 +459,9 @@ export async function startStreamingRelay(
  * Orchestrates the multi-iteration upstream loop. Emits SSE to the
  * client via `write` (which no-ops on a disconnected client). Returns
  * when the turn settles — by `finish_reason !== 'tool_calls'`, by hitting
- * MAX_TOOL_LOOP_ITERATIONS, by user abort, or by an upstream failure.
+ * the iteration bound (`params.maxToolLoopIterations`, default
+ * `DEFAULT_MAX_TOOL_LOOP_ITERATIONS`), by user abort, or by an upstream
+ * failure.
  */
 async function runChatTurn(
 	params: RelayParams,

@@ -162,8 +162,8 @@ describe('MessageBubble — body rendering', () => {
 
 describe('MessageBubble — preset avatar', () => {
 	// The avatar is presentational duplication of the label, so it's queried
-	// by role+title rather than alt text: `alt` is deliberately empty so screen
-	// readers hear the name once, from the label beside it.
+	// by its media src rather than by role or alt text: `alt` is deliberately
+	// empty so screen readers hear the name once, from the label beside it.
 	const avatar = () => document.querySelector('img[src^="/api/media/"]');
 
 	it('renders the avatar beside the label when the message has one', () => {

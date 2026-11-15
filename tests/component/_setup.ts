@@ -1,8 +1,8 @@
 /**
- * Global vitest setup for component tests.
+ * Global vitest setup, shared by the component and unit projects.
  *
- * Loaded by `setupFiles` in vitest.config.ts and runs before every test
- * file — both component tests and the pure-logic unit suite. The single
+ * Loaded by the root `setupFiles` in vitest.config.ts, which both projects
+ * inherit, so it runs before every test file. The single
  * matcher import registers @testing-library/jest-dom's matchers
  * (toBeInTheDocument, toHaveAttribute, toHaveTextContent, ...) onto
  * vitest's expect, so component test files don't have to import it

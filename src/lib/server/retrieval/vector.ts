@@ -2,10 +2,11 @@
  * Pure vector math for dense (embedding) retrieval. No dependencies, no I/O —
  * just dot/norm/cosine over float arrays, plus a ranking helper.
  *
- * Shared surface: `fetch_url`'s relevance selection uses this for the dense
- * leg of hybrid retrieval, and the `recall_memory` tool reuses the same
- * primitives (plus `encodeVector`/`decodeVector` below) against persisted
- * memory embeddings.
+ * Shared surface: `fetch_url`'s relevance selection and `search_tools` use this
+ * for the dense leg of hybrid retrieval, and the `recall_memory` tool and the
+ * gallery prompt search reuse the same primitives (plus
+ * `encodeVector`/`decodeVector` below) against persisted memory and media
+ * embeddings.
  *
  * Accepts both `number[]` (the shape the OpenAI `/v1/embeddings` JSON decodes
  * to) and `Float32Array` (the shape memory blobs decode to), so callers on
@@ -70,9 +71,9 @@ export function cosineRank(query: Vec, docs: Vec[]): ScoredChunk[] {
 
 /**
  * Pack a dense vector as little-endian Float32 bytes for storage in a SQLite
- * BLOB column (`memories.embedding`). Float32 halves the size vs JSON and
- * round-trips losslessly through cosine, which tolerates the f64→f32 precision
- * drop. Pairs with `decodeVector`.
+ * BLOB column (`memories.embedding`, `media.embedding`). Float32 halves the
+ * size vs JSON and round-trips losslessly through cosine, which tolerates the
+ * f64→f32 precision drop. Pairs with `decodeVector`.
  */
 export function encodeVector(v: number[]): Buffer {
 	const f32 = Float32Array.from(v);
@@ -80,8 +81,8 @@ export function encodeVector(v: number[]): Buffer {
 }
 
 /**
- * Unpack a `memories.embedding` BLOB back into a `Float32Array` (a `Vec`, so it
- * feeds `cosine`/`cosineRank` directly). Accepts whatever the SQLite driver
+ * Unpack a `memories.embedding` / `media.embedding` BLOB back into a
+ * `Float32Array` (a `Vec`, so it feeds `cosine`/`cosineRank` directly). Accepts whatever the SQLite driver
  * hands back for a BLOB (Buffer or Uint8Array). Copies into a fresh, 4-byte-
  * aligned buffer first: a driver Buffer can be a view into a shared pool at an
  * unaligned `byteOffset`, which `Float32Array`'s constructor rejects.

@@ -53,8 +53,8 @@ describe('createMemory + listMemoriesForUser', () => {
 	it('returns saved memories oldest-first', async () => {
 		const u = seedUser();
 		const a = createMemory(u.id, 'first fact');
-		// Force a distinct millisecond timestamp so ordering is unambiguous —
-		// the asc() index doesn't break ties by id.
+		// Force a distinct millisecond timestamp so the order comes from
+		// createdAt itself, not only from the insertion-order tiebreak.
 		await new Promise((r) => setTimeout(r, 2));
 		const b = createMemory(u.id, 'second fact');
 		const list = listMemoriesForUser(u.id);
