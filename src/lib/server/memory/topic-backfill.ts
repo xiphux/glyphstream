@@ -102,10 +102,9 @@ const sweeper = createSweeper({
  * Mount the periodic topic backfiller. Idempotent. No-op when no `task_model` is
  * configured — without one there's no way to generate labels, so a timer would
  * just wake to do nothing. Self-terminates once a sweep finds the queue empty:
- * nothing reintroduces null topics today (save_memory / update_memory always
- * supply one). A future feature that creates topic-less rows (e.g. phase-4
- * consolidation writing new memories) must call this again to re-arm — a plain
- * restart also re-runs it and re-checks.
+ * nothing reintroduces null topics (save_memory / update_memory and the dreaming
+ * pass always supply one). A future feature that creates topic-less rows must
+ * call this again to re-arm — a plain restart also re-runs it and re-checks.
  */
 export function startTopicBackfiller(): void {
 	sweeper.start();

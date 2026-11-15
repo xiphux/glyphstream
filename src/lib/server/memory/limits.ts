@@ -7,8 +7,8 @@
  * registers tools as an import side effect.
  *
  * `content` is a short paragraph's worth of durable prose (a sentence up to a
- * few), not a bare atomic fact: bodies no longer cost system-prompt tokens for
- * the cold tail (tiering indexes them by topic), so a memory can carry the
+ * few), not a bare atomic fact: bodies don't cost system-prompt tokens for the
+ * cold tail (tiering indexes them by topic), so a memory can carry the
  * useful texture around a fact, not just the fact.
  */
 export const MEMORY_MAX_CONTENT_CHARS = 800;

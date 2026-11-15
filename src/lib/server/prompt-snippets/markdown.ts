@@ -72,9 +72,9 @@ const LINE_SPLIT_ALL = /\r\n|[\r\n\u2028\u2029]/g;
  * Collapse every line terminator to LF.
  *
  * Multi-line fields (a body) can't reject these the way single-line fields do
- * — a break there is meaningful — so they're normalized instead, which is the
- * contract CRLF has always had here. Storing only LF keeps what's in the
- * database identical to what round-trips through the format.
+ * — a break there is meaningful — so they're normalized instead. Storing only
+ * LF keeps what's in the database identical to what round-trips through the
+ * format.
  *
  * Must go through LINE_SPLIT_ALL rather than a hand-written character class:
  * `\r\n` has to be listed FIRST or a CRLF pair becomes two newlines.
@@ -214,24 +214,23 @@ export function parseSnippetMarkdown(content: string): ParsedSnippetFile {
 		//
 		// `metaOpen` is tracked explicitly rather than inferred from
 		// `body.length === 0`: with that inference a snippet carrying NO
-		// metadata never closed its window at the blank line (nothing was
-		// pushed to the body, so the length stayed 0), and a `tags:` line
-		// arbitrarily far down the body was still swallowed as metadata —
-		// silently truncating the body and inventing tags. Worse, it only
-		// happened for snippets *without* metadata, so the same body parsed
-		// two different ways depending on its neighbours.
+		// metadata never closes its window at the blank line (nothing is
+		// pushed to the body, so the length stays 0), and a `tags:` line
+		// arbitrarily far down the body is swallowed as metadata — silently
+		// truncating the body and inventing tags, and only for snippets
+		// *without* metadata, so the same body would parse two different ways
+		// depending on its neighbours.
 		if (current.metaOpen) {
 			if (line.trim() === '') {
 				// A blank line always ends the metadata block, whether or not any
 				// metadata was seen. Keep it out of the body's first position.
 				current.metaOpen = false;
 				if (current.meta.length > 0) current.body.push('');
-				// Arm the stray-metadata check unconditionally. It used to be armed
-				// only when NO metadata preceded the blank line, on the theory that
-				// an author who already wrote `kinds:` knows the convention — but
-				// writing one metadata line and then hitting Enter twice is exactly
-				// how this happens, and the narrow arming meant an identical body
-				// was diagnosed in one snippet and silently swallowed in the next.
+				// Arm the stray-metadata check unconditionally, not only when NO
+				// metadata preceded the blank line: writing one metadata line and
+				// then hitting Enter twice is exactly how a stray `tags:` happens,
+				// and narrower arming would diagnose an identical body in one
+				// snippet and silently swallow it in the next.
 				current.checkStrayMeta = true;
 				continue;
 			}
@@ -280,9 +279,9 @@ export function serializeSnippetMarkdown(snippets: PromptSnippet[]): string {
 		if (s.kinds.length > 0) lines.push(`kinds: ${s.kinds.join(', ')}`);
 		if (s.tags.length > 0) lines.push(`tags: ${s.tags.join(', ')}`);
 		// Split on LINE_SPLIT, not '\n'. The parser splits on the full terminator
-		// set, so splitting on LF alone here left any segment after a lone CR /
-		// U+2028 / U+2029 unseen by escapeBodyLine — a `## …` there went out
-		// unescaped and re-parsed as a heading, truncating this body and
+		// set, so splitting on LF alone would leave any segment after a lone CR /
+		// U+2028 / U+2029 unseen by escapeBodyLine — a `## …` there would go out
+		// unescaped and re-parse as a heading, truncating this body and
 		// fabricating a snippet from its tail, silently. The two halves of the
 		// round-trip have to agree on what a line is.
 		lines.push('', ...s.body.split(LINE_SPLIT).map(escapeBodyLine));

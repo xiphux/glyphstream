@@ -63,24 +63,24 @@ export interface FanoutNotifyInput {
  *  exactly-once. */
 export function notifyFanoutCompleteIfLast(input: FanoutNotifyInput): void {
 	// Not the last branch — another is still generating; it will fire instead.
-	// Turn-scoped: a photo or portrait drawing alongside is not a branch, and counting it
-	// means NO branch ever finds the registry empty — the aggregate notification
-	// is then dropped entirely rather than merely delayed.
+	// Turn-scoped: a photo or portrait drawing alongside is not a branch, and
+	// counting it means NO branch ever finds the registry empty — the aggregate
+	// notification is then dropped entirely rather than merely delayed.
 	if (conversationTurnEntries(input.conversationId).length > 0) return;
 
-	// Count what actually LANDED — successful results only. A failed branch now
+	// Count what actually LANDED — successful results only. A failed branch
 	// persists a durable error sibling (see the `error` MessagePart) so a
-	// disconnected fan-out can recover the failure; but it's not a result to
+	// disconnected fan-out can recover the failure, but it's not a result to
 	// announce. It also feeds the count below whenever the client size is absent
 	// or has been outgrown.
 	//
 	// Read this as the GRID's size, not the dispatch's — the two coincide only on
 	// a fresh anchor. `getSiblingAssistants` has no time or dispatch scoping, so
 	// where the anchor already carries results the count includes them: a lone
-	// re-roll on a settled grid. That is the intended number — it matches what the user is being sent back
-	// to — but it means the zero-guard below only guarantees silence on a fresh
-	// anchor. On one carrying earlier results, a dispatch where every branch
-	// failed still reports the survivors rather than staying quiet.
+	// re-roll on a settled grid. That is the intended number — it matches what the
+	// user is being sent back to — but it means the zero-guard below only
+	// guarantees silence on a fresh anchor. On one carrying earlier results, a
+	// dispatch where every branch failed still reports the survivors.
 	const produced = getSiblingAssistants(input.conversationId, input.userMessageId).filter(
 		(m) => !m.parts.some((p) => p.type === 'error'),
 	).length;

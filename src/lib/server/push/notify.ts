@@ -14,15 +14,16 @@
  * The server also decides one more thing the SW can't: whether to *include
  * content* in the payload. When notificationsShowContent is false — or app lock
  * is active for the user, which forces it off, since the lock screen is no
- * place to read out what the passkey guards — the `preview` is omitted entirely and `conversationTitle` is replaced by a constant, so no
- * conversation content ever traverses the push service (defense-in-depth —
- * encryption alone isn't the only privacy contract; the operator's threat model
- * may include the push service itself). The title belongs in that set because it
- * is content: a fresh thread's title is the user's own first message verbatim,
- * so a media generation's push was reading out the prompt on the lock screen
- * while the body was correctly suppressed. It is replaced rather than dropped
- * only because older cached service workers pass it to `showNotification`
- * unguarded; see the payload construction below.
+ * place to read out what the passkey guards — the `preview` is omitted entirely
+ * and `conversationTitle` is replaced by a constant, so no conversation content
+ * ever traverses the push service (defense-in-depth — encryption alone isn't the
+ * only privacy contract; the operator's threat model may include the push
+ * service itself). The title belongs in that set because it is content: a fresh
+ * thread's title is the user's own first message verbatim, so a media
+ * generation's push would read out the prompt on the lock screen even with the
+ * body suppressed. It is replaced rather than dropped only because older cached
+ * service workers pass it to `showNotification` unguarded; see the payload
+ * construction below.
  */
 
 import type { NotifyModality, NotifyPushPayload } from '#lib/types/push.js';
@@ -96,25 +97,13 @@ function truncateTitle(title: string): string {
  * has a new assistant message. Fire-and-forget; never throws — the
  * stream recorder calls this in a background promise.
  *
- * Behavior:
- *  - Reads user prefs; bails when notificationsEnabled is false.
- *  - Bails when another of the user's devices is actively rendering this
- *    conversation (cross-device suppression — see `presence.ts`).
- *  - Lists subscriptions; bails when none.
- *  - Builds payload (omits preview and neutralizes conversationTitle to a
- *    constant unless notificationsShowContent — the title is content too;
- *    app lock forces the opt-out).
- *  - Sends to each subscription in parallel.
- *  - Deletes any subscription that returns 404/410 (push service says
- *    the endpoint is gone).
+ * Deletes any subscription the push service reports gone (404/410).
  */
 export async function notifyConversationComplete(
 	input: NotifyConversationCompleteInput,
 ): Promise<void> {
 	const prefs = getUserPreferences(input.userId);
 	if (!prefs || !prefs.notificationsEnabled) return;
-	// App lock implies the show-content opt-out: a notification on the lock
-	// screen would otherwise read out exactly what the passkey is guarding.
 	const showContent = prefs.notificationsShowContent && !isAppLockActive(input.userId);
 
 	// Cross-device suppression: if any of the user's devices is actively
@@ -142,7 +131,7 @@ export async function notifyConversationComplete(
 	// Title and preview are both content and stand or fall together — but the
 	// title FIELD is always sent, carrying the app name when the user opted out,
 	// because a service worker is cached on the device and updates on its own
-	// schedule. A worker from before this gate existed does
+	// schedule. A worker predating this gate does
 	// `showNotification(payload.conversationTitle)` with no fallback of its own,
 	// and `showNotification(undefined)` does not throw — WebIDL stringifies it,
 	// so omitting the field would put the literal word "undefined" on the lock

@@ -1,10 +1,10 @@
 /**
- * Cross-encoder reranking — the biggest deferred quality jump after hybrid
- * retrieval. Given the query and the top fused candidates, a purpose-trained
- * reranker (e.g. bge-reranker-v2-m3) scores each candidate's relevance jointly
- * with the query, which a bag-of-features retriever (BM25 ⊕ embedding cosine)
- * can't. It reorders the candidate list; everything downstream (pack-to-budget,
- * document-order render) is unchanged.
+ * Cross-encoder reranking — the biggest quality jump after hybrid retrieval.
+ * Given the query and the top fused candidates, a purpose-trained reranker (e.g.
+ * bge-reranker-v2-m3) scores each candidate's relevance jointly with the query,
+ * which a bag-of-features retriever (BM25 ⊕ embedding cosine) can't. It reorders
+ * the candidate list; everything downstream (pack-to-budget, document-order
+ * render) is unchanged.
  *
  * Same degradation contract as the dense leg: ANY failure (endpoint down,
  * timeout, malformed response, no usable rows) returns null so the caller keeps

@@ -44,11 +44,10 @@ export interface CreateUserMessageInput {
 }
 
 export function createUserMessage(input: CreateUserMessageInput): ChatMessage {
-	// Validate every attached media id belongs to this user and isn't
-	// deleted (trashed or purged) before we persist anything — so a tampered request can't
-	// land an unowned-media reference on a real conversation row. Stash the
-	// loaded rows (keyed by id) so the part-building step can route by kind
-	// without a second DB roundtrip.
+	// Validate every attached media id belongs to this user and isn't deleted
+	// (trashed or purged) before persisting anything, so a tampered request can't
+	// land an unowned-media reference on a real conversation row. The loaded rows
+	// are kept so the part-building step can route by kind without a second query.
 	const attachedMediaById = new Map<
 		string,
 		{ kind: 'image' | 'video' | 'file'; byteSize: number; originalFilename: string | null }
@@ -65,9 +64,9 @@ export function createUserMessage(input: CreateUserMessageInput): ChatMessage {
 		});
 	}
 
-	// Resolve the parent for the new user message. The helper returns a
-	// discriminated result so we can map misses to the right 400 without
-	// coupling it to SvelteKit's error machinery (keeps it unit-testable).
+	// The helper returns a discriminated result rather than throwing, so it stays
+	// free of SvelteKit's error machinery (unit-testable) and misses map to the
+	// right 400 here.
 	const resolved = resolveParentForUserMessage({
 		conversationId: input.conversationId,
 		activeLeafMessageId: input.activeLeafMessageId,

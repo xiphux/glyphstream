@@ -130,7 +130,7 @@ export async function runSummarySweep(
  * handled at delete time (`reconcileOverviewAfterConversationDelete`), not here.
  *
  * A model that yields nothing never reaches the write: `callMemoryModel` raises
- * `EmptyCompletionError`, the sweep's catch below skips this user, and the watermark
+ * `EmptyCompletionError`, the sweep's catch skips this user, and the watermark
  * stays where it was, so the next sweep retries. That matters more here than in
  * `summarizeOne`: the rebuild is destructive by design (rebuild-from-all, so
  * deletions propagate), so storing an empty completion would ERASE a good map — and
@@ -175,7 +175,6 @@ async function summarizeOne(
 	now: number,
 ): Promise<boolean> {
 	const messages = walkActiveBranch(conversationId, { columns: 'serialization' });
-	// Nothing worth indexing (e.g. an image-only exchange) — stamp and move on.
 	if (buildTranscript(messages).length === 0) {
 		setConversationSummary(conversationId, null, now);
 		return false;

@@ -2,9 +2,6 @@
  * Shared resolution for the optional retrieval legs — `[embeddings]` (semantic
  * ranking) and `[rerank]` (cross-encoder reordering).
  *
- * `embeddings-config.ts` and `rerank-config.ts` were structural twins, and the
- * second said so ("mirroring `embeddings-config.ts`").
- *
  * ## Why this is NOT `createModelResolver`
  *
  * The failure contract is deliberately weaker here. A model resolver lets a
@@ -19,7 +16,7 @@
  * Memoization makes that warning fire once rather than per call.
  *
  * The endpoint lookup is intentionally left OUT of the memo — it's re-resolved on
- * each call, matching what both modules already did.
+ * each call.
  */
 
 import { getEndpoint } from '../endpoints/registry';

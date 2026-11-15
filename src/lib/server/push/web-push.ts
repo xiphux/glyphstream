@@ -95,10 +95,9 @@ export async function sendPushNotification(
 		// `urgency: 'high'` because anything lower lets Apple's push service
 		// "prioritize the recipient's device power considerations for delivery":
 		// an idle iPhone held a check-in for hours and released it alongside the
-		// next notification. Every
-		// push here is an event the user asked to hear about, so there is no
-		// background traffic to save battery on. The TTL used to be 60s, which
-		// dropped a held or offline push outright. Hours outlasts the hold, but
+		// next notification. Every push here is an event the user asked to hear
+		// about, so there is no background traffic to save battery on. A short TTL
+		// (60s) drops a held or offline push outright; hours outlasts the hold, but
 		// stops a phone that was off overnight replaying yesterday: the cross-device
 		// check can't recall a push already sent for a reply read on the desktop
 		// since (the per-thread `tag` keeps it to one per thread).

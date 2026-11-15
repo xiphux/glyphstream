@@ -34,9 +34,8 @@ const PROMPT_OVERHEAD_TOKENS = 500;
 const DEFAULT_CONTEXT_WINDOW = 8000;
 const MIN_BUDGET_TOKENS = 1000;
 
-// The size of the map is `[memory_model] overview_max_chars` (default 2500). It's
-// told to the model AND enforced afterwards: an LLM can't count characters, so it
-// overshoots a stated budget routinely and the cap is what actually holds.
+// The size cap is told to the model AND enforced afterwards: an LLM can't count
+// characters, so it overshoots a stated budget routinely and the cap is what holds.
 const buildPrompt = (maxChars: number) =>
 	`You maintain a compact, STRUCTURED map of the topics a user has discussed with an assistant across many conversations. The assistant reads this map to know what past conversations exist so it can search them. Given the user's conversation summaries (and the previous map), produce an updated map:
 - Group related topics under a few short thematic headings; put the most significant or recurring themes first.

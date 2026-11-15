@@ -93,9 +93,9 @@ async function drainQueue(
 		// poison row can't starve the rows behind it.
 		//
 		// `index` is optional in practice: some OpenAI-compatible servers omit it
-		// and return vectors in input order. Without a fallback every vector
-		// was dropped and the queue stalled with no sign of why. Position is the
-		// same assumption embed-rank makes for its query-time requests.
+		// and return vectors in input order; without a fallback every vector is
+		// dropped and the queue stalls with no sign of why. Position is the same
+		// assumption embed-rank makes for its query-time requests.
 		const vecByIndex = new Map<number, number[]>();
 		data.forEach((d, position) => {
 			const v = d.embedding;

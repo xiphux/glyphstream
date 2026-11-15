@@ -53,7 +53,6 @@ export function resolveModelOverride(input: {
 	const modelKind = isModelKind(input.bodyModelKind) ? input.bodyModelKind : input.currentModelKind;
 	return {
 		override: { endpointId, modelId: bodyModelId, modelKind },
-		// Fan-out branch → transient: never write the conversation row.
 		persist: !input.isFanout,
 	};
 }

@@ -27,7 +27,7 @@
  * `viewerId` is a per-page-load id the client mints. Per-tab precision is the
  * point: two tabs on different threads have to report independently, and a
  * session id is shared by every tab in the browser — too coarse to tell them
- * apart. (App.Locals does now carry a `sessionId`; it just isn't the right
+ * apart. (App.Locals carries a `sessionId`; it just isn't the right
  * granularity for this.)
  *
  * Module-level Map, single-process — same tradeoff the in-flight registry

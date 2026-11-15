@@ -1,5 +1,5 @@
 /**
- * The phase-4 memory-consolidation ("dreaming") worker. During a configured
+ * The memory-consolidation ("dreaming") worker. During a configured
  * quiet-hours window, it asks the memory model to tidy each changed user's saved
  * memories (merge duplicates, fold supersessions, distill ephemera, prune as a
  * last resort) and applies the result. It also reaps soft-deleted tombstones past
@@ -88,12 +88,11 @@ export async function runDreamSweep(
 				opsApplied += await dreamUser(model, userId);
 				usersProcessed++;
 			} catch (e) {
-				// A slot wait that ran out (DREAM_SLOT_WAIT_MS) is endpoint-level too:
-				// the group is paused or saturated for everyone after this user.
+				// Endpoint-level failure (down / timeout, or a slot wait that ran out
+				// because the group is paused or saturated): end the sweep rather than
+				// hammer it once per remaining user. Watermark unadvanced, so everyone
+				// retries next window.
 				if (e instanceof UpstreamError || isAbortError(e)) {
-					// Endpoint-level failure (shared — down / timeout): end the sweep
-					// rather than hammer it once per remaining user. Watermark unadvanced,
-					// so everyone retries next window.
 					log.warn(`endpoint error; ending sweep, retry next window:`, e);
 					break;
 				}
@@ -133,10 +132,9 @@ async function dreamUser(model: ResolvedMemoryModel, userId: string): Promise<nu
 		topic: m.topic,
 	}));
 
-	// Queue behind live chats on the shared endpoint; release even on error/abort.
-	// Bounded: with no signal, a sweep waiting on a PAUSED endpoint group (paused
-	// from /settings/endpoints) parked forever, and stop() can't cancel a pending
-	// await. Giving up ends this sweep; the next window retries.
+	// Bounded: without a signal, a sweep waiting on a PAUSED endpoint group (paused
+	// from /settings/endpoints) would park forever, and stop() can't cancel a
+	// pending await. Giving up ends this sweep; the next window retries.
 	const wait = AbortSignal.timeout(DREAM_SLOT_WAIT_MS);
 	const slot = await acquireEndpointSlot(model.endpoint, {
 		work: { purpose: 'dream', modelId: model.upstreamId },

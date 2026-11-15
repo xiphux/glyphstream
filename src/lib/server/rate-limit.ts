@@ -37,14 +37,14 @@ interface Bucket {
 
 const buckets = new Map<string, Bucket>();
 
+let lastSweep = 0;
+
 /**
  * Sweep idle buckets so a flood of distinct addresses can't grow the map
  * without bound. A bucket at full capacity carries no state worth keeping —
  * recreating it yields exactly the same thing — so full buckets are dropped.
  * Throttled to at most once per window; the map is only walked on writes.
  */
-let lastSweep = 0;
-
 function sweep(now: number, capacity: number, windowMs: number): void {
 	if (now - lastSweep < windowMs) return;
 	lastSweep = now;

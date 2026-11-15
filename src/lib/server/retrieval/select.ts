@@ -23,9 +23,9 @@ import { rerankDocs, type RerankConfig } from './rerank';
 import { fuseRankings } from './fusion';
 import type { Chunk } from './chunker';
 
-// Re-exported so existing importers (`fetch-url.ts`, tests) keep their
-// `from '../retrieval/select'` paths; both now live in embed-rank.ts alongside
-// the dense-ranking they parameterize.
+// Re-exported for importers (`fetch-url.ts`, tests) that take them from
+// `../retrieval/select`; they live in embed-rank.ts alongside the dense ranking
+// they parameterize.
 export { EMBED_CAP };
 export type { RelevanceConfig };
 export type { RerankConfig };
@@ -88,12 +88,12 @@ export async function selectRelevant(
 			// document order). Remap the dense leg from candidate-subset space back
 			// onto blockIndex so both rankings share one index space, then fuse.
 			//
-			// Both legs now carry a finite `missingRank`, so every chunk still gets a
+			// Both legs carry a finite `missingRank`, so every chunk gets a
 			// contribution from both: a chunk with no lexical hit takes the SAME
 			// lexical floor as every other non-hit (no spurious ordering between
 			// them), leaving the dense leg to discriminate — which is the whole point
 			// of the semantic leg. Chunks the dense leg never saw (only possible when
-			// a page exceeds EMBED_CAP) keep their `EMBED_CAP + 1` floor as before.
+			// a page exceeds EMBED_CAP) get its `EMBED_CAP + 1` floor.
 			const denseByBlock = dense.map((sc) => ({
 				index: candidates[sc.index].blockIndex,
 				score: sc.score,
