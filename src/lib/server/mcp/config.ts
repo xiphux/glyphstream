@@ -36,7 +36,7 @@ interface RawMcpServer {
 /**
  * How a server authenticates:
  *  - 'global'   (default): one shared credential resolved from env at boot
- *    (the `api_key_env` / `env_from` convention) — the original behavior.
+ *    (the `api_key_env` / `env_from` convention).
  *  - 'per_user': each user supplies their own secret (stored encrypted per
  *    user); the registry keys connections by (serverId, userId) and injects
  *    that user's token at connect time. Supported for HTTP transport only —

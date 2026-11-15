@@ -145,9 +145,9 @@ export async function persistGeneratedVideo(input: PersistVideoInput): Promise<s
 	// requesting the bytes being swapped. Measured, the remux is 10-150 ms
 	// against a download of the same file that already happened inside this slot.
 	//
-	// DISK-STORE-ONLY, and the first thing in this module to be: everything else
-	// here goes through `getMediaStore()`, while this resolves a real filesystem
-	// path to hand ffmpeg. Under a future S3MediaStore the path resolves to
+	// DISK-STORE-ONLY, unlike everything else in this module: the rest goes
+	// through `getMediaStore()`, while this resolves a real filesystem path to
+	// hand ffmpeg. Under a future S3MediaStore the path resolves to
 	// nothing, `isFaststart` returns null, and faststart silently stops happening
 	// — correct, but invisibly degraded. Extending MediaStore with a
 	// derived-asset/local-path seam is the same deferred v2 change noted in
@@ -184,8 +184,7 @@ async function resolveBytes(
 ): Promise<{ bytes: Buffer; contentType: string }> {
 	if (urlOrB64.b64_json) {
 		// Bridge / OpenAI default to PNG when returning b64_json with no
-		// MIME hint. We assume PNG; if a future upstream supplies a hint
-		// (data URL prefix etc.) we can parse it here.
+		// MIME hint, so assume PNG.
 		return { bytes: Buffer.from(urlOrB64.b64_json, 'base64'), contentType: 'image/png' };
 	}
 	if (urlOrB64.url) {
@@ -201,7 +200,7 @@ async function resolveBytes(
 		// trusted by construction. Anything that resolves elsewhere is the
 		// untrusted case: a compromised or malicious upstream could point us at
 		// 169.254.169.254 (cloud metadata) or an internal admin URL. Deciding by
-		// the string's prefix instead (`startsWith('http')`) let "//host/…",
+		// the string's prefix instead (`startsWith('http')`) would let "//host/…",
 		// "HTTP://host/…" and other absolute forms through as "relative", fetched
 		// unguarded with the endpoint credential attached.
 		const base = new URL(endpoint.baseUrl + '/');
@@ -233,9 +232,9 @@ async function resolveBytes(
 
 /**
  * Build the thumbnail (a video's poster) now, while the original is fresh,
- * rather than on its first view. Generated lazily, a cold gallery screen was
+ * rather than on its first view. Generated lazily, a cold gallery screen is
  * ~70 misses queued through the thumbnail semaphore, and a finished video's
- * `<video poster>` spawned ffmpeg at first paint. Fire-and-forget: the
+ * `<video poster>` spawns ffmpeg at first paint. Fire-and-forget: the
  * thumbnail route still generates on demand, so a failure here costs nothing
  * but the head start.
  */

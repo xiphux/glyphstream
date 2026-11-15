@@ -49,9 +49,9 @@ export function mediaDir(): string {
  * chat thread's display-sized copies (`*.display.webp`), and the downscaled
  * JPEGs inlined into vision requests (`*.vision.jpg`).
  *
- * Defaults to `mediaDir()`, which is where they have always been written, so an
- * install that sets nothing keeps exactly the layout it has: same sharded
- * relative paths, same sibling-of-the-original names.
+ * Defaults to `mediaDir()`, so an install that sets nothing keeps derived assets
+ * beside their originals: same sharded relative paths, same sibling-of-the-original
+ * names.
  *
  * Worth separating when MEDIA_DIR is slow or remote storage, because derived
  * assets have the opposite profile to the originals they come from. They are
@@ -74,13 +74,6 @@ export function derivedDir(): string {
 export function skillsDir(): string {
 	return readString('SKILLS_DIR', './data/skills');
 }
-
-// MEDIA_GRACE_PERIOD_DAYS / MEDIA_PURGE_INTERVAL_SECONDS were removed when
-// the purger's scope narrowed to abandoned uploads only — see the header
-// of src/lib/server/media/purger.ts. Generated media is preserved
-// indefinitely now, so the configurability of the sweep timings stopped
-// having any meaningful policy decision behind it. The cadence is
-// hardcoded in the purger module.
 
 export function configPath(): string {
 	return readString('CONFIG_PATH', './config.toml');
@@ -152,24 +145,24 @@ export function oidcScopes(): string[] {
 		.filter((s) => s.length > 0);
 }
 
+/**
+ * The URL by which this server is reached from outside (EXTERNAL_BASE_URL, e.g.
+ * https://chat.example.com), used to build the OAuth callback URL. The variable
+ * avoids the `PUBLIC_` prefix because SvelteKit reserves that for client-exposed
+ * env vars, so the name would read as meant for the browser.
+ */
 export function publicBaseUrl(): string {
-	// EXTERNAL_BASE_URL is the URL by which this server is reached from
-	// outside (e.g. https://chat.example.com). Used to construct the
-	// OAuth callback URL registered with GitHub. Avoid names with the
-	// `PUBLIC_` prefix — SvelteKit reserves that for client-exposed env
-	// vars, so the name would read as meant for the browser.
 	return readString('EXTERNAL_BASE_URL', 'http://localhost:5173').replace(/\/+$/, '');
 }
 
 /**
  * Whether auth cookies get the `Secure` attribute.
  *
- * Derived from EXTERNAL_BASE_URL's scheme rather than NODE_ENV, which is what
- * this used to key off. NODE_ENV is set by the Dockerfile but by nothing else
- * — a `node build` under systemd or pm2 silently shipped session, WebAuthn
- * challenge, and OAuth carry cookies with no `Secure` at all, with no warning.
- * That's failing open on the strength of a variable nobody thinks of as
- * security-relevant.
+ * Derived from EXTERNAL_BASE_URL's scheme, not NODE_ENV. NODE_ENV is set by the
+ * Dockerfile but by nothing else, so keyed off it a `node build` under systemd or
+ * pm2 silently ships session, WebAuthn challenge, and OAuth carry cookies with no
+ * `Secure` at all — failing open on the strength of a variable nobody thinks of
+ * as security-relevant.
  *
  * EXTERNAL_BASE_URL has to be correct already: the WebAuthn RP ID and the
  * OAuth redirect URI are both derived from it, and both break loudly when it's
@@ -268,11 +261,11 @@ export function mcpSecretKey(): string {
 export const MIN_SECRET_LENGTH = 32;
 
 /**
- * Refuse to start on a missing or short secret. AUTH_SECRET used to be read
- * lazily, so an empty one booted and then 500'd on the first sign-in, and
- * `AUTH_SECRET=x` was accepted, signing cookies and deriving the key for
- * stored MCP tokens from one character. Called from hooks.server.ts at
- * module load, beside validateAuthMethodsEnabled.
+ * Refuse to start on a missing or short secret. AUTH_SECRET is otherwise read
+ * lazily, so an empty one would boot and then 500 on the first sign-in, and
+ * `AUTH_SECRET=x` would sign cookies and derive the key for stored MCP tokens
+ * from one character. Called from hooks.server.ts at module load, beside
+ * validateAuthMethodsEnabled.
  */
 export function validateSecrets(): void {
 	const auth = readString('AUTH_SECRET', '').trim();
@@ -334,13 +327,12 @@ export function validateAuthMethodsEnabled(): void {
 
 /**
  * On-the-fly compression for dynamic responses (SSR HTML, JSON API).
- * Default ON. It used to default off, on the theory that a proxy in front
- * compresses and doing it twice is waste — but it never happens twice:
- * nginx, Caddy, Traefik and Cloudflare all pass a response that already has
- * a Content-Encoding untouched. So on, the work just moves from the proxy to
- * here (usually the same box), with a better codec than a proxy's default
- * gzip; and the deploy whose proxy CAN'T compress (Synology's built-in one)
- * no longer ships every page and payload raw until someone finds this flag.
+ * Default ON. A proxy in front never compresses twice: nginx, Caddy, Traefik
+ * and Cloudflare all pass a response that already has a Content-Encoding
+ * untouched. So on, the work just moves from the proxy to here (usually the
+ * same box), with a better codec than a proxy's default gzip; and a deploy
+ * whose proxy CAN'T compress (Synology's built-in one) doesn't ship every page
+ * and payload raw until someone finds this flag.
  *
  * COMPRESS_DYNAMIC=0 turns it off, for a proxy you'd rather spend the CPU.
  * See src/lib/server/compression.ts for the skip rules (SSE is skipped here;

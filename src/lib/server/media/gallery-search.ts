@@ -35,9 +35,9 @@ const DENSE_TOPK = 100;
 /**
  * The decoded dense-search corpus, cached per (user, filters, embedding model).
  *
- * Search runs per keystroke, and each run re-read and decoded up to
- * DENSE_CORPUS_CAP blobs (~11 ms at 5,000 x 768 dims) to get the same vectors
- * as last time. An entry is reused while a blob-free signature over the same
+ * Search runs per keystroke, and uncached each run would re-read and decode up
+ * to DENSE_CORPUS_CAP blobs (~11 ms at 5,000 x 768 dims) to get the same
+ * vectors as last time. An entry is reused while a blob-free signature over the same
  * filter (`count(*)` and a rowid sum, ~1 ms) is unchanged: any row entering or
  * leaving the corpus (a backfill write, a delete, a star under Favorites)
  * moves it, and a row's vector only changes by being cleared and re-embedded,
@@ -88,8 +88,7 @@ function denseCorpusFor(
  *
  * Visibility (deleted_at / origin) + kind/model/favorite compose on both legs —
  * the dense leg included, or a semantic-only neighbour outside the filter would
- * fuse in past it. A dense
- * neighbour must clear the configurable cosine floor
+ * fuse in past it. A dense neighbour must clear the configurable cosine floor
  * (`gallery_search_min_similarity`, default 0.5) to surface, so noise doesn't pad
  * the results — which means an embeddings-on query with no keyword hit and no
  * above-floor neighbour can also return empty, same as keyword-only mode.

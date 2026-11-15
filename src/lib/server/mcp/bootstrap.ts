@@ -57,12 +57,12 @@ export function awaitMcpReady(): Promise<void> {
  * Has bootstrap finished, synchronously? Lets a render path take the registry
  * as it stands and tell the client whether to expect it to change.
  *
- * The `(app)` layout used to `await awaitMcpReady()`, which put every global
- * server's handshake in front of the first page render after a process start
- * — and for a remote HTTP server that is a live network round trip to a third
- * party, unbounded, on the critical path of the first thing the user sees.
+ * The `(app)` layout doesn't `await awaitMcpReady()`: that would put every
+ * global server's handshake in front of the first page render after a process
+ * start — and for a remote HTTP server that is a live network round trip to a
+ * third party, unbounded, on the critical path of the first thing the user sees.
  *
- * What that wait bought is much smaller than it looks: `listServerCatalog()`
+ * What that wait would buy is much smaller than it looks: `listServerCatalog()`
  * reads `serverConfigs`, which `initializeMcpServers` fills SYNCHRONOUSLY
  * before it connects to anything. So ids, names and transports are already
  * correct the moment bootstrap starts. Only two fields need the connects:

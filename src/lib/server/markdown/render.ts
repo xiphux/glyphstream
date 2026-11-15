@@ -24,10 +24,10 @@ const DARK_THEME = 'github-dark';
 
 // The languages that get highlighting, plus every alias shiki defines for them
 // (`zsh`, `md`, `c++`, `kt`…). Anything else falls back to plain
-// `<pre><code>`. Add more here as needed.
+// `<pre><code>`.
 //
 // Only CORE_LANGS load with the highlighter; the rest load the first time a
-// fence asks for one (see `loadFenceLanguages`). Preloading all of them cost
+// fence asks for one (see `loadFenceLanguages`). Preloading all of them costs
 // ~110 MB of resident memory for grammars most servers never render. The set
 // that CAN highlight is this whole list either way, so whether a grammar was
 // loaded yet never changes what a message renders to.
@@ -122,7 +122,6 @@ async function getMarkdownIt(): Promise<MarkdownIt> {
 		});
 
 		// Make all rendered links open in a new tab and disable referrer leakage.
-		// Markdown-it's renderer-rule trick: wrap the existing link_open renderer.
 		const defaultLinkOpen =
 			md.renderer.rules.link_open ??
 			((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
@@ -150,11 +149,10 @@ async function getMarkdownIt(): Promise<MarkdownIt> {
  * trusted HTML we DO emit comes from shiki (we control it) — no
  * downstream sanitizer needed for v1's threat model (assistant output +
  * server-controlled rendering).
- */
-/**
+ *
  * NOTE ON COST: `md.render()` and shiki's `codeToHtml` are fully synchronous
- * despite the async signature — the `await` above yields before the work, not
- * during it — so this occupies the event loop, and on a single-process server
+ * despite the async signature — the `await`s yield before the work, not during
+ * it — so this occupies the event loop, and on a single-process server
  * that stalls every other in-flight request including other users' SSE
  * forwarding. It runs once per tool-loop iteration at each persist boundary.
  *

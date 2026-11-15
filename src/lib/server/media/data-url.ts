@@ -94,7 +94,7 @@ export async function loadMediaBytes(mediaId: string, userId: string): Promise<L
  * variant (see `vision-variant.ts`) over the original. Videos, and any image the
  * variant path declines (downscaling disabled, undecodable, or already smaller
  * than the re-encode), fall back to the original bytes — so the worst case is
- * exactly the old behavior.
+ * sending the original.
  *
  * Deliberately NOT used by image-to-image dispatch, which calls `loadMediaBytes`
  * directly and wants full resolution: a generation model is being asked to

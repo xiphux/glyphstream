@@ -13,8 +13,8 @@
  *     if `linkMessageMedia` doesn't clear that flag before the grace
  *     period elapses we assume the upload was abandoned and reap it.
  *
- * Cadence is hardcoded rather than env-configurable: with generated
- * media no longer touched, the meaningful tradeoff lives in a narrow
+ * Cadence is hardcoded rather than env-configurable: since generated
+ * media is never touched, the meaningful tradeoff lives in a narrow
  * band. Too tight and a user's half-composed message loses its upload
  * to a phone call. Too loose and orphaned bytes linger pointlessly.
  * 15-minute sweep / 30-minute grace is conservative inside that band —
@@ -76,9 +76,9 @@ let running = false;
  *
  * Concurrent rather than one candidate at a time. Each delete is six unlinks
  * (original + .thumb.webp + a pre-WebP .thumb.jpg + .vision.jpg + one
- * .display*.webp per display size), so a full 500-row batch was up to 3000
- * serialized filesystem round trips. Nothing here blocks the event loop (it's
- * all async I/O) — it just made the sweep take far longer than it needed to.
+ * .display*.webp per display size), so a full 500-row batch serialized would be
+ * up to 3000 filesystem round trips. Nothing here blocks the event loop (it's
+ * all async I/O) — it would just make the sweep take far longer than it needs to.
  * Bounded so a large batch can't saturate the filesystem queue against
  * foreground media reads.
  */
@@ -116,7 +116,7 @@ export async function runPurgeSweep(): Promise<{
 		const now = Date.now();
 		// Both phases claim (stamp) their rows synchronously and only then
 		// unlink — see `claimAbandonedUploads` / `claimExpiredTrash` for why a
-		// mark after the awaited unlink was a race.
+		// mark after the awaited unlink is a race.
 		const uploads = claimAbandonedUploads(now - GRACE_PERIOD_MS, BATCH_SIZE);
 		await unlinkAll(uploads);
 		const hardDeleted = uploads.length;

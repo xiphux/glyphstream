@@ -41,13 +41,12 @@ const EXT_BY_CONTENT_TYPE: Record<string, string> = {
 	'video/mp4': 'mp4',
 	'video/webm': 'webm',
 	'video/quicktime': 'mov',
-	// Document / data kinds — relevant once the composer accepts non-image
-	// uploads (for the code interpreter) and the interpreter writes files
-	// back to the conversation. The stored extension only affects the
-	// on-disk filename; the served Content-Type comes from the media row,
-	// so consumers see the original type even if the extension fell back
-	// to 'bin'. Keep this list focused on what the composer actively
-	// solicits — unknowns fall through to 'bin' rather than guessing wrong.
+	// Document / data kinds — non-image composer uploads for the code interpreter,
+	// and the files it writes back to the conversation. The stored extension only
+	// affects the on-disk filename; the served Content-Type comes from the media
+	// row, so consumers see the original type even if the extension fell back to
+	// 'bin'. Keep this list focused on what the composer actively solicits —
+	// unknowns fall through to 'bin' rather than guessing wrong.
 	'text/plain': 'txt',
 	'text/csv': 'csv',
 	'text/markdown': 'md',
@@ -70,7 +69,7 @@ function extFor(contentType: string): string {
  * The media root, created once per resolved path rather than on every call.
  *
  * `root()` is on the read path too — `open`, `delete` and the range/serve paths
- * all go through it — so the unconditional `mkdirSync` meant a synchronous
+ * all go through it — so an unconditional `mkdirSync` would be a synchronous
  * filesystem call per media request against a directory that has existed since
  * the first upload. A gallery viewport is dozens of those in a burst. Keyed by
  * the resolved path (not a bare boolean) so a test or a config change that
@@ -143,7 +142,7 @@ export class DiskMediaStore implements MediaStore {
 			await rename(tmp, absolute);
 		} catch (e) {
 			// A stream that fails part-way (a Stop mid-download, a dropped
-			// upstream) left a partial `.tmp` that nothing else ever cleans up.
+			// upstream) leaves a partial `.tmp` that nothing else ever cleans up.
 			await unlink(tmp).catch(() => {});
 			throw e;
 		}
@@ -162,12 +161,12 @@ export class DiskMediaStore implements MediaStore {
 	): Promise<MediaOpenResult | null> {
 		const absolute = resolve(root(), storagePath);
 		// One async stat, not a blocking existsSync followed by a stat that asks the
-		// filesystem the same question over again. The pair spent two round trips on
-		// one answer and took the first of them on the event loop — free against a
-		// local disk, and a blocking network round trip per media request the moment
-		// MEDIA_DIR is a remote mount. Catching everything (rather than only ENOENT)
-		// keeps the old semantics exactly: existsSync answers false for a permission
-		// error too, and the caller's contract is "null means no bytes for you".
+		// filesystem the same question over again. That pair spends two round trips
+		// on one answer and takes the first of them on the event loop — free against
+		// a local disk, and a blocking network round trip per media request the
+		// moment MEDIA_DIR is a remote mount. Catching everything (rather than only
+		// ENOENT) is deliberate: a permission error also means no bytes, and the
+		// caller's contract is "null means no bytes for you".
 		const stats = await stat(absolute).catch(() => null);
 		if (stats === null) return null;
 		const size = stats.size;

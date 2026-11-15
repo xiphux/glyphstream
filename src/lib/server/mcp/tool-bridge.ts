@@ -226,12 +226,12 @@ async function* eachRegisteredPerUserTool(
 		// discovered descriptors still populated) in two routine situations: the
 		// server didn't finish its handshake inside the send path's 2.5s budget, and
 		// the idle reaper closed a perfectly healthy connection between turns. Gating
-		// on `state === 'connected'` threw those cached descriptors away — so a user
-		// who stepped away from a conversation for longer than the idle timeout came
-		// back to find the server's tools silently missing for one turn, then back
-		// again on the next.
+		// on `state === 'connected'` would throw those cached descriptors away — so a
+		// user who stepped away from a conversation for longer than the idle timeout
+		// would come back to find the server's tools silently missing for one turn,
+		// then back again on the next.
 		//
-		// That flicker is worse than the thing it was guarding against. It rewrites
+		// That flicker is worse than the thing such a gate guards against. It rewrites
 		// `tools[]` (and, for a deferred server, the Tier-1 hint at the FRONT of the
 		// system prompt) between two turns the user considers identical — which both
 		// invalidates the upstream's prefix cache for the whole conversation and makes
@@ -248,7 +248,7 @@ async function* eachRegisteredPerUserTool(
 		if (!cfg) continue;
 		for (const t of s.tools) {
 			const tool = mcpToolFor(cfg, t, { perUser: true });
-			register(tool); // ensure execution can resolve it via registry.get(name)
+			register(tool);
 			yield { cfg, tool };
 		}
 	}

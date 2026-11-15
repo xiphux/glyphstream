@@ -4,7 +4,8 @@
  * An iPhone saves photos as HEIC, and nothing downstream can read one: sharp's
  * prebuilt libvips leaves out the HEVC decoder (it reads AVIF only), Chrome and
  * Firefox can't display it, and vision models want JPEG or PNG. Stored as-is it
- * was a broken thumbnail, a broken lightbox and a raw HEIC inlined to the model.
+ * would be a broken thumbnail, a broken lightbox and a raw HEIC inlined to the
+ * model.
  * Converted once at upload, every one of those just sees a JPEG.
  *
  * ffmpeg does the decode: the image already carries it for video, with the
@@ -63,8 +64,8 @@ const HEADER_BYTES = 256 * 1024;
  * one at a time caps the worst case at one such job instead of three.
  *
  * Isolation: picking a batch of iPhone photos uploads them all at once, each a
- * conversion of a few seconds. In the shared slots that queued every thumbnail,
- * chat image and vision send in the process behind the batch.
+ * conversion of a few seconds. In the shared slots that would queue every
+ * thumbnail, chat image and vision send in the process behind the batch.
  */
 let lastConversion: Promise<unknown> = Promise.resolve();
 function oneAtATime<T>(fn: () => Promise<T>): Promise<T> {

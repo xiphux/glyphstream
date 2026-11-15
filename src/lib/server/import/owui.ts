@@ -151,10 +151,9 @@ async function importOne(
 		return 'skipped-no-history';
 	}
 
-	// Build the tree-walk plan: pick up roots (parentId == null), BFS down.
-	// We need to insert parents before children to satisfy the self-FK on
-	// messages.parent_message_id (well, the column doesn't have an FK
-	// constraint actually, but topological order keeps the data sane).
+	// Insert in topological order (roots, then BFS down) so every parent row
+	// precedes its children. messages.parent_message_id carries no FK
+	// constraint, but the order keeps the data sane.
 	const idMap = new Map<string, string>(); // owui id -> new uuid
 	const ordered: Array<{ owuiId: string; msg: OwuiTreeMessage }> = [];
 	const seen = new Set<string>();
@@ -169,7 +168,6 @@ async function importOne(
 		if (!mid || seen.has(mid)) continue;
 		seen.add(mid);
 		ordered.push({ owuiId: mid, msg: m });
-		// Find children by scanning messages whose parentId === mid.
 		for (const candidate of Object.values(owuiMessages)) {
 			if (candidate?.parentId === mid && candidate.id && !seen.has(candidate.id)) {
 				queue.push(candidate);
@@ -349,10 +347,9 @@ function secondsToMs(seconds: number | null | undefined): number | null {
 	return Math.floor(seconds * 1000);
 }
 
+/** Collapse image references to OWUI's `/api/v1/files/{id}/content` URLs into
+ *  a placeholder, keeping the alt text so the user knows what was there. */
 export function stripOwuiFileUrls(markdown: string): string {
-	// Collapse references to OWUI's `/api/v1/files/{id}/content` URLs into
-	// a clear placeholder. Preserves the alt text so the user knows what
-	// was supposed to be there.
 	return markdown.replace(OWUI_FILE_URL_RE, (_match, alt) => {
 		const label = alt && String(alt).trim().length > 0 ? `: ${alt}` : '';
 		return `_[image unavailable${label}]_`;

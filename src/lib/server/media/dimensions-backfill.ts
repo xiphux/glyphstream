@@ -1,6 +1,6 @@
 /**
  * Background worker that fills `media.width` / `media.height` for images stored
- * before those columns existed. Every insert path probes its image now
+ * before those columns existed. Every insert path probes its image
  * (persister, uploads, code-interpreter outputs), so the queue only shrinks and
  * the worker stops itself once it's drained — the topic backfiller's shape. The
  * one exception is an upload whose file couldn't be reached to probe: it is
@@ -81,8 +81,8 @@ export async function runDimensionsBackfillSweep(): Promise<{ filled: number; dr
 				const dims = 'dims' in probe ? probe.dims : UNKNOWN_DIMENSIONS;
 				if (setMediaDimensions(row.id, dims)) filled++;
 			}
-			// A full batch of them is the volume, not the files: stop reading. (A short batch is the
-			// end of the queue: nothing left to stop for.)
+			// A full batch of them is the volume, not the files: stop reading. (A short
+			// batch is the end of the queue: nothing left to stop for.)
 			if (unreachable === BATCH_SIZE) {
 				return { filled, drained: false };
 			}

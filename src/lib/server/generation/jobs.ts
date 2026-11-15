@@ -1,21 +1,19 @@
 /**
  * Durable image / video generations.
  *
- * A generation used to exist only inside the HTTP request that submitted it:
- * the relay ran in that request's response stream, its inputs lived in the
- * closure, and its place in the queue was a promise parked on the endpoint
- * gate. The in-flight registry that recovery, the sidebar, Stop and the "N
- * ready" notification all read was just as ephemeral. Restarting GlyphStream —
- * an upgrade, a crash, a host reboot — therefore dropped every queued and
- * running generation without a trace, which on a single-GPU box with a stack of
- * multi-model grids in line is a lot of work to lose.
+ * A generation that exists only inside the HTTP request that submitted it — the
+ * relay in that request's response stream, its inputs in the closure, its place
+ * in the queue a promise parked on the endpoint gate, and an in-flight registry
+ * just as ephemeral — is dropped without a trace by any restart (an upgrade, a
+ * crash, a host reboot). On a single-GPU box with a stack of multi-model grids
+ * in line, that is a lot of work to lose.
  *
- * So a generation is now a row (`generation_jobs`) the server owns:
+ * So a generation is a row (`generation_jobs`) the server owns:
  *
  *  - SUBMIT inserts the row, registers it in flight, starts running it, and
- *    hands back a response stream carrying the same events the relay always
- *    emitted — the client, including an old cached one, can't tell.
- *  - RUN is the unchanged media relay, driven with callbacks that checkpoint
+ *    hands back a response stream carrying the relay's own events — the
+ *    client, including an old cached one, can't tell.
+ *  - RUN is the media relay, driven with callbacks that checkpoint
  *    the job as it goes: `running` when the slot is granted, the enhanced
  *    prompt once written, the bridge's video job id once created.
  *  - COMMIT deletes the row in the same transaction that appends the result
@@ -36,8 +34,8 @@
  * that reads it — the recovered grid and bubble, the sidebar dots, Stop, the
  * aggregate notification — works after a restart with no changes of its own.
  * What a resumed job does NOT have is a listener: its events go nowhere until
- * the client's recovery poll picks the result up, as it already does for a
- * generation whose tab was closed.
+ * the client's recovery poll picks the result up, as it does for a generation
+ * whose tab was closed.
  */
 
 import { Buffer } from 'node:buffer';
@@ -99,8 +97,9 @@ const avatarLog = createLogger('avatar');
 const drawsOntoReply = (o: JobOrigin) => o === 'photo' || o === 'portrait';
 
 /**
- * What a generation is for. Decides everything the submitting route used to
- * decide with closures, so a resumed job behaves exactly as it would have:
+ * What a generation is for. Decides everything the submitting route would
+ * otherwise decide with closures, so a resumed job behaves exactly as it would
+ * have:
  *
  *  - `send`: an ordinary single-model turn. Advances the leaf, runs the
  *    first-exchange title task, notifies on its own.
@@ -185,8 +184,8 @@ const NO_LISTENER: MediaRelaySink = { write: () => {}, close: () => {} };
 
 /**
  * Queue a generation and start running it. Returns the response stream the
- * submitting request serves: the same event sequence the relay has always
- * emitted, so nothing downstream of the route changes.
+ * submitting request serves: the relay's own event sequence, so nothing
+ * downstream of the route can tell a job from a direct relay.
  *
  * The caller is responsible for any admission checks (the fan-out cap, a
  * parked comparison) — they must run synchronously right before this, because
@@ -259,7 +258,7 @@ export function resumeGenerationJobs(): void {
 		// Every row is resolved against the endpoint registry below. If config
 		// can't be loaded right now, each per-row resolve would throw and be
 		// logged as "could not resume" — with the queue marked resumed, so the
-		// jobs sat untouched until the next restart. Load it here instead, where
+		// jobs would sit untouched until the next restart. Load it here instead, where
 		// a failure takes the same not-resumed, retry-later path as a failed read.
 		if (rows.length > 0) getRegistry();
 	} catch (e) {
@@ -469,6 +468,8 @@ async function runJob(
 ): Promise<void> {
 	let settled = false;
 	const params = parseParams(row);
+	// Set by the landing, read once the media has persisted (see `onMediaPersisted`).
+	let faceOnLand = false;
 	// Clears the registry and, for a grid branch, lets the last one to settle fire
 	// the aggregate "N ready". Idempotent, because the relay calls it from its own
 	// `finally` and this function calls it again from its own.
@@ -476,8 +477,6 @@ async function runJob(
 	// Guarded: it runs from `finally` blocks, and the notification reads the DB.
 	// A throw there would reject a run nobody awaits (a resumed job's), which
 	// Node treats as fatal — a lost notification is not worth the process.
-	// Set by the landing, read once the media has persisted (see `onMediaPersisted`).
-	let faceOnLand = false;
 	const settle = () => {
 		if (settled) return;
 		settled = true;

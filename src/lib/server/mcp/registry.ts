@@ -102,7 +102,7 @@ export interface ServerCatalogEntry {
 	 *  server before anyone connects). Cosmetic — for the feature-toggle label. */
 	toolCount: number;
 	/** Whether to surface this server as a feature category. Global servers
-	 *  that failed at boot are hidden (as before); per-user servers always
+	 *  that failed at boot are hidden; per-user servers always
 	 *  show (failure is per-user/credential-specific, not a server fault). */
 	available: boolean;
 }
@@ -257,8 +257,8 @@ export interface ServerStatesOptions {
 	/** Per-conversation feature opt-outs. A per-user server whose `mcp:<id>`
 	 *  category is disabled for this conversation is NOT connected at all — its
 	 *  tools get filtered out downstream regardless, so paying its handshake on
-	 *  send is pure waste (and was why an all-MCP-off chat still stalled on a
-	 *  dead server). */
+	 *  send is pure waste (and would stall an all-MCP-off chat on a dead
+	 *  server). */
 	excludeCategories?: readonly string[];
 	/** Circuit-breaker: don't re-attempt a per-user server already in `failed`
 	 *  state. A down server otherwise burns its full connect timeout on EVERY
@@ -338,9 +338,9 @@ export async function getUserServerStates(
 	// Gated on its own flag rather than on `connectBudgetMs`, because the two
 	// wants are different. /settings/mcp bounds its wait but must still report
 	// live reachability: an idle-reaped server keeps its tool list, so keying the
-	// split off the budget sent it down this path and rendered it "Reconnecting"
-	// with a stale surface — including when it had since gone down, which is the
-	// one thing that page exists to surface.
+	// split off the budget would send it down this path and render it
+	// "Reconnecting" with a stale surface — including when it has since gone down,
+	// which is the one thing that page exists to surface.
 	const mustAwait = opts.backgroundKnownServers ? toConnect.filter(hasNoKnownTools) : toConnect;
 	const background = opts.backgroundKnownServers
 		? toConnect.filter((id) => !hasNoKnownTools(id))

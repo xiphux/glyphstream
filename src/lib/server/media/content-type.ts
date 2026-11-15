@@ -9,15 +9,15 @@
  *
  * A content type arriving from a multipart upload is whatever the client put
  * in the part header, and `File.type` preserves parameters verbatim — a part
- * declaring `image/svg+xml; charset=utf-8` yields exactly that string. Every
- * check that compared the raw value with `===` therefore missed it while
- * `startsWith('image/')` still matched, which classified a scriptable SVG as
- * an ordinary image and served it inline from our own origin.
+ * declaring `image/svg+xml; charset=utf-8` yields exactly that string. A check
+ * comparing the raw value with `===` misses it while `startsWith('image/')`
+ * still matches, classifying a scriptable SVG as an ordinary image and serving
+ * it inline from our own origin.
  *
- * The fix is to compare essences, never raw values. `normalizeContentType`
- * produces the essence (parameters stripped, lowercased); the media store
- * normalizes on write so stored rows are clean going forward, and the serving
- * routes normalize on read so rows written before this change are handled too.
+ * So compare essences, never raw values. `normalizeContentType` produces the
+ * essence (parameters stripped, lowercased); the media store normalizes on
+ * write, and the serving routes normalize on read as well, for rows written
+ * before the store did.
  */
 
 /** The SVG essence — refused at upload and never served inline. */

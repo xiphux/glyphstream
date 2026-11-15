@@ -3,15 +3,10 @@
  * stacks related media into units, buckets them into local-time days, and serves
  * the grid its scroll-height reservation and demand-loaded slices.
  *
- * Split out of `db/queries/media.ts`, which had grown to 1800 lines by absorbing
- * this alongside plain row access. The two are different things: everything in
- * the `queries/media/*` modules is a statement against the media table, while this is a
+ * Kept apart from `db/queries/media/*` because the two are different things:
+ * those modules are statements against the media table, while this is a
  * computation over the result — stacking, day bucketing, and the two caches that
- * make it affordable. A file named "queries" was not where anyone would look for
- * a memoized layout engine.
- *
- * Nothing here changed in the move; the caches, their bounds and their
- * fingerprint invalidation are as they were.
+ * make it affordable.
  */
 
 import { createHash } from 'node:crypto';
@@ -68,7 +63,6 @@ interface UnitSourceRow extends StackableMedia {
 	favorite: boolean;
 }
 
-/** Two-digit zero-pad for the local day key. */
 function pad2(n: number): string {
 	return n < 10 ? `0${n}` : String(n);
 }
@@ -235,9 +229,9 @@ function computeGalleryUnits(userId: string, opts: GalleryUnitOpts): GalleryUnit
 // cached, and the map evicts oldest-first on both an entry cap and a total-units
 // cap (the entry cap alone bounds entries, not the memory behind them).
 // A backstop: the fingerprint observes the changes that alter the units (see
-// galleryUserFingerprint), and this bounds anything it misses. At 30s it re-ran the
-// O(library) load and stack (100-230 ms synchronous at 30k media) every half
-// minute of browsing.
+// galleryUserFingerprint), and this bounds anything it misses. A 30s TTL would
+// re-run the O(library) load and stack (100-230 ms synchronous at 30k media)
+// every half minute of browsing.
 const GALLERY_UNITS_TTL_MS = 10 * 60_000;
 const GALLERY_UNITS_CACHE_MAX = 256;
 /** Total units held across all cache entries. Each entry holds a unit per item
@@ -257,10 +251,9 @@ let galleryUnitsCachedTotal = 0;
 //
 // Two callers need it and only one of them wants units: the drill-in
 // (`listGalleryUnitMembers`) needs a group's ordered member ids, which a
-// `GalleryUnit` doesn't carry (it keeps <=4 previews and a count). It therefore
-// used to re-run this load *and* a full re-stack on every drill-in click, with
-// no cache at all — the single most expensive query in the app, on a routine
-// user action.
+// `GalleryUnit` doesn't carry (it keeps <=4 previews and a count). Uncached,
+// every drill-in click re-runs this load *and* a full re-stack — the single most
+// expensive query in the app, on a routine user action.
 //
 // Keyed without `stack`/`tzOffsetMinutes`, which only affect how the rows are
 // grouped and bucketed afterwards, so every variant shares one load.
@@ -271,9 +264,9 @@ const gallerySourceCache = new Map<
 const GALLERY_SOURCE_CACHE_MAX = 64;
 /** Total prompt characters held across all source entries — the same reasoning
  *  as `GALLERY_UNITS_CACHE_MAX_UNITS`. A source row keeps every item, so 64
- *  entries x a large library still adds up, though each row now holds only
- *  hashes and two capped strings (under ~400 chars) rather than the untruncated
- *  prompts it once did. 20M chars is ~40MB of UTF-16. */
+ *  entries x a large library still adds up, though each row holds only hashes
+ *  and two capped strings (under ~400 chars) rather than untruncated prompts.
+ *  20M chars is ~40MB of UTF-16. */
 const GALLERY_SOURCE_CACHE_MAX_CHARS = 20_000_000;
 let gallerySourceCachedChars = 0;
 
@@ -391,27 +384,26 @@ function evictUnitsEntry(key: string): void {
  *  single thing a star changes is one tile's `favoriteCount` badge.
  *
  *  Splitting them is what keeps starring cheap. `favAt` is deliberately
- *  strictly-increasing so no toggle can hide from it (see `setMediaFavorite`), and
- *  folding it into one string meant every star invalidated ALL of that user's
+ *  strictly-increasing so no toggle can hide from it (see `setMediaFavorite`), so
+ *  folded into one string, every star would invalidate ALL of that user's
  *  entries — including the unfiltered library. Measured at 30k media, the cold
  *  recompute that forces is ~100ms and can reach ~230ms of synchronous SQLite + JS
- *  on the single Node thread, blocking every other request in the process. That is
- *  a sub-second UI gesture the user repeats in bursts while scrolling, so it paid
- *  the O(library) pass over and over. Insert and delete, the only invalidators
- *  before favorites existed, are each already expensive or rare.
+ *  on the single Node thread, blocking every other request in the process. A star
+ *  is a sub-second UI gesture the user repeats in bursts while scrolling, so it
+ *  would pay the O(library) pass over and over. Insert and delete are each already
+ *  expensive or rare.
  *
- *  What that trades away: an unfiltered entry can now serve a TTL-stale badge
+ *  What that trades away: an unfiltered entry can serve a TTL-stale badge
  *  COUNT to a second tab or device (and to the starring client itself if it
  *  navigates away and back inside the TTL). That is the same staleness class the
  *  TTL already accepts a few lines up, and the starring client patches its own
  *  badge locally anyway (`GalleryFeed.patchUnitFavorite`).
  *
- *  `base` is cheap because the index was widened to keep the whole query
- *  index-only: `favorited_at` trails `idx_media_user_gallery` for this query's
- *  sake. Reading a column that index doesn't carry costs a table-row lookup per
- *  matching row — 0.8ms -> 3.2ms at 30k media — and this is the one piece of DB
- *  work a cache HIT still does. If you add an aggregate here, check it against
- *  that index first. */
+ *  `base` is cheap because the whole query is index-only: `favorited_at` trails
+ *  `idx_media_user_gallery` for this query's sake. Reading a column that index
+ *  doesn't carry costs a table-row lookup per matching row — 0.8ms -> 3.2ms at 30k
+ *  media — and this is the one piece of DB work a cache HIT still does. If you add
+ *  an aggregate here, check it against that index first. */
 function galleryUserFingerprint(
 	userId: string,
 	{ withConversations = true }: { withConversations?: boolean } = {},
@@ -420,10 +412,10 @@ function galleryUserFingerprint(
 		.select({
 			total: sql<number>`count(*)`,
 			live: sql<number>`coalesce(sum(case when ${media.deletedAt} is null then 1 else 0 end), 0)`,
-			// `live` alone stopped being enough once deletes became reversible:
-			// delete A then restore B leaves both counts where they were, over a
-			// different set. Every delete stamps a fresh `deleted_at` and every
-			// restore removes one, so a sum over them moves on either. Reduced
+			// `live` alone isn't enough because deletes are reversible: delete A then
+			// restore B leaves both counts where they were, over a different set.
+			// Every delete stamps a fresh `deleted_at` and every restore removes
+			// one, so a sum over them moves on either. Reduced
 			// modulo a prime per row only to keep the sum a safe JS integer (30k rows
 			// of raw millisecond timestamps would overflow 2^53); a collision would
 			// need two distinct sets to agree mod 1e9+7, and still only costs one TTL
@@ -532,10 +524,9 @@ function computeGalleryUnitsCached(userId: string, rawOpts: GalleryUnitOpts): Ga
 		return units;
 	}
 	// Delete before re-inserting so the refreshed entry lands at the *end* of the
-	// map. `Map.set` over an existing key keeps its original position, which made
-	// this FIFO-by-first-insert: a hot entry aged to the front, and when it was
-	// the oldest the eviction loop below hit it and bailed without trimming
-	// anything, leaving the total over budget.
+	// map. `Map.set` over an existing key keeps its original position, which would
+	// make eviction FIFO-by-first-insert: a hot entry ages to the front and is
+	// evicted ahead of colder ones.
 	evictUnitsEntry(key);
 	const now = Date.now();
 	galleryUnitsCache.set(key, { fingerprint, expiresAt: now + GALLERY_UNITS_TTL_MS, units });

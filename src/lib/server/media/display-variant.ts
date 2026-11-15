@@ -1,8 +1,8 @@
 /**
  * A display-sized copy of an image for the chat thread.
  *
- * A chat bubble is at most ~768 CSS px wide, but it loaded the original: a
- * generated PNG of 1–2 MB, per image, every time a long thread opened. This
+ * A chat bubble is at most ~768 CSS px wide, but the original is a generated
+ * PNG of 1–2 MB, per image, loaded every time a long thread opens. This
  * serves a WebP at most DISPLAY_MAX_DIM on the long side instead, crisp on a
  * high-density screen at bubble width and typically a tenth of the bytes.
  * WebP rather than the vision variant's JPEG because it keeps transparency: a
@@ -38,8 +38,9 @@ const log = createLogger('display-variant');
 export const DISPLAY_MAX_DIM = DISPLAY_SIZES[0];
 const DISPLAY_QUALITY = 82;
 
-/** The original's relative path plus `.display.webp` (the default size, named
- *  as it always was) or `.display-<size>.webp`, under `derivedDir()`. */
+/** The original's relative path plus `.display.webp` (the default size, so
+ *  existing copies keep their name) or `.display-<size>.webp`, under
+ *  `derivedDir()`. */
 export function displayStoragePath(
 	storagePath: string,
 	size: DisplaySize = DISPLAY_MAX_DIM,
@@ -109,8 +110,8 @@ async function generate(
 	let job: { encoded: Buffer; originalBytes: number } | null;
 	try {
 		// The original is read INSIDE the slot: read ahead of it, every queued
-		// image (a long thread opened for the first time) held its whole file in
-		// memory while it waited.
+		// image (a long thread opened for the first time) would hold its whole
+		// file in memory while it waited.
 		job = await withGenerationSlot(async () => {
 			let original: Buffer;
 			try {
@@ -122,8 +123,8 @@ async function generate(
 				return null;
 			}
 			// `animated`: every frame, not just the first. Without it an animated GIF
-			// or WebP came out as one still frame, which is always smaller, so the
-			// size check below served it and the thread stopped animating.
+			// or WebP comes out as one still frame, which is always smaller, so the
+			// size check below would serve it and the thread would stop animating.
 			const encoded = await sharp(original, { limitInputPixels: MAX_DECODE_PIXELS, animated: true })
 				// EXIF orientation first; the re-encode drops metadata.
 				.rotate()

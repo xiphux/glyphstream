@@ -1,9 +1,9 @@
 /**
  * Server logging: a `[scope]` prefix and a LOG_LEVEL threshold.
  *
- * Output is exactly what the hand-written `console.warn('[scope] …')` calls it
- * replaced produced: one string with the prefix, then any further arguments
- * passed through untouched (an Error still prints with its stack). Each level
+ * Output matches a hand-written `console.warn('[scope] …')`: one string with
+ * the prefix, then any further arguments passed through untouched (an Error
+ * still prints with its stack). Each level
  * goes to the `console` method of the same name — info and debug to stdout,
  * warn and error to stderr — and a test can still spy on `console.warn`.
  *
@@ -15,7 +15,7 @@
  *
  * Read from `process.env` here rather than through `env.ts`: thirty-odd unit
  * tests mock `#lib/server/env.js` with only the getters they need, and every
- * module that logged through a mocked `logLevel` crashed unless the mock
+ * module that logged through a mocked `logLevel` would crash unless the mock
  * remembered to stub it too.
  */
 import process from 'node:process';

@@ -108,9 +108,9 @@ function remuxBudgetMs(byteSize: number): number | null {
  * `isFaststart`, the `stat`/`rename` in `makeFaststart`, and `putStream` in
  * its caller are all un-deadlined libuv fs calls against the same volume — if
  * MEDIA_DIR stops answering, one of those hangs before ffmpeg is ever spawned.
- * Fixing that is a different change (a deadline can't wrap a libuv fs call);
- * this covers the case where ffmpeg specifically wedges on one inode while
- * Node's own metadata ops still complete.
+ * This can't cover those (a deadline can't wrap a libuv fs call); it covers the
+ * case where ffmpeg specifically wedges on one inode while Node's own metadata
+ * ops still complete.
  */
 class RemuxDeadline extends Error {
 	constructor(seconds: number) {

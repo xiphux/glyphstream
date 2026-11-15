@@ -14,13 +14,13 @@
  *
  * Lazy, same as `thumbnail.ts`: generated on first inline, cached as a sibling
  * file, so existing conversations pick it up with no backfill migration. Failure
- * to encode is non-fatal — callers fall back to the original bytes, exactly as
- * before this module existed.
+ * to encode is non-fatal — callers fall back to the original bytes.
  *
  * DISK-STORE-ONLY, for the same reason `thumbnail.ts` is: it resolves raw
  * `node:fs` paths — the original under `mediaDir()`, the variant under
- * `derivedDir()` — rather than going through the MediaStore interface. Under a future S3 store this degrades to "no variant" (null), and
- * the caller inlines the original — slower and fatter, but correct. Extending
+ * `derivedDir()` — rather than going through the MediaStore interface. Under a
+ * future S3 store this degrades to "no variant" (null), and the caller inlines
+ * the original — slower and fatter, but correct. Extending
  * MediaStore with derived-asset methods is the same deferred v2 change noted
  * there.
  */
@@ -70,14 +70,6 @@ export async function cachedVisionVariantSize(storagePath: string): Promise<numb
 }
 
 /**
- * The downscaled JPEG to inline for `storagePath`, or null to inline the original.
- *
- * Null is returned whenever the variant wouldn't be a win — downscaling disabled,
- * source unreadable, sharp can't decode it, or (the common case for a small PNG
- * icon) the re-encode came out no smaller than what we started with. Callers must
- * treat null as "use the original", never as an error.
- */
-/**
  * Storage paths whose re-encode came out no smaller than the original, so the
  * variant was declined. WITHOUT this, every such image is fully decoded and
  * mozjpeg-encoded again on EVERY turn, forever — paying the most expensive part
@@ -116,6 +108,14 @@ async function readFileOrNull(path: string, what: string): Promise<Buffer | null
 	}
 }
 
+/**
+ * The downscaled JPEG to inline for `storagePath`, or null to inline the original.
+ *
+ * Null is returned whenever the variant wouldn't be a win — downscaling disabled,
+ * source unreadable, sharp can't decode it, or (the common case for a small PNG
+ * icon) the re-encode came out no smaller than what we started with. Callers must
+ * treat null as "use the original", never as an error.
+ */
 export async function getVisionVariant(storagePath: string): Promise<VisionVariant | null> {
 	const { maxImageDim, imageQuality } = getVisionConfig();
 	if (maxImageDim <= 0) return null; // explicitly disabled
@@ -134,15 +134,15 @@ export async function getVisionVariant(storagePath: string): Promise<VisionVaria
 	// re-inlined on every turn for the life of the conversation and only the
 	// first of those turns generates.
 	//
-	// Checking the ORIGINAL's existence before that (which is what this used to
-	// do) was the same round trip a third time, against a file this path never
-	// touches again once a variant is cached. All three are free on a local
+	// Checking the ORIGINAL's existence before that would be the same round trip
+	// a third time, against a file this path never touches again once a variant
+	// is cached. All three are free on a local
 	// disk; none of them are once MEDIA_DIR is a remote mount.
 	const cached = await readFileOrNull(variantAbs, `cached variant for ${storagePath}`);
 	if (cached !== null) return { bytes: cached, contentType: 'image/jpeg' };
 
 	// One generation per image at a time. A multi-model fan-out sends the same
-	// fresh image from several concurrent requests; each used to decode it.
+	// fresh image from several concurrent requests; each would decode it.
 	const pending = generating.get(variantAbs);
 	if (pending) return pending;
 	const job = generateVisionVariant(storagePath, sourceAbs, variantAbs, imageQuality, maxImageDim);
@@ -165,9 +165,9 @@ async function generateVisionVariant(
 	maxImageDim: number,
 ): Promise<VisionVariant | null> {
 	try {
-		// Inside the try. This creates a directory under DERIVED_DIR, which since
-		// that became separately configurable may be a volume that is absent,
-		// read-only, or unmounted while MEDIA_DIR is perfectly healthy — EACCES and
+		// Inside the try. This creates a directory under DERIVED_DIR, which, being
+		// separately configurable, may be a volume that is absent, read-only, or
+		// unmounted while MEDIA_DIR is perfectly healthy — EACCES and
 		// EROFS are reachable here. Throwing would break this function's contract
 		// (see the header: a send must not fail over a cache that didn't cooperate)
 		// and take down the request; the catch below degrades to inlining the
@@ -177,7 +177,7 @@ async function generateVisionVariant(
 		// Under the thumbnail module's generation slots, so a burst of fresh images
 		// (a fan-out, a long thread's first send) decodes at most a few at a time.
 		// The original is read INSIDE the slot: read ahead of it, every queued
-		// image held its whole file in memory while it waited.
+		// image would hold its whole file in memory while it waited.
 		const job = await withGenerationSlot(async () => {
 			// A media row can outlive its bytes, so a MISSING original is ordinary
 			// and `readFileOrNull` stays quiet about it. An original that is present
@@ -189,7 +189,7 @@ async function generateVisionVariant(
 			if (original === null) return null;
 			const encoded = await sharp(original, { limitInputPixels: MAX_DECODE_PIXELS })
 				// EXIF orientation first: the re-encode drops metadata, so without this
-				// the model was sent a portrait phone photo lying on its side.
+				// the model would be sent a portrait phone photo lying on its side.
 				.rotate()
 				.resize(maxImageDim, maxImageDim, { fit: 'inside', withoutEnlargement: true })
 				// JPEG has no alpha. Without an explicit flatten, sharp composites
