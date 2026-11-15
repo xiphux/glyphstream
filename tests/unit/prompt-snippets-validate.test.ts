@@ -42,8 +42,8 @@ describe('validateCreateSnippet', () => {
 		expect(() => validateCreateSnippet({ ...ok, name: 'Foo\r\nBar' })).toThrow();
 	});
 
-	// Regression: the guard used to be /[\r\n]/, but the format's line model —
-	// and JS's `.` — recognize the full ECMAScript LineTerminator set. U+2028 is
+	// Regression: a /[\r\n]/ guard is too narrow — the format's line model, and
+	// JS's `.`, recognize the full ECMAScript LineTerminator set. U+2028 is
 	// the soft break word processors and PDFs emit, and an HTML input strips
 	// only LF/CR, so it reaches the API from an ordinary paste.
 	it('rejects the full line-terminator set in a name', () => {

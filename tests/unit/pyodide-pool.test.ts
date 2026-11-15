@@ -9,12 +9,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 
-// Mock the config module so the pool's getCodeInterpreterConfig returns
-// test-tuned values without hitting the disk-backed config loader. The
-// real config layer is exercised in code-interpreter-config.test.ts;
-// here we just need fast access to a stable object. Using vi.hoisted
-// guarantees the testConfig object is defined before the vi.mock factory
-// runs (vi.mock is hoisted to module-top, ahead of plain `const`).
+// Test-tuned config without the disk-backed loader (that layer is covered in
+// code-interpreter-config.test.ts). vi.hoisted because vi.mock is hoisted to
+// module-top, ahead of plain `const`.
 const mocks = vi.hoisted(() => ({
 	testConfig: {
 		enabled: true,
@@ -49,11 +46,6 @@ import {
 	runPython,
 	setWorkerFactoryForTests,
 } from '#lib/server/code-interpreter/pool.js';
-
-// ---------------------------------------------------------------------------
-// Test harness — a MockWorker that fans worker events through an
-// EventEmitter and exposes hooks for tests to drive replies.
-// ---------------------------------------------------------------------------
 
 class MockWorker extends EventEmitter implements ManagedWorker {
 	posts: unknown[] = [];
@@ -111,9 +103,7 @@ afterEach(async () => {
 	vi.useRealTimers();
 });
 
-// Helper: drive a successful run reply from the latest worker for a
-// given callId. Posts the result message back through the worker's
-// emitter so the pool's resolver fires.
+/** Answers `callId` with a successful result, as the real worker would. */
 function replyOk(worker: MockWorker, callId: number, result: unknown = null): void {
 	worker.emit('message', {
 		type: 'result',
@@ -293,7 +283,6 @@ describe('runPython — happy path + isolation', () => {
 			disabledFeatures: [],
 		});
 
-		// Exactly one MockWorker should have been constructed.
 		expect(createdWorkers).toHaveLength(1);
 	});
 
@@ -458,8 +447,7 @@ describe('timeout — terminate and transition to failed', () => {
 		if (!result.ok) expect(result.message).toMatch(/wall-clock budget/);
 		expect(createdWorkers[0].terminated).toBe(true);
 
-		// Now drive the timers out for the rest of the test and let real
-		// timers handle the new spawn.
+		// Real timers for the fresh spawn below.
 		vi.useRealTimers();
 
 		// A second call to the same conversation should spawn a NEW
@@ -630,7 +618,6 @@ describe('LRU eviction', () => {
 			runPython({ conversationId: 'c', userId: 'u-c', code: 'overflow', disabledFeatures: [] }),
 		).rejects.toThrow(/pool at capacity.*busy/);
 
-		// Assert neither busy worker was terminated.
 		expect(createdWorkers[0].terminated).toBe(false);
 		expect(createdWorkers[1].terminated).toBe(false);
 	});
@@ -779,10 +766,6 @@ describe('ctxSignal — abort terminates the worker', () => {
 	});
 });
 
-// ---------------------------------------------------------------------------
-// B5: stale-entry recovery — re-validation after mutex acquire
-// ---------------------------------------------------------------------------
-
 describe('stale entry recovery — B5', () => {
 	it('synchronous exit in the executor rejects — minimal smoke test', async () => {
 		setWorkerFactoryForTests(() => {
@@ -800,13 +783,12 @@ describe('stale entry recovery — B5', () => {
 	});
 
 	it('recovers when a concurrent worker crashes while another call waits on the mutex', async () => {
-		// Two concurrent calls for the same conversation.
-		// Call A's worker exits (crash) while Call B is queued on the mutex.
-		// Without the B5 fix, B would acquire the stale mutex, postMessage
-		// to the terminated worker (a silent no-op), and hang until timeout.
-		// With the fix, B detects the entry is no longer current, releases
-		// the stale mutex, retries ensureReady which spawns a fresh worker,
-		// and completes normally.
+		// Two concurrent calls for the same conversation: call A's worker
+		// crashes while call B is queued on the mutex. B must not acquire the
+		// stale mutex and postMessage to the dead worker (a silent no-op that
+		// hangs until timeout); it re-validates after acquiring, sees the entry
+		// is no longer current, releases the stale mutex, retries ensureReady
+		// on a fresh worker, and completes normally.
 		//
 		// Note: async scheduling means either call may acquire the mutex
 		// first — the test only asserts ONE rejects (worker exit) and the
@@ -831,7 +813,6 @@ describe('stale entry recovery — B5', () => {
 			return w;
 		});
 
-		// Collect outcomes from both calls without assuming order.
 		const outcomes: Array<{ ok: boolean; error?: string; value?: unknown }> = [];
 
 		// Park both promises with .catch() to prevent unhandled rejections.
@@ -859,8 +840,8 @@ describe('stale entry recovery — B5', () => {
 
 		expect(outcomes).toHaveLength(2);
 
-		// One call must have been rejected with a worker-exit error,
-		// NOT a timeout error (would indicate the B5 fix is missing).
+		// One call must have been rejected with a worker-exit error, NOT a
+		// timeout (which means the other ran against the stale entry).
 		const crashed = outcomes.find((o) => !o.ok)!;
 		expect(crashed.error).toMatch(/worker exited/);
 

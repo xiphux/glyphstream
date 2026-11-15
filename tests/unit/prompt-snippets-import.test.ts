@@ -120,10 +120,10 @@ describe('parseSnippetMarkdown', () => {
 		expect(snippets[0]).toMatchObject({ name: 'A', body: 'body text', kinds: ['image'] });
 	});
 
-	// Regression: the metadata window used to be inferred from
-	// `body.length === 0`, so a snippet with NO metadata never closed it at the
-	// blank line — a `tags:`/`kinds:` line anywhere in the body was swallowed,
-	// silently truncating the body and inventing metadata.
+	// Regression: inferring the metadata window from `body.length === 0` never
+	// closes it at the blank line for a snippet with NO metadata, so a
+	// `tags:`/`kinds:` line anywhere in the body gets swallowed — silently
+	// truncating the body and inventing metadata.
 	describe('metadata window closes at the blank line', () => {
 		// The body is preserved — that's the point. A warning IS expected here:
 		// the line is ambiguous, so the parser keeps the content (the safe
@@ -153,7 +153,7 @@ describe('parseSnippetMarkdown', () => {
 		});
 
 		// The behaviour must not depend on whether the snippet happens to have
-		// metadata — that inconsistency was the tell for the original bug.
+		// metadata — that inconsistency is the signature of the bug above.
 		it('parses the same body identically with and without metadata', () => {
 			const withMeta = parseSnippetMarkdown('## A\nkinds: image\n\ntags: x, y\nrest\n').snippets[0];
 			const without = parseSnippetMarkdown('## A\n\ntags: x, y\nrest\n').snippets[0];
@@ -169,8 +169,8 @@ describe('parseSnippetMarkdown', () => {
 
 	// The spec says metadata must follow the heading with no blank line. That
 	// rule is deliberate (reading it as metadata would destroy a body whose
-	// first line is a legitimate tag list), but failing SILENTLY was the
-	// defect — a blank line after a heading is a natural thing to type.
+	// first line is a legitimate tag list), but it must not fail SILENTLY — a
+	// blank line after a heading is a natural thing to type.
 	describe('warns when metadata follows a blank line', () => {
 		it('warns and keeps the line as body', () => {
 			const { snippets, warnings } = parseSnippetMarkdown(
@@ -196,9 +196,9 @@ describe('parseSnippetMarkdown', () => {
 			expect(parseSnippetMarkdown('## A\nkinds: image\n\nbody\n').warnings).toEqual([]);
 		});
 
-		// Regression: the check used to be armed only when NO metadata preceded
-		// the blank line, so an identical body was diagnosed in one snippet and
-		// silently swallowed in the next.
+		// Regression: arming the check only when NO metadata precedes the blank
+		// line diagnoses an identical body in one snippet and silently swallows
+		// it in the next.
 		it('warns even when the snippet already has metadata', () => {
 			const { snippets, warnings } = parseSnippetMarkdown('## A\nkinds: image\n\ntags: x\nbody\n');
 			expect(snippets[0]).toMatchObject({ kinds: ['image'], tags: [], body: 'tags: x\nbody' });
@@ -222,7 +222,7 @@ describe('parseSnippetMarkdown', () => {
 		});
 	});
 
-	// A whitespace-only heading used to persist a row named " " — blank in the
+	// A whitespace-only heading must not persist a row named " " — blank in the
 	// list and the autocomplete, unreachable by search, and a state the
 	// create/edit API rejects.
 	describe('headings with no name', () => {
@@ -237,10 +237,10 @@ describe('parseSnippetMarkdown', () => {
 		});
 	});
 
-	// Regression: the line model used to split on /\r?\n/ while HEADING and META
-	// match with `.`, which excludes the FULL ECMAScript LineTerminator set. A
-	// U+2028 (the soft break word processors and PDFs emit) therefore sat inside
-	// a line, made it match neither pattern, and got absorbed into the previous
+	// Regression: splitting lines on /\r?\n/ disagrees with HEADING and META,
+	// which match with `.` and so exclude the FULL ECMAScript LineTerminator set.
+	// A U+2028 (the soft break word processors and PDFs emit) then sits inside a
+	// line, makes it match neither pattern, and gets absorbed into the previous
 	// snippet's body — losing one snippet and corrupting its neighbour silently.
 	describe('line terminators beyond LF/CR', () => {
 		const LS = '\u2028';
@@ -260,8 +260,8 @@ describe('parseSnippetMarkdown', () => {
 
 		// The separator ends the metadata line, so `tags: a` is still read and the
 		// remainder becomes ordinary body text. The point is that nothing is
-		// silently LOST: previously the whole `tags:` line failed to match META
-		// and every tag disappeared.
+		// silently LOST, as when the whole `tags:` line fails to match META and
+		// every tag disappears.
 		it('does not let a separator in a tags line swallow the metadata', () => {
 			const { snippets } = parseSnippetMarkdown(`## Aaa\ntags: a${LS}b, plain\n\nbody\n`);
 			expect(snippets[0].tags).toEqual(['a']);
@@ -269,8 +269,8 @@ describe('parseSnippetMarkdown', () => {
 			expect(snippets[0].body).toContain('body');
 		});
 
-		// A lone CR has the identical property — split(/\r?\n/) never split on it
-		// either, so a classic-Mac file was one giant line.
+		// A lone CR has the identical property — split(/\r?\n/) never splits on
+		// it either, making a classic-Mac file one giant line.
 		it('treats a lone CR as a line break', () => {
 			const { snippets } = parseSnippetMarkdown('## Aaa\r\rbody a\r');
 			expect(snippets[0]).toMatchObject({ name: 'Aaa', body: 'body a' });
@@ -336,7 +336,7 @@ describe('parseSnippetMarkdown', () => {
 // and it has happened: prettier formats ```markdown fences AS markdown, and its
 // markdown formatter inserts a blank line after a heading, which silently
 // rewrote the canonical example into the one shape the format rejects. The
-// fences now carry <!-- prettier-ignore -->; this parses the doc's own example
+// fences carry <!-- prettier-ignore -->; this parses the doc's own example
 // to make sure it stays correct if that guard is ever lost.
 describe('the worked example in docs/prompt-snippets.md', () => {
 	function firstMarkdownFence(doc: string): string {

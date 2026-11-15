@@ -25,7 +25,7 @@ describe('routedPathname', () => {
 		expect(routedPathname('/api/%61uth/x').startsWith('/api/auth/')).toBe(true);
 		expect(routedPathname('/%61pi/auth/x').startsWith('/api/')).toBe(true);
 		expect(routedPathname('/api/%6dedia/x').startsWith('/api/media/')).toBe(true);
-		// ...and the raw forms are exactly what used to defeat them.
+		// ...whereas the raw forms slip straight past them.
 		expect('/api/%61uth/x'.startsWith('/api/auth/')).toBe(false);
 		expect('/%61pi/auth/x'.startsWith('/api/')).toBe(false);
 		expect('/api/%6dedia/x'.startsWith('/api/media/')).toBe(false);

@@ -131,8 +131,8 @@ describe('iOS launch-image colours', () => {
 	});
 
 	// The manifest's two colours are the SAME token again, hand-copied into
-	// #lib/web-manifest.ts (vite.config.ts, when the PWA plugin generated it). background_color was corrected to the real dark surface
-	// when the splash drift was found; theme_color sat one line above it and was
+	// #lib/web-manifest.ts. When the splash drift was found, background_color was
+	// corrected to the real dark surface but theme_color, one line above it, was
 	// missed, so the manifest went on declaring the brand navy while app.html
 	// declared the light surface and the launch screen painted a third value.
 	// Nothing compared them, which is the entire reason it survived.

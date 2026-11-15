@@ -77,10 +77,10 @@ describe('rerankDocs', () => {
 		expect(await rerankDocs('q', ['a', 'b'], cfg, signal)).toBeNull();
 	});
 
-	// The client-throws → null degradation path is exercised here too, but as its
-	// own file: vitest v4 surfaces a thrown mock result as a test error when a
-	// *fulfilled* result precedes it on the same spy (the resolved-value cases
-	// above), and per-test mockReset doesn't clear that tracking. Isolating it
-	// keeps the spy free of a prior fulfilled result. (The same catch is also
-	// covered end-to-end by retrieval-select.test.ts's "reranker fails" case.)
+	// The client-throws → null degradation path lives in its own file,
+	// retrieval-rerank-failure.test.ts: vitest v4 surfaces a thrown mock result as
+	// a test error when a *fulfilled* result precedes it on the same spy (the
+	// resolved-value cases above), and per-test mockReset doesn't clear that
+	// tracking. The same catch is also covered end-to-end by
+	// retrieval-select.test.ts's "reranker fails" case.
 });

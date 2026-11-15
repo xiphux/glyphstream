@@ -251,7 +251,6 @@ describe('notifyConversationComplete', () => {
 		const u = seedUser();
 		setUserPreferences(u.id, { notificationsEnabled: true });
 		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
-		// Watching some other thread must not suppress this conversation's push.
 		recordPresence(u.id, 'other-conv', 'viewer-1', true);
 		await notifyConversationComplete(baseInput(u.id));
 		expect(mocks.sendCalls).toHaveLength(1);

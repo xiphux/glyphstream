@@ -6,7 +6,7 @@
  * That is an expected end — the reply has nowhere to go — so it must not surface
  * as a failure: no `recorder branch failed` stack, no "Persistence failed" event,
  * no error sibling. A genuine persistence failure on a conversation that still
- * exists must keep surfacing exactly as before.
+ * exists must still surface.
  *
  * The delete route also stops the generation, so the upstream doesn't keep
  * working (and holding an endpoint slot) for a reply nobody will see.

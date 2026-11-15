@@ -147,12 +147,10 @@ async function drainEvents(stream: ReadableStream<Uint8Array>): Promise<unknown[
 		const { value, done } = await reader.read();
 		if (done) break;
 		buf += dec.decode(value, { stream: true });
-		// SSE frames separated by blank lines
 		let idx = buf.indexOf('\n\n');
 		while (idx !== -1) {
 			const frame = buf.slice(0, idx);
 			buf = buf.slice(idx + 2);
-			// Pull the data: line(s)
 			const dataLines = frame
 				.split('\n')
 				.filter((l) => l.startsWith('data: '))
@@ -278,7 +276,6 @@ describe('multi-iteration tool loop', () => {
 
 		const events = await drainEvents(stream);
 
-		// Two upstream calls happened — confirms the loop iterated.
 		expect(mocks.upstreamCalls).toHaveLength(2);
 		expect(rebuildCalls).toBe(1);
 		expect(onCompleteCalls).toBe(1);
@@ -286,7 +283,7 @@ describe('multi-iteration tool loop', () => {
 		// The relay stamped the entry when the concurrency gate handed over. Null
 		// here means every reader — the sidebar mark, its poll, the layout seed —
 		// calls this conversation "queued" for the whole turn while it is in fact
-		// streaming, which is exactly the bug that moved this stamp into the relay.
+		// streaming.
 		expect(inFlight.generationStartedAt).not.toBe(null);
 
 		// DB shape: user → assistant(tool_call) → tool(result) → assistant(text)
@@ -537,8 +534,6 @@ describe('multi-iteration tool loop', () => {
 	});
 });
 
-// --- deferred tool search: mid-turn activation -------------------------
-
 describe('deferred tool search activation', () => {
 	it('promotes a searched-up deferred tool into the next iteration tools[]', async () => {
 		// A deferred tool: hidden from the initial tools[], registered so the
@@ -644,8 +639,6 @@ describe('deferred tool search activation', () => {
 	});
 });
 
-// --- MCP approval halting + resume parenting ---------------------------
-
 describe('multi-iteration tool loop with needsApproval', () => {
 	it('halts after persisting a pending_approval row instead of looping', async () => {
 		// The relay's defining trait when approval is required: the model
@@ -748,8 +741,7 @@ describe('multi-iteration tool loop with needsApproval', () => {
 		// assistant1(tool_call) → tool1(completed), and the resume
 		// endpoint kicks off a new relay anchored at tool1.id. Without
 		// the override, iteration 0's new assistant would parent to
-		// user.id and form a SIBLING of assistant1 — the branching
-		// bug we shipped a fix for.
+		// user.id and form a SIBLING of assistant1 — a spurious branch.
 		register({
 			definition: {
 				type: 'function',
@@ -1005,7 +997,7 @@ describe('per-endpoint concurrency gate', () => {
 		);
 		// The live error frame still goes out...
 		expect(events.some((e) => (e as { type?: string }).type === 'error')).toBe(true);
-		// ...and a durable error sibling now records the failure for recovery.
+		// ...and a durable error sibling records the failure for recovery.
 		const siblings = getSiblingAssistants(conv.id, user.id);
 		expect(siblings).toHaveLength(1);
 		expect(siblings[0].parts).toEqual([expect.objectContaining({ type: 'error' })]);

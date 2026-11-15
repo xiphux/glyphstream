@@ -55,8 +55,8 @@ describe('stripReasoningTags', () => {
 	});
 
 	it('drops a block whose CLOSING tag carries attributes', () => {
-		// The closer used to be the one place attributes weren't tolerated, so the
-		// block went undropped and the reasoning inside it leaked out.
+		// Regression: a closer that doesn't tolerate attributes leaves the block
+		// undropped, and the reasoning inside it leaks out.
 		expect(stripReasoningTags('Answer<think>secret</think foo>')).toBe('Answer');
 		expect(stripReasoningTags('<think>a</think foo>Real<think>b</think foo>')).toBe('Real');
 	});

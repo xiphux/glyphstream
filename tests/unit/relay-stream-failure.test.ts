@@ -3,9 +3,9 @@
  * stalled model, or the connection dropping — after the user has already
  * watched part of the reply arrive.
  *
- * The recorder used to rethrow, so everything streamed so far was thrown away,
- * an error sibling was written instead, and the client got two error frames,
- * the second mislabelled "Persistence failed". The received text must be kept
+ * A recorder that rethrows throws away everything streamed so far, writes an
+ * error sibling instead, and sends the client two error frames, the second
+ * mislabelled "Persistence failed". The received text must be kept
  * on the assistant row, with the failure recorded alongside it, and reported
  * to the client once.
  */

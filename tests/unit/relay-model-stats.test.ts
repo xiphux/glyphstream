@@ -2,8 +2,6 @@
  * The relay's model-stats counters: one `turn` per settled turn, keyed off the
  * final row; a failure is an `error` and not a turn (matching the backfill);
  * a stop and a length cut-off are turns with a flag.
- *
- * Harness copied from relay-stream-failure.test.ts.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';

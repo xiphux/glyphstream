@@ -24,10 +24,9 @@ describe('decideReconcile', () => {
 	});
 
 	it('subscribe-new: opted in + granted, but the browser subscription is gone', () => {
-		// THE regression this whole change exists for: pref reads "on", permission
-		// still granted, but the OS/push service dropped the subscription (iOS
-		// eviction, PWA re-add). Before the fix nothing re-subscribed and
-		// notifications silently stopped; now we create a fresh one.
+		// THE regression this guards: pref reads "on", permission still granted,
+		// but the OS/push service dropped the subscription (iOS eviction, PWA
+		// re-add). Unless something re-subscribes, notifications silently stop.
 		expect(decide({ hasSubscription: false })).toBe('subscribe-new');
 	});
 

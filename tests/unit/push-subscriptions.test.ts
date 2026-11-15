@@ -57,15 +57,13 @@ describe('upsertPushSubscription', () => {
 		expect(second.lastSeenAt).toBeGreaterThan(first.lastSeenAt);
 		expect(second.p256dh).toBe('newKey');
 		expect(second.auth).toBe('newAuth');
-		// One row, not two.
 		expect(listPushSubscriptionsForUser(u.id)).toHaveLength(1);
 	});
 
 	it('replaces rather than adopts a row owned by another user', () => {
 		// Shared-browser account switch: the second user gets a clean row, and
-		// the first no longer has one. Previously the upsert reached into the
-		// existing row and SET user_id, which made this the only write in the
-		// codebase to mutate a row without proving the caller owned it —
+		// the first no longer has one. An upsert that SETs user_id on the
+		// existing row would mutate a row without proving the caller owned it —
 		// anyone who knew another user's endpoint URL could re-point that
 		// device at their own notifications, titles and previews included.
 		const a = seedUser();

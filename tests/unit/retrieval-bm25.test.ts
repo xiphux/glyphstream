@@ -52,7 +52,6 @@ describe('bm25Rank', () => {
 		const docs = ['the common filler words here', 'the unicorn appears only once here'];
 		const rare = bm25Rank('unicorn', docs);
 		expect(rare[0].index).toBe(1);
-		// The rare-term match scores well above any ubiquitous-term match.
 		const ubiquitous = bm25Rank('the', docs);
 		expect(rare[0].score).toBeGreaterThan(Math.max(...ubiquitous.map((r) => r.score)));
 	});

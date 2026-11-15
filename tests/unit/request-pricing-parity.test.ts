@@ -4,8 +4,8 @@
  * CLAUDE.md: "the upstream payload is rent" — the readout behind
  * `/api/conversations/:id/context` is how a user sees that rent, so a payload
  * piece the sender adds and the pricer misses (or prices differently) is a
- * readout that lies. The two assemble the request separately, so nothing kept
- * them in step but comments saying "exactly as the send path does".
+ * readout that lies. The two assemble the request separately, so nothing else
+ * keeps them in step but comments saying "exactly as the send path does".
  *
  * This sends a real turn through the messages route (only the endpoint, the
  * model list and the relay are stubbed: the relay captures the body instead of
