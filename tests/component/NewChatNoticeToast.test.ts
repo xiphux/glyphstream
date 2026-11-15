@@ -114,8 +114,8 @@ describe('new-chat page — ?notice= from a redirect', () => {
 				expect.objectContaining({ replace: true, reset: false }),
 			),
 		);
-		// Since SvelteKit 3 a shallow update is a `goto` too, so "a goto was
-		// called" no longer rules one out on its own.
+		// In SvelteKit 3 a shallow update is a `goto` too, so "a goto was
+		// called" doesn't rule one out on its own.
 		expect(vi.mocked(goto)).not.toHaveBeenCalledWith(
 			expect.anything(),
 			expect.objectContaining({ shallow: true }),

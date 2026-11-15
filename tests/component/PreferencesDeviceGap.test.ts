@@ -170,9 +170,9 @@ describe('Preferences page — per-device notification gap', () => {
 	it('does not claim success when subscribe() hands back a stale-key subscription', async () => {
 		// subscribe() returns `existing ?? pushManager.subscribe(...)` with no key
 		// check, so it reports ok for a rotated-key subscription it merely
-		// re-POSTs — while the probe counts one as absent. Trusting `ok` cleared
-		// the banner and asserted "this device is subscribed" on a device that
-		// still could not receive.
+		// re-POSTs — while the probe counts one as absent. Trusting `ok` would
+		// clear the banner and assert "this device is subscribed" on a device that
+		// still can't receive.
 		notification.permission = 'granted';
 		const stale = mkSubscription();
 		// A different key than the server advertises: VAPID decodes to 8 bytes.
@@ -270,7 +270,7 @@ describe('Preferences page — per-device notification gap', () => {
 		// toggleMaster increments the generation before its first await, then has
 		// exits that write deviceSubscribed nothing — here the catch, reached via
 		// unsubscribe()'s unguarded getSubscription(). Nothing else repairs the
-		// field, so discarding the probe on generation alone pinned it at null —
+		// field, so discarding the probe on generation alone would pin it at null —
 		// and a null pins deviceGap to 'none', hiding the banner AND the button
 		// that fixes it on a device that genuinely can't receive.
 		notification.permission = 'granted';

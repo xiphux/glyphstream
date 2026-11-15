@@ -55,9 +55,9 @@ function makeVideo(overrides: Partial<MediaListItem> = {}): MediaListItem {
  *
  * The component reads the pointer type through Svelte's `MediaQuery`, which
  * SUBSCRIBES to the MediaQueryList (`addEventListener('change', …)`) rather than
- * just reading `.matches` once. A `{ matches, media }` literal is therefore no
- * longer a sufficient double — it throws "dom.addEventListener is not a
- * function" at render, and because that kills the render before the test's
+ * just reading `.matches` once. A `{ matches, media }` literal is therefore not
+ * a sufficient double — it throws "dom.addEventListener is not a function" at
+ * render, and because that kills the render before the test's
  * trailing `unstubAllGlobals()`, the thin stub leaks into every later test in
  * the file. Hence the no-op listener pair.
  */
@@ -268,7 +268,7 @@ describe('MediaLightbox — save button', () => {
 			props: { media: makeImage({ id: 'xyz' }), onClose: vi.fn() },
 		});
 		expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
-		// No longer a navigating anchor — the old trap on iOS is gone.
+		// Not a navigating anchor: iOS ignores `download` and strands a PWA on Quick Look.
 		expect(screen.queryByRole('link', { name: 'Download' })).toBeNull();
 	});
 
@@ -731,7 +731,6 @@ describe('MediaLightbox — conversationsUsingThis', () => {
 		});
 		expect(screen.getByText('Chat about pastries')).toBeInTheDocument();
 		expect(screen.getByText('Old debugging session')).toBeInTheDocument();
-		// Archived flag renders alongside the title.
 		expect(screen.getByText('archived')).toBeInTheDocument();
 		expect(screen.getByText(/Used in 2 conversations:/)).toBeInTheDocument();
 	});
@@ -743,11 +742,9 @@ describe('MediaLightbox — conversationsUsingThis', () => {
 		render(MediaLightbox, {
 			props: { media: makeImage(), onClose: vi.fn(), conversationsUsingThis: refs },
 		});
-		// Inline "In conversation: <link>" phrasing for the common case.
 		expect(screen.getByText('In conversation:')).toBeInTheDocument();
 		const link = screen.getByRole('link', { name: 'Just this one' });
 		expect(link).toHaveAttribute('href', '/chat/c-9');
-		// The plural-list scaffolding must NOT appear for a single conversation.
 		expect(screen.queryByText(/Used in/)).toBeNull();
 	});
 
@@ -855,7 +852,7 @@ describe('MediaLightbox — carousel navigation', () => {
 		});
 		// Two image slides + one video slide.
 		expect(container.querySelectorAll('img')).toHaveLength(2);
-		// No sizes in these entries: the slides show the original, as before.
+		// No sizes in these entries, so the slides show the original.
 		for (const img of container.querySelectorAll('img')) {
 			expect(img.getAttribute('src')).toMatch(/\/content$/);
 			expect(img.hasAttribute('srcset')).toBe(false);
@@ -944,8 +941,8 @@ describe('MediaLightbox — carousel navigation', () => {
 	/**
 	 * The point of the coalescer: a burst emits ONE trailing resolve, and it names
 	 * the slide the user actually ended on. Stepping from `currentIndex` (which
-	 * can't advance until the parent resolves) made every press in the window
-	 * compute the same target, so a five-press burst moved two slides.
+	 * can't advance until the parent resolves) would make every press in the
+	 * window compute the same target, so a five-press burst would move two slides.
 	 */
 	it('a rapid burst resolves once, at the end of the burst', async () => {
 		const user = userEvent.setup();
@@ -1006,9 +1003,9 @@ describe('MediaLightbox — carousel navigation', () => {
 
 /**
  * A swipe resolves the slide it's heading for at the midpoint, not once the
- * scroll settles. Waiting for the settle left the header describing the slide
- * the user had swiped away from for the whole snap animation plus a fetch: a lit
- * star over an unstarred image, and a star or trash button that acted on the
+ * scroll settles. Waiting for the settle would leave the header describing the
+ * slide the user swiped away from for the whole snap animation plus a fetch: a
+ * lit star over an unstarred image, and a star or trash button that acts on the
  * previous image if tapped in that gap.
  *
  * happy-dom does no layout, so the track's width and scroll offset are pinned
@@ -1098,8 +1095,8 @@ describe('MediaLightbox — swipe resolves at the midpoint', () => {
 	});
 
 	// The trash's Restore steps `media` to a neighbour itself. Left on the restored
-	// slide, the track's next scroll event read as a swipe back to it — and once
-	// the reload dropped that item, the lightbox closed.
+	// slide, the track's next scroll event would read as a swipe back to it — and
+	// once the reload drops that item, the lightbox would close.
 	it('follows media when the caller moves it, so the next scroll does not drag it back', async () => {
 		const onNavigate = vi.fn();
 		const props = { media: makeImage({ id: 'm-1' }), onClose: vi.fn(), siblings, onNavigate };
@@ -1241,7 +1238,7 @@ describe('MediaLightbox — swipe resolves at the midpoint', () => {
 		await fireEvent.touchStart(t.el);
 		t.at(0.3);
 		await fireEvent.touchEnd(t.el);
-		// Past halfway on momentum: a DOM change now is what made iOS drop the snap.
+		// Past halfway on momentum: a DOM change now is what makes iOS drop the snap.
 		t.at(0.6);
 		t.at(0.9);
 		expect(onNavigate).not.toHaveBeenCalled();
@@ -1469,9 +1466,9 @@ describe('MediaLightbox — swipe resolves at the midpoint', () => {
 describe('MediaLightbox — slide windowing', () => {
 	/**
 	 * `siblings` is every unit demand-loaded this gallery session, so after a deep
-	 * scroll the carousel track was mounting thousands of full-resolution <img>
+	 * scroll, mounting every slide would mean thousands of full-resolution <img>
 	 * elements at once — elements the browser must create, style, lay out and
-	 * (now that mounted slides load eagerly) fetch on open.
+	 * (since mounted slides load eagerly) fetch on open.
 	 *
 	 * The slot divs have to stay — the track is scroll-snap and `onTrackScroll`
 	 * maps scroll offset back to an index, so slicing the array would shift every
@@ -1500,8 +1497,8 @@ describe('MediaLightbox — slide windowing', () => {
 	/**
 	 * The neighbours must preload so a swipe lands on a decoded image. They sit
 	 * in the track's horizontal overflow, which iOS WebKit's lazy-load threshold
-	 * doesn't reach into — `loading="lazy"` there deferred each fetch until the
-	 * slide was already on screen, showing black for a beat. The window bounds
+	 * doesn't reach into — `loading="lazy"` there defers each fetch until the
+	 * slide is already on screen, showing black for a beat. The window bounds
 	 * the fetches; priority keeps the current slide first.
 	 */
 	it('preloads the mounted neighbours, with the current slide first', () => {

@@ -95,9 +95,8 @@ describe('ConfirmDialog — resolution', () => {
 		render(ConfirmDialog);
 		const promise = confirmDialog.ask({ title: 't', message: 'm' });
 		await tick();
-		// Backdrop click = the alertdialog element itself; the inner panel
-		// (which IS event.target when clicked) is a child div, so it doesn't
-		// trigger the close. Fire on the backdrop directly.
+		// The backdrop is the alertdialog element itself; a click on the inner
+		// panel (a child div) has the panel as event.target and doesn't close.
 		const backdrop = screen.getByRole('alertdialog');
 		await fireEvent.click(backdrop);
 		await expect(promise).resolves.toBe(false);
@@ -108,11 +107,9 @@ describe('ConfirmDialog — resolution', () => {
 		render(ConfirmDialog);
 		const promise = confirmDialog.ask({ title: 't', message: 'm' });
 		await tick();
-		// Click on the title text — that's inside the inner panel, not the
-		// backdrop. Should not resolve the promise.
+		// The title text is inside the inner panel, not the backdrop.
 		await user.click(screen.getByText('t'));
-		// Need a way to assert "promise is still pending" — race against a
-		// short timer.
+		// Asserts "still pending" by racing the promise against a short timer.
 		const pending = Promise.race([
 			promise.then(() => 'resolved'),
 			new Promise((r) => setTimeout(() => r('pending'), 30)),

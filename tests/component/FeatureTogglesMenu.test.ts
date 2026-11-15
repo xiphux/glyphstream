@@ -71,7 +71,7 @@ const CATEGORIES_WITH_IMG: FeatureCategoryEntry[] = [
 	},
 ];
 
-/** Built-ins including BOTH media-only enhancement toggles, as the layout now
+/** Built-ins including BOTH media-only enhancement toggles, as the layout
  *  ships them to every conversation (the menu filters by model kind). */
 const CATEGORIES_WITH_MEDIA: FeatureCategoryEntry[] = [
 	...CATEGORIES_WITH_IMG,
@@ -127,7 +127,7 @@ describe('FeatureTogglesMenu — popover content', () => {
 		await openMenu(user);
 		for (const meta of CATEGORIES) {
 			expect(screen.getByText(meta.label)).toBeInTheDocument();
-			// The description now lives in an (i) hover/focus tooltip rather than
+			// The description lives in an (i) hover/focus tooltip rather than
 			// inline, so the row carries a labelled tooltip trigger, not the text.
 			expect(screen.getByLabelText(`About ${meta.label}`)).toBeInTheDocument();
 		}

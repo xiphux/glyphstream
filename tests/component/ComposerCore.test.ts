@@ -1,8 +1,8 @@
 /**
  * Component test for ComposerCore — the shared composer input box used by
- * both ChatComposer and the home page. Pins the input mechanics that used
- * to be duplicated: textarea + auto-resize, attach/file-input, drag-drop,
- * paste, Enter/submit routing, and focus().
+ * both ChatComposer and the home page. Pins the shared input mechanics:
+ * textarea + auto-resize, attach/file-input, drag-drop, paste, Enter/submit
+ * routing, and focus().
  *
  * The `controls` snippet (the consumer's trailing buttons) is supplied via
  * createRawSnippet — here just a submit button so we can exercise form

@@ -1,8 +1,8 @@
 /**
  * Component test for ModelPicker — the chat composer's model selector.
  *
- * Biggest component in the surface (~460 lines) and the highest-risk one
- * to leave untested: search filtering, group rendering, favorites,
+ * Biggest component in the surface and the highest-risk one to leave
+ * untested: search filtering, group rendering, favorites,
  * presets, keyboard nav, and the inline-vs-default variants are all
  * non-trivial. Tests cover the contract in slices; each describe block
  * scopes a behavior.
@@ -254,10 +254,8 @@ describe('ModelPicker — search filtering', () => {
 		const user = userEvent.setup();
 		render(ModelPicker, { props: { models, value: '' } });
 		await user.click(screen.getByLabelText('Select model'));
-		// Group headers visible before search.
 		expect(screen.getByText('OpenAI')).toBeInTheDocument();
 		await user.type(screen.getByPlaceholderText('Search models…'), 'gpt');
-		// Group header is gone in flat search view.
 		expect(screen.queryByText('OpenAI')).toBeNull();
 	});
 });
@@ -669,7 +667,7 @@ describe('ModelPicker — compare mode', () => {
 		expect(screen.getByRole('option', { name: /Imager/ })).toBeInTheDocument();
 		await user.click(screen.getByText('Multiple'));
 		await tick();
-		// …but hidden once comparing (chat-only this cut).
+		// …but hidden once comparing: a comparison is single-kind, and this one is chat.
 		expect(screen.queryByRole('option', { name: /Imager/ })).toBeNull();
 		expect(screen.getByRole('option', { name: /Model A/ })).toBeInTheDocument();
 	});

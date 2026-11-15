@@ -71,7 +71,6 @@ describe('CanvasPane', () => {
 
 		const tabs = screen.getAllByRole('tab');
 		expect(tabs).toHaveLength(2);
-		// The shown doc's tab is selected.
 		expect(screen.getByRole('tab', { name: 'Deck' })).toHaveAttribute('aria-selected', 'true');
 		expect(screen.getByRole('tab', { name: 'Talking points' })).toHaveAttribute(
 			'aria-selected',

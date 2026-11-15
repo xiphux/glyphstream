@@ -46,7 +46,6 @@ describe('DeleteConversationDialog — rendering', () => {
 		render(DeleteConversationDialog, {
 			props: { targetId: 'conv-1', onconfirm: vi.fn() },
 		});
-		// Dialog doesn't render until counts are populated.
 		await waitFor(() => {
 			expect(screen.getByRole('alertdialog')).toBeInTheDocument();
 		});
@@ -214,11 +213,9 @@ describe('DeleteConversationDialog — flushes only the requesting fetch', () =>
 		const { rerender } = render(DeleteConversationDialog, {
 			props: { targetId: 'first', onconfirm: vi.fn() },
 		});
-		// Re-target before resolving the first fetch.
 		await rerender({ targetId: 'second', onconfirm: vi.fn() });
 		// Resolve the first fetch (stale) — its counts should be ignored.
 		firstResolver({ images: 99, videos: 99 });
-		// Wait for the second fetch's counts to land instead.
 		await waitFor(() => screen.getByRole('alertdialog'));
 		expect(screen.getByText('5 images and 5 videos')).toBeInTheDocument();
 		expect(screen.queryByText(/99/)).toBeNull();

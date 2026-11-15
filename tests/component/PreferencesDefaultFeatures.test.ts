@@ -3,16 +3,16 @@
  *
  * Three behaviours here live entirely in async ordering around a fetch, which a
  * node-env unit test cannot see (Svelte resolves to the SSR runtime there, so
- * handlers never run) and `pnpm check` cannot see either. All three were bugs
- * found in review rather than written correctly first time:
+ * handlers never run) and `pnpm check` cannot see either. All three have been
+ * bugs:
  *
- *  - a failed save used to leave the checkbox showing a value the server never
- *    stored, and the NEXT toggle computed its array from that diverged state —
- *    so the change the user was told had failed rode along and got persisted;
- *  - the save didn't re-run the layout load, so turning a feature off by default
- *    and immediately starting a chat still got the old value;
- *  - and when that was fixed, it re-ran the layout load after EVERY preference
- *    on the page, including text fields on blur.
+ *  - a failed save that leaves the checkbox showing a value the server never
+ *    stored makes the NEXT toggle compute its array from that diverged state —
+ *    so the change the user was told had failed rides along and gets persisted;
+ *  - a save that doesn't re-run the layout load means turning a feature off by
+ *    default and immediately starting a chat still gets the old value;
+ *  - re-running the layout load after EVERY preference on the page, including
+ *    text fields on blur, is the overcorrection of the second.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -64,7 +64,7 @@ function prefs(over: Partial<UserPreferences> = {}): UserPreferences {
 	};
 }
 
-/** Answer the PATCH with `body` (echoing the patch onto the base prefs), or fail. */
+/** Answer the PATCH with `echo(patch)` (the prefs the server would return), or fail. */
 function stubFetch(ok: boolean, echo: (patch: Partial<UserPreferences>) => UserPreferences) {
 	const seen: Array<Partial<UserPreferences>> = [];
 	vi.stubGlobal(
@@ -113,8 +113,8 @@ describe('Default features — saving', () => {
 		await userEvent.click(reactionsBox());
 		expect(reactionsBox()).toBeChecked(); // reverted
 
-		// The follow-up toggle must carry only its own change. Before the revert,
-		// it computed from the diverged array and quietly persisted the failed one.
+		// The follow-up toggle must carry only its own change. Without the revert,
+		// it computes from the diverged array and quietly persists the failed one.
 		await userEvent.click(screen.getByRole('checkbox', { name: /Web access/ }));
 		expect(seen[1].defaultDisabledFeatures).toEqual(['web']);
 	});
@@ -124,7 +124,7 @@ describe('Default features — layout invalidation', () => {
 	it('re-runs the layout load, so a new chat sees the new default', async () => {
 		// The (app) layout hands `prefs` to the new-chat page, which seeds the
 		// composer's toggles from it. Without this, turning reactions off and
-		// starting a chat still got reactions until a hard reload.
+		// starting a chat still gets reactions until a hard reload.
 		stubFetch(true, (p) => prefs(p));
 		render(PreferencesPage, {
 			props: { data: { prefs: prefs(), featureCategories: CATEGORIES } },
@@ -138,7 +138,7 @@ describe('Default features — layout invalidation', () => {
 	it('does not re-run it for a preference only this page reads', async () => {
 		// Scoped deliberately: invalidating re-runs the whole layout load —
 		// conversations, models, skills, the feature catalogue — and "About you" is
-		// read nowhere else, so doing it on every blur was pure waste.
+		// read nowhere else, so doing it on every blur is pure waste.
 		stubFetch(true, (p) => prefs(p));
 		render(PreferencesPage, {
 			props: { data: { prefs: prefs(), featureCategories: CATEGORIES } },

@@ -88,7 +88,6 @@ describe('InFlightBubble — with blocks', () => {
 		const blocks: RenderBlock[] = [{ type: 'plain-text', text: 'streaming answer' }];
 		render(InFlightBubble, { props: { ...base, blocks } });
 		expect(screen.getByText('streaming answer')).toBeInTheDocument();
-		// Placeholder verb is gone once blocks render.
 		expect(screen.queryByText('Thinking')).toBeNull();
 	});
 
@@ -128,7 +127,6 @@ describe('InFlightBubble — with blocks', () => {
 			},
 		];
 		render(InFlightBubble, { props: { ...base, blocks } });
-		// The pending canvas card shows, and the "Thinking" placeholder does not.
 		expect(screen.getByText(/working/i)).toBeInTheDocument();
 		expect(screen.queryByText('Thinking')).toBeNull();
 	});

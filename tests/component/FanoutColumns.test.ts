@@ -99,7 +99,6 @@ describe('FanoutColumns', () => {
 		});
 		const buttons = screen.getAllByRole('button', { name: /continue with this/i });
 		expect(buttons).toHaveLength(2);
-		// Column A (done) is enabled; column B (still streaming) is disabled.
 		expect((buttons[0] as HTMLButtonElement).disabled).toBe(false);
 		expect((buttons[1] as HTMLButtonElement).disabled).toBe(true);
 
@@ -222,8 +221,6 @@ describe('FanoutColumns — media (keep-many) mode', () => {
 				onImageClick: vi.fn(),
 			},
 		});
-		// First column is the finished video; its discard must be enabled even
-		// though it's the only persisted result so far.
 		const discards = screen.getAllByRole('button', { name: /discard this response/i });
 		expect((discards[0] as HTMLButtonElement).disabled).toBe(false);
 		// The still-generating column isn't settled, so its discard stays disabled.
@@ -317,8 +314,8 @@ describe('FanoutColumns — media (keep-many) mode', () => {
 	it('renders a failure identically live and recovered from server truth', () => {
 		// Same failed branch, two representations: live it's only the SSE error
 		// text; rebuilt from server truth it ALSO carries the persisted `error`
-		// part. Routing the persisted one through RenderBlocks rendered it a size
-		// up (text-sm + icon), so a reload visibly changed the grid it restored.
+		// part. Routed through RenderBlocks, the persisted one renders a size up
+		// (text-sm + icon), so a reload would visibly change the grid it restores.
 		const failure = { status: 'error' as const, error: 'upstream said no' };
 		const errorText = (c: HTMLElement) =>
 			[...c.querySelectorAll('p')].find((p) => p.textContent?.includes('upstream said no'));
@@ -439,7 +436,7 @@ describe('FanoutColumns — an avatar comparison', () => {
 	it('hides a re-roll the column can never have, and disables one it will', () => {
 		// A recovered portrait has no prompt until it lands (then the grid rebuilds
 		// with one); a recovered failure never gets one. Hiding the in-flight one
-		// too left a gap in every footer still generating.
+		// too would leave a gap in every footer still generating.
 		render(FanoutColumns, {
 			props: {
 				columns: [
@@ -515,8 +512,8 @@ describe('FanoutColumns — starring', () => {
 	});
 
 	it('shows a still-generating column’s star, disabled, rather than hiding it', () => {
-		// Its star applies once the image lands, like Regenerate; hiding it left a
-		// gap at the front of every footer in the grid until then.
+		// Its star applies once the image lands, like Regenerate; hiding it would
+		// leave a gap at the front of every footer in the grid until then.
 		render(FanoutColumns, {
 			props: {
 				columns: [imageColumn('a', [], 'streaming'), imageColumn('b', [], 'queued')],

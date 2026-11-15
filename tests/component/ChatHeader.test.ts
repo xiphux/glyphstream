@@ -1,7 +1,7 @@
 /**
  * Component test for ChatHeader — the conversation title, the Private badge,
- * and the avatar action. The model name moved to the assistant bubbles +
- * composer picker; the context-budget readout and Compact action live in
+ * and the avatar action. The model name belongs to the assistant bubbles +
+ * composer picker, and the context-budget readout and Compact action to
  * ContextBudgetBar (tested there).
  */
 

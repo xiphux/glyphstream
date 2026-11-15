@@ -1,9 +1,9 @@
 /**
  * Component test for ChatComposer — the bottom composer area. Covers the
  * send-enable matrix, Send-vs-Stop branching, attach gating, feature
- * toggles + favorite wiring, and the drag-drop / paste handlers that
- * moved into the component. ModelPicker has its own test; here we just
- * verify it's wired and that selecting flows through.
+ * toggles + favorite wiring, and the drag-drop / paste handlers.
+ * ModelPicker has its own test; here we just verify it's wired and that
+ * selecting flows through.
  */
 
 import { describe, expect, it, vi } from 'vitest';
