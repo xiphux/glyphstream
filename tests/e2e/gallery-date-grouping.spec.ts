@@ -50,7 +50,7 @@ test.describe('gallery: date grouping + timeline rail', () => {
 		// Month view collapses both days into one header.
 		await expect(page.getByRole('heading', { name: 'March 2024' })).toBeVisible();
 
-		// Granularity now lives in the View options popover.
+		// Granularity lives in the View options popover.
 		await page.getByRole('button', { name: 'View options' }).click();
 		await page.getByRole('button', { name: 'Day', exact: true }).click();
 		await page.keyboard.press('Escape'); // close the popover before asserting on the grid
@@ -64,7 +64,7 @@ test.describe('gallery: date grouping + timeline rail', () => {
 	test('quick-jump scrolls to an off-screen month and demand-loads it', async ({ page }) => {
 		resetData();
 		// 70 + 70 push December far down the reserved height — off-screen at the top,
-		// reachable via the rail (a pure scroll now that the whole layout is known).
+		// reachable via the rail (a pure scroll, since the whole layout is known).
 		seedMediaInBuckets([
 			{ createdAt: MAR_2024, count: 70 },
 			{ createdAt: FEB_2024, count: 70 },

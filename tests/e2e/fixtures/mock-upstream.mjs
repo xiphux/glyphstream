@@ -71,11 +71,10 @@ function wantsGlacialStream(body) {
 
 /** A real, decodable 1x1 PNG — the media persister hands bytes to sharp
  *  for thumbnailing, so the b64 must be a valid image, not arbitrary
- *  bytes. The previous constant looked like one but had a bad IDAT CRC and a
- *  truncated zlib stream: every thumbnail failed (`vipspng: libpng read
- *  error`), the route fell back to serving the original, and the gallery
- *  still rendered, so nothing noticed. Generated with sharp; flows.spec.ts
- *  now asserts the thumbnail comes back as a real JPEG. */
+ *  bytes. A corrupt one fails silently: every thumbnail errors (`vipspng:
+ *  libpng read error`), the route falls back to serving the original, and the
+ *  gallery still renders. Generated with sharp; flows.spec.ts asserts the
+ *  thumbnail comes back as a real JPEG. */
 const PNG_1X1_B64 =
 	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQI12OosXr7HwAFfAKjosON1QAAAABJRU5ErkJggg==';
 
@@ -153,9 +152,9 @@ const MODELS = {
 		{
 			// A THIRD image model, named as short as anything realistically is, so a
 			// layout spec has a case with margin on the short side. "Mock Painter" and
-			// "Mock Image" sit within a couple of characters of each other, which made
-			// a threshold test read as passing when it was really balanced on a
-			// fixture name chosen for unrelated reasons. Not "Mock …" anything: the
+			// "Mock Image" sit within a couple of characters of each other, so a
+			// threshold test using them would balance on a fixture name chosen for
+			// unrelated reasons. Not "Mock …" anything: the
 			// existing specs address the others with /Mock Image/i and /Mock Painter/,
 			// and a third match would break them on strict mode.
 			id: 'mock-pixi',
@@ -163,13 +162,13 @@ const MODELS = {
 			kind: 'image',
 			display_name: 'Pixi',
 			owned_by: 'mock',
-			// Declares its routes, as `mock-sketcher` above does — between them the
-			// picker's capability pill is exercised in e2e at all, which before these
-			// two it never was. It shares the trigger's box
-			// with the model name and takes 30-40px of it, which is the single largest
-			// term in how much room that name has. BOTH routes deliberately: an
-			// image-input-only model makes `imageAttachment` 'required', which gates
-			// Send on an attachment and would break every text-only spec here.
+			// Declares its routes, as `mock-sketcher` above does — these two are the
+			// only fixtures that exercise the picker's capability pill in e2e. It
+			// shares the trigger's box with the model name and takes 30-40px of it,
+			// which is the single largest term in how much room that name has. BOTH
+			// routes deliberately: an image-input-only model makes `imageAttachment`
+			// 'required', which gates Send on an attachment and would break every
+			// text-only spec here.
 			capabilities: ['text-to-image', 'image-to-image'],
 			aspect_ratios: [
 				{ value: '1:1', label: 'Square' },
@@ -215,8 +214,8 @@ const MODELS = {
 			// The only model here that advertises tool support, so it's the only one
 			// GlyphStream will send a `tools[]` to. `supports_tools` is resolved
 			// per-model with the endpoint as fallback (see models.ts), so this one
-			// flag opts in without a second [[endpoints]] block — which would have
-			// duplicated every other model in the picker.
+			// flag opts in without a second [[endpoints]] block — which would
+			// duplicate every other model in the picker.
 			//
 			// It reacts (see wantsReaction) rather than calling anything else: a
 			// reaction is the one tool call that renders as nothing, which makes it

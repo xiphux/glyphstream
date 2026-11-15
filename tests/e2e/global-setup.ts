@@ -12,8 +12,8 @@
  * or HTTP mocking); cookie-injection covers "is the app behaving
  * correctly when authenticated", which is the actually-useful coverage.
  *
- * The OAuth binding row matters because post-PR-1 a user without any
- * bound provider is treated as a passkey-only operator — fine for
+ * The OAuth binding row matters because a user without any bound
+ * provider is treated as a passkey-only operator — fine for
  * already-authenticated tests, but if any test exercises the GitHub
  * callback's "match an existing binding" path it needs this row.
  */
@@ -70,9 +70,8 @@ export default async function globalSetup() {
 	const db = drizzle({ client: sqlite });
 	migrate(db, { migrationsFolder: resolve('./drizzle') });
 
-	// Seed the test user + the OAuth binding that mirrors the operator's
-	// post-PR-1 shape (every user is bootstrapped with at least one
-	// linked provider; passkey-only is reachable after PR 2's wizard).
+	// Seed the test user + an OAuth binding: the shape of an operator
+	// bootstrapped through a linked provider.
 	db.insert(schema.users)
 		.values({
 			id: TEST_USER.id,

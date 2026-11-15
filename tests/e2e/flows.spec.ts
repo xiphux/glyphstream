@@ -13,8 +13,8 @@ test.beforeEach(() => resetData());
 
 /**
  * High-value end-to-end flows, run against the mock OpenAI upstream (see
- * tests/e2e/fixtures/mock-upstream.mjs). These cover the browser-event
- * territory the roadmap flagged as manual-test-only: the create→navigate→
+ * tests/e2e/fixtures/mock-upstream.mjs). These cover browser-event territory
+ * no unit test reaches: the create→navigate→
  * stream handoff, branch creation on edit, archive/undo, and the gallery
  * sessionStorage launch handoff.
  *

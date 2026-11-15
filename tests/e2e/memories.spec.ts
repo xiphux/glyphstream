@@ -20,7 +20,7 @@ import { resetData, seedMemory } from './helpers';
  * recover UI only cares about the post-consolidation rows, not how they got there.
  *
  * Clean slate per test for the one-DB-across-projects reason (see
- * helpers.resetData) — which now also clears the memories table, so a sibling
+ * helpers.resetData) — which also clears the memories table, so a sibling
  * test's rows can't skew these deterministic list assertions.
  */
 

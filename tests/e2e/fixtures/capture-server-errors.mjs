@@ -16,7 +16,7 @@
  * Node's own process warnings stay out too. Its default warning handler prints
  * through `console.error`, so an `ExperimentalWarning` (@simplewebauthn/server
  * 14 probes Web Crypto's experimental ML-DSA-44 support on the first passkey
- * registration) read as a server error and failed whichever spec registered
+ * registration) would read as a server error and fail whichever spec registers
  * first. A warning isn't a failure; it still lands in the server log.
  */
 import { appendFileSync, mkdirSync } from 'node:fs';

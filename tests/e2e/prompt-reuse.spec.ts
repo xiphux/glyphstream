@@ -98,10 +98,11 @@ test.describe('flow: new chat from this prompt', () => {
 		// of the catalogue, and a fan-out's models are chosen from the full picker —
 		// so they are typically NOT favourites and NOT held. `deriveReuseModels`
 		// uses its resolver as a legitimacy filter, so an unresolved id is DROPPED,
-		// and the fallback is filtered the same way: the whole comparison silently
-		// became "the user's default model, compare mode off". The loss happened
-		// before the intent reached sessionStorage, where the receiving page's
-		// careful re-reconciliation could no longer see it.
+		// and the fallback is filtered the same way: deriving before the catalogue
+		// resolves, the whole comparison would silently become "the user's default
+		// model, compare mode off". The loss would happen before the intent reaches
+		// sessionStorage, where the receiving page's careful re-reconciliation can no
+		// longer see it.
 		//
 		// The test above passes either way, because building the fan-out opens the
 		// picker and loads the catalogue in the same session.

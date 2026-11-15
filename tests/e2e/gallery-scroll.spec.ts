@@ -6,7 +6,7 @@ import { resetData, seedMedia, seedMediaInBuckets } from './helpers';
  * the stacked layout up front (per-day unit counts); the client reserves exact
  * scroll height from those counts immediately, then streams thin unit descriptors
  * for only the ranges near the viewport — rendering placeholder tiles until they
- * land. So, unlike the old append-pagination:
+ * land. So:
  *   - the full unit total is known from first paint (data-loaded-count),
  *   - the scroll height is reserved up front and does NOT grow as you scroll,
  *   - the rendered DOM stays bounded no matter how much has loaded.
@@ -73,9 +73,8 @@ test.describe('gallery: layout-driven virtualization', () => {
 		await page.waitForTimeout(400);
 		const bottom = await scrollHeight(page);
 
-		// The key property vs. the old append-pagination: height is reserved from
-		// the layout, so it stays put (within a row's slack) instead of jumping as
-		// pages load.
+		// The key property: height is reserved from the layout, so it stays put
+		// (within a row's slack) instead of jumping as pages load.
 		expect(Math.abs(bottom - top)).toBeLessThan(300);
 	});
 

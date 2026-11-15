@@ -208,14 +208,13 @@ test('an edited prompt resends at the same shape, not the workflow default', asy
 	await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
 	expect(await lastRequestedRatio(page)).toBe('16:9');
 
-	// Reword the prompt and resend.
 	await page.getByRole('button', { name: 'Edit message' }).click();
 	const editor = page.locator('article', { hasText: 'Editing' });
 	await editor.locator('textarea').fill('a tall lighthouse');
 	await page.getByRole('button', { name: 'Save' }).click();
 	await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
 
-	// Still 16:9 — before the fix this went out with no aspect_ratio at all.
+	// Still 16:9 — the regression sent the edit with no aspect_ratio at all.
 	expect(await lastRequestedRatio(page)).toBe('16:9');
 });
 
@@ -415,8 +414,8 @@ test('the send button stays inside the composer when the row is crowded', async 
 	// feature toggles, the selector, the model picker and send all share one
 	// non-wrapping row. The picker is the only elastic thing there, and a flex item
 	// defaults to refusing to shrink below its content — so without `min-w-0` it
-	// held its full width, the row overflowed, and the send button (or the Stop
-	// button during a generation, same box) was pushed outside the rounded panel
+	// holds its full width, the row overflows, and the send button (or the Stop
+	// button during a generation, same box) is pushed outside the rounded panel
 	// and off the edge of the screen.
 	await page.setViewportSize({ width: 320, height: 720 });
 	await gotoNewChat(page);
@@ -456,10 +455,10 @@ test('the glyph yields when the model name is paying for it, and not otherwise',
 	// But it only goes when the picker's name is actually being clipped to make
 	// room — dropping it beside a name that fits costs legibility and buys nothing.
 	//
-	// Both cases have margin. An earlier version of this test used two fixtures two
-	// characters apart and read as passing while balanced on a name chosen for
-	// unrelated reasons; "Pixi" also carries the capability pill, which is 30-40px
-	// of the same budget and is what makes a character count unusable here.
+	// Both cases have margin: two fixtures two characters apart would pass while
+	// balanced on a name chosen for unrelated reasons. "Pixi" also carries the
+	// capability pill, which is 30-40px of the same budget and is what makes a
+	// character count unusable here.
 	await page.setViewportSize({ width: 393, height: 800 });
 	await gotoNewChat(page);
 
@@ -506,8 +505,8 @@ test('the capability pill counts against the name, not just its characters', asy
 
 	const trigger = page.getByRole('button', { name: 'Select model' });
 	await expect(trigger).toContainText('Pixi');
-	// The pill renders from `capabilities`; without it this test would be measuring
-	// the one trigger shape real usage almost never produces.
+	// The pill renders from `capabilities`; without it this test would measure a
+	// trigger shape real usage almost never produces.
 	await expect(trigger).toContainText(/2I/);
 
 	// "Sketcher" is the decisive case: its name alone fits the room the rule

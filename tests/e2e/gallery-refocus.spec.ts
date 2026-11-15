@@ -7,9 +7,9 @@ import { resetData, seedMedia } from './helpers';
  *
  * The (app) layout refreshes its data on focus / visibility / pageshow. The
  * gallery's page load waits on the layout, so its `data` is replaced with
- * identical filters; the browse feed used to treat that as a filter change,
- * refetch layout + units and jump to the top. The same thing happened once on
- * every cold load, when the layout's deferred refetch landed.
+ * identical filters; treating that as a filter change refetches layout + units
+ * and jumps to the top — on every refocus, and once on every cold load when the
+ * layout's deferred refetch lands.
  */
 
 const SCROLLER = '[data-loaded-count]';

@@ -11,8 +11,8 @@ import {
  * The shared `(app)` layout ships without its interaction-only data and fetches
  * it right after first paint.
  *
- * This is a latency change, so it needs a test that fails if someone quietly
- * undoes it. On a cold container the Database span read 751ms of a 1000ms
+ * A latency win nothing visible depends on needs a test that fails if it is
+ * quietly undone. On a cold container the Database span read 751ms of a 1000ms
  * render — `node:sqlite` is synchronous, so every one of those queries blocked
  * the event loop while the page cache was cold. None of what's deferred is on
  * screen at that moment: the sidebar is a closed drawer on the mobile PWA this
@@ -78,8 +78,8 @@ test('custom models are NOT deferred, because the home page latches on them', as
  *
  * The motivating measurement is not the fixture's two mock models — it's an
  * aggregator endpoint on the operator's box, where `/api/models` is 571KB of
- * JSON that was being embedded in every document to decide one dropdown's
- * initial value. So these assert the SHAPE (what's in the document vs what
+ * JSON that would otherwise be embedded in every document to decide one
+ * dropdown's initial value. So these assert the SHAPE (what's in the document vs what
  * arrives), which is what a regression would break; the byte win is
  * proportional to the deployment, not to this fixture.
  */
@@ -96,9 +96,9 @@ test('the initial document carries only the models first paint can render', asyn
 
 test('a favourite is in the document, and wins the default', async ({ request }) => {
 	// Both halves of the trim's contract in one: favourites must survive it (the
-	// sidebar renders their labels server-side), and the precedence the server now
-	// owns has to agree with the one the page used to run — a favourite beats the
-	// first-chat-model fallback even when it's an image model.
+	// sidebar renders their labels server-side), and the server's precedence must
+	// put a favourite ahead of the first-chat-model fallback even when it's an
+	// image model.
 	seedFavoriteModels(['mock::mock-image']);
 	const html = await (await request.get('/')).text();
 	expect(html).toContain('mock::mock-image');
@@ -140,9 +140,9 @@ test('a ?model= deep link resolves a model the client never held', async ({ page
 });
 
 test('the composer opens on the favourited model, not the first chat model', async ({ page }) => {
-	// End-to-end proof that `pickDefaultModelId` on the server reaches the same
-	// answer the client-side effect used to — asserted through the UI, because
-	// that agreement is the thing that silently breaks if the two ever diverge.
+	// End-to-end proof that `pickDefaultModelId` on the server decides what the
+	// composer opens on — asserted through the UI, because server and page
+	// disagreeing is what breaks silently.
 	seedFavoriteModels(['mock::mock-image']);
 	await page.goto('/');
 	await expect(page.locator('button[aria-label="Select model"]')).toContainText(/Mock Image/i);
@@ -154,10 +154,10 @@ test('the composer opens on the favourited model, not the first chat model', asy
  * These assert the RAW server document, which is the gap every other test in this
  * file left open: a Playwright page assertion passes the moment hydration repairs
  * things, so a chat page can first-paint claiming the conversation has no model
- * and still look green. It did, for a while — Svelte's server runtime memoizes a
- * `$derived` created during a render, so the catalogue's index froze at whatever
- * the first reader saw, and a page adopting its own models at init depth wrote
- * into a snapshot nobody read again.
+ * and still look green. Svelte's server runtime memoizes a `$derived` created
+ * during a render, so a catalogue index built that way freezes at whatever the
+ * first reader saw, and a page adopting its own models at init depth writes into
+ * a snapshot nobody reads again.
  */
 test('a chat page server-renders its model, even when it is not in the seed', async ({
 	request,

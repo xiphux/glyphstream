@@ -2,7 +2,7 @@ import { test, expect, type Page } from './fixtures/test';
 import { MOCK_REPLY, resetData } from './helpers';
 
 /**
- * Multi-model fan-out flow — the headline feature, previously uncovered by e2e.
+ * Multi-model fan-out flow — the headline feature.
  * Two specs:
  *   - happy path: compare two chat models → a grid of N streaming columns →
  *     "Continue with this" collapses back to a linear thread.

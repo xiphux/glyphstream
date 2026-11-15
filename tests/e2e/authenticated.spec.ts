@@ -42,9 +42,9 @@ test.describe('authenticated app shell', () => {
 		await expect(page.getByText('Recents')).toBeVisible();
 	});
 
-	// A stale OS notification for a deleted conversation used to land on the
+	// A stale OS notification for a deleted conversation must not land on the
 	// bare 404 page, which in a standalone PWA has no way out — no back
-	// button, no app chrome. It redirects home with an explanatory toast now.
+	// button, no app chrome — so it redirects home with an explanatory toast.
 	test('a missing conversation redirects home with a toast', async ({ page }) => {
 		await page.goto('/chat/does-not-exist');
 		await expect(page).toHaveURL(/\/$/);
@@ -85,7 +85,6 @@ test.describe('authenticated app shell', () => {
 		await page.goto('/settings/models');
 		await expect(page.getByRole('heading', { name: 'Custom models' })).toBeVisible();
 		await expect(page.getByText(/none yet/i)).toBeVisible();
-		// Form fields.
 		await expect(page.getByLabel('Name')).toBeVisible();
 		await expect(page.getByLabel(/^Description/)).toBeVisible();
 		// Submit button is disabled while name + base model are empty.
@@ -170,13 +169,12 @@ test.describe('unauthenticated', () => {
 	});
 
 	test('a dark-scheme /login tints the browser chrome to match the page', async ({ browser }) => {
-		// Nothing on these routes used to call syncSurfaceChrome() — /login kept
+		// Without a syncSurfaceChrome() call reaching these routes, /login keeps
 		// app.html's static light default for its whole lifetime and a
-		// dark-scheme user got a near-white status bar over a dark page.
-		// Unauthenticated + dark is a combination no other spec covers, which is
-		// why it went unnoticed. (The `(auth)` group has a layout of its own now,
-		// for the status-bar sampler, but no effects; the call that fixes this
-		// still comes from the root layout.)
+		// dark-scheme user gets a near-white status bar over a dark page.
+		// Unauthenticated + dark is a combination no other spec covers. (The
+		// `(auth)` group has a layout of its own, for the status-bar sampler, but
+		// no effects; the call comes from the root layout.)
 		const ctx = await browser.newContext({
 			storageState: { cookies: [], origins: [] },
 			colorScheme: 'dark',

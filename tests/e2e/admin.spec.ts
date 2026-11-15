@@ -74,7 +74,7 @@ test.describe('multi-user isolation + admin gating', () => {
 			// ownership-scoped, so a non-owner takes the same !conversation branch
 			// as an owner whose conversation was deleted: redirect home with a
 			// toast, never the content. Both cases yield the identical response,
-			// so the redirect is no more an existence oracle than the old 404 was.
+			// so the redirect is not an existence oracle.
 			await pageB.goto(`/chat/${convId}`);
 			await expect(pageB).toHaveURL(/\/$/);
 			await expect(pageB.getByText('isolation probe')).toHaveCount(0);

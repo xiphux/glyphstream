@@ -73,7 +73,7 @@ export function resetData(): void {
 		// preferences are the one piece of per-user state a DELETE sweep can't
 		// reach — and they are cross-cutting: favourited models decide the home
 		// page's default selection, the theme decides rendered colors. A spec that
-		// seeds either was silently configuring every spec that ran after it,
+		// seeds either would silently configure every spec that runs after it,
 		// including the second browser project's pass over the files before it.
 		// NULL is "never touched preferences", which the parser fills in with
 		// defaults — the same state a fresh install has.

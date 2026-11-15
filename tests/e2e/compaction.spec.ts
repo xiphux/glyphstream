@@ -174,8 +174,8 @@ test.describe('auto-compaction', () => {
 		const dialog = page.getByRole('alertdialog');
 		await expect(dialog.getByRole('button', { name: 'Send anyway' })).toBeVisible();
 
-		// Cancel: nothing was sent, the summary never landed, and — the fix — the
-		// typed message is still in the composer rather than silently eaten.
+		// Cancel: nothing was sent, the summary never landed, and the typed
+		// message is still in the composer rather than silently eaten.
 		await dialog.getByRole('button', { name: 'Cancel' }).click();
 		await expect(dialog).toBeHidden();
 		await expect(page.locator('textarea').first()).toHaveValue(draft);

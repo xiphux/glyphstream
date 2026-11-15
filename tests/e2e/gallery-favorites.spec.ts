@@ -9,10 +9,10 @@ import { resetData, seedMediaPrompts } from './helpers';
  * the interesting part is exactly the seam they each miss: the gallery is assembled
  * from several independent reads (layout, units, unit-members, periods, and the
  * page load's search + facets) which must all agree on the filter, served through
- * two server-side memos whose keys and fingerprint had to learn about a star. A
+ * two server-side memos whose keys and fingerprint must account for a star. A
  * real browser against a real server is the only place a disagreement between them
  * shows up — and one did: the drill-in read was the one client call that never sent
- * the filter, which the third test now covers. Any new filtered read belongs here
+ * the filter, which the drilled-in stack test covers. Any new filtered read belongs here
  * too; a server-side test cannot catch a caller that simply doesn't ask.
  *
  * Clean slate + fresh seed per test (one shared DB across projects — see
@@ -163,8 +163,8 @@ test.describe('gallery: favorites', () => {
 
 	test('unstarring inside a filtered search drops the row and its count', async ({ page }) => {
 		// Search renders its own ranked list, not the browse feed, so the filtered
-		// browse reseed can't fix it: the row used to sit there with an empty star and
-		// a stale "N results" while the same action in browse removed the tile.
+		// browse reseed can't fix it: the row would sit there with an empty star and
+		// a stale "N results" while the same action in browse removes the tile.
 		await page.goto('/gallery');
 		for (const nth of [0, 2]) {
 			await page.locator(TILE).nth(nth).click();

@@ -3,8 +3,8 @@ import { resetData, seedMedia, trashAllMedia } from './helpers';
 
 /**
  * The trash page draws its grid a page at a time: up to a thousand items can
- * be waiting there, and every tile used to be rendered and built up front.
- * Scrolling must still reach all of them.
+ * be waiting there, too many to render and build up front. Scrolling must
+ * still reach all of them.
  */
 
 const TILES = 'main ul > li';

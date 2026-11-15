@@ -39,7 +39,6 @@ test.describe('composer draft: new-chat box', () => {
 	});
 
 	test('submitting clears the draft so it is not restored later', async ({ page }) => {
-		// sendChatFromHome fills the composer, submits, and waits for the reply.
 		await sendChatFromHome(page, 'New-chat draft clear-on-submit prompt');
 
 		// The new-chat slot is gone immediately after the handoff.

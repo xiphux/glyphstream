@@ -5,7 +5,7 @@ import { MOCK_REPLY, resetData, sendChatFromHome, sendFollowup } from './helpers
 test.beforeEach(() => resetData());
 
 /**
- * Composer offline gating (Option-1 offline handling). While the browser
+ * Composer offline gating. While the browser
  * reports no network we BLOCK sending rather than queueing — Send disables, an
  * inline notice shows, and the typed message stays in the box (and its draft)
  * instead of clearing into a doomed "Load failed". The button-disabled +

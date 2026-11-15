@@ -8,13 +8,11 @@ import {
 } from './helpers';
 
 /**
- * Browser-event tranche — the recovery / state-machine cases the roadmap
- * called out as still uncovered after the happy-path flows landed. These
- * specs don't test "send a message"-style flows; they emulate the events
- * the runtime fires around suspension (`visibilitychange`), connectivity
- * changes (`online` / `offline`), programmatic composer text-sets (the
- * gallery → regenerate handoff), and branch switches (the auto-attach
- * state machine).
+ * Browser-event cases — recovery and state machines. These specs don't test
+ * "send a message"-style flows; they emulate the events the runtime fires
+ * around suspension (`visibilitychange`), connectivity changes (`online` /
+ * `offline`), programmatic composer text-sets (the gallery → regenerate
+ * handoff), and branch switches (the auto-attach state machine).
  *
  * The visibility/connectivity tests use the `Mock Chat Slow` model
  * (mock-upstream.mjs) so the stream is in flight long enough to dispatch

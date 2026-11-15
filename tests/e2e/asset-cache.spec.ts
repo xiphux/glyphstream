@@ -14,8 +14,8 @@ import { CHUNK_CACHE_NAME, CHUNK_CACHE_MAX_ENTRIES } from '../../src/lib/sw/asse
  *
  * A cache-first runtime route fixes that. Proving it takes offline AND
  * `cache: 'no-store'` together, and it is worth stating what was measured rather
- * than which layer refuses the load — two reviewers have reasoned their way to
- * opposite conclusions about that, in both directions.
+ * than which layer refuses the load — reasoning about that has reached opposite
+ * conclusions, in both directions.
  *
  * Measured, with the route removed and the network off: a plain fetch of this
  * chunk SUCCEEDS, and the same fetch with `no-store` FAILS. Something below the
@@ -51,7 +51,7 @@ test('the client bundle is served from Cache Storage with the network off', asyn
 	await page.waitForFunction(() => !!navigator.serviceWorker.controller);
 
 	// expect.poll, not waitForFunction: the latter doesn't await an async
-	// predicate, so it resolved on the first poll whatever the cache held.
+	// predicate, so it resolves on the first poll whatever the cache holds.
 	await expect
 		.poll(
 			() =>

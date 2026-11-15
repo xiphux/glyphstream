@@ -26,7 +26,7 @@ import { test, expect } from './fixtures/test';
 
 const CLIENT_DIR = resolve('./build/client');
 const MANIFEST = resolve('./.svelte-kit/output/client/.vite/manifest.json');
-// SvelteKit 3 moved its generated client under generated/build/. (A stale
+// SvelteKit 3 generates its client under generated/build/. (A stale
 // generated/client-optimized/ from an older build can linger beside it — read
 // that and the route dictionary is silently a previous build's.)
 const GENERATED_CLIENT = '.svelte-kit/generated/build/client-optimized';
