@@ -731,16 +731,19 @@ describe('markToolCallPendingApproval', () => {
 		});
 	});
 
-	it('returns the original array when the toolCallId points at a non-tool_call segment', () => {
-		// Should be impossible — toolCallIds don't collide across
-		// segment kinds — but defend against it by leaving the
-		// segments array untouched rather than rewriting the type.
+	it('appends a tool_call after non-tool_call segments rather than rewriting them', () => {
+		// Only tool_call segments are matched, so a text segment never
+		// becomes the approval target: it stays as it was and the unknown
+		// id gets a synthesized tool_call after it.
 		const segments: InFlightSegment[] = [{ kind: 'text', text: 'hi', html: '' }];
 		const next = markToolCallPendingApproval(segments, 'call_x', 'x', '');
-		// Synthesizes a new segment because no matching tool_call exists.
 		expect(next).toHaveLength(2);
-		expect(next[0]).toEqual(segments[0]);
-		expect(next[1]).toMatchObject({ status: 'pending_approval' });
+		expect(next[0]).toEqual({ kind: 'text', text: 'hi', html: '' });
+		expect(next[1]).toMatchObject({
+			kind: 'tool_call',
+			toolCallId: 'call_x',
+			status: 'pending_approval',
+		});
 	});
 });
 

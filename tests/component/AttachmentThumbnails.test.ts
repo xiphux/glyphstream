@@ -75,9 +75,10 @@ describe('AttachmentThumbnails — status overlays', () => {
 		const { container } = render(AttachmentThumbnails, {
 			props: { attachments: makeStore([makeItem({ status: 'ready' })]) },
 		});
-		// Spinner uses animate-spin; error overlay shows AlertCircle (svg)
-		// — neither should be present.
+		// Spinner uses animate-spin; error overlay is the danger-tinted
+		// layer — neither should be present.
 		expect(container.querySelector('.animate-spin')).toBeNull();
+		expect(container.querySelector('.bg-danger\\/40')).toBeNull();
 	});
 
 	it('shows a spinner overlay while uploading', () => {

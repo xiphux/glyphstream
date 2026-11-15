@@ -432,22 +432,25 @@ describe('updateConversationModel', () => {
 		expect(getConversationMeta(conv.id, u.id)?.modelKind).toBe('image');
 	});
 
-	it('bumps updatedAt so the sidebar resorts the conversation to the top', async () => {
-		const { u, conv } = seed();
-		const before = getConversationMeta(conv.id, u.id);
-		// `updatedAt` only has ms precision; sleep so the next stamp differs.
-		await new Promise((r) => setTimeout(r, 2));
-		updateConversationModel(conv.id, u.id, {
-			endpointId: 'bridge',
-			modelId: 'bridge::other',
-			modelKind: 'chat',
-		});
-		// listConversations returns updatedAt; verify it advanced.
-		const list = listConversations(u.id);
-		const after = list.find((c) => c.id === conv.id);
-		expect(after).toBeDefined();
-		expect(after!.updatedAt).toBeGreaterThan(before ? 0 : -1);
-		expect(after!.id).toBe(conv.id);
+	it('bumps updatedAt so the sidebar resorts the conversation to the top', () => {
+		vi.useFakeTimers();
+		try {
+			vi.setSystemTime(1_000);
+			const { u, conv } = seed();
+			const before = listConversations(u.id).find((c) => c.id === conv.id);
+			expect(before?.updatedAt).toBe(1_000);
+
+			vi.setSystemTime(5_000);
+			updateConversationModel(conv.id, u.id, {
+				endpointId: 'bridge',
+				modelId: 'bridge::other',
+				modelKind: 'chat',
+			});
+			const after = listConversations(u.id).find((c) => c.id === conv.id);
+			expect(after?.updatedAt).toBe(5_000);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('returns false for a foreign user (ownership filter)', () => {
@@ -753,8 +756,9 @@ describe('branching: siblings + selectBranch', () => {
 		expect(proj[0].parts).toEqual([{ type: 'text', text: 'first' }]);
 		expect(proj[0].finishReason).toBeNull();
 		expect(proj[0].modelUsed).toBeNull();
-		// m2's finishReason is null → null; it wasn't set in the append.
+		// m2's finishReason wasn't set in the append.
 		expect(proj[1].role).toBe('assistant');
+		expect(proj[1].finishReason).toBeNull();
 		expect(proj[1].parts).toEqual([{ type: 'text', text: 'reply' }]);
 		expect(proj[1].compactionResumeFromMessageId).toBeNull();
 		expect(proj[2].role).toBe('user');

@@ -8,7 +8,7 @@ import { createTestDb, closeTestDb } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
 import { createConversation, getConversationMeta } from '#lib/server/db/queries/conversations.js';
-import { appendMessage, walkActiveBranch } from '#lib/server/db/queries/messages.js';
+import { appendMessage, getMessage, walkActiveBranch } from '#lib/server/db/queries/messages.js';
 import { undoCompaction } from '#lib/server/chat/compaction.js';
 
 beforeEach(() => {
@@ -53,7 +53,7 @@ function seedCompacted() {
 
 describe('undoCompaction', () => {
 	it('reverts the active leaf to the summary’s parent, leaving the row intact', () => {
-		const { userId, conversationId, leaf, summary } = seedCompacted();
+		const { userId, conversationId, userMsg, leaf, summary } = seedCompacted();
 		expect(getConversationMeta(conversationId, userId)?.activeLeafMessageId).toBe(summary.id);
 
 		const result = undoCompaction(conversationId, userId);
@@ -64,8 +64,11 @@ describe('undoCompaction', () => {
 		const branch = walkActiveBranch(conversationId);
 		expect(branch[branch.length - 1].id).toBe(leaf.id);
 		expect(branch.some((m) => m.id === summary.id)).toBe(false);
-		// …but the row is NOT deleted — it stays in the tree as an inactive sibling.
 		expect(getConversationMeta(conversationId, userId)?.activeLeafMessageId).toBe(leaf.id);
+		// …but the row is NOT deleted — it stays in the tree under the same parent.
+		const kept = getMessage(conversationId, summary.id);
+		expect(kept?.parentMessageId).toBe(leaf.id);
+		expect(kept?.compactionResumeFromMessageId).toBe(userMsg.id);
 	});
 
 	it('is a noop when the active leaf is not a compaction summary', () => {

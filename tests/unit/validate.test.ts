@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { validateCreateInput, validateParameters } from '#lib/server/custom-models/validate.js';
+import { getRegisteredCategoryIds } from '#lib/server/feature-catalog.js';
 
 // Stub the endpoint registry so the validator's "is this a known endpoint?"
 // check has predictable input. Otherwise validateCreateInput would try to
@@ -9,12 +10,12 @@ vi.mock('#lib/server/endpoints/registry.js', () => ({
 		id === 'bridge' ? { id: 'bridge', baseUrl: 'http://x', apiKey: null } : undefined,
 }));
 
-// Stub the feature-catalog registry so the MCP category check has
-// predictable input. v1 registers two built-ins + the categories below
-// for the suite; tests can add more via mockReturnValueOnce when needed.
+// Stub the feature-catalog registry so the category check has predictable
+// input; a test narrows it for one call with mockReturnValueOnce.
 vi.mock('#lib/server/feature-catalog.js', () => ({
-	getRegisteredCategoryIds: () =>
-		new Set(['web', 'personalization', 'code_interpreter', 'mcp:filesystem']),
+	getRegisteredCategoryIds: vi.fn(
+		() => new Set(['web', 'personalization', 'code_interpreter', 'mcp:filesystem']),
+	),
 }));
 
 describe('validateParameters', () => {
@@ -223,28 +224,36 @@ describe('validateCreateInput', () => {
 		expect(r.defaultDisabledFeatures).toEqual(['code_interpreter']);
 	});
 
-	it('accepts MCP categories backed by a currently-registered server', () => {
-		// NB: registration is not what makes this pass — the validator `continue`s
-		// on any `mcp:` prefix before consulting the registry, so this and the
-		// not-registered case below take the identical branch. Kept as a named
-		// case because it documents the intended contract, but it does not
-		// discriminate; the registry only decides non-`mcp:` categories.
+	it('decides non-mcp categories by the live registry, not a fixed list', () => {
+		vi.mocked(getRegisteredCategoryIds).mockReturnValueOnce(new Set(['web']));
+		expect(() =>
+			validateCreateInput({ ...valid, defaultDisabledFeatures: ['web', 'personalization'] }),
+		).toThrow(expect.objectContaining({ status: 400 }));
+
+		vi.mocked(getRegisteredCategoryIds).mockReturnValueOnce(new Set(['web', 'personalization']));
 		const r = validateCreateInput({
 			...valid,
-			defaultDisabledFeatures: ['personalization', 'mcp:filesystem'],
+			defaultDisabledFeatures: ['web', 'personalization'],
 		});
-		expect(r.defaultDisabledFeatures).toEqual(['personalization', 'mcp:filesystem']);
+		expect(r.defaultDisabledFeatures).toEqual(['web', 'personalization']);
 	});
 
-	it('preserves mcp: categories whose server is not currently registered', () => {
+	it('preserves mcp: categories whether or not their server is registered', () => {
 		// An admin removing an MCP server from config.toml shouldn't break
 		// every custom model that referenced it — the data round-trips so
-		// the preference returns intact when the server comes back.
+		// the preference returns intact when the server comes back. The
+		// registry below lists neither server, so only the mcp: prefix can
+		// let them through.
+		vi.mocked(getRegisteredCategoryIds).mockReturnValueOnce(new Set(['personalization']));
 		const r = validateCreateInput({
 			...valid,
-			defaultDisabledFeatures: ['personalization', 'mcp:no-longer-registered'],
+			defaultDisabledFeatures: ['personalization', 'mcp:filesystem', 'mcp:no-longer-registered'],
 		});
-		expect(r.defaultDisabledFeatures).toEqual(['personalization', 'mcp:no-longer-registered']);
+		expect(r.defaultDisabledFeatures).toEqual([
+			'personalization',
+			'mcp:filesystem',
+			'mcp:no-longer-registered',
+		]);
 	});
 
 	it('rejects unknown non-MCP category strings', () => {

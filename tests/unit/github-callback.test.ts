@@ -201,10 +201,11 @@ describe('GitHub callback — setup branch', () => {
 		expect(r.location).toBe('/setup?error=invalid_oauth_state');
 	});
 
-	it('refuses with invalid_oauth_state when carry is missing', async () => {
+	// A carry that is absent altogether isn't a setup callback at all — the
+	// handler dispatches on the cookie's presence and falls through to login.
+	it('refuses with invalid_oauth_state when the carry signature does not verify', async () => {
 		const { store, cookies } = fakeCookies({
 			[STATE_COOKIE]: 'a',
-			// no carry — but a stale tab race could land here
 			[SETUP_OAUTH_CARRY_COOKIE]: 'malformed.signature',
 		});
 		const event = mkEvent({ url: fakeUrl({ code: 'c', state: 'a' }), cookies });

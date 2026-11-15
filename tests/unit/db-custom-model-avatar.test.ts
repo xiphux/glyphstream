@@ -36,7 +36,7 @@ import {
 	setConversationAvatar,
 } from '#lib/server/db/queries/conversations.js';
 import { appendMessage, updateMessageParts } from '#lib/server/db/queries/messages.js';
-import { media } from '#lib/server/db/schema.js';
+import { media, messages } from '#lib/server/db/schema.js';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();
@@ -514,8 +514,13 @@ describe('appendMessage — advanceActiveLeafIfCurrent', () => {
 		expect(detail?.activeLeafMessageId).toBe(laterTurn.id);
 		// The portrait is not lost: it's a sibling of that turn under the same
 		// parent, which is what the ‹N/M› arrows navigate.
-		expect(portrait.id).toBeTruthy();
-		expect(mocks.testDb).toBeTruthy();
+		const siblings = mocks.testDb
+			.select({ id: messages.id })
+			.from(messages)
+			.where(eq(messages.parentMessageId, description.id))
+			.all()
+			.map((r) => r.id);
+		expect(siblings.toSorted()).toEqual([laterTurn.id, portrait.id].toSorted());
 	});
 
 	it('advances past a reaction\u2019s tool row, which is bookkeeping not movement', () => {

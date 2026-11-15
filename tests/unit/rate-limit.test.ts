@@ -78,13 +78,18 @@ describe('consumeRateLimitToken', () => {
 		// The sweep must not become an escape hatch: a client that is being
 		// limited has to stay limited across a sweep it happens to trigger.
 		const t0 = 1_000_000;
-		spend('1.2.3.4', MAX, t0);
-		// Advance just enough to fire the sweep but not to refill a whole token.
-		const nudge = t0 + WINDOW_MS + 1;
-		for (let i = 0; i < 200; i++) consumeRateLimitToken(`10.0.0.${i}`, nudge);
-		// 1.2.3.4 has fully refilled by now and is legitimately allowed again;
-		// what matters is that it is spending from a bucket, not bypassing one.
-		expect(spend('1.2.3.4', MAX, nudge).allowed).toBe(true);
-		expect(consumeRateLimitToken('1.2.3.4', nudge).allowed).toBe(false);
+		// Arms the sweep clock: the next sweep fires at t0 + WINDOW_MS.
+		consumeRateLimitToken('warm', t0);
+		// Exhaust the bucket just before that sweep, so 10 ms later it has
+		// earned back only a hundredth of a token.
+		spend('1.2.3.4', MAX, t0 + WINDOW_MS - 10);
+		expect(rateLimitBucketCount()).toBe(2);
+
+		const sweepAt = t0 + WINDOW_MS;
+		consumeRateLimitToken('trigger', sweepAt);
+		// The sweep ran: the recovered 'warm' bucket is gone, 'trigger' joined.
+		expect(rateLimitBucketCount()).toBe(2);
+		// A dropped bucket would be recreated at full capacity and allow this.
+		expect(consumeRateLimitToken('1.2.3.4', sweepAt).allowed).toBe(false);
 	});
 });

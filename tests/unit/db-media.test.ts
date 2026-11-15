@@ -1308,8 +1308,12 @@ describe('purger sweep queries', () => {
 
 	it('findPurgeCandidates excludes rows with unreferencedSince=null', () => {
 		const u = seedUser();
-		makeMedia(u.id, { origin: 'uploaded' }); // refCount=0 but unreferencedSince=null
-		expect(findPurgeCandidates(9999)).toEqual([]);
+		const { id } = makeMedia(u.id, { origin: 'uploaded' });
+		// insertMedia stamps uploads at insert time; clear it so the row is
+		// zero-ref but unstamped.
+		mocks.testDb.update(media).set({ unreferencedSince: null }).where(eq(media.id, id)).run();
+		expect(getRow(id)?.unreferencedSince).toBeNull();
+		expect(findPurgeCandidates(Number.MAX_SAFE_INTEGER)).toEqual([]);
 	});
 
 	it('stampOrphanedZeroRefRows stamps zero-ref uploaded rows whose stamp is missing', () => {

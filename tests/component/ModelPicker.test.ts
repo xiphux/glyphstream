@@ -357,12 +357,13 @@ describe('ModelPicker — favorites', () => {
 		});
 		await user.click(screen.getByLabelText('Select model'));
 		expect(screen.getByText('Favorites')).toBeInTheDocument();
-		// Only "A" should appear in favorites — ghost is dropped.
-		const favoritesHeader = screen.getByText('Favorites');
-		// The group's items follow the header in DOM order; just assert
-		// that "A" exists and "ghost" doesn't.
-		expect(screen.queryByText('ghost-removed')).toBeNull();
-		expect(favoritesHeader).toBeInTheDocument();
+		// Favorites holds only "A", so the list is A (favorite), A, B — a
+		// row for the ghost would be a fourth option.
+		const options = screen.getAllByRole('option');
+		expect(options).toHaveLength(3);
+		expect(options[0]).toHaveAccessibleName(/^A/);
+		expect(screen.getAllByRole('option', { name: /^A/ })).toHaveLength(2);
+		expect(screen.getAllByRole('option', { name: /^B/ })).toHaveLength(1);
 	});
 
 	it('renders a star button when onToggleFavorite is supplied', async () => {
