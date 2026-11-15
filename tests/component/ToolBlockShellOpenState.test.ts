@@ -9,10 +9,10 @@
  *   2. a user toggle must survive re-renders while status is STABLE,
  *   3. a later status change must still win over that toggle.
  *
- * Written to settle whether the `$state(untrack(...)) + $effect` implementation
- * can be the writable `$derived` that `svelte/prefer-writable-derived`
- * suggests. It asserts observable behavior only — no implementation detail —
- * so it passes against either form and fails if they actually differ.
+ * It asserts observable behavior only — no implementation detail — so it holds
+ * for both the `$state(untrack(...)) + $effect` form and the writable
+ * `$derived` that `svelte/prefer-writable-derived` suggests, and fails if they
+ * actually differ.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -93,15 +93,12 @@ describe('ToolBlockShell — user toggles vs. status sync', () => {
 	// clobber the toggle back to openByDefault.
 	//
 	// Vary a prop that actually REACHES ToolBlockShell. `attachments` is a real
-	// shell prop (ToolCallBlock → GenericToolBlock → shell); `argumentsJson`,
-	// used here previously, is consumed by the per-kind block to build its body
-	// snippet and never lands on the shell.
-	//
-	// Both forms do catch a clobbering regression (verified by mutation: making
-	// isOpen re-sync on any re-render fails this case either way) — the old one
-	// only via the fresh snippet identities a parent re-render hands down, which
-	// is incidental. Driving a genuine shell prop pins it directly instead of
-	// depending on that.
+	// shell prop (ToolCallBlock → GenericToolBlock → shell); `argumentsJson` is
+	// consumed by the per-kind block to build its body snippet and never lands on
+	// the shell. Varying it does still catch a clobbering regression (verified by
+	// mutation: making isOpen re-sync on any re-render fails either way), but only
+	// via the fresh snippet identities a parent re-render hands down, which is
+	// incidental. Driving a genuine shell prop pins it directly.
 	it('survives a re-render that leaves status unchanged', async () => {
 		const { container, rerender } = render(ToolCallBlock, {
 			props: { ...base, status: 'done' },

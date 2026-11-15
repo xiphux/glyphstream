@@ -81,7 +81,6 @@ describe('Toaster — action button', () => {
 		render(Toaster);
 		toast.info('just info');
 		await tick();
-		// The only buttons should be Dismiss.
 		const buttons = screen.getAllByRole('button');
 		expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['Dismiss']);
 	});
@@ -127,7 +126,6 @@ describe('Toaster — dismiss + replacement', () => {
 
 		toast.success('second');
 		await tick();
-		// Only ONE toast surface at any time.
 		expect(screen.getAllByRole('status')).toHaveLength(1);
 		expect(screen.getByRole('status')).toHaveTextContent('second');
 	});

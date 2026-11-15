@@ -1,10 +1,9 @@
 /**
  * Component test for the `/skill-name` autocomplete in ComposerCore.
  *
- * This path shipped without coverage — nothing in the suite passed
- * `skillCommands` — which made it unsafe to refactor. These pin the observable
- * contract (open/filter/keyboard/completion) so the menu shell can be shared
- * with the snippet menu without flying blind.
+ * Pins the observable contract (open/filter/keyboard/completion), since the
+ * menu shell (AutocompleteMenu) is shared with the snippet menu and a change
+ * made for one can break the other.
  *
  * NOTE: completion goes through `replaceRange`, and happy-dom has no
  * `document.execCommand`, so the assertions here exercise the `setRangeText`

@@ -7,8 +7,8 @@
 	parent. This exposes both through callbacks the test can spy on.
 
 	It also lets a test UNMOUNT and REMOUNT the selector (via `mounted`), which is
-	the sequence the seed-retirement fix exists for: the real composer destroys
-	the selector whenever no selected model offers ratios.
+	the sequence seed retirement has to survive: the real composer destroys the
+	selector whenever no selected model offers ratios.
 -->
 <script lang="ts">
 	import AspectRatioSelector from '#lib/components/chat/AspectRatioSelector.svelte';

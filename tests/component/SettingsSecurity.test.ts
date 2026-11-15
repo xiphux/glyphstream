@@ -459,7 +459,6 @@ describe('Security settings page — rename flow', () => {
 		await user.type(input, 'changed{Escape}');
 
 		expect(fetchMock).not.toHaveBeenCalled();
-		// And the input is gone, leaving the original name visible.
 		expect(screen.queryByLabelText('Passkey name')).toBeNull();
 		expect(screen.getByText('orig')).toBeInTheDocument();
 	});
@@ -479,7 +478,6 @@ describe('Security settings page — signed-in devices', () => {
 		});
 		expect(screen.getByText('Chrome on macOS')).toBeInTheDocument();
 		expect(screen.getByText('Safari on iOS')).toBeInTheDocument();
-		// Exactly one row carries the "This device" marker.
 		expect(screen.getAllByText('This device')).toHaveLength(1);
 	});
 

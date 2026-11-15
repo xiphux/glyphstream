@@ -148,7 +148,6 @@ describe('SearchModal — activation', () => {
 		await userEvent.click(row);
 
 		expect(mocks.goto).toHaveBeenCalledWith('/chat/c1#msg-m42');
-		// Activating a result also closes the modal.
 		expect(searchModal.open).toBe(false);
 		fetchSpy.mockRestore();
 	});

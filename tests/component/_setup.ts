@@ -20,13 +20,13 @@ import '@testing-library/jest-dom/vitest';
  * already finished, so transitions are effectively instant in tests (we assert
  * on final DOM, not animation frames).
  *
- * Unconditionally, not only where it's missing. happy-dom had no `animate()`
- * until 20.14, and the stub was guarded on that. 20.14's real implementation
- * rejects an animation's `finished` promise when the animation is cancelled —
- * which Svelte does whenever a component with a running transition unmounts —
- * without marking the rejection handled, the way browsers do. Svelte never reads
- * `finished`, so each teardown surfaced as an unhandled "AbortError: The
- * animation was canceled", failing the run with every assertion green.
+ * Unconditionally, not only where it's missing: happy-dom's own `animate()`
+ * (from 20.14) rejects an animation's `finished` promise when the animation is
+ * cancelled — which Svelte does whenever a component with a running transition
+ * unmounts — without marking the rejection handled, the way browsers do. Svelte
+ * never reads `finished`, so each teardown would surface as an unhandled
+ * "AbortError: The animation was canceled", failing the run with every
+ * assertion green.
  */
 if (typeof Element !== 'undefined') {
 	Element.prototype.animate = function animate() {

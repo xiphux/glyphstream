@@ -2,11 +2,11 @@
  * Holds the line on the `?link=` result toast firing once per link attempt.
  *
  * The security page reads the OAuth link outcome off the query string, toasts
- * it, and strips the param. Both halves have been wrong. A COMMIT is not a
+ * it, and strips the param. Both halves have a trap. A COMMIT is not a
  * navigation: `page.url` is a `$state.raw` holding a URL object that SvelteKit
  * republishes on every load re-run, `invalidate()` included — the (app) layout
- * fires one on every resume — so reading it from an `$effect` re-announced a
- * link completed long ago. And a strip that leaves the param on `page.url` (a
+ * fires one on every resume — so an `$effect` reading it re-announces a link
+ * completed long ago. And a strip that leaves the param on `page.url` (a
  * raw `history.replaceState`) or records it into the history entry (Kit's
  * shallow `replaceState`) puts the announcement back within reach of a later
  * commit or a Back. Only a real navigation takes it off both.
@@ -106,20 +106,19 @@ describe('security page — ?link= result toast', () => {
 		flushSync();
 
 		// Deliberately a real navigation, not a shallow update (SvelteKit 3's
-		// `goto(…, { shallow: true })`, formerly `replaceState`). A shallow update
-		// records the page's REAL url — `?link=` and all
-		// — in the history entry, so a Back onto it once another navigation has
-		// moved the navigation index replays that navigation and announces the
-		// link a second time. Only a real navigation takes the param off
-		// `page.url` and off the entry.
+		// `goto(…, { shallow: true })`, Kit 2's `replaceState`). A shallow update
+		// records the page's REAL url — `?link=` and all — in the history entry,
+		// so a Back onto it once another navigation has moved the navigation
+		// index replays that navigation and announces the link a second time.
+		// Only a real navigation takes the param off `page.url` and off the entry.
 		await vi.waitFor(() =>
 			expect(vi.mocked(goto)).toHaveBeenCalledWith(
 				'/settings/security',
 				expect.objectContaining({ replace: true, reset: false }),
 			),
 		);
-		// Since SvelteKit 3 a shallow update is a `goto` too, so "a goto was
-		// called" no longer rules one out on its own.
+		// In SvelteKit 3 a shallow update is a `goto` too, so "a goto was called"
+		// doesn't rule one out on its own.
 		expect(vi.mocked(goto)).not.toHaveBeenCalledWith(
 			expect.anything(),
 			expect.objectContaining({ shallow: true }),

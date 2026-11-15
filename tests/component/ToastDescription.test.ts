@@ -1,15 +1,14 @@
 /**
  * Holds the line on the toast's secondary line actually reaching the DOM.
  *
- * `ShowOptions` did not declare `description` for a long time, and two callers
- * passed one anyway — spread in, as `...(x ? { description: x } : {})`. That
- * spelling type-checks against an option that does not exist, because
+ * Callers pass `description` spread in, as `...(x ? { description: x } : {})`.
+ * That spelling type-checks even against an option that does not exist, because
  * TypeScript's excess-property check only applies to properties written
  * literally in an object literal and a spread's properties are not fresh. So
- * `pnpm check` and `pnpm lint` were both blind, `show()` never read the field,
- * and every description was silently dropped — including a completion's body
- * line, which is everything the toast has to say about a finished turn beyond
- * naming its thread.
+ * `pnpm check` and `pnpm lint` are blind to it: with `description` undeclared
+ * on `ShowOptions`, `show()` never read the field and every description was
+ * silently dropped — including a completion's body line, which is everything
+ * the toast has to say about a finished turn beyond naming its thread.
  *
  * A type alone can't hold this: the option can be declared and still never
  * rendered. So assert on the rendered text.

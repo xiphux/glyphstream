@@ -3,8 +3,8 @@
  *
  * The `(app)` layout remounts whenever the user passes through an `(auth)`
  * route — most visibly the app-lock unlock, which returns them to the thread
- * they were reading — and a remounted list starts at the top. Reaching that
- * conversation's overflow menu then meant scrolling to find it.
+ * they were reading — and a remounted list starts at the top, so reaching that
+ * conversation's overflow menu would mean scrolling to find it.
  *
  * happy-dom does no layout, so the geometry is faked: every row is ROW_PX
  * tall, stacked in DOM order, inside a pane VIEW_PX tall that honours its own

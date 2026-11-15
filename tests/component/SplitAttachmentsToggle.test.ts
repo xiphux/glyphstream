@@ -25,7 +25,7 @@ describe('SplitAttachmentsToggle', () => {
 		});
 		const btn = screen.getByRole('button');
 		expect(btn.textContent).toContain('×6');
-		// The wordy caption lives in the popover now, not on the button itself.
+		// The wordy caption lives in the popover, not on the button itself.
 		expect(btn.textContent).not.toContain('generations');
 		expect(btn.textContent).not.toContain('per image');
 	});

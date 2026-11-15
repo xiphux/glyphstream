@@ -221,7 +221,7 @@ describe('ToolCallBlock — skill rendering', () => {
 		});
 		expect(screen.getByText('Skill')).toBeInTheDocument();
 		expect(screen.getByText('review')).toBeInTheDocument();
-		// The generic tool envelope is gone.
+		// No generic tool envelope.
 		expect(container.textContent).not.toContain('"name"');
 		expect(screen.queryByText('Tool')).toBeNull();
 		expect(screen.queryByText('Arguments')).toBeNull();
