@@ -10,7 +10,11 @@
  * import this from client code.
  */
 
-import webpush, { type PushSubscription as WebPushSubscription } from 'web-push';
+import {
+	sendNotification,
+	setVapidDetails,
+	type PushSubscription as WebPushSubscription,
+} from 'web-push';
 import { loadNotificationsConfig, type LoadedNotificationsConfig } from '../endpoints/config';
 import { createLogger } from '../log';
 
@@ -42,11 +46,7 @@ function init(): LoadedNotificationsConfig | null {
 		loadedConfig = null;
 	}
 	if (loadedConfig) {
-		webpush.setVapidDetails(
-			loadedConfig.vapidSubject,
-			loadedConfig.vapidPublic,
-			loadedConfig.vapidPrivate,
-		);
+		setVapidDetails(loadedConfig.vapidSubject, loadedConfig.vapidPublic, loadedConfig.vapidPrivate);
 	}
 	return loadedConfig;
 }
@@ -101,7 +101,7 @@ export async function sendPushNotification(
 		// stops a phone that was off overnight replaying yesterday: the cross-device
 		// check can't recall a push already sent for a reply read on the desktop
 		// since (the per-thread `tag` keeps it to one per thread).
-		await webpush.sendNotification(subscription, payload, {
+		await sendNotification(subscription, payload, {
 			TTL: PUSH_TTL_SECONDS,
 			urgency: 'high',
 			timeout: 10_000,

@@ -27,10 +27,10 @@ import { createServer, globalAgent, type Server } from 'node:https';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import webpush from 'web-push';
+import { generateVAPIDKeys } from 'web-push';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const vapid = webpush.generateVAPIDKeys();
+const vapid = generateVAPIDKeys();
 
 vi.mock('#lib/server/endpoints/config.js', () => ({
 	loadNotificationsConfig: () => ({
