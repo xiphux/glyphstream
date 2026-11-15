@@ -3,9 +3,7 @@
  * long-running op honors both a caller cancel signal and a local timeout
  * (chat-completion fetches, web_search, fetch_url, retrieval embedding).
  *
- * These lock the observable contract BEFORE the internal polyfill branch is
- * dropped in favor of native `AbortSignal.any` (the Node >=24 target always
- * has it), so the simplification can't change behavior:
+ * The observable contract, independent of `AbortSignal.any` underneath:
  *   - 0 present signals → a signal that never aborts
  *   - exactly 1 present signal → returned by identity (no wrapper)
  *   - >=2 → aborts when ANY input aborts, propagating that input's reason

@@ -10,15 +10,15 @@
  * would pass unit and e2e and break the shipped image. Each check does a small
  * piece of REAL work with the library, not just an import.
  *
- * Only three packages still live in node_modules: sharp, pyodide and shiki,
- * the ones that load files from their own directory at runtime (a native
- * binary, a WASM + stdlib bundle, lazily-imported grammars). Everything else
- * is a devDependency that adapter-node bundles into build/server, so there is
- * no package left to import here — and what can break changes shape. The
- * failure is now a bare import the bundler left external to a package the
- * image doesn't have, which every other job hides, because they run with the
- * full dev install. `bundle` catches that; the bundled libraries' BEHAVIOUR
- * is e2e's to cover, since Playwright runs this same production build.
+ * Only three packages still live in node_modules: sharp, pyodide and shiki, the
+ * ones that load files from their own directory at runtime (a native binary, a
+ * WASM + stdlib bundle, lazily-imported grammars). Everything else is a
+ * devDependency that adapter-node bundles into build/server, so there is no
+ * package left to import here. The failure to catch is a bare import the bundler
+ * left external to a package the image doesn't have, which every other job hides,
+ * because they run with the full dev install. `bundle` catches that; the bundled
+ * libraries' BEHAVIOUR is e2e's to cover, since Playwright runs this same
+ * production build.
  */
 import { copyFileSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { fork, spawnSync } from 'node:child_process';
@@ -33,13 +33,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 // handler calls `server.init`, which runs hooks.server's startup (sweepers, MCP
 // bootstrap, model listing), and its entry listens on the port the container's
 // server already holds. The code interpreter's worker refuses to load except
-// as a forked child with an IPC channel (codeInterpreter below starts it so). All of them are still proven by run.sh, whose server can't
-// boot and answer /api/health unless they load.
+// as a forked child with an IPC channel (codeInterpreter below starts it so).
+// All of them are still proven by run.sh, whose server can't boot and answer
+// /api/health unless they load.
 //
-// adapter-node 6 moved its own server code into build/server (it used to sit
-// beside it), under fixed names — and hooks.server went from a hashed chunk to
-// entries/. A name this list misses gets imported: the last time, that was the
-// listener (EADDRINUSE on :3000) and a second set of sweepers on the live DB.
+// adapter-node 6 puts its own server code in build/server under fixed names,
+// and kit 3 puts hooks.server under entries/. A name this list misses gets
+// imported: once that was the listener (EADDRINUSE on :3000) and a second set
+// of sweepers on the live DB.
 const SKIP = [
 	/\/server\/adapter-index\.js$/, // listens on PORT, installs signal handlers
 	/\/server\/adapter-node-handler\.js$/, // calls server.init

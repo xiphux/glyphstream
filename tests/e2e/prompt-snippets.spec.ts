@@ -172,15 +172,13 @@ test.describe('prompt snippets: settings', () => {
 		// a row, which is only ever absent-so-far.
 		expect(await res.json()).toMatchObject({ imported: 0, updated: 0 });
 
-		// The regression this test exists for: the box keeps its text so the
-		// user can correct and retry.
 		await expect(box).toHaveValue(malformed);
 
 		// Scope the row check to the library list. The error toast NAMES every
 		// skipped entry ("Style A: bold linework: no body"), so a page-wide
 		// `getByText('Style A')` matches the report of the failure instead of a
-		// row — which is exactly how this assertion used to fail once the toast
-		// had time to render, while passing locally when it didn't.
+		// row — failing once the toast has rendered, and passing locally when it
+		// hasn't yet.
 		const rows = page.getByRole('main').getByRole('listitem');
 		await expect(rows).toHaveCount(2); // the two seeded in beforeEach
 		await expect(rows.filter({ hasText: 'Style A' })).toHaveCount(0);

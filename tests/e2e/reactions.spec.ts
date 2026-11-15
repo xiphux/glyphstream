@@ -91,13 +91,12 @@ test.describe('the assistant reacts', () => {
 	test('the badge survives the end of a turn the model reacted to WITHOUT text', async ({
 		page,
 	}) => {
-		// The shape the original e2e couldn't produce, and the one that broke: the
-		// model reacts and writes nothing, so the relay loops for the reply. All
-		// four of the reaction's tool frames are suppressed, so the client cannot
-		// infer from them that a second iteration ran — it used to append only the
-		// last row, dropping the row that CARRIES the reaction, and the badge
-		// vanished the instant the reply landed. The server reports the extra
-		// iteration on `done` now.
+		// The model reacts and writes nothing, so the relay loops for the reply.
+		// All four of the reaction's tool frames are suppressed, so the client
+		// cannot infer from them that a second iteration ran; unless the server
+		// reports it on `done`, the client appends only the last row, dropping the
+		// row that CARRIES the reaction, and the badge vanishes the instant the
+		// reply lands.
 		await sendToToolModel(page, 'I got the job!! REACT_WITHOUT_TEXT');
 
 		await expect(reactionBadge(page)).toBeVisible();

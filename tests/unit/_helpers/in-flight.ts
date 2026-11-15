@@ -3,7 +3,7 @@
  *
  * The relays take the registry entry itself (not a callback) so that stamping
  * `generationStartedAt` on slot acquisition cannot be forgotten by a caller —
- * which means every relay test now has to supply one. Built by hand rather than
+ * so every relay test has to supply one. Built by hand rather than
  * through `registerInFlight` so a test doesn't have to enrol in the module-level
  * registry, and reset it, just to exercise a relay.
  *

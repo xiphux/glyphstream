@@ -7,9 +7,9 @@
  * removing the last active admin.
  *
  * Deleting must remove what the confirmation dialog says it removes — "all of
- * its conversations, media, and settings". The FK cascade takes the rows, but
- * the media BYTES were left on disk with nothing able to find them again (the
- * purger walks rows), which this file caught.
+ * its conversations, media, and settings". The FK cascade takes the rows but
+ * not the media BYTES, and once the rows are gone nothing can find those again
+ * (the purger walks rows).
  */
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';

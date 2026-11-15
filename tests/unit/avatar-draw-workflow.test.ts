@@ -1,6 +1,6 @@
 /**
- * Unit tests for the draw dialog's workflow — avatar portraits and texting
- * photos — lifted out of the chat page.
+ * Unit tests for the draw dialog's workflow: avatar portraits and texting
+ * photos.
  *
  * The workflow runs its real runes (the sveltekit() vitest plugin compiles the
  * .svelte.ts module). The catalogue is a stub list, and the page's photo

@@ -6,10 +6,10 @@ import { resetData } from './helpers';
  * it, must not switch the scheme back.
  *
  * The Preferences switcher writes the gs-scheme cookie at once and PATCHes the
- * pref without invalidating. The (app) layout's cookie-sync effect used to
- * read the pref through `data`, so any layout load (a focus refresh, a turn
- * completing) re-ran it, and one answered before the PATCH carried the old
- * pref and wrote it back over the user's choice.
+ * pref without invalidating. If the (app) layout's cookie-sync effect reads the
+ * pref through `data`, any layout load (a focus refresh, a turn completing)
+ * re-runs it, and one answered before the PATCH carries the old pref and
+ * writes it back over the user's choice.
  */
 
 test.beforeEach(() => {

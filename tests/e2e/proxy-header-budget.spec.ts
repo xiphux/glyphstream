@@ -3,8 +3,8 @@ import { seedConversation } from './helpers';
 
 /**
  * The response header block has to survive a reverse proxy — while the preload
- * hints still reach the browser, which is what made this a squeeze rather than a
- * deletion while they rode in a Link header (SvelteKit 2; see below).
+ * hints still reach the browser, which is why a Link header carrying them is
+ * trimmed rather than deleted (see below).
  *
  * The ceiling is lower than it looks.
  *
@@ -20,7 +20,7 @@ import { seedConversation } from './helpers';
  * A `Set-Cookie` from a session renewal spent them.
  *
  * So this asserts the budget rather than just the absence of the header that
- * blew it. Note what that now catches and what it doesn't: the `Link` trimmer
+ * blew it. Note what that catches and what it doesn't: the `Link` trimmer
  * prices its budget from the other headers, so another `Server-Timing` field or
  * a longer CSP does NOT fail here — it silently costs a preload hint instead,
  * and the budget stays green. What still fails here is the block growing past
@@ -66,9 +66,9 @@ test('a chat document fits inside a reverse proxy default header buffer', async 
 	// walks the import graph for 45 chunks, and `load` fires long before the page
 	// can hydrate — that shipped once, and surfaced as four unrelated-looking e2e
 	// failures where a click focused a button whose handler was not attached yet.
-	// SvelteKit 2 sent them only as a Link header (hence the trimmer in
-	// hooks.server.ts); SvelteKit 3 writes them into the <head>, which takes them
-	// out of the header block altogether. Either form passes.
+	// SvelteKit 3 writes them into the <head>, out of the header block
+	// altogether; `output.linkHeaderPreload` sends them as a Link header instead
+	// (hence the trimmer in hooks.server.ts). Either form passes.
 	const linkHeader = headers.find((h) => h.name.toLowerCase() === 'link')?.value ?? '';
 	const html = await res.text();
 	expect(

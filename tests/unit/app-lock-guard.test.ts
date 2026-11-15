@@ -1,6 +1,5 @@
 /**
- * Unit tests for the installed app's half of the app lock, lifted out of the
- * (app) layout.
+ * Unit tests for the installed app's half of the app lock (`AppLockGuard`).
  *
  * The rules under test are the ones its docblock states: fail closed, one check
  * at a time, only the current check may act on its answer, a hide aborts a

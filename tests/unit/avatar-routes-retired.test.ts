@@ -1,8 +1,8 @@
 /**
- * The avatar routes a portrait used to be drawn through, before portraits
- * became versions on their reply (POST …/photos with `kind: 'portrait'`). A tab
- * still running that release is told to reload rather than drawing into a
- * thread that no longer reads what it would write.
+ * Retired avatar routes. Portraits are versions on their reply (POST …/photos
+ * with `kind: 'portrait'`), so a tab still running a release that drew through
+ * these routes is told to reload rather than drawing into a thread that no
+ * longer reads what it would write.
  */
 import { describe, expect, it } from 'vitest';
 import { POST as generate } from '../../src/routes/api/conversations/[id]/avatar/generate/+server';

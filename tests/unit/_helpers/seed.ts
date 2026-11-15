@@ -44,9 +44,9 @@ export interface SeededOAuthAccount {
 
 /**
  * Optionally bind a GitHub-style OAuth identity to a seeded user. Used
- * by tests that exercise login-via-OAuth paths or want the existing
- * operator's bootstrap shape (every user pre-PR-1 had exactly one
- * github oauth_accounts row).
+ * by tests that exercise login-via-OAuth paths or want the shape of an
+ * install that predates passkeys and other providers (every user had exactly
+ * one github oauth_accounts row).
  */
 export function seedOAuthAccount(
 	userId: string,

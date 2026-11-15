@@ -307,7 +307,6 @@ describe('update_canvas targeting (multiple canvases)', () => {
 		expect(listActiveCanvases(convId, user.id).find((c) => c.id === b.id)!.content).toBe(
 			'B edited',
 		);
-		// A is untouched.
 		expect(listActiveCanvases(convId, user.id).find((c) => c.id === a.id)!.content).toBe('aaa');
 	});
 

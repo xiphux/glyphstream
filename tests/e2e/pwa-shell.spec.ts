@@ -2,8 +2,8 @@ import { readdir } from 'node:fs/promises';
 import { test, expect } from './fixtures/test';
 
 /**
- * The two things @vite-pwa/sveltekit used to provide, now that SvelteKit builds
- * the worker on its own: the manifest, and the worker's precache list.
+ * The two things SvelteKit's own worker build must still produce without
+ * @vite-pwa/sveltekit: the manifest, and the worker's precache list.
  *
  * Both fail quietly. The precache list reaches the worker through Vite's
  * `define` (see vite.config.ts), and a build that stops forwarding it leaves the

@@ -218,7 +218,6 @@ describe('reranker answer-presence eval', () => {
 			rows.push({ name: c.name, note: c.note, result });
 		}
 
-		// ---- Report -----------------------------------------------------------
 		const lines: string[] = [];
 		lines.push('');
 		lines.push('Reranker answer-presence eval');

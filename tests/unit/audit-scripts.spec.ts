@@ -10,9 +10,8 @@ import process from 'node:process';
  * repositories. CI's audit fails a change only for advisories it adds over a
  * baseline commit, so what decides the baseline (scripts/audit-baseline.sh)
  * and what counts as added (scripts/audit-new-advisories.mjs) are the whole
- * of the gate. An earlier version compared a push only with its parent, and
- * a pull request with the target branch's tip; both let an advisory through,
- * and both are pinned below.
+ * of the gate. Comparing a push only with its parent, or a pull request with
+ * the target branch's tip, lets an advisory through; both are pinned below.
  *
  * `gh`, `pnpm` and `npm` are fakes first on PATH. `gh` serves a list of
  * workflow runs the way the API does -- filtered by workflow, branch and
