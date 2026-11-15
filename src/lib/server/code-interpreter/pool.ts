@@ -274,11 +274,31 @@ export function reserveInterpreterTurn(conversationId: string): InterpreterTurn 
 export async function runPython(params: RunPythonParams): Promise<WorkerRunResult> {
 	const turn = params.turn ?? reserveInterpreterTurn(params.conversationId);
 	try {
-		await turn.ready;
+		await waitForTurn(turn, params.ctxSignal);
 		return await runInWorker(params);
 	} finally {
 		if (turn !== params.turn) turn.release();
 	}
+}
+
+/**
+ * Wait for `turn` to come up, giving up early if `signal` aborts. A call
+ * aborted while queued never reaches the worker, so it doesn't terminate the
+ * interpreter the calls ahead of it are still using. Its place in line is
+ * kept until `release`, so later calls still wait for those ahead.
+ */
+function waitForTurn(turn: InterpreterTurn, signal: AbortSignal | undefined): Promise<void> {
+	if (!signal) return turn.ready;
+	const aborted = () => new Error('run_python: aborted by caller');
+	if (signal.aborted) return Promise.reject(aborted());
+	return new Promise<void>((resolve, reject) => {
+		const onAbort = () => reject(aborted());
+		signal.addEventListener('abort', onAbort, { once: true });
+		void turn.ready.then(() => {
+			signal.removeEventListener('abort', onAbort);
+			resolve();
+		});
+	});
 }
 
 async function runInWorker(params: RunPythonParams): Promise<WorkerRunResult> {

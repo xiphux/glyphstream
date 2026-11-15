@@ -449,6 +449,21 @@ describe('turn order — same-conversation calls run in call order', () => {
 		await second;
 		expect(ran).toEqual(['B']);
 	});
+
+	it('a call aborted while queued gives up without killing the worker', async () => {
+		const ran: string[] = [];
+		recordingFactory(ran, 20);
+		const ac = new AbortController();
+		const a = call('A');
+		const b = call('B', { ctxSignal: ac.signal });
+		const c = call('C');
+		ac.abort();
+		await expect(b).rejects.toThrow(/aborted/);
+		await Promise.all([a, c]);
+		expect(ran).toEqual(['A', 'C']);
+		expect(createdWorkers).toHaveLength(1);
+		expect(createdWorkers[0].terminated).toBe(false);
+	});
 });
 
 describe('starting-state coalescing', () => {
@@ -803,22 +818,28 @@ describe('ctxSignal — abort terminates the worker', () => {
 	});
 
 	it('handles a signal that is already aborted when the call is dispatched', async () => {
-		// Stop pressed while run_python was still gathering files: the signal
-		// is aborted before the pool reaches the abort check. The call must
+		// Stop pressed while the worker was still starting: the signal is
+		// already aborted when the pool reaches the abort check. The call must
 		// reject with the abort (not a ReferenceError from the timeout handle
 		// not existing yet) and must not leave a phantom in-flight call
 		// holding the worker.
+		setWorkerFactoryForTests(() => {
+			const w = new MockWorker();
+			w.readyDelayMs = 20;
+			createdWorkers.push(w);
+			return w;
+		});
 		const ctrl = new AbortController();
+		const p = runPython({
+			conversationId: 'pre-aborted',
+			userId: 'u-pre',
+			code: '1',
+			disabledFeatures: [],
+			ctxSignal: ctrl.signal,
+		});
+		await new Promise((r) => setTimeout(r, 5));
 		ctrl.abort();
-		await expect(
-			runPython({
-				conversationId: 'pre-aborted',
-				userId: 'u-pre',
-				code: '1',
-				disabledFeatures: [],
-				ctxSignal: ctrl.signal,
-			}),
-		).rejects.toThrow(/run_python: aborted by caller/);
+		await expect(p).rejects.toThrow(/run_python: aborted by caller/);
 		expect(createdWorkers[0].terminated).toBe(true);
 		expect(createdWorkers[0].posts.some((m) => (m as { type: string }).type === 'run')).toBe(false);
 
