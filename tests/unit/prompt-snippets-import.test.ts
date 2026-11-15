@@ -665,8 +665,8 @@ describe('POST /api/user/prompt-snippets/import', () => {
 		expect(await res.json()).toMatchObject({ imported: 2 });
 	});
 
-	// Kit's Content-Length rejection — the browser case, since a form upload
-	// always declares its length — wasn't matched by the old message regex.
+	// Kit's Content-Length rejection (the browser case, since a form upload
+	// always declares its length) must also map to 413.
 	it('answers 413 when the upload exceeded BODY_SIZE_LIMIT', async () => {
 		const u = seedUser();
 		const tooLarge = Object.assign(
