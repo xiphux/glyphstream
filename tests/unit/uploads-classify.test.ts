@@ -30,12 +30,12 @@ describe('classifyUpload', () => {
 	});
 
 	it('rejects SVG declared with MIME parameters or odd casing', () => {
-		// The refusal used to be an `===` compare against the bare essence,
-		// but the stored type is the raw multipart part header and `File.type`
-		// preserves parameters verbatim. `image/svg+xml; charset=utf-8` failed
-		// the equality check while still matching `startsWith('image/')`, so a
-		// scriptable SVG was stored as an ordinary image and later served
-		// inline from our origin. Classification runs on the essence now.
+		// Classification runs on the essence: the stored type is the raw
+		// multipart part header and `File.type` preserves parameters verbatim.
+		// An `===` compare against the bare essence let
+		// `image/svg+xml; charset=utf-8` through while it still matched
+		// `startsWith('image/')`, so a scriptable SVG was stored as an ordinary
+		// image and later served inline from our origin.
 		expect(classifyUpload('image/svg+xml; charset=utf-8')).toBeNull();
 		expect(classifyUpload('image/svg+xml;charset=utf-8')).toBeNull();
 		expect(classifyUpload('image/svg+xml ; charset=utf-8')).toBeNull();

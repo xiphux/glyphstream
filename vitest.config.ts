@@ -15,19 +15,19 @@ import { defineConfig } from 'vitest/config';
  * available on the server`.
  *
  * Its `autoCleanup` is off, and the component project lists the cleanup
- * file itself. The plugin used to sit in the ROOT config, where it added
- * that file to the root's setupFiles — which since vitest 5 no longer reach
- * the projects below, so every component test rendered into the leftovers
- * of the one before it (400 "Found multiple elements" failures). Listing it
- * explicitly keeps cleanup independent of where the plugin is installed.
+ * file itself. In the ROOT config the plugin adds that file to the root's
+ * setupFiles, which since vitest 5 don't reach the projects below, so every
+ * component test renders into the leftovers of the one before it (400
+ * "Found multiple elements" failures). Listing it explicitly keeps cleanup
+ * independent of where the plugin is installed.
  */
 export default defineConfig({
 	plugins: [sveltekit(sveltekitOptions)],
 	test: {
-		// The environment follows the directory, not a per-file header. Headers
-		// were the old mechanism, and a component test that forgot one ran under
-		// `node` and failed confusingly (`document is not defined`, or DOM
-		// queries silently missing). Everything above and below this block is
+		// The environment follows the directory, not a per-file header: a
+		// component test that forgets a header runs under `node` and fails
+		// confusingly (`document is not defined`, or DOM queries silently
+		// missing). Everything above and below this block is
 		// shared: `extends: true` gives each project the root plugins, aliases
 		// and test options. A header still overrides per file — the few
 		// `tests/unit` files that need a DOM but aren't component tests use one.
@@ -55,10 +55,10 @@ export default defineConfig({
 			{
 				extends: true,
 				// Here, not at the root: its 'browser' resolution reaches every module,
-				// and `tests/unit` exercises SERVER code. There it swapped in Kit's
+				// and `tests/unit` exercises SERVER code. There it swaps in Kit's
 				// client build of `redirect()`'s origin check, which reads `window`
 				// — and since SvelteKit 3 validates every redirect target, every
-				// unit test that hit a redirect died on `window is not defined`.
+				// unit test that hits a redirect dies on `window is not defined`.
 				plugins: [svelteTesting({ autoCleanup: false })],
 				test: {
 					name: 'component',
@@ -80,9 +80,9 @@ export default defineConfig({
 		// behave differently on a dev machine (real config present) than in CI
 		// (no config.toml). The loaders degrade to their documented defaults on
 		// ENOENT, so "config absent" is the deterministic, isolated baseline.
-		// Lands because #lib/server/env.ts reads process.env, which this sets.
-		// (It didn't while env.ts read Kit's `$env/dynamic/private`, empty under
-		// vitest; config-isolation.test.ts guards against that coming back.)
+		// Lands because #lib/server/env.ts reads process.env, which this sets;
+		// Kit's `$env/dynamic/private` is empty under vitest
+		// (config-isolation.test.ts guards against env.ts switching to it).
 		env: { CONFIG_PATH: '/glyphstream-test-no-such-config.toml' },
 		// Run each test file in its own worker so DB tests with global
 		// connection state don't cross-contaminate. `isolate: false` really

@@ -304,7 +304,7 @@ describe('startVideoRelay — progress status is display text', () => {
 		}
 	});
 
-	// A bridge that omits `status` entirely used to coerce to the literal string
+	// A bridge that omits `status` entirely must not coerce to the literal string
 	// "undefined" and render it as the label — the same leak as `in_progress`,
 	// one layer down.
 	it.each([

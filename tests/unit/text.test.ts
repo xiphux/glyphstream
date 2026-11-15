@@ -1,5 +1,3 @@
-/** Tests for the shared string helpers. */
-
 import { describe, expect, it } from 'vitest';
 import { truncateEllipsis } from '#lib/text.js';
 

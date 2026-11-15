@@ -11,7 +11,7 @@ import { WEB_MANIFEST_JSON } from './src/lib/web-manifest.ts';
 // Load .env into process.env, where #lib/server/env.ts reads everything (see
 // the note at its top for why not a Kit env module). Vite reads .env only for
 // its own `import.meta.env`, so without this `pnpm dev` would start with none
-// of it. Variables already set win, as they did under Kit. A missing file is
+// of it. Variables already set win. A missing file is
 // fine: production gets its environment from the host or container. Checked up
 // front rather than caught: Node reports an UNREADABLE .env as ENOENT too, so a
 // catch could not tell "absent" from "broken", and a broken one should fail
@@ -24,12 +24,11 @@ if (existsSync('.env')) process.loadEnvFile();
 // shiki accidentally pulled into the browser bundle).
 const analyze = process.env.ANALYZE === '1';
 
-// Read package.json's version at build time and bake it into the bundle
-// as `__APP_VERSION__`. Lets a small "v0.3.6" indicator render in the
-// sidebar so a user (or future debugging-us) can confirm at a glance
-// which build is loaded — useful after pulling an update or testing
-// the service-worker refresh flow. Build-time injection means no
-// runtime fs read, no API roundtrip, no bundle bloat.
+// package.json's version, baked into the bundle as `__APP_VERSION__` for the
+// sidebar's version indicator, which confirms at a glance which build is loaded
+// (after pulling an update, or testing the service-worker refresh flow).
+// Build-time injection means no runtime fs read, no API roundtrip, no bundle
+// bloat.
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8')) as {
 	version: string;
 };
@@ -46,12 +45,12 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 // the only two routes the SW registers, so /api/*, SSE streams and
 // SSR'd HTML pass straight through to the network.
 //
-// Deliberately NOT `client/**` over js/css. That swept in every hashed
+// Deliberately NOT `client/**` over js/css. That sweeps in every hashed
 // chunk — ~380 KB gzip across ~89 entries, including the markdown-it
 // and shiki chunks the route-lazy design exists to defer, and the
 // settings/gallery/admin chunks a given user may never open. Vite's
 // chunk hashes cascade through the import graph, so one shared-module
-// change rehashed many chunks and a large fraction of that re-installed
+// change rehashes many chunks and a large fraction of that re-installs
 // on every deploy, competing with foreground traffic
 // (registration starts right after page load).
 //
@@ -59,17 +58,15 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 // navigation needs SSR HTML that isn't precached either way — so
 // precached JS couldn't make a cold offline load work regardless.
 //
-// This block used to close by saying it bought very little, because
-// `/_app/immutable/*` is content-hashed and already served
-// `max-age=31536000, immutable`, so the browser's own HTTP cache would
-// cover repeat loads. That last part is false on the platform this app
-// is built for: the debug panel reported 41 of 41 chunks coming from
-// the network on three consecutive cold launches of an unchanged build,
-// hours apart, because WebKit does not reliably keep a standalone web
-// app's disk cache across termination. The chunks ARE cached now — by a
-// cache-first RUNTIME route in src/service-worker.ts, which stores only
-// what the app actually fetched and so avoids every cost catalogued
-// above. Precaching is still the wrong tool; caching was not.
+// The browser's own HTTP cache can't be trusted with the chunks, even though
+// `/_app/immutable/*` is content-hashed and served `max-age=31536000,
+// immutable`: on the platform this app is built for, the debug panel reported
+// 41 of 41 chunks coming from the network on three consecutive cold launches
+// of an unchanged build, hours apart, because WebKit does not reliably keep a
+// standalone web app's disk cache across termination. So the chunks are cached
+// by a cache-first RUNTIME route in src/service-worker.ts, which stores only
+// what the app actually fetched and so avoids every cost catalogued above.
+// Precaching is the wrong tool; caching is not.
 //
 // Revisions are content hashes, so the list — and with it the worker's bytes —
 // changes only when an icon or the manifest does. (Something else has to make
@@ -107,8 +104,8 @@ export default defineConfig({
 		sveltekit(sveltekitOptions),
 
 		// Client build only. SvelteKit 3 builds client, server and service worker
-		// as separate Vite environments, and each wrote this same report — so the
-		// last one, the service worker, was all it ever showed.
+		// as separate Vite environments, and each would write this same report —
+		// so the last one, the service worker, would be all it showed.
 		analyze &&
 			({
 				...visualizer({

@@ -96,9 +96,9 @@ function toolDef(name: string, description = name): OpenAIToolDefinition {
 	};
 }
 
-/** user → assistant(tool_call) → tool(pending_approval). */
-/** A conversation paused on an approval. `afterEarlierTurn`: the paused turn
- *  is a follow-up, below an earlier exchange, rather than the first one.
+/** A conversation paused on an approval: user → assistant(tool_call) →
+ *  tool(pending_approval). `afterEarlierTurn`: the paused turn is a follow-up,
+ *  below an earlier exchange, rather than the first one.
  *  `afterEditedPrompt`: its prompt is an edit of an earlier opening prompt (a
  *  later root sibling). */
 function seedPendingApproval(

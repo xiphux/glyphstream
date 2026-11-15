@@ -1,12 +1,12 @@
 /**
  * Keeps viewport-level surfaces on the named stacking ladder in app.css.
  *
- * The ordering used to live as bare numbers spread across a dozen components,
- * and it broke exactly the way that arrangement breaks: the toast and a dialog
- * backdrop both picked 50, the tie fell to paint order, and the toast rendered
- * behind `bg-black/60 backdrop-blur` — present in the DOM, reported visible by
- * Playwright, invisible to a human. Nothing could have caught that, because
- * there was nowhere for "toast outranks modals" to be written down as code.
+ * Bare numbers spread across a dozen components break the way they did here: the
+ * toast and a dialog backdrop both picked 50, the tie fell to paint order, and
+ * the toast rendered behind `bg-black/60 backdrop-blur` — present in the DOM,
+ * reported visible by Playwright, invisible to a human. Nothing could have caught
+ * that, because there was nowhere for "toast outranks modals" to be written down
+ * as code.
  *
  * So: no arbitrary bracketed z-index values in components. A new surface has
  * to pick a tier from the ladder, or add one — which is a diff someone

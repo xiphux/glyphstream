@@ -70,11 +70,11 @@ describe('tool definition budget', () => {
 		// The number that actually matters: what a fully-featured turn pays before a
 		// single MCP tool or skill is counted.
 		const total = BUDGETS.reduce((sum, [, tool]) => sum + wireChars(tool), 0);
-		// Raised from 9800 to pay for react_to_message (~660). The words bought:
-		// calibration the model can't infer — that a reaction is silent, that its
-		// rate follows the register, and that reacting doesn't cost the reply.
-		// Without them a model either reacts to everything, which is the failure
-		// that kills the feature, or never reacts at all. (They turned out not to be
+		// Includes ~660 for react_to_message (the budget was 9800 before it). The
+		// words buy calibration the model can't infer — that a reaction is silent,
+		// that its rate follows the register, and that reacting doesn't cost the
+		// reply. Without them a model either reacts to everything, which is the
+		// failure that kills the feature, or never reacts at all. (They are not
 		// enough on their own: see the reactions-hint budget below.)
 		expect(total).toBeLessThanOrEqual(10500);
 	});
@@ -85,9 +85,9 @@ describe('tool definition budget', () => {
 		// def above. It exists because the description alone never got a
 		// reaction out of the model (measured — see react.ts), and each of its
 		// clauses was measured too, so growth here needs the same justification.
-		// Raised from 420 for the "react only by calling the tool" sentence: a
-		// model that wants to react often types the emoji into its reply instead,
-		// and that line took tool-call reactions from 4/15 to 11/15 (react.ts).
+		// About 40 of it is the "react only by calling the tool" sentence: a model
+		// that wants to react often types the emoji into its reply instead, and
+		// that line took tool-call reactions from 4/15 to 11/15 (react.ts).
 		expect(REACTIONS_HINT.length).toBeLessThanOrEqual(460);
 	});
 
@@ -100,9 +100,9 @@ describe('tool definition budget', () => {
 	});
 
 	it('does not repeat the same parameter prose across the memory tools', () => {
-		// The "self-contained note…" copy and the "bracketed value…" copy were each
-		// pasted into multiple tools, so every turn paid for them two or three times.
-		// They're shared constants now; this keeps them that way.
+		// The "self-contained note…" and "bracketed value…" copies are shared
+		// constants: pasted into each memory tool, every turn would pay for them two
+		// or three times.
 		const save = JSON.stringify(saveMemoryTool.definition);
 		const update = JSON.stringify(updateMemoryTool.definition);
 		const forget = JSON.stringify(forgetMemoryTool.definition);

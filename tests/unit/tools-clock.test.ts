@@ -49,9 +49,9 @@ describe('get_current_time', () => {
 	});
 
 	it("defaults to the USER's timezone when none is supplied", () => {
-		// It used to default to UTC, which made "what time is it?" wrong for almost
-		// everyone: the model has no way to know the user's zone unless we tell it,
-		// so it was never going to pass one — and UTC is nobody's wall clock.
+		// Not UTC, which makes "what time is it?" wrong for almost everyone: the
+		// model has no way to know the user's zone unless we tell it, so it never
+		// passes one — and UTC is nobody's wall clock.
 		mocks.timezone = 'America/Chicago';
 		const r = run(clockTool, {});
 		expect(r.isError).toBeUndefined();

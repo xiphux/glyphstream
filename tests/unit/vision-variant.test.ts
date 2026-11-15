@@ -3,7 +3,7 @@
  *
  * The invariant that matters: the ORIGINAL is never modified, and a variant is
  * only used when it's genuinely smaller. Everything else degrades to "inline the
- * original", which is what the code did before this existed.
+ * original".
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -207,8 +207,8 @@ describe('getVisionVariant', () => {
 
 	it('uses a per-call temp file, so concurrent sends of one image cannot collide', async () => {
 		// A multi-model fan-out sends the same fresh image from several concurrent
-		// requests. A pid-keyed temp path had them all writing one file underneath
-		// each other; with distinct temps the renames are independent and every
+		// requests. A pid-keyed temp path would have them all writing one file
+		// underneath each other; with distinct temps the renames are independent and every
 		// caller gets complete, identical bytes.
 		write('ab/cd/race.png', await photoPng(2400, 1600));
 

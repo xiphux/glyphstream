@@ -126,7 +126,7 @@ describe('executeToolCalls', () => {
 		});
 
 		// Active leaf moves to the LAST persisted tool message — its id
-		// becomes the parent for any follow-up upstream call (PR5).
+		// becomes the parent for any follow-up upstream call.
 		const branch = walkActiveBranch(conversationId);
 		expect(branch[branch.length - 1].id).toBe(toolMessages[1].id);
 
@@ -429,9 +429,8 @@ describe('executeToolCalls', () => {
 		const { execution } = await executeOneToolCall(part, 'u1', 'c1', signal, []);
 
 		expect(execution.isError).toBe(true);
-		// The error message should say "exceeded its Nms timeout", distinguishing
-		// timeout from a generic throw — this is the fix that was missing from
-		// the approval-resume path (B6).
+		// "exceeded its Nms timeout" distinguishes a timeout from a generic throw,
+		// on the approval-resume path as well as the auto-execute one.
 		expect(execution.content).toContain('exceeded its 200ms timeout');
 	}, 10_000);
 });
