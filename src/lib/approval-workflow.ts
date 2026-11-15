@@ -8,10 +8,9 @@
  * approvalSubmitting latch, the in-flight resume stream, post-resume
  * refreshAll); the chat page only forwards decisions via
  * turn.submitApproval(...) and reads turn.approvalSubmitting for UI guards.
- * What lives here is the type that previously duplicated across five
- * component files, the pure decision-snapshot builder (default-to-reject is
- * a subtle rule), and the fetch wrapper that owns the URL, body shape, and
- * error extraction.
+ * What lives here is the action type the approval components share, the pure
+ * decision-snapshot builder (default-to-reject is a subtle rule), and the
+ * fetch wrapper that owns the URL, body shape, and error extraction.
  */
 
 import { errorMessageFromResponse } from './fetch-error';
@@ -46,10 +45,8 @@ export function buildApprovalDecisionsSnapshot(
 /**
  * POST the user's approval decisions to the resume endpoint and hand
  * the SSE body off to `consumeStream` for the caller-specific
- * in-flight bubble rendering. The fetch URL, content-type, body shape,
- * and error-message extraction live here so they aren't duplicated.
- * The caller still owns the AbortController so cancel wiring (Stop
- * button, conversation switch) flows through it.
+ * in-flight bubble rendering. The caller still owns the AbortController
+ * so cancel wiring (Stop button, conversation switch) flows through it.
  *
  * Throws on a !res.ok response (with a friendly server message via
  * errorMessageFromResponse) or a missing body. AbortError from `signal`

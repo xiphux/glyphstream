@@ -1,15 +1,11 @@
 /**
  * Build the JSON request body for POST /api/conversations/:id/messages.
  *
- * Lives outside the chat page mostly so the wire body can be tested in
- * isolation — but it also fixes a real duplication / drift hazard: the
- * page previously constructed this body inline in more than one send path,
- * and the next caller that added a new `SendOptions` field had to remember
- * to update every one.
- * Centralizing here forces the contract through one code path, which
- * is exactly the kind of footgun that let the `editedMessageId` field
- * silently fall off the wire after the server-side edit-routing
- * refactor in commit 962cfb3 (server handled the field correctly,
+ * Lives outside the chat page so the wire body can be tested in isolation,
+ * and so every send path builds it through one code path. Built inline per
+ * path, a new `SendOptions` field has to be remembered at each — the drift
+ * that let `editedMessageId` silently fall off the wire after the server-side
+ * edit-routing refactor in commit 962cfb3 (server handled the field correctly,
  * client never sent it, edits silently appended-instead-of-branched).
  *
  * Three modes:
@@ -22,10 +18,8 @@
  *     parent and uses that as the new sibling's parent — including
  *     the null case for root edits.
  *   - Plain send (neither set): append to the conversation's active
- *     leaf. parentMessageId is the legacy override that fell out of
- *     use when saveEdit switched to editedMessageId, kept supported
- *     for any future caller that's already resolved the parent
- *     directly.
+ *     leaf, or to parentMessageId when a caller has already resolved
+ *     the parent directly.
  *
  * Output is typed as `Record<string, unknown>` rather than
  * `SendMessageRequest` because: (a) modelKind on the chat page is
@@ -39,20 +33,18 @@ import type { ModelKind } from './types/api';
 
 export interface SendOptions {
 	/**
-	 * Legacy direct-parent override — caller has already resolved
-	 * the parent message id and wants it used as-is. Superseded by
-	 * `editedMessageId` for the edit flow (cleaner contract, handles
-	 * null parents correctly), kept here for any future caller that
-	 * needs to branch off an arbitrary parent without referencing a
-	 * specific edited message.
+	 * Direct-parent override — caller has already resolved the parent
+	 * message id and wants it used as-is, branching off an arbitrary
+	 * parent without referencing a specific edited message. The edit
+	 * flow uses `editedMessageId` instead, which handles null parents.
 	 */
 	parentMessageId?: string;
 	/**
 	 * Edit flow: server treats the new user message as a sibling of
 	 * the message with this id, copying its parent_message_id onto
-	 * the new row. Handles root edits (where the parent is null)
-	 * correctly — the older parentMessageId path silently dropped
-	 * null on the wire.
+	 * the new row. Handles root edits (where the parent is null),
+	 * which parentMessageId can't express — a null is dropped from the
+	 * wire.
 	 */
 	editedMessageId?: string;
 	/**
@@ -129,8 +121,8 @@ export function buildFanoutBranchBody(input: {
 	inputMediaId?: string | null;
 	/** Additive re-roll: marks this branch as a lone regenerate (another variation
 	 *  added to an existing grid) rather than one of an initial fan-out group. The
-	 *  server no longer branches on it (a re-roll folds into the same aggregate as
-	 *  any fan-out branch); it rides along as an explicit wire marker. */
+	 *  server doesn't branch on it (a re-roll folds into the same aggregate as any
+	 *  fan-out branch); it rides along as an explicit wire marker. */
 	reroll?: boolean;
 	/** Total branch count of this fan-out — the server uses it as the count in the
 	 *  single aggregate notification (bounded below by the produced-sibling total).

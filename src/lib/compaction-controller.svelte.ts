@@ -5,9 +5,8 @@
  * Three entry points share one piece of state and one set of preconditions:
  * the Compact button (manual), the just-in-time pass before a send
  * (`maybeAutoCompact`), and the undo affordance on the toast + the persisted
- * divider. Extracted from the chat page, which hosted all of it inline —
- * ~200 lines and six reactive declarations in a component that was already
- * carrying 29 `$effect`s. Mirrors chat-turn-controller.svelte.ts and
+ * divider. Kept out of the chat page, which already carries dozens of
+ * `$effect`s. Mirrors chat-turn-controller.svelte.ts and
  * fanout-controller.svelte.ts: a `$state` class the page hosts, reaching shared
  * page state through injected deps rather than importing the page.
  *
@@ -250,7 +249,7 @@ export class CompactionController {
 	async maybeAutoCompact(): Promise<boolean> {
 		// A send is already waiting on the "could not be compacted" prompt. The
 		// dialog doesn't take focus, so Enter in the composer lands here again;
-		// without this it re-ran the compaction and stacked a second prompt.
+		// without this it would re-run the compaction and stack a second prompt.
 		// False = "don't send", which leaves the composer as it is; the first
 		// send goes ahead or not on the user's answer.
 		if (this.#awaitingConfirm) return false;

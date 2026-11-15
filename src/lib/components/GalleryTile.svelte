@@ -1,8 +1,7 @@
 <!--
 	One media tile: the thumbnail, its corner badges, a caption over a bottom
 	gradient, and the selection ring and check mark. Shared by the gallery grid
-	(a single item, or a unit's leader) and "Recently deleted", which used to draw
-	three copies of it.
+	(a single item, or a unit's leader) and "Recently deleted".
 
 	The tile is one button, so what tapping it does is the page's (`onActivate`):
 	open it, or toggle its selection. A second control sits in a corner as a
@@ -79,7 +78,7 @@
 			{#if caption}
 				<!-- The clamp is on an inner span, not this padded box: line-clamp
 				     clips at the padding edge, so with it here the top of a third
-				     line showed through the bottom padding. -->
+				     line would show through the bottom padding. -->
 				<div
 					class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent pt-8 pb-1.5 pl-2 text-left text-xs text-white {captionBesideAction
 						? 'pr-11'

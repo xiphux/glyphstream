@@ -78,7 +78,7 @@
 		 * currently-shown member; the caller swaps it in response to
 		 * `onNavigate`. Arrows / swipe / arrow-keys only appear when there
 		 * are 2+ entries; omit it (or pass a single-entry list) and the
-		 * lightbox renders exactly as the pre-carousel single-item view.
+		 * lightbox renders the single-item view.
 		 */
 		siblings?: LightboxSlide[];
 		/**
@@ -150,8 +150,8 @@
 		/** Media id whose star is in flight. Disables the button for the WHOLE
 		 *  carousel, not just this slide: both callers guard with a single
 		 *  `if (favoritingId) return`, so a star clicked on another slide mid-flight
-		 *  was dropped on the floor with no error and no toast. Disabling everywhere
-		 *  makes the button say what the guard actually does. */
+		 *  would be dropped on the floor with no error and no toast. Disabling
+		 *  everywhere makes the button say what the guard actually does. */
 		favoritingId?: string | null;
 		/**
 		 * Showing an item from Recently deleted. Its bytes are only served with
@@ -225,7 +225,7 @@
 	/** An image slide's display-sized `srcset` (see `#lib/media-variants.ts`):
 	 *  the 1280 copy on a phone — usually cached already, from the thread — and
 	 *  larger copies or the original only where the screen can show them. Null
-	 *  when the size isn't known, which shows the original as before. */
+	 *  when the size isn't known, which shows the original. */
 	function responsive(id: string, width?: number | null, height?: number | null) {
 		return lightboxImage(id, width, height, trashed ? 'trash=1' : '');
 	}
@@ -302,18 +302,18 @@
 	// crosses the midpoint with the finger down, not once the scroll settles:
 	// until `media` moves, the header describes the slide the user is swiping
 	// away from — a lit star over an unstarred image, and a star or trash button
-	// that acts on the previous image if tapped. Settling took the snap
+	// that acts on the previous image if tapped. Settling takes the snap
 	// animation, the debounce below and then (chat) a fetch; with the caller
 	// prefetching neighbours (`onPrefetch`) the midpoint swap is usually
 	// synchronous.
 	//
-	// It used to wait for the settle for two reasons that no longer hold. One
-	// resolve per landing rather than per slide crossed: `snap-always` stops a
-	// flick at the adjacent slide, so there is one crossing per swipe, and the
-	// crossings go through the same coalescer as arrow presses. And the swap
-	// reflowed the image mid-slide, because the prompt strip below the track
-	// changes height with the prompt; in carousel mode that strip now reserves
-	// its full height (see the prompt markup).
+	// Resolving at the midpoint costs nothing that waiting for the settle would
+	// save. It is still one resolve per landing rather than per slide crossed:
+	// `snap-always` stops a flick at the adjacent slide, so there is one crossing
+	// per swipe, and the crossings go through the same coalescer as arrow
+	// presses. And the swap doesn't reflow the image mid-slide: the prompt strip
+	// below the track would change height with the prompt, so in carousel mode it
+	// reserves its full height (see the prompt markup).
 	//
 	// The settle stays as the backstop and the final word on where the user
 	// landed — the midpoint is a guess the finger can still take back.
@@ -343,9 +343,9 @@
 	 * layout change mid-animation. iOS WebKit can drop the snap there and leave
 	 * the track resting partway onto the next slide. A gentle drag crosses with
 	 * the finger still down, so the release snaps normally — which is why only a
-	 * real flick got stuck. `onTrackScroll` now makes no DOM change while
-	 * coasting; the re-snap stays as the backstop for anything else that lays
-	 * out mid-animation.
+	 * real flick gets stuck. `onTrackScroll` makes no DOM change while coasting;
+	 * the re-snap stays as the backstop for anything else that lays out
+	 * mid-animation.
 	 *
 	 * A release stays armed only if the track keeps moving after it: disarmed
 	 * unless a scroll arrives within RELEASE_MOTION_MS. A tap, or a hold that
@@ -466,7 +466,7 @@
 				return;
 			}
 			// Through the coalescer, not straight to `onNavigate`. Calling directly
-			// left the two paths on separate clocks: arrow-press twice (a trailing
+			// would leave the two paths on separate clocks: arrow-press twice (a trailing
 			// resolve queued for slide 2), then swipe back to slide 0 — the settle
 			// fires first, then the still-queued trailing resolve yanks `media` to
 			// slide 2 while the track sits at 0. Sharing the queue means the last
@@ -481,9 +481,9 @@
 		// Step from where the user has already navigated TO, not from where the
 		// resolve has caught up to. `currentIndex` follows `media`, which only moves
 		// once the caller resolves `onNavigate` — and that resolve is coalesced by
-		// up to NAV_RESOLVE_WINDOW_MS. Stepping from `currentIndex` therefore made
+		// up to NAV_RESOLVE_WINDOW_MS. Stepping from `currentIndex` would make
 		// every press inside one window compute the same target: five quick presses
-		// landed two slides along, not five. Coalescing is meant to drop redundant
+		// would land two slides along, not five. Coalescing is meant to drop redundant
 		// metadata fetches, not to drop the navigation itself.
 		const from = pendingIndex ?? currentIndex;
 		const next = from + delta;
@@ -588,11 +588,10 @@
 	 * `currentIndex`.
 	 *
 	 * `currentIndex` is derived from `media`, which only updates once the caller
-	 * resolves `onNavigate` — after a metadata fetch, and now after up to
+	 * resolves `onNavigate` — after a metadata fetch, and after up to
 	 * `NAV_RESOLVE_WINDOW_MS` of coalescing. A swipe moves the track under the
 	 * user's finger the whole time, so windowing on `currentIndex` alone renders
-	 * everything flown past as an empty slot until the scroll settles. Before the
-	 * window existed every slide was mounted, so the same lag was invisible.
+	 * everything flown past as an empty slot until the scroll settles.
 	 *
 	 * Fed from the live scroll position rather than from `navigate()` so it covers
 	 * the swipe case too — and so arrow navigation keeps computing from
@@ -622,8 +621,8 @@
 	 * Leading edge, so one press still resolves immediately — that's what keeps
 	 * the caption/model panel responsive, and it's the behaviour the carousel
 	 * tests pin. Subsequent presses inside the window are coalesced into a single
-	 * trailing call for wherever the user ended up. Holding an arrow key used to
-	 * emit ~30 resolves a second, each an uncancelled `/api/media/:id` plus
+	 * trailing call for wherever the user ended up. Without it, holding an arrow
+	 * key emits ~30 resolves a second, each an uncancelled `/api/media/:id` plus
 	 * `/api/media/:id/conversations` (neither deduped nor aborted), for slides
 	 * being flown past.
 	 *
@@ -721,8 +720,8 @@
 		// The internal `endpointId::upstreamId` form the model picker uses.
 		// `sourceModel` normally already IS that id, so this is mostly a
 		// pass-through — see `mediaSourceModelId` for why joining the two
-		// columns unconditionally (what this used to do) yielded a doubled
-		// prefix that never resolved. Null for legacy uploads and rows from
+		// columns unconditionally would yield a doubled prefix that never
+		// resolves. Null for legacy uploads and rows from
 		// before the source-model fields were captured, which lets the
 		// new-chat page pick its own default.
 		return mediaSourceModelId(m.sourceEndpointId, m.sourceModel);
@@ -833,20 +832,20 @@
 	// on a Mac with a trackpad/mouse.
 	//
 	// MediaQuery's `false` fallback is the SSR value, so the server renders the
-	// Download icon. Unlike the one-shot matchMedia probe this replaces, it also
-	// stays live: pairing a mouse to a tablet (or unpairing one) re-resolves both
-	// flags instead of leaving them stuck at whatever was true when the lightbox
+	// Download icon. It also stays live, unlike a one-shot matchMedia probe:
+	// pairing a mouse to a tablet (or unpairing one) re-resolves both flags
+	// instead of leaving them stuck at whatever was true when the lightbox
 	// mounted.
 	//
-	// CAVEAT: the probe this replaced ran in a mount-deferred $effect specifically
-	// so the client upgraded to Share AFTER hydration. A $derived resolves during
-	// the hydration pass instead, which would be an `{#if}` structure mismatch —
-	// but only if this component's `media`-gated subtree were ever server-rendered.
-	// It isn't: every caller seeds `media`/`lightbox` to null and only fills it
-	// from a click handler or an async fetch, so the gated markup never joins the
-	// hydration walk. If you ever SSR the lightbox already open (a deep link
-	// straight to a media item, say), move `coarsePointer`/`useShareSheet` back
-	// behind a post-mount gate.
+	// CAVEAT: a $derived resolves during the hydration pass, not after it, so the
+	// client can pick Share while the server rendered Download — an `{#if}`
+	// structure mismatch, but only if this component's `media`-gated subtree were
+	// ever server-rendered. It isn't: every caller seeds `media`/`lightbox` to
+	// null and only fills it from a click handler or an async fetch, so the gated
+	// markup never joins the hydration walk. SSR-ing the lightbox already open (a
+	// deep link straight to a media item, say) would need
+	// `coarsePointer`/`useShareSheet` behind a post-mount gate (a mount-deferred
+	// $effect).
 	const coarse = new MediaQuery('pointer: coarse', false);
 	// Touch-primary devices already get swipe + scroll-snap; the on-image
 	// arrow buttons are a desktop (mouse/trackpad) affordance, so we hide
@@ -1125,7 +1124,7 @@
 									shift every index and break both. Only the media is skipped.
 
 									`siblings` is every unit demand-loaded this gallery session,
-									so after a deep scroll this each-block was mounting thousands
+									so after a deep scroll this each-block would mount thousands
 									of full-resolution <img> at once — each one a fetch (mounted
 									slides load eagerly; see the img below) and an element the
 									browser must create, style and lay out on open.
@@ -1136,12 +1135,12 @@
 									h-full w-full, not max-*: a <video> with no loaded data takes its
 									INTRINSIC size from the poster, and preload="none" means there is
 									no data until the user presses play. With only max-constraints
-									inside an items-center flex parent, that laid the element out at
+									inside an items-center flex parent, that lays the element out at
 									the poster's own 512px — a small box in a full-screen overlay
-									that snapped to full size on play (measured 512x288 -> 1408x792
+									that snaps to full size on play (measured 512x288 -> 1408x792
 									at 1440px wide, in both Chromium and WebKit). Pinning the box and
 									letting object-contain letterbox the frame keeps the poster and
-									removes the jump. The chat surface never had this because its
+									removes the jump. The chat surface doesn't have this because its
 									w-full drives the width and the poster only supplies the ratio.
 
 									Two consequences of pinning the box, both accepted: `rounded-lg`
@@ -1165,13 +1164,13 @@
 									Every MOUNTED slide loads eagerly — the SLIDE_WINDOW is what
 									bounds the fetches, not `loading`. The slide being looked at
 									gets high priority so its neighbours don't compete with it.
-									`loading="lazy"` on the neighbours meant they never preloaded:
-									they sit in the track's horizontal overflow, and iOS WebKit's
-									lazy threshold doesn't reach into a clipped scroller, so the
-									fetch only started once a swipe brought the slide on screen —
-									a black slide for a beat, on any image the chat or gallery
-									hadn't already put in cache. (Lazy on the current slide had
-									the same effect on every open and arrow press.)
+									`loading="lazy"` on the neighbours would mean they never
+									preload: they sit in the track's horizontal overflow, and iOS
+									WebKit's lazy threshold doesn't reach into a clipped scroller,
+									so the fetch would only start once a swipe brought the slide on
+									screen — a black slide for a beat, on any image the chat or
+									gallery hadn't already put in cache. (Lazy on the current slide
+									has the same effect on every open and arrow press.)
 
 									Sized from the slide entry, never from `m`: `m` swaps to the
 									landing slide mid-swipe, and a slide whose srcset appeared then
@@ -1250,7 +1249,7 @@
 				In carousel mode the strip keeps the same height whatever the prompt:
 				three lines (the clamp, so never more) plus the toggle's line, even for
 				a short prompt or none. The track above is flex-1, so a strip that grew
-				and shrank with each prompt resized the image — and a swipe swaps this
+				and shrank with each prompt would resize the image — and a swipe swaps this
 				at its midpoint, while the slide is still moving. The width is capped,
 				so a long prompt wraps to the same three lines at every screen size.
 				Only the user-opened original prompt still adds height.
@@ -1360,9 +1359,9 @@
 				prompt's two regenerate choices share one button behind a menu. In a
 				carousel every slot holds its place, hidden and inert, on a slide where
 				it doesn't apply (a video can't be an avatar or an edit source; an
-				upload has no prompt). This row used to be two rows whose button count
-				varied per slide, so wrapping changed the height and resized the image
-				mid-swipe — same reason as the prompt strip.
+				upload has no prompt). A button count that varied per slide would change
+				how the row wraps, and so its height, resizing the image mid-swipe — same
+				reason as the prompt strip.
 			-->
 			<div
 				class="mx-auto mt-3 flex shrink-0 flex-wrap items-center justify-center gap-2 {showCarousel &&

@@ -60,9 +60,9 @@ export class AppLockGuard {
 				// Carry where the user is HEADED, not where they are. A resume is
 				// often the start of a navigation — a tapped notification posts
 				// `navigate_to_conversation` into this window as it comes forward —
-				// and this goto supersedes it. Reading `location` here sent the
+				// and this goto supersedes it. Reading `location` would send the
 				// user to whatever was on screen before the tap (usually the home
-				// page), and after unlocking they landed there, not on the thread.
+				// page), and after unlocking they'd land there, not on the thread.
 				const target = navigating.to?.url ?? location;
 				// Already on its way to /unlock, or already there (the tap's load hit
 				// the server's lock redirect first, which carries the right `from`

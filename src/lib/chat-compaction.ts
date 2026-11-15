@@ -249,8 +249,8 @@ export const MIN_COMPACTIBLE_TOKENS = 1000;
  * Output-token budget for a summarization call when the model's context window
  * is unknown, and the lower bound when it's known. A faithful brief needs room;
  * a thinking model needs even more (its reasoning is spent from the same
- * allowance), so this floor is generous on purpose. Bumped from the original
- * 1024 after blank summaries traced to reasoning exhausting too small a budget.
+ * allowance), so this floor is generous on purpose: at 1024, reasoning
+ * exhausted the budget and summaries came back blank.
  */
 export const SUMMARY_MIN_TOKENS = 2048;
 

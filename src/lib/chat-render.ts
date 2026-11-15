@@ -40,7 +40,7 @@ export interface AssistantIdentity {
  * wear it. Resolving the two independently at the call site is exactly how
  * they'd drift — the label would tell the truth while the picture lied.
  * There's no per-base-model avatar to fall back to, so a re-attributed
- * message renders label-only, as every message did before avatars existed.
+ * message renders label-only.
  */
 export function assistantIdentityForMessage(
 	m: Pick<ChatMessage, 'role' | 'modelUsed'>,
@@ -390,9 +390,6 @@ export function inFlightToBlocks(segments: InFlightSegment[]): RenderBlock[] {
 	for (const seg of segments) {
 		switch (seg.kind) {
 			case 'reasoning':
-				// open: true for live reasoning — the user is actively
-				// watching the model think. The persisted side (after
-				// invalidate) shows the same content collapsed.
 				blocks.push({ type: 'reasoning', text: seg.text, open: true });
 				break;
 			case 'text':
@@ -529,10 +526,9 @@ export interface RenderedConversation {
 
 /**
  * Single-pass derivation of the three view-model pieces the chat page
- * recomputes on every messages update. The three independent passes —
- * filterVisibleMessages, buildToolResultsMap, buildPendingApprovals —
- * each walked the array on its own, so a mid-stream tool result update
- * cost three array walks where one would do.
+ * recomputes on every messages update, so a mid-stream tool result update
+ * costs one array walk rather than one each for filterVisibleMessages,
+ * buildToolResultsMap and buildPendingApprovals.
  */
 export function buildRenderedConversation(
 	messages: ChatMessage[],
@@ -617,14 +613,12 @@ export function buildRenderedConversation(
 	// both land here: the conversation turned reactions off (the tool refuses at
 	// execute time) and the emoji failed validation.
 	//
-	// A call with NO result at all is kept. That is no longer the
-	// `finish_reason: 'stop'` case — the relay drops those parts at persist time
-	// now, so they never reach here. It's the reaction whose answering `tool` row
-	// is off the ACTIVE BRANCH: before portraits moved onto their reply, one
-	// attached as a sibling of that row and took the leaf with it (and a parked
-	// avatar comparison rewound the leaf past it), and conversations from then
-	// keep that shape. The reaction really did run; only its answer is out of
-	// view.
+	// A call with NO result at all is kept. It isn't a `finish_reason: 'stop'`
+	// reaction — the relay drops those parts at persist time, so they never reach
+	// here. It's a reaction whose answering `tool` row is off the ACTIVE BRANCH:
+	// older conversations have a portrait attached as a sibling of that row,
+	// which took the leaf with it (or a parked avatar comparison rewound the leaf
+	// past it). The reaction really did run; only its answer is out of view.
 	const inlineReactions = new Map<string, Map<string, string>>();
 	for (const r of candidateReactions) {
 		if (toolResultsByCallId.get(r.toolCallId)?.isError) continue;
@@ -638,14 +632,14 @@ export function buildRenderedConversation(
 	// Hide a reaction-only row only when a LATER assistant row in the same turn
 	// will render — and never one whose reactions are drawn inline (a check-in's),
 	// which has the emoji to show. Otherwise such a row draws nothing (every part
-	// is dropped), so on its own
-	// it's an empty bubble worth suppressing — but if it's the last assistant row
-	// of the turn it is also the only place `MessageActions` can hang, and hiding
-	// it strands the user with no Retry, no `‹ N/M ›` sibling nav (which would
-	// otherwise reach a previous good attempt) and no delete-branch. That's the
-	// leaf shape an upstream reporting `finish_reason: 'stop'` produces, and the
-	// one a Stop mid-reaction produces. Walked backwards so "is there a later one"
-	// is already known by the time each row is judged.
+	// is dropped), so on its own it's an empty bubble worth suppressing — but if
+	// it's the last assistant row of the turn it is also the only place
+	// `MessageActions` can hang, and hiding it strands the user with no Retry, no
+	// `‹ N/M ›` sibling nav (which would otherwise reach a previous good attempt)
+	// and no delete-branch. That's the leaf shape an upstream reporting
+	// `finish_reason: 'stop'` produces, and the one a Stop mid-reaction produces.
+	// Walked backwards so "is there a later one" is already known by the time
+	// each row is judged.
 	let laterVisibleAssistantInTurn = false;
 	const hidden = new Set<string>();
 	for (let i = provisional.length - 1; i >= 0; i--) {
@@ -670,10 +664,10 @@ export function buildRenderedConversation(
 	// iteration's reasoning streams into the SAME block (`appendReasoning`
 	// coalesces); this gives the finished bubble one block as well. Not
 	// byte-identical — live the passes run together, here they get a paragraph
-	// break. Kept as its own row, the reaction drew a second, empty-looking
+	// break. Kept as its own row, the reaction would draw a second, empty-looking
 	// Reasoning toggle above the reply — Gemma reasons before every call, so that
-	// was every reaction it made. The hide guarantees a later visible assistant
-	// row in the turn, so nothing is lost.
+	// would be every reaction it made. The hide guarantees a later visible
+	// assistant row in the turn, so nothing is lost.
 	let carriedReasoning: string | null = null;
 	for (const { msg: stored } of provisional) {
 		const inline = inlineReactions.get(stored.id);
@@ -728,9 +722,9 @@ function withInlineReactions(msg: ChatMessage, emojiByCall: Map<string, string>)
  *
  *  Deliberately narrow: it requires an actual reaction part, it only applies to
  *  assistant rows, and a row with a reaction AND anything renderable still
- *  renders. A row that is merely empty — no reaction — is a different,
- *  pre-existing case (a cancelled turn, an empty completion) that must keep its
- *  bubble, because that bubble carries the Retry control. */
+ *  renders. A row that is merely empty — no reaction — is a different case (a
+ *  cancelled turn, an empty completion) that must keep its bubble, because that
+ *  bubble carries the Retry control. */
 function isReactionOnlyAssistantRow(msg: ChatMessage): boolean {
 	if (msg.role !== 'assistant') return false;
 	// At least one ACTUAL reaction, not merely "nothing renderable". Without
@@ -827,10 +821,11 @@ export function isReactionTool(toolName: string): boolean {
  * need it and they have to agree. `react_to_message`'s `execute()` is not the
  * gate it looks like: the relay's recorder persists a tool call's `arguments`
  * verbatim, before and independently of running the tool, so validating only
- * on the execute path left the DURABLE record unvalidated. The renderer read
- * that record back and painted whatever was in it — `":+1:"`, `"thumbs up"`,
- * or a whole sentence from a small model that ignored the schema — into a 24px
- * badge with no overflow clip, and into its accessible name.
+ * on the execute path would leave the DURABLE record unvalidated. The renderer
+ * reads that record back and would paint whatever was in it — `":+1:"`,
+ * `"thumbs up"`, or a whole sentence from a small model that ignored the
+ * schema — into a 24px badge with no overflow clip, and into its accessible
+ * name.
  *
  * Two conditions, both needed:
  *  - **One grapheme** (`Intl.Segmenter`), so `"👍👍"`, `"🙂 nice"` and a bare
@@ -901,8 +896,8 @@ export function lastReplyMessage(messages: ChatMessage[]): ChatMessage | undefin
  * Read from the persisted `tool_call` part, which IS the durable record of the
  * reaction — there's no reaction column anywhere. That record is written by the
  * relay's recorder BEFORE the tool runs, so it is raw model output and this is
- * the only place it gets checked before rendering. (The recorder now declines to
- * persist a part the tool can't have run — but it still writes the arguments
+ * the only place it gets checked before rendering. (The recorder declines to
+ * persist a part the tool can't have run, but it still writes the arguments
  * verbatim for the ones it does, so they arrive here unvalidated.)
  */
 export function parseReactionEmoji(args: string): string | null {
@@ -946,10 +941,9 @@ export function isCodeArgTool(toolName: string): boolean {
 	return toolName in CODE_ARG_TOOLS;
 }
 
-/** The canvas tools, whose tool_call blocks render as a clickable canvas card
- *  (CanvasCard) rather than the generic ToolCallBlock. */
-/** Tools whose calls render as canvas cards. Exported so the chat page can
- *  cheaply pre-filter messages without rebuilding their blocks — keep it the one
+/** Tools whose tool_call blocks render as a clickable canvas card (CanvasCard)
+ *  rather than the generic ToolCallBlock. Exported so the chat page can cheaply
+ *  pre-filter messages without rebuilding their blocks — keep it the one
  *  definition, or the two lists drift the next time a canvas tool is added. */
 export const CANVAS_TOOLS = new Set(['create_canvas', 'update_canvas']);
 
@@ -1138,12 +1132,11 @@ export function isSkillTool(toolName: string): boolean {
 /**
  * Memo for `parseSkillToolDisplay`, keyed on its exact inputs.
  *
- * The call site describes this as "cheap (regex/name-check, memoized)". The
- * cheap part was true; the memoized part wasn't. For an `activate_skill` result
- * it builds a fresh RegExp with `[\s\S]*?` and runs it over the entire
- * SKILL.md body, then splits and filters every line for the resource list — and
- * it's read at template top level, so unlike every sibling block it runs even
- * while the disclosure is collapsed.
+ * Parsing isn't free: for an `activate_skill` result it builds a fresh RegExp
+ * with `[\s\S]*?` and runs it over the entire SKILL.md body, then splits and
+ * filters every line for the resource list — and it's read at template top
+ * level, so unlike every sibling block it runs even while the disclosure is
+ * collapsed.
  *
  * Bounded by entry count rather than characters: the values are small structs
  * (the body string is a slice of one already retained by the message row).
@@ -1217,7 +1210,6 @@ function partialExtractStringField(args: string, field: string): string | null {
 	let i = args.indexOf(key);
 	if (i < 0) return null;
 	i += key.length;
-	// Skip whitespace + colon + whitespace
 	while (i < args.length && (args[i] === ' ' || args[i] === '\t' || args[i] === '\n')) i++;
 	if (args[i] !== ':') return null;
 	i++;

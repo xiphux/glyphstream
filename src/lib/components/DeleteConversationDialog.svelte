@@ -4,10 +4,9 @@
 	Both delete entry points — the sidebar conversation overflow menu
 	and the /archived list — render this so they behave identically:
 	same modal, same orphan-media checkbox, same Escape/backdrop
-	dismissal. The /archived list previously fell back to a bare
-	window.confirm(), which gave no way to also delete generated media
-	and tripped the browser's "don't let this site show more dialogs"
-	suppression after a few uses in a row.
+	dismissal. A bare window.confirm() would give no way to also delete
+	generated media, and trips the browser's "don't let this site show
+	more dialogs" suppression after a few uses in a row.
 
 	Division of labour: this component *asks the question*. It fetches
 	the orphan-media counts, renders the modal, and reports the answer

@@ -239,9 +239,9 @@ export class AttachmentStore {
 
 	/**
 	 * Whether a send must wait: an attachment is still uploading, or one failed.
-	 * A failed one used to be filtered out of `readyMediaIds()` and the message
-	 * went without it, the red chip the only sign. The chip shows the error and
-	 * a Remove button, so the user decides: remove it, or re-attach.
+	 * A failed one isn't silently left out of the message with the red chip the
+	 * only sign: the chip shows the error and a Remove button, so the user
+	 * decides — remove it, or re-attach.
 	 */
 	get blocksSend(): boolean {
 		return this.items.some((it) => it.status === 'uploading' || it.status === 'error');
@@ -258,8 +258,8 @@ export class AttachmentStore {
 	 * upload entirely. The preview is the display copy, not the original: every
 	 * caller attaches an image the user has just seen as a chat bubble or in
 	 * the lightbox, both of which loaded that URL, so it is usually already in
-	 * the browser cache — where /content was the full original (megabytes for a
-	 * generated PNG) for a 64px tile, on every image-model chat open.
+	 * the browser cache — whereas /content is the full original (megabytes for
+	 * a generated PNG) for a 64px tile, on every image-model chat open.
 	 */
 	attachExisting(mediaId: string, opts: { contentType?: string; byteSize?: number } = {}): void {
 		this.items = [
@@ -286,13 +286,13 @@ export class AttachmentStore {
 		const kind: AttachmentKind = isImage ? 'image' : isVideo ? 'video' : 'file';
 
 		// The placeholder goes in FIRST, before the resize await. Added after
-		// it, the file was invisible while it resized: `isBusy` read false so a
-		// send went out without it, and a clear() in that window (a send, a
-		// conversation switch) didn't see it — so it reappeared afterwards, already
-		// uploading, in the next message's strip. For file kinds we don't render
-		// a thumbnail, but createObjectURL is still harmless and gives a handle
-		// to revoke uniformly on remove(); the chip UI ignores objectUrl for
-		// `kind: 'file'`.
+		// it, the file would be invisible while it resized: `isBusy` would read
+		// false so a send went out without it, and a clear() in that window (a
+		// send, a conversation switch) wouldn't see it — so it would reappear
+		// afterwards, already uploading, in the next message's strip. For file
+		// kinds we don't render a thumbnail, but createObjectURL is still harmless
+		// and gives a handle to revoke uniformly on remove(); the chip UI ignores
+		// objectUrl for `kind: 'file'`.
 		const clientId = randomUUID();
 		const initial: AttachedItem = {
 			clientId,
@@ -330,7 +330,7 @@ export class AttachmentStore {
 				// A non-JSON body on a 4xx is the classic reverse-proxy
 				// signature (HTML error page from nginx etc.) — our own
 				// route always responds with structured JSON. Surface that
-				// hint so future you knows to check the proxy, not the app.
+				// hint so the error points at the proxy, not the app.
 				const msg = body?.message;
 				const proxyHint =
 					!body && (res.status === 413 || res.status === 400)

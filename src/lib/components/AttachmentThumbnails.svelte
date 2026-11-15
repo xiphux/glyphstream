@@ -2,17 +2,16 @@
 	The attachment strip shown above a composer (and the inline message
 	editor). Renders nothing when the store has no items.
 
-	Extracted from three byte-identical copies — the new-chat composer,
-	the chat composer, and the inline editor — so a future change to the
-	attachment UX (a retry-failed-upload button, a size label, …) lands
-	in one place. `class` is appended to the wrapper for the small
-	per-context spacing difference (composers want px-1, the inline
-	editor wants mb-2).
+	Shared by the new-chat composer, the chat composer, and the inline
+	editor, so a change to the attachment UX (a retry-failed-upload
+	button, a size label, …) lands in one place. `class` is appended to
+	the wrapper for the small per-context spacing difference (composers
+	want px-1, the inline editor wants mb-2).
 
 	Image attachments get a 64×64 thumbnail. Non-image attachments (file
 	kind — xlsx, csv, pdf, ...) get a chip with filename + size +
-	download icon. Both flow through the same AttachmentStore so the
-	composer's add / remove / readyMediaIds plumbing is unchanged.
+	download icon. Both flow through the same AttachmentStore, so the
+	composer's add / remove / readyMediaIds plumbing is the same for each.
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';

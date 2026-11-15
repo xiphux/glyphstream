@@ -2,10 +2,10 @@
  * The chat page's inline media lightbox: the open item, the carousel set it
  * swipes through, and its favorite and discard actions.
  *
- * Tapping a generated image used to open it in a new tab (target=_blank on the
- * wrapping anchor). That works on desktop but breaks in PWA standalone mode
- * where there's no tab strip to return through — users got stranded on a bare
- * image page with only a back-swipe gesture home. Reusing the gallery's
+ * Tapping a generated image opens it here, not in a new tab (target=_blank on
+ * the wrapping anchor): a new tab works on desktop but breaks in PWA standalone
+ * mode, where there's no tab strip to return through — the user is stranded on
+ * a bare image page with only a back-swipe gesture home. Reusing the gallery's
  * MediaLightbox keeps the tap inside the app and brings model/prompt/download
  * affordances along for free.
  *
@@ -16,8 +16,8 @@
  * are kept (see MediaItemCache), and the lightbox prefetches the neighbours of
  * the slide on screen, so a swipe usually swaps its details in without waiting.
  *
- * Lifted out of the chat page, which hosts it; the MediaLightbox component
- * stays purely presentational.
+ * The chat page hosts it; the MediaLightbox component stays purely
+ * presentational.
  */
 import { errorMessageFromResponse } from './fetch-error.js';
 import {
@@ -221,10 +221,10 @@ export class ChatLightbox {
 			// The set arrives oldest-first, i.e. in COMPLETION order — which is not
 			// the order a live fan-out grid is drawn in (that's the order the models
 			// were enqueued in). Parallel branches finish out of order, so without
-			// this the carousel walked the same images in a different sequence than
-			// the grid the tap came from. Re-seated once, here, rather than derived:
-			// the set is only fetched on the initial open, so the carousel's order
-			// stays put for the life of that open session.
+			// this the carousel would walk the same images in a different sequence
+			// than the grid the tap came from. Re-seated once, here, rather than
+			// derived: the set is only fetched on the initial open, so the
+			// carousel's order stays put for the life of that open session.
 			this.siblings = applyDisplayOrder(body.items, gridMediaIds(this.#deps.triage().columns));
 		} catch {
 			// Network blip — leave the set as-is; the lightbox still opens
@@ -390,9 +390,9 @@ export class ChatLightbox {
 			if (this.#deps.conversationId() !== forConversation) return;
 			// A swipe onto a leaving image whose row is still loading (the deletes
 			// above evicted it, so it fetches, or joins a prefetch already in
-			// flight) would land after this and put `media`
-			// back on an image `siblings` no longer has. Drop it, as `close` drops an
-			// open in flight; an open of a surviving image is left to land.
+			// flight) would land after this and put `media` back on an image
+			// `siblings` no longer has. Drop it, as `close` drops an open in
+			// flight; an open of a surviving image is left to land.
 			if (this.openingFor !== null && removed.has(this.openingFor)) this.openingFor = null;
 			// The user may have closed the lightbox or swiped elsewhere during the
 			// round trips. Update the set either way, but only move `media` if it

@@ -8,9 +8,7 @@
  * and nothing to recover: one model closes the dialog and the picture shows on
  * its reply when it lands, and several are a comparison whose results the
  * dialog shows as they land, for the user to pick from. A portrait on show is
- * the conversation's face, which the server sets.
- *
- * Lifted out of the chat page, which hosts it.
+ * the conversation's face, which the server sets. The chat page hosts it.
  */
 import { SvelteMap } from 'svelte/reactivity';
 import { consumeChatStream } from './consume-chat-stream.js';
@@ -144,8 +142,8 @@ export class AvatarDrawWorkflow {
 		// Keyed on the load being in flight, NOT on `membership(saved) !== 'no'`: that
 		// stays true forever for a saved model whose endpoint is down, and true even
 		// once the catalogue is loaded and has simply reclassified the model as
-		// non-image — both of which would leave Draw permanently disabled with no
-		// fallback, where the old code offered the first available image model.
+		// non-image — both of which would leave Draw permanently disabled instead
+		// of falling back to the first available image model.
 		if (saved && this.#deps.catalogue.status === 'loading') return '';
 		return this.imageModels[0]?.id ?? '';
 	});

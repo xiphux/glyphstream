@@ -94,10 +94,6 @@
 		return !isSealed(category) && isEnabled(category);
 	}
 
-	// Drop category toggles that don't apply to the current model (image models
-	// keep only the image enhancer, video models only the video enhancer; chat
-	// models drop both enhancers; embedding models keep nothing). An unknown kind
-	// keeps everything — the safe default.
 	const visibleCategories = $derived(
 		categories.filter((c) => featureCategoryAppliesToModelKind(c.id, modelKind)),
 	);

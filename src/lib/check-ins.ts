@@ -63,8 +63,8 @@ export function parseDelay(input: string): number | null {
 
 /** A note is a reminder to self, a line or two. It is stored, then sent back
  *  as the reminder in a turn nobody is watching, so one the model was steered
- *  into writing (by a page it read, say) can't be a whole prompt. */
-/** In code points, so an emoji isn't cut in half. */
+ *  into writing (by a page it read, say) can't be a whole prompt. In code
+ *  points, so an emoji isn't cut in half. */
 const MAX_NOTE_CHARS = 280;
 
 export interface CheckInMarker {
