@@ -15,9 +15,9 @@
 	the caret without editing (arrow keys, a click), so the caret has to be
 	read from the element on several distinct events. This component attaches
 	those listeners itself: requiring each host to wire four handlers correctly
-	made the contract enforceable only by comment, and a host that missed one
-	(`click` being the easiest to overlook) would silently filter against a
-	stale position with no error and no failing test.
+	makes the contract enforceable only by comment, and a host that misses one
+	(`click` being the easiest to overlook) silently filters against a stale
+	position with no error and no failing test.
 -->
 <script lang="ts">
 	import SnippetMenu from '#lib/components/chat/SnippetMenu.svelte';
@@ -65,8 +65,6 @@
 	 */
 	const query = $derived(enabled && text === caretValue ? snippetMenuQuery(text, caret) : null);
 
-	// Track the caret ourselves rather than making it the host's contract. The
-	// cleanup runs when `textareaEl` changes or the component unmounts.
 	$effect(() => {
 		const el = textareaEl;
 		if (!el) return;

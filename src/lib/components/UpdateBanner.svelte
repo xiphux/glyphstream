@@ -20,14 +20,13 @@
 	role + aria-live=polite announces the update to screen readers without
 	stealing focus from whatever the user is doing.
 
-	z-update is the top of the ladder (see app.css), above even z-toast. The two
-	used to share this bottom anchor and overlap on mobile; the toast is
-	top-anchored now (so it stays off the composer), which makes the ordering
-	defensive rather than load-bearing. It still holds the right priority: this
-	prompt is neither transient nor dismissible by waiting, and a toast painting
-	over Refresh (and, having pointer events, swallowing the tap) would obstruct
-	exactly the control the service worker's update flow exists to deliver the
-	user to.
+	z-update is the top of the ladder (see app.css), above even z-toast. The toast
+	is top-anchored (to stay off the composer), so the two don't overlap and the
+	ordering is defensive rather than load-bearing. It is still the right
+	priority: this prompt is neither transient nor dismissible by waiting, and a
+	toast painting over Refresh (and, having pointer events, swallowing the tap)
+	would obstruct exactly the control the service worker's update flow exists to
+	deliver the user to.
 -->
 <div
 	role="status"

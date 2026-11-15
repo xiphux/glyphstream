@@ -41,7 +41,7 @@
 	//
 	// The relay emits one `tool_call_args_delta` per upstream chunk, and unlike
 	// the assistant text path this one has no rAF coalescing, so a derived that
-	// highlights `streamingCode.code` re-tokenized the *entire* accumulated
+	// highlights `streamingCode.code` would re-tokenize the *entire* accumulated
 	// source on every delta. Cost is O(tokens x final size): a 200-line program
 	// arriving over ~1200 deltas spends ~7ms per highlight on average and ~14ms
 	// at the tail, i.e. seconds of cumulative main-thread block for one tool

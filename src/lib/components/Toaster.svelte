@@ -2,9 +2,6 @@
 	import { AlertCircle, Check, Info, X } from '@lucide/svelte';
 	import { toast } from '#lib/toast.svelte.js';
 
-	// Per-kind affordances. Keeping these in const maps rather than
-	// computing inline so the icon + color choices are easy to skim
-	// when adding a new kind later.
 	const kindIcon = {
 		success: Check,
 		info: Info,
@@ -77,9 +74,9 @@
 
 	z-toast sits above z-overlay: this is the app's global notification layer,
 	and a toast raised by something still on screen has to be readable over it.
-	Sharing the overlay tier is what once left it behind a bg-black/60
-	backdrop-blur, and made DebugPanel's Copy look like a dead button. Only
-	z-update outranks it. The full ladder lives in app.css.
+	On the overlay tier it renders behind a bg-black/60 backdrop-blur, which
+	made DebugPanel's Copy look like a dead button. Only z-update outranks it.
+	The full ladder lives in app.css.
 -->
 {#if toast.current}
 	{@const t = toast.current}
@@ -107,16 +104,12 @@
 			<button
 				type="button"
 				onclick={async () => {
-					// Capture the handler into a plain JS const *before*
-					// dismissing. `action` is a Svelte `$derived` under
-					// the hood — references to it are reactive reads
-					// (`$.get(action)`), not snapshots. The moment we
-					// call `toast.dismiss()` the dependency chain
-					// (toast.current → t → action) is invalidated, and
-					// the next read of `action` would recompute through
-					// a now-null `t` and throw. A captured function ref
-					// has no relationship to the reactive graph, so it
-					// survives the dismiss cleanly.
+					// Capture the handler *before* dismissing. `action` is a
+					// `$derived` under the hood, so every reference is a
+					// reactive read (`$.get(action)`), not a snapshot: once
+					// `toast.dismiss()` invalidates toast.current → t → action,
+					// the next read recomputes through a null `t` and throws.
+					// A captured function ref is outside the reactive graph.
 					const handler = action.handler;
 					toast.dismiss();
 					await handler();

@@ -91,8 +91,8 @@
 	// the grid's compact scale — never as a message block. The two are the same
 	// failure seen from different sides: live, it's only the SSE `error` frame;
 	// recovered from server truth, it's also a persisted `error` part. Letting
-	// the persisted one through RenderBlocks is what made a reloaded grid render
-	// its failures a size larger (text-sm + icon) than the session that produced
+	// the persisted one through RenderBlocks would render a reloaded grid's
+	// failures a size larger (text-sm + icon) than the session that produced
 	// them.
 	function blocksFor(c: FanoutColumn): RenderBlock[] {
 		const blocks = c.persisted

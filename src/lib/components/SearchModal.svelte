@@ -55,13 +55,9 @@
 			loading = false;
 			return;
 		}
-		// Non-empty query: flip the spinner on *now*, not 250ms from now
-		// when the fetch actually fires. Otherwise the empty `results`
-		// list reads as "No matches" during the debounce window —
-		// indistinguishable from a real no-results outcome and confusing
-		// enough to make the live-search feel broken. The spinner is the
-		// signal that the user's keystroke has been received and a
-		// search is coming.
+		// Spinner on now, not when the debounced fetch fires: otherwise the
+		// empty `results` list reads as "No matches" during the debounce
+		// window, indistinguishable from a real no-results outcome.
 		loading = true;
 		debounceTimer = setTimeout(runSearch, DEBOUNCE_MS);
 	}
@@ -174,7 +170,6 @@
 		<div
 			class="flex max-h-[80vh] w-full max-w-xl flex-col overflow-hidden rounded-lg border border-border surface-glass gs-pop shadow-xl"
 		>
-			<!-- Input row -->
 			<div class="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2.5">
 				<SearchIcon size={16} strokeWidth={2.25} class="shrink-0 text-fg-muted" />
 				<input
@@ -194,7 +189,6 @@
 				{/if}
 			</div>
 
-			<!-- Results / status -->
 			<div class="min-h-0 flex-1 overflow-y-auto">
 				{#if error}
 					<p class="px-4 py-3 text-sm text-danger">{error}</p>
@@ -218,11 +212,6 @@
 									<div class="truncate text-sm font-medium text-fg">
 										{r.conversationTitle ?? 'Untitled'}
 									</div>
-									<!--
-										FTS5 snippet — `<mark>` tags are the only HTML;
-										style them via the inline class so search hits
-										read as highlighted regardless of theme.
-									-->
 									<div
 										class="mt-0.5 line-clamp-2 text-xs text-fg-muted [&_mark]:bg-amber-200 [&_mark]:text-fg [&_mark]:dark:bg-amber-500/30"
 									>

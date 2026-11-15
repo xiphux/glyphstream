@@ -2,7 +2,7 @@
 	The small round portrait beside a model's name above its reply. Rendered
 	only when the conversation or its preset has one — there is no
 	per-base-model avatar, and no generic placeholder glyph: a conversation with
-	neither keeps the bare label row it has always had.
+	neither keeps the bare label row.
 
 	Points at the existing /thumbnail variant rather than a bespoke avatar
 	endpoint. It maxes out at 512px, which is oversized for a 32px circle, but

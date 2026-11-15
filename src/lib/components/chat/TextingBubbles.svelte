@@ -3,13 +3,13 @@
 	It opens in `scene`, and a `[texting]` / `[in person]` marker in it moves
 	on, drawn as a divider where it is.
 
-	Texting: one bubble per text, as `textingItems` splits it, under the name
-	(and face) of whoever sent it. A
-	header shows wherever the sender changes, so a run of texts from one person
-	carries one name, as in a messaging app. The first text always gets one, even
-	when this row continues a tool turn from the row above: speakers start over
-	with the assistant in each row (it's a separate model reply), so leaving the
-	header off would show its text under whoever spoke last above.
+	Texting: one bubble per text, as `textingItems` splits it, under the name (and
+	face) of whoever sent it. A header shows wherever the sender changes, so a run
+	of texts from one person carries one name, as in a messaging app. The first text
+	always gets one, even when this row continues a tool turn from the row above:
+	speakers start over with the assistant in each row (it's a separate model
+	reply), so leaving the header off would show its text under whoever spoke last
+	above.
 
 	A `[photo: …]` text is a photo the sender took. Until it's developed it shows
 	as a placeholder with its description and a Develop button; once developed,
@@ -117,7 +117,7 @@
 			return { item, scene: from };
 		});
 		// Still being written: a text (or a marker, half-typed) at the end of a
-		// live reply. Tool calls and the like show as they go, as ever. A
+		// live reply. Tool calls and the like show as they go. A
 		// finished check-in or scene marker has no sender and is never shown, so
 		// typing it would flash the preset's name under someone else's run. In
 		// person nobody is typing: the prose shows as it arrives, all but a

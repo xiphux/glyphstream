@@ -45,7 +45,7 @@
 	 * Uses a per-frame `tick` (plain inline styles) rather than a `css` keyframe:
 	 * Svelte compiles `css` into a Web Animations keyframe, and Safari's WAAPI
 	 * rejects keyframes that contain a custom property (`--pane-w`), silently
-	 * no-op'ing the whole animation — so the pane just snapped there. Setting the
+	 * no-op'ing the whole animation so the pane snaps into place. Setting the
 	 * styles imperatively each frame sidesteps that and runs in every browser.
 	 */
 	function slidePane(node: HTMLElement, { duration = 200 }: { duration?: number } = {}) {
@@ -102,7 +102,6 @@
 	<div class="flex h-full shrink-0 flex-col" style="width: var(--pane-w, 100%)">
 		<header class="border-b border-border-strong">
 			{#if docs.length > 1}
-				<!-- Multiple canvases: a tab strip to switch between them. -->
 				<div class="flex items-center gap-2 px-2 pt-2">
 					<div class="flex min-w-0 flex-1 gap-1 overflow-x-auto pb-0.5" role="tablist">
 						{#each docs as d (d.artifactId)}

@@ -1,6 +1,6 @@
 <!--
-	Offline notice for the composer. Option-1 offline handling: while the
-	browser reports no network we BLOCK sending rather than queueing, and the
+	Offline notice for the composer. While the browser reports no network we
+	BLOCK sending rather than queueing, and the
 	composer keeps the user's typed text (a blocked send never clears the box,
 	and the draft is persisted to localStorage) — so the message survives a
 	brief dead-zone / tunnel drop, or even an iOS PWA kill, and can be sent on

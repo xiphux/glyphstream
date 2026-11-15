@@ -104,8 +104,6 @@
 	// Assistant rows only — a tool row borrows neither the label nor the face.
 	const avatarMediaId = $derived(message.role === 'assistant' ? assistantAvatarMediaId : null);
 
-	// A standard reply cut around its photos, where the chat may send them, so
-	// each is drawn where the model put it. Anything else is one run, as ever.
 	// A user row in a character chat: its scene markers (the composer's switch
 	// puts one on top) show as a divider above the bubble, not as words in it.
 	const userScenes = $derived.by(() => {
@@ -123,6 +121,8 @@
 		return switches.length ? { switches, message: { ...message, parts } } : null;
 	});
 
+	// A standard reply cut around its photos, where the chat may send them, so
+	// each is drawn where the model put it. Anything else is one run.
 	const segments = $derived.by((): PhotoSegment[] => {
 		const blocks = messageToBlocks(userScenes?.message ?? message, toolResultsByCallId);
 		if (message.role !== 'assistant') return [{ kind: 'blocks', blocks }];

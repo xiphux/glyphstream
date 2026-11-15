@@ -56,7 +56,6 @@
 				aria-selected={i === highlightedIndex}
 				data-row-index={i}
 				onmousedown={(e) => {
-					// Prevent the textarea from losing focus before we insert.
 					e.preventDefault();
 					onSelect(item);
 				}}

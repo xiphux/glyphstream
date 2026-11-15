@@ -6,11 +6,12 @@
 	a third of the way outside it. The overhang is negative MARGIN, not a
 	translate: the pop-in keyframe animates `transform`, and a utility-set
 	translate on the same element would either be clobbered mid-animation or
-	double up, depending on which of the two forms Tailwind emits. Messenger puts a reaction at the bottom-right, but our user
-	bubble is `ml-auto` (right-aligned), so a right-hung badge would press
-	against the screen edge on a phone; the left corner hangs into empty gutter
-	instead. Bottom rather than top because a reaction reads as the assistant's
-	first response to the message, and the reply it precedes is directly below.
+	double up, depending on which of the two forms Tailwind emits. Messenger puts
+	a reaction at the bottom-right, but our user bubble is `ml-auto`
+	(right-aligned), so a right-hung badge would press against the screen edge on
+	a phone; the left corner hangs into empty gutter instead. Bottom rather than
+	top because a reaction reads as the assistant's first response to the
+	message, and the reply it precedes is directly below.
 
 	`overflow-hidden` is a backstop, not decoration. The emoji is model-authored
 	and validated as ONE GRAPHEME, which is not a bound on visual width: a ZWJ

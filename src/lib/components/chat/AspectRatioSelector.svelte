@@ -77,8 +77,8 @@
 		 * for the picker to reflect what they asked for while they are still typing.
 		 *
 		 * Debounced and matched HERE rather than in the composer so the rule lives
-		 * once — there are two composers, and they had already drifted into
-		 * byte-identical copies of the last derivation that escaped this file.
+		 * once — there are two composers, and a derivation that escapes this file
+		 * ends up copied into both.
 		 */
 		promptText?: string;
 		/**
@@ -91,7 +91,7 @@
 		 * prompt that produced the detection is not. Held locally it would reset on
 		 * the remount, the unchanged prompt would be re-detected, and the shape the
 		 * user overrode would quietly come back — which is the same failure the
-		 * `seed` note below describes, and the reason that one is a prop too.
+		 * `seed` note above describes, and the reason that one is a prop too.
 		 *
 		 * Held BY VALUE, not as a boolean: a boolean would either let every keystroke
 		 * re-slam the picker over a deliberate choice, or kill detection for the rest
@@ -147,10 +147,10 @@
 	 * hands it those 17px — about two more characters, or the whole ellipsis when it
 	 * was close.
 	 *
-	 * Compared against a REPORTED CONTENT WIDTH rather than a character count. A
-	 * count was tried and cannot be calibrated: per-character advances in a
-	 * proportional 12px font span roughly 3px to 10px, so any specific name is
-	 * ±2-3 characters from its own length; the picker's capability pill takes 30-40px
+	 * Compared against a REPORTED CONTENT WIDTH rather than a character count,
+	 * which cannot be calibrated: per-character advances in a proportional 12px
+	 * font span roughly 3px to 10px, so any specific name is ±2-3 characters
+	 * from its own length; the picker's capability pill takes 30-40px
 	 * of this same budget and is present for nearly every model this sits beside;
 	 * and this control's own label swings ~20px between "Default" and "16:9". Each
 	 * of those errors is larger than the 17px being handed over.

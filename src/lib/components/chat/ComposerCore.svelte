@@ -1,7 +1,7 @@
 <!--
 	Shared composer input box used by both the chat-page composer
 	(ChatComposer) and the new-chat home page. Owns the input mechanics
-	that were duplicated across the two: the bordered box, attachment
+	the two share: the bordered box, attachment
 	thumbnail strip, the textarea (auto-resize + Enter-to-submit + image
 	paste), the attach button + hidden file input, and the drag-drop drop
 	zone with its overlay.
@@ -62,8 +62,8 @@
 		/** Opt-in `/skill-name` autocomplete. The consumer passes the user's
 		 *  ENABLED skills (already gated to `[]` when the conversation has the
 		 *  `skills` category disabled or the model lacks tool support). Undefined
-		 *  → no slash menu, behaving exactly as before (the home + chat composers
-		 *  share this component). Selecting only completes the name into the box;
+		 *  → no slash menu (the home + chat composers share this component).
+		 *  Selecting only completes the name into the box;
 		 *  the consumer strips the leading `/name` on send via stripSkillCommand. */
 		skillCommands?: SkillCommand[];
 		/** Active model modality — filters the snippet autocomplete so image
@@ -140,12 +140,11 @@
 
 	// Replaces the whole draft: the menu only opens when the entire box is a
 	// bare `/query` (skillMenuQuery is anchored start-to-end), so there is
-	// never surrounding text to preserve. Routed through replaceRange so the
-	// completion lands on the native undo stack — one Ctrl-Z restores the
-	// partial `/que` to re-pick, instead of the old `text = next` which wrote
-	// past the undo stack entirely. insertText also leaves the caret at the
-	// end and fires `input`, so the old tick()/setSelectionRange/resize dance
-	// is no longer needed.
+	// never surrounding text to preserve. Routed through replaceRange rather
+	// than assigning `text`, so the completion lands on the native undo stack:
+	// one Ctrl-Z restores the partial `/que` to re-pick. insertText also leaves
+	// the caret at the end and fires `input`, so no caret or resize fix-up is
+	// needed after it.
 	function selectSkill(name: string) {
 		const el = textareaEl;
 		if (el) replaceRange(el, 0, text.length, `/${name} `);

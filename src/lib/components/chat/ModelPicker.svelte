@@ -48,8 +48,7 @@
 		/**
 		 * Toggle handler for the star button on each row. When provided,
 		 * each row renders a star icon (filled when favorited). When
-		 * omitted, no star is rendered — the picker degrades to its
-		 * pre-favorites behavior. The handler receives the row's picker
+		 * omitted, no star is rendered. The handler receives the row's picker
 		 * value (`endpointId::upstreamId` or `custom::id`); the parent
 		 * is responsible for persisting + invalidating data.
 		 */
@@ -298,10 +297,8 @@
 		);
 		if (restricted.length === 0) return;
 		if (compareMode) {
-			// Merge into the existing cart, de-duped.
 			compareSelections = mergeModelSet(compareSelections, { ...set, models: restricted });
 		} else {
-			// Single mode: replace + enter compare mode.
 			compareSelections = restricted.map((s) => ({ modelId: s.modelId, count: s.count }));
 			compareMode = true;
 		}
@@ -334,7 +331,6 @@
 			cancelSave();
 		}
 	}
-	// Autofocus the name input when the editor opens.
 	$effect(() => {
 		if (savingSet) setNameInput?.focus();
 	});
@@ -410,9 +406,9 @@
 		const baseById = new Map(models.map((m) => [m.id, m] as const));
 		const out: PickerItem[] = [];
 
-		// Custom presets — built into a separate Map so we can also serve
-		// the Favorites lookup (custom and base models share an id namespace
-		// in `favoritedIds`).
+		// Custom presets — kept in their own list so the Favorites lookup below
+		// can draw on them too (custom and base models share an id namespace in
+		// `favoritedIds`).
 		const presets: PickerItem[] = [];
 		for (const cm of customModels) {
 			const baseId = `${cm.baseEndpointId}::${cm.baseModelId}`;
@@ -562,9 +558,9 @@
 	 */
 	const triggerLabel = $derived.by(() => {
 		// A comparison of 2+ reads as "N models" (or "N variations" for media,
-		// where the same model may be sampled multiple times). The "Comparing"
-		// prefix is dropped — it added width without much clarity, and the closed
-		// trigger is tight on mobile. Exactly one isn't a comparison — show that
+		// where the same model may be sampled multiple times). No "Comparing"
+		// prefix: it adds width without much clarity, and the closed trigger is
+		// tight on mobile. Exactly one isn't a comparison — show that
 		// model's name (it collapses back to a single selection on close).
 		if (compareMode && compareTotal >= 2) {
 			return `${compareTotal} ${compareKind === 'chat' ? 'models' : 'variations'}`;
@@ -739,9 +735,9 @@
 	<!--
 		`min-w-0` on BOTH the wrapper and the inline trigger, or the truncation below
 		never engages. A flex item defaults to `min-width: auto`, i.e. it refuses to
-		shrink below its content — so in the composer's action row this element stayed
-		at its `max-w-[200px]` no matter how narrow the viewport got, the row
-		overflowed, and the send/stop button was pushed clean outside the box. Both
+		shrink below its content — so in the composer's action row this element stays
+		at its `max-w-[200px]` no matter how narrow the viewport gets, the row
+		overflows, and the send/stop button is pushed clean outside the box. Both
 		levels are needed: the wrapper is the row's flex item, and the trigger is the
 		wrapper's.
 	-->

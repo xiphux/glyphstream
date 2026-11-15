@@ -5,11 +5,11 @@
 	The split into "every turn" vs "history" is the point of the panel, not a
 	cosmetic grouping: compaction can only reclaim the second group. A thread whose
 	bulk is tool definitions and saved memories will not get smaller no matter how
-	many times you compact it, and before this panel there was no way to see that —
+	many times you compact it, and without this panel there is no way to see that —
 	you'd just watch the Compact button fail to help.
 
 	Fetched lazily on open (the endpoint re-runs the full request assembly), and
-	refetched whenever the turn count changes so it doesn't go stale behind you.
+	refetched whenever `revision` changes so it doesn't go stale behind you.
 -->
 <script lang="ts">
 	import type { ContextBreakdown, ContextSegment, ContextSegmentKey } from '#lib/types/api.js';

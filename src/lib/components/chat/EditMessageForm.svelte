@@ -48,7 +48,6 @@
 	// (svelte-check resolves it fine). bind:this still accepts this.
 	let snippetMenu = $state<{ handleKeydown: (e: KeyboardEvent) => boolean } | null>(null);
 
-	// Auto-resize as the draft grows.
 	$effect(() => {
 		const el = textareaEl;
 		void editText;
