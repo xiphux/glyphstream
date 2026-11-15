@@ -72,8 +72,8 @@ describe('persister SSRF trust classification (by origin)', () => {
 		expect(opts).toEqual({ guardRedirects: true });
 	});
 
-	// The trust decision used to key on `url.startsWith('http')`, so anything
-	// absolute that didn't start with lowercase "http" fell into the "relative"
+	// Keying the trust decision on `url.startsWith('http')` sends anything
+	// absolute that doesn't start with lowercase "http" down the "relative"
 	// branch: resolved against the endpoint base to an off-origin URL, fetched
 	// unguarded, with the endpoint's credential attached.
 	it('protocol-relative URL is resolved first, then untrusted → guarded', async () => {

@@ -1,10 +1,9 @@
 /**
- * Tests for the hand-rolled OAuth2 primitives that replaced `arctic`.
+ * Tests for the hand-rolled OAuth2 primitives.
  *
- * These exist because the arctic-shaped code they succeed had NO coverage:
- * the provider tests mocked the library wholesale, so nothing checked the
- * token request's body, its client-auth header, or how error responses were
- * classified. Those are exactly the things that break silently — a wrong
+ * These pin what a wholesale library mock in the provider tests would hide:
+ * the token request's body, its client-auth header, and how error responses
+ * are classified. Those are exactly the things that break silently — a wrong
  * credential placement fails only against certain IdPs, and a mishandled
  * error body turns a rejected login into a confusing 500.
  *

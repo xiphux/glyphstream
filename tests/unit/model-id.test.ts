@@ -62,11 +62,11 @@ describe('endpointIdOf', () => {
 /**
  * The shape assertions here are pinned to what the DB actually holds: every
  * generated row writes `sourceModel` from the relay's `storedModelId`, which is
- * the whole internal id, NOT the upstream half. The launch intent used to
- * re-join it to `sourceEndpointId` and seed the picker with `bridge::bridge::x`,
- * which resolves to nothing — so "Regenerate with this prompt" silently landed
- * on the default (chat) model. The old test fixtures said `flux-dev`, a shape
- * production never writes, which is why nothing caught it.
+ * the whole internal id, NOT the upstream half. Re-joining it to
+ * `sourceEndpointId` seeds the picker with `bridge::bridge::x`, which resolves to
+ * nothing — so "Regenerate with this prompt" silently lands on the default (chat)
+ * model. Fixtures using a bare `flux-dev`, a shape production never writes, hid
+ * exactly that bug.
  */
 describe('mediaSourceModelId', () => {
 	it('passes through a sourceModel that already carries its endpoint prefix', () => {

@@ -6,8 +6,6 @@ import {
 } from '#lib/server/endpoints/models.js';
 import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 
-// (supportsTools fallback tests appended at the bottom)
-
 function ep(overrides: Partial<LoadedEndpoint> = {}): LoadedEndpoint {
 	return {
 		id: 'bridge',

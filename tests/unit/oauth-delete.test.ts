@@ -153,15 +153,14 @@ describe('DELETE /api/auth/oauth/:provider — 404 paths', () => {
 		const u1 = seedUser();
 		const u2 = seedUser();
 		seedOAuthAccount(u1.id, { provider: 'github', externalId: 'u1' });
-		// u2 has a passkey + their own github binding via the seeded helper
-		// would conflict on UNIQUE — so just give them a passkey.
+		// A github binding for u2 too would conflict on UNIQUE, so u2 gets only a
+		// passkey.
 		seedPasskey(u2.id, 'u2-cred');
 
 		// u2 tries to unlink github — not bound on their row → 404.
 		const event = mkEvent({ locals: userLocals(u2.id), params: { provider: 'github' } });
 		const err = await expectHttpError(() => DELETE(event as never));
 		expect(err.status).toBe(404);
-		// u1's binding untouched.
 		expect(listOAuthAccountsForUser(u1.id)).toHaveLength(1);
 	});
 });

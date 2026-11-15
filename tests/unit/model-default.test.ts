@@ -1,7 +1,7 @@
 /**
  * The composer's starting model, and the catalogue slice needed to render it.
  *
- * Worth pinning precisely because this rule now has two callers — the server
+ * Worth pinning precisely because this rule has two callers — the server
  * decides the selection and trims the payload with it, the page renders what it
  * decided — and a divergence between them is silent: the picker would simply
  * show a model the user never chose, with nothing failing.

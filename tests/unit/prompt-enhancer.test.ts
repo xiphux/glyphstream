@@ -235,7 +235,6 @@ describe('enhancePrompt — video medium', () => {
 		// Video base prompt, not the image "image-generation prompt engineer" one.
 		expect(sentSystem).toContain('cinematographer');
 		expect(sentSystem.toLowerCase()).toContain('present tense');
-		// The cinematic-prose style instruction.
 		expect(sentSystem.toUpperCase()).toContain('CINEMATIC NATURAL-LANGUAGE PROSE');
 	});
 

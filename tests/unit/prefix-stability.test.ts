@@ -71,10 +71,10 @@ describe('per-user MCP tools survive a transport blip', () => {
 		//   1. its handshake overran the send path's 2.5s hot-path budget;
 		//   2. the idle reaper closed the connection between two turns.
 		// In both cases the registry is still holding the tool descriptors it
-		// discovered earlier. Gating on `state === 'connected'` threw them away, so
-		// a user who stepped away from a conversation for longer than the idle
-		// timeout came back to find the server's tools silently gone for exactly one
-		// turn — a payload change, and a capability change, that nobody asked for.
+		// discovered earlier. Gating on `state === 'connected'` throws them away, so
+		// a user who steps away from a conversation for longer than the idle timeout
+		// comes back to find the server's tools silently gone for exactly one turn —
+		// a payload change, and a capability change, that nobody asked for.
 		const defs = await buildUserMcpToolDefinitions('u1', {
 			states: [state({ state: 'reconnecting' })],
 		});

@@ -87,8 +87,8 @@ describe('composePersonaPrompt', () => {
 	});
 
 	it('renders the section without an embedding model configured (decoupled)', async () => {
-		// composePersonaPrompt no longer consults the embeddings config; the budget
-		// alone drives tiering. No embeddings mocked here — the section still renders.
+		// The budget alone drives tiering, not the embeddings config, so no
+		// embeddings are mocked here and the section still renders.
 		const u = seedUser();
 		await seedOverBudget(u.id);
 		const out = composePersonaPrompt(PREFS, u.id, [])!;

@@ -6,12 +6,11 @@
  * verifier through `createAuthorizationURL`.
  *
  * Only `#lib/server/env` and `fetch` are stubbed. This deliberately does
- * NOT mock the OAuth2 layer: it used to mock `arctic` wholesale, which
- * meant the token exchange — the request body, the client-auth header, the
- * ID-token decode — was the one part of the login path with no coverage at
- * all. Stubbing at the network boundary instead exercises the real request
- * construction, so `oauth2-token-exchange.test.ts` and this file together
- * cover what the mock used to hide.
+ * NOT mock the OAuth2 layer: mocking it wholesale leaves the token exchange —
+ * the request body, the client-auth header, the ID-token decode — as the one
+ * part of the login path with no coverage at all. Stubbing at the network
+ * boundary exercises the real request construction, so
+ * `oauth2-token-exchange.test.ts` and this file together cover it.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

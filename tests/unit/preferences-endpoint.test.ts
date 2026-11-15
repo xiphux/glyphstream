@@ -151,10 +151,8 @@ describe('PATCH /api/user/preferences — the allowlist', () => {
 		// across all three passes, a cross-wire between them becomes undetectable and
 		// the suite would go quietly blind rather than fail.
 		//
-		// EVERY key, including `trustedMcpTools`. It isn't writable through this route,
-		// but it's still a `body.*` key the handler could accidentally read from — so it
-		// needs a distinct signature like any other, or a future field wired to it would
-		// round-trip green.
+		// EVERY key, including the non-writable `trustedMcpTools`, for the reason
+		// given on its fixture entry.
 		const signatures = new Map<string, string>();
 		for (const key of Object.keys(fixture(0)) as Array<keyof UserPreferences>) {
 			const sig = JSON.stringify(PASSES.map((p) => fixture(p)[key]));

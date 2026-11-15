@@ -4,7 +4,7 @@ import type { SSERecord } from '#lib/server/streaming/sse-parser.js';
 
 /**
  * SSE records the way the parser hands them to the normalizer: just the
- * `data:` payload. Test helpers shape these directly.
+ * `data:` payload.
  */
 function rec(data: string): SSERecord {
 	return { event: '', data };
@@ -185,13 +185,10 @@ describe('deepseek-r1 normalizer', () => {
 	});
 });
 
-// --- tool_call delta handling -------------------------------------------
-//
-// Verifies the OpenAI streaming shape: first chunk for an index carries
-// id + function.name (+ optionally some arguments); subsequent chunks
-// carry more arguments keyed by index only. Shared across the three
-// quirks that route tool_calls through parseToolCallsDelta — exercised
-// against all three to pin the contract.
+// The OpenAI streaming shape for tool_calls: the first chunk for an index
+// carries id + function.name (+ optionally some arguments); subsequent chunks
+// carry more arguments keyed by index only. Shared across the three quirks
+// that route tool_calls through parseToolCallsDelta, so each is exercised.
 
 type ToolCallChunk = {
 	index: number;
@@ -290,7 +287,6 @@ describe('passthrough normalizer · tool_calls', () => {
 
 	it('handles parallel tool calls with different indexes', () => {
 		const n = createNormalizer('passthrough');
-		// Both starts in one chunk.
 		const r = n.process(
 			rec(
 				toolChunk([
@@ -350,7 +346,6 @@ describe('passthrough normalizer · tool_calls', () => {
 				]),
 			),
 		);
-		// Second chunk with arguments: "" — should not emit a delta event.
 		const r = n.process(rec(toolChunk([{ index: 0, function: { arguments: '' } }])));
 		expect(r.deltas).toEqual([]);
 	});
