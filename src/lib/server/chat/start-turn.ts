@@ -4,8 +4,7 @@
  *
  * Shared by the three things that start one — a message send, a tool-approval
  * resume, and a scheduled task — so the per-request surface (prompt, tools[],
- * the approval gate, the request builder) can't drift between them. It used to
- * be written out twice, once per route handler, kept in step by comments.
+ * the approval gate, the request builder) can't drift between them.
  *
  * Takes no request: everything is keyed by `userId` and `conversationId`, which
  * is what lets the scheduled-task runner start a turn with nobody connected.

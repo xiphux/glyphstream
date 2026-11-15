@@ -41,9 +41,9 @@ export function composeMemorySection(
 		const cold = opts.index ?? [];
 		if (list.length === 0 && cold.length === 0) return null;
 
-		// Defensive: no hot tier (nothing fit the budget) — pure topic index, the
-		// phase-1 rendering. In practice a single body (≤800 chars) always fits a
-		// 4000-char budget, so this branch is a safety net, not the common path.
+		// Defensive: no hot tier (nothing fit the budget) — pure topic index. In
+		// practice a single body (≤800 chars) always fits a 4000-char budget, so
+		// this branch is a safety net, not the common path.
 		if (list.length === 0) {
 			const header =
 				'Saved memory index (durable facts about the user, carried across conversations). Only a short topic for each memory is shown here — the full text is not loaded. Call recall_memory with a list of ids to read the full text of specific entries, or with a query to find entries by meaning. Each line is prefixed with its id in square brackets — pass that id to recall_memory, update_memory, or forget_memory. To add a new memory, call save_memory.';

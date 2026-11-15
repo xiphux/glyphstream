@@ -2,10 +2,10 @@
  * Setting a check-in from a reply that finished with a `[later …]`
  * marker (see `#lib/check-ins.ts`).
  *
- * Runs as each turn ends in a conversation that allows check-ins. Any reply that lands on the active branch
- * supersedes the conversation's previous check-in — the thread has moved past
- * the reply that set it — so the old row goes whether or not the new reply sets
- * one of its own.
+ * Runs as each turn ends in a conversation that allows check-ins. Any reply
+ * that lands on the active branch supersedes the conversation's previous
+ * check-in — the thread has moved past the reply that set it — so the old row
+ * goes whether or not the new reply sets one of its own.
  */
 import { partsToText } from '#lib/message-parts.js';
 import { checkInSetBy, replyCheckIn } from '#lib/texting-check-ins.js';
@@ -20,8 +20,9 @@ import { getCheckInsConfig } from '../endpoints/config';
  * `userId`'s.
  *
  * Runs before every such turn's `done`, so the common case — no marker — must
- * stay cheap: one keyed DELETE, and the branch is only walked (for the unanswered-in-a-row cap)
- * when the reply's own text has one, and then without the render columns.
+ * stay cheap: one keyed DELETE, and the branch is only walked (for the
+ * unanswered-in-a-row cap) when the reply's own text has one, and then without
+ * the render columns.
  */
 export function scheduleCheckInFromReply(
 	conversationId: string,

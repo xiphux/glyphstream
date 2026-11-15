@@ -222,9 +222,9 @@ export async function maybeCompressResponse(
  * `text/event-stream` out anyway. Verified end to end through Synology's nginx
  * over HTTP/2 to Chromium and iOS Safari: each event arrives on time.
  *
- * A client that goes away still looks the same to the relay: `pipeline`
- * destroys the chain, which cancels the original stream, so the relay's next
- * `enqueue` throws (and is swallowed, as before).
+ * A client that goes away looks the same to the relay as it does uncompressed:
+ * `pipeline` destroys the chain, which cancels the original stream, so the
+ * relay's next `enqueue` throws (and is swallowed).
  */
 export function maybeCompressStream(response: Response, request: Request): Response {
 	if (!response.body || response.headers.get('Content-Encoding')) return response;

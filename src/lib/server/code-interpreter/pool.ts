@@ -19,10 +19,9 @@
  * (spawn.ts); the pool answers its network requests (net-proxy.ts) and
  * its package-cache writes (package-cache.ts).
  *
- * Stage 3 ships the pool with a mockable Worker factory so unit tests
- * cover the state machine without spinning up real Pyodide (which is
- * ~2-5 s of cold start and far too slow for the unit pass). Stage 4
- * wires `run_python` to the public API surface here.
+ * The Worker factory is mockable so unit tests cover the state machine
+ * without spinning up real Pyodide (~2-5 s of cold start, far too slow for
+ * the unit pass).
  */
 
 import { isAbsolute } from 'node:path';
@@ -192,8 +191,8 @@ export interface RunPythonParams {
 	/** External abort signal (e.g. the streaming-relay turn signal). */
 	ctxSignal?: AbortSignal;
 	/** Status callback for the cold-start path; fires before/after
-	 *  `loadPyodide` on a `starting` entry. Stage 4 uses this to bridge to
-	 *  the `tool_call_executing.status` SSE event. */
+	 *  `loadPyodide` on a `starting` entry. `run_python` bridges it to the
+	 *  `tool_call_executing.status` SSE event. */
 	onStatus?: (status: string) => void;
 }
 
@@ -220,7 +219,7 @@ export async function runPython(params: RunPythonParams): Promise<WorkerRunResul
 	const cfg = getCodeInterpreterConfig();
 	const timeoutMs = params.callTimeoutMs ?? cfg.callTimeoutSeconds * 1000;
 
-	// B5: re-validation + retry loop. After acquiring the mutex, check that
+	// Re-validation + retry loop. After acquiring the mutex, check that
 	// the entry is still the current one for this conversation and still in
 	// 'ready' state. The mutex wait can be arbitrarily long (a concurrent
 	// call in the same conversation runs to completion or times out), so
@@ -236,11 +235,8 @@ export async function runPython(params: RunPythonParams): Promise<WorkerRunResul
 		const entry = await ensureReady(params.conversationId, params.userId, params.onStatus);
 		const release = await entry.mutex.acquire();
 
-		// Re-check that this entry is still valid after the (potentially
-		// long) mutex wait.
 		const current = entries.get(params.conversationId);
 		if (current && current === entry && current.state === 'ready') {
-			// Entry is still valid — proceed with the call.
 			const callId = nextCallId++;
 			try {
 				return await new Promise<WorkerRunResult>((resolve, reject) => {
@@ -338,7 +334,6 @@ export async function runPython(params: RunPythonParams): Promise<WorkerRunResul
 				`code_interpreter: failed to acquire a stable worker after ${MAX_RETRIES + 1} attempts`,
 			);
 		}
-		// Loop — ensureReady will create/spawn a fresh worker.
 	}
 }
 
@@ -373,8 +368,8 @@ async function ensureReady(
 		if (settled.state === 'ready') return settled;
 		throw new Error(`code_interpreter: failed to start worker: ${settled.error}`);
 	}
-	// 'failed' or absent (never started, or idle-reaped): try to (re)spawn. Concurrent callers
-	// coalesce via a single `starting` entry.
+	// 'failed' or absent (never started, or idle-reaped): try to (re)spawn.
+	// Concurrent callers coalesce via a single `starting` entry.
 	return startWorker(conversationId, userId, onStatus);
 }
 
@@ -542,7 +537,6 @@ async function doStart(
 		};
 		return ready;
 	} catch (err) {
-		// Terminate the worker whose init failed so its process doesn't leak.
 		await workerHandle?.terminate().catch(() => {});
 		const msg = err instanceof Error ? err.message : String(err);
 		return { state: 'failed', conversationId, error: msg };
@@ -745,8 +739,8 @@ function reapIfIdle(conversationId: string): void {
 		return;
 	}
 	// Drop the entry outright: an absent entry already means "spawn on next
-	// call", so keeping an idle placeholder only grew the map by one entry
-	// per conversation that ever ran Python.
+	// call", and an idle placeholder would grow the map by one entry per
+	// conversation that ever ran Python.
 	entries.delete(conversationId);
 	void entry.worker.terminate().catch(() => {});
 }

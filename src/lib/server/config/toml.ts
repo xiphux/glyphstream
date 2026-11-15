@@ -27,8 +27,8 @@ export class ConfigError extends Error {
  * modules — `getMaxToolResultChars` from serialize-upstream, `getVisionConfig`
  * from the media path — so a hard throw here turns "no config.toml" into a crash
  * far away from anything the operator would connect to config. config.toml is
- * gitignored, so CI has none: the whole unit suite went red on it once. Without
- * it a config-less deployment also logged an MCP bootstrap failure on every
+ * gitignored, so CI has none, and a throw turns the whole unit suite red. A
+ * config-less deployment would also log an MCP bootstrap failure on every
  * start.
  *
  * Only ENOENT is forgiven. A permissions error, an I/O error, or malformed TOML

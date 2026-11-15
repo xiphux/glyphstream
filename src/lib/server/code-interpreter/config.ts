@@ -13,8 +13,6 @@
  * clamps each to sane bounds rather than blindly trusting input (e.g.
  * `worker_memory_mb >= 64` so a typo can't put the worker in a
  * permanently-OOM state).
- *
- * Stage 3 ships the config; stage 4 wires `run_python` to consume it.
  */
 
 import {
@@ -140,8 +138,8 @@ export function loadCodeInterpreterConfig(path = configPath()): LoadedCodeInterp
 export const getCodeInterpreterConfig = memoizeConfig(() => loadCodeInterpreterConfig());
 
 /** Master toggle — surfaced as the `run_python` tool's `isAvailable`
- *  predicate in stage 4. Operators can disable the feature without
- *  removing the registration. */
+ *  predicate. Operators can disable the feature without removing the
+ *  registration. */
 export function isCodeInterpreterEnabled(): boolean {
 	return getCodeInterpreterConfig().enabled;
 }

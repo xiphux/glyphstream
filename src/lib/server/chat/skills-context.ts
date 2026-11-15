@@ -4,7 +4,7 @@
  * resume (`/tool-approval`). Both must inject the same Tier-1 catalog into the
  * system prompt AND advertise the same per-user activation tools, so a turn
  * that activated a skill then paused on an MCP approval keeps both on resume.
- * Centralizing the logic here is the anti-drift measure flagged in the plan.
+ * Centralizing the logic here is the anti-drift measure.
  *
  * Skills ride their OWN `skills` feature-category gate (not personalization):
  * the catalog injects even for snapshotted custom-model conversations, because

@@ -77,7 +77,7 @@ process.on('disconnect', () => process.exit(0));
  * process has no write permission, so a denied write under that directory is
  * handed to the host, which caches the wheel only if it matches Pyodide's
  * lockfile (package-cache.ts), and the import carries on with the bytes it
- * already has. Every other write keeps failing as before.
+ * already has. Every other write still fails.
  */
 function routePackageCacheWritesToHost(packageDir: string): void {
 	const fsp = process.getBuiltinModule('node:fs/promises');
@@ -242,12 +242,9 @@ async function handleHostMessage(msg: HostMessage): Promise<void> {
 			py.setStdout({ batched: out.push });
 			py.setStderr({ batched: err.push });
 			// Auto-load any Pyodide packages the code imports (numpy,
-			// pandas, matplotlib, scipy, sympy, scikit-learn, ...). Reads
-			// from the local node_modules/pyodide/ package store — no
-			// network needed for the standard scientific stack. Per
-			// Pyodide's docs this is the idiomatic way to surface
-			// "common imports just work" semantics inside a single
-			// interpreter session.
+			// pandas, matplotlib, scipy, sympy, scikit-learn, ...) from the
+			// local node_modules/pyodide/ package store — no network needed
+			// for the standard scientific stack.
 			await py.loadPackagesFromImports(msg.code);
 
 			let result: unknown = null;
@@ -336,7 +333,7 @@ function materializeWorkspace(py: PyodideInterface, preFiles: PreFile[]): void {
 
 	for (const f of safe) {
 		const cached = materializedManifest.get(f.filename);
-		if (cached === f.sha256) continue; // unchanged
+		if (cached === f.sha256) continue;
 		try {
 			FS.writeFile(`${WORKSPACE}/${f.filename}`, f.bytes);
 			materializedManifest.set(f.filename, f.sha256);
@@ -389,7 +386,7 @@ function diffWorkspace(py: PyodideInterface, preSnapshot: Map<string, string>): 
 					continue;
 				}
 				const sha = sha256Hex(bytes);
-				if (preSnapshot.get(name) === sha) continue; // unchanged
+				if (preSnapshot.get(name) === sha) continue;
 				if (totalBytes + bytes.byteLength > MAX_GENERATED_TOTAL_BYTES) {
 					console.warn(
 						`[code-interpreter] dropped /workspace/${name}: aggregate diff would exceed ${MAX_GENERATED_TOTAL_BYTES}B`,

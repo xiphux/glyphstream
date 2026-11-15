@@ -23,7 +23,7 @@
  *   - `origin: 'generated' AND sourceModel: 'run_python'` of any kind
  *     (an earlier Python turn's output that the next turn might
  *     reference) — round-trip continuity for the iterating-on-a-file
- *     use case the v1 plan optimizes for
+ *     use case
  */
 
 import { createHash } from 'node:crypto';
@@ -44,12 +44,11 @@ const log = createLogger('code_interpreter');
 /**
  * Caps on what a single call may mount into `/workspace/`.
  *
- * Mirrors the outbound caps in worker.ts, which already carried a comment
- * explaining why an unbounded transfer is dangerous — the inbound direction
- * just never got them. Every eligible file on the branch is read fully into
- * the Node heap and structured-cloned to the worker on EVERY call, so without
- * a ceiling one conversation of large attachments costs ~1 GB per invocation
- * in the main process alone.
+ * Mirrors the outbound caps in worker.ts. Every eligible file on the branch is
+ * read fully into the Node heap and structured-cloned to the worker on EVERY
+ * call, so without a ceiling a conversation with 40 attachments at the 25 MB
+ * upload ceiling costs ~1 GB in the main process plus another copy in the
+ * worker — per call, from one request.
  */
 const MAX_PREFILE_BYTES = 25 * 1024 * 1024;
 const MAX_PREFILE_TOTAL_BYTES = 50 * 1024 * 1024;
@@ -100,7 +99,6 @@ export async function collectConversationFiles(
 		)
 		.all();
 
-	// Apply the include rule: uploaded OR (generated AND sourceModel='run_python').
 	const eligible = rows.filter(
 		(r) => r.origin === 'uploaded' || (r.origin === 'generated' && r.sourceModel === 'run_python'),
 	);
@@ -117,15 +115,8 @@ export async function collectConversationFiles(
 	const out: RunPythonPreFile[] = [];
 	let totalBytes = 0;
 	for (const [filename, r] of byFilename) {
-		// Same caps the outbound direction enforces (worker.ts), for the same
-		// reason and in the asymmetric direction that was missing them. Every
-		// eligible file on the branch is read fully into the Node heap and then
-		// structured-cloned to the worker on EVERY call, so a conversation with
-		// 40 attachments at the 25 MB upload ceiling costs ~1 GB in the main
-		// process plus another copy in the worker — per call, from one request.
 		// Over-budget files are skipped rather than failing the call: the model
-		// sees them absent from /workspace/ and can adjust, which is how a
-		// missing file already behaves here.
+		// sees them absent from /workspace/ and can adjust, as with a missing file.
 		if (r.byteSize > MAX_PREFILE_BYTES) {
 			log.warn(`skipping "${filename}" (${r.byteSize} bytes) — over the per-file mount cap`);
 			continue;
@@ -204,8 +195,6 @@ export async function persistGeneratedFiles({
 	}
 	return ids;
 }
-
-// --- content-type guessing ------------------------------------------------
 
 const CONTENT_TYPE_BY_EXT: Record<string, string> = {
 	'.png': 'image/png',

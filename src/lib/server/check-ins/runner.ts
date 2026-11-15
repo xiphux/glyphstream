@@ -12,9 +12,9 @@
  * it: that reply is the end of the active branch. Anything else — the user
  * answered, regenerated, switched branches, deleted the reply — means the
  * moment has passed, and the row is dropped. While something else is running
- * in the conversation (a turn, an open comparison) it
- * waits, up to a grace period; a check-in hours late after a
- * restart would arrive at the wrong moment, so past that it's dropped too.
+ * in the conversation (a turn, an open comparison) it waits, up to a grace
+ * period; a check-in hours late after a restart would arrive at the wrong
+ * moment, so past that it's dropped too.
  *
  * The model may also decline: the reminder tells it to answer `[no text]` if
  * the moment has gone, and a reply like that (or a turn stopped before it
@@ -365,8 +365,9 @@ function notifyTurn(row: CheckInRow, rows: ChatMessage[]): void {
 /** The emoji a turn reacted with (`rows` newest first, as `turnRows` gives
  *  them), oldest first. A check-in can answer with nothing else, which says as
  *  much as a text would, so a turn that reacted isn't a pass — unless the
- *  reacting row also wrote the pass marker. One the tool refused never happened; one whose result is missing did (the thread draws
- *  it the same way — see `buildRenderedConversation`). */
+ *  reacting row also wrote the pass marker. One the tool refused never
+ *  happened; one whose result is missing did (the thread draws it the same
+ *  way — see `buildRenderedConversation`). */
 function reactions(rows: ChatMessage[]): string[] {
 	const refused = new Set(
 		rows.flatMap((m) =>

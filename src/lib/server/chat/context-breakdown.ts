@@ -1,13 +1,13 @@
 /**
  * Prices the upstream request, segment by segment.
  *
- * `chat-compaction.ts` has long carried the note that compaction "only shrinks
- * the message history — not the system prompt, tool definitions, or saved
- * memories, which are re-sent every turn", and that `MIN_COMPACTIBLE_TOKENS`
- * exists purely as a proxy for not knowing how big that overhead is. This module
- * is the missing measurement: it rebuilds exactly what the next send would carry
- * and attributes every character to a segment, so "compacting won't help, your
- * overhead is the problem" becomes something we can show rather than guess.
+ * Compaction only shrinks the message history — not the system prompt, tool
+ * definitions, or saved memories, which are re-sent every turn — and
+ * `MIN_COMPACTIBLE_TOKENS` (`chat-compaction.ts`) is only a proxy for not knowing
+ * how big that overhead is. This module is the measurement: it rebuilds exactly
+ * what the next send would carry and attributes every character to a segment, so
+ * "compacting won't help, your overhead is the problem" becomes something we can
+ * show rather than guess.
  *
  * It deliberately drives the REAL serializer (`serializeMessageForUpstream` +
  * `collapseSupersededSkillActivations`) rather than re-walking `ChatMessage.parts`
@@ -91,7 +91,7 @@ export interface ContextBreakdownInput {
 	/**
 	 * The bytes an image actually contributes — its downscaled vision variant
 	 * where one has been generated, NOT the original on disk. Pricing the original
-	 * would overstate a 4 MB photo by an order of magnitude now that it isn't the
+	 * would overstate a 4 MB photo by an order of magnitude, since it isn't the
 	 * thing being sent.
 	 *
 	 * Null for media that's been hard-deleted or is otherwise unavailable: the

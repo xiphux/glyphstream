@@ -83,8 +83,8 @@ export function spawnInterpreterProcess(opts: SpawnInterpreterOptions): ManagedW
 			'--permission',
 			...readPaths.map((p) => `--allow-fs-read=${p}`),
 			`--max-old-space-size=${opts.memoryMb}`,
-			// 64 KiB pages. Without this a worker's Python heap grew without
-			// bound on a box whose RAM it shares with local inference.
+			// 64 KiB pages. Without this a worker's Python heap grows without
+			// bound, on a box whose RAM it shares with local inference.
 			...(opts.pythonMemoryMb ? [`--wasm-max-mem-pages=${opts.pythonMemoryMb * 16}`] : []),
 		],
 		// Nothing of the host's environment, which holds the secrets — except

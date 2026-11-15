@@ -233,11 +233,9 @@ export async function runCompaction(
 	if (!plan) return { status: 'noop' };
 
 	// Hold a per-endpoint slot so compaction doesn't preempt a live
-	// generation on a single-GPU backend. Release once the upstream
-	// call settles — even on error.
-	// The caller's signal bounds the WAIT as well as the call: without it a
-	// request whose client went away still queued behind a paused endpoint
-	// group indefinitely.
+	// generation on a single-GPU backend. The caller's signal bounds the WAIT
+	// as well as the call, so a request whose client went away doesn't stay
+	// queued behind a paused endpoint group indefinitely.
 	const slot = await acquireEndpointSlot(plan.endpoint, {
 		work: { purpose: 'compaction', modelId: plan.upstreamId },
 		signal: opts.signal,

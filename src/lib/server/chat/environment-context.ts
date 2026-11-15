@@ -1,10 +1,10 @@
 /**
  * The environment preamble — what the model needs to know about *now*.
  *
- * Today this is one line: the date. Nothing in the payload used to carry it, so
- * the model's only options were to burn a full `get_current_time` round-trip
- * (prefill + decode, just to learn the day) or — far more often — to quietly
- * assume its training cutoff was the present. That second failure is the
+ * Today this is one line: the date. Without it, the model's only options are to
+ * burn a full `get_current_time` round-trip (prefill + decode, just to learn the
+ * day) or — far more often — to quietly assume its training cutoff is the
+ * present. That second failure is the
  * expensive one: it's silent, and it poisons every relative-date judgement
  * ("last Tuesday", "is that library version still current?", "how old is this
  * changelog?") without ever announcing itself.

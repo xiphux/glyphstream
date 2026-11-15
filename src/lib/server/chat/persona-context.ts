@@ -35,7 +35,7 @@ import { selectMemoryTiers } from '../memory/tiering';
  *
  * Runs every turn, so it avoids loading memory bodies it won't use: it first
  * probes the store size with a cheap COUNT/SUM. Under budget → inline every
- * body (one query, no scoring — unchanged fast path). Over budget → rank on
+ * body (one query, no scoring — the fast path). Over budget → rank on
  * metadata only (`listMemoryTierRows`, no bodies), then re-fetch full bodies for
  * just the hot ids.
  */

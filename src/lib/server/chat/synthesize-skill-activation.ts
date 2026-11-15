@@ -75,7 +75,7 @@ export async function synthesizeSkillActivations(
 		seen.add(name);
 
 		const ref = getEnabledSkillByName(input.userId, name);
-		if (!ref) continue; // disabled / deleted / foreign — skip silently.
+		if (!ref) continue;
 
 		const toolCallId = generateId();
 		const args = JSON.stringify({ name });

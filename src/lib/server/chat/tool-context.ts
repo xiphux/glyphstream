@@ -222,7 +222,6 @@ export async function buildChatToolContext(input: ChatToolContextInput): Promise
 				states: userServerStates,
 			})),
 		);
-		// search_tools (only when deferred tools exist for this user/conversation).
 		if (toolSearchCtx.def) toolDefs.push(toolSearchCtx.def);
 		// Conversation-persistent loading: re-include the full definitions of any
 		// deferred tools the model searched up on earlier turns of this branch, so it
