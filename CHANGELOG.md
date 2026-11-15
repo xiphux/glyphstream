@@ -11,6 +11,7 @@ arrived.
 
 ### Changed
 
+- The API now rejects an unknown feature category in disabled features (a conversation's, a scheduled task's, or your saved new-chat defaults) with a 400, instead of storing it and leaving the feature on.
 - The sidebar and canvas pane slide instantly when the system asks for reduced motion.
 
 ### Fixed

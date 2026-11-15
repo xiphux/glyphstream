@@ -3,6 +3,7 @@ import {
 	FeatureCategoryValidationError,
 	validateDisabledFeatures,
 } from '#lib/server/util/validate-features.js';
+import { BUILTIN_FEATURE_CATEGORIES } from '#lib/types/api.js';
 
 describe('validateDisabledFeatures', () => {
 	it('returns [] for undefined / null / missing', () => {
@@ -36,13 +37,27 @@ describe('validateDisabledFeatures', () => {
 		}
 	});
 
-	it('accepts arbitrary non-empty category strings (widened for MCP server categories)', () => {
-		// FeatureCategory is open at the type level so MCP-registered
-		// categories like `mcp:filesystem` flow through unchanged. Strict
-		// checking against the live registry of built-ins + connected MCP
-		// servers lands with the dynamic category surface.
+	it('accepts every built-in category', () => {
+		expect(validateDisabledFeatures([...BUILTIN_FEATURE_CATEGORIES])).toEqual([
+			...BUILTIN_FEATURE_CATEGORIES,
+		]);
+	});
+
+	it('accepts any mcp: category, registered or not', () => {
+		// No MCP server is configured here, so only the prefix lets these
+		// through: a server dropped from config.toml mustn't make every stored
+		// list naming it unsaveable.
 		expect(validateDisabledFeatures(['mcp:filesystem'])).toEqual(['mcp:filesystem']);
 		expect(validateDisabledFeatures(['web', 'mcp:linear'])).toEqual(['web', 'mcp:linear']);
+	});
+
+	it('rejects an unknown non-MCP category', () => {
+		expect(() => validateDisabledFeatures(['made-up-category'])).toThrow(
+			FeatureCategoryValidationError,
+		);
+		expect(() => validateDisabledFeatures(['web', 'wbe'])).toThrow(
+			/Unknown feature category "wbe"/,
+		);
 	});
 
 	it('rejects empty strings', () => {

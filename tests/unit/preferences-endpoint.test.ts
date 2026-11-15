@@ -186,6 +186,17 @@ describe('PATCH /api/user/preferences — the allowlist', () => {
 		});
 	});
 
+	it('rejects an unknown built-in category but keeps an unregistered mcp: id', async () => {
+		// The new-chat page sends these defaults as a conversation's
+		// disabledFeatures, which conversation create validates strictly.
+		await expect(patch({ defaultDisabledFeatures: ['wbe'] })).rejects.toMatchObject({
+			status: 400,
+		});
+		expect(await patch({ defaultDisabledFeatures: ['web', 'mcp:gone'] })).toMatchObject({
+			defaultDisabledFeatures: ['web', 'mcp:gone'],
+		});
+	});
+
 	it('drops unknown fields instead of writing them through', async () => {
 		expect(await patch({ isAdmin: true, preferencesJson: 'pwned' })).toEqual({});
 	});

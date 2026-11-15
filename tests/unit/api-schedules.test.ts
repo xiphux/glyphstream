@@ -116,6 +116,13 @@ describe('POST /api/user/schedules', () => {
 		expect(await status(() => list.POST(event(user, body)))).toBe(code);
 	});
 
+	it('rejects an unknown feature category, but keeps built-ins and any mcp: id', async () => {
+		const typo = { ...valid, disabledFeatures: ['web', 'made-up-category'] };
+		expect(await status(() => list.POST(event(user, typo)))).toBe(400);
+		const s = await create({ ...valid, disabledFeatures: ['web', 'mcp:not-registered'] });
+		expect(s.disabledFeatures).toEqual(['web', 'mcp:not-registered']);
+	});
+
 	it('refuses a non-chat model', async () => {
 		mocks.models = [{ endpointId: 'mock', upstreamId: 'chat', kind: 'image' }];
 		expect(await status(() => list.POST(event(user, valid)))).toBe(400);

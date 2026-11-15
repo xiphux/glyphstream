@@ -6,7 +6,6 @@ import {
 	MAX_PROMPT_CHARS,
 } from '#lib/server/text-limits.js';
 import { getEndpoint } from '#lib/server/endpoints/registry.js';
-import { getRegisteredCategoryIds } from '#lib/server/feature-catalog.js';
 import {
 	FeatureCategoryValidationError,
 	validateDisabledFeatures,
@@ -121,32 +120,17 @@ export function validateStartingScene(raw: unknown): Scene {
 	return raw as Scene;
 }
 
-/** Same shape rules as the per-conversation field — undefined / null → []
- *  (no opt-outs), an array of known categories → de-duped, anything else
- *  → 400. Built-in typos 400 loudly (so a misspelled `web` doesn't
- *  silently become "feature on"). MCP categories (`mcp:<id>`) pass
- *  through even when the named server isn't currently registered: a
- *  config.toml edit that temporarily removes an MCP server shouldn't
- *  invalidate every custom model that mentioned it. Runtime tool
- *  filtering treats absent categories as no-ops, so the data stays
- *  preserved for the user without leaking into the upstream request. */
+/** The per-conversation rule (see validateDisabledFeatures), with the
+ *  field name prefixed onto the 400's message. */
 export function validateDefaultDisabledFeatures(raw: unknown): FeatureCategory[] {
-	let normalized: FeatureCategory[];
 	try {
-		normalized = validateDisabledFeatures(raw);
+		return validateDisabledFeatures(raw);
 	} catch (e) {
 		if (e instanceof FeatureCategoryValidationError) {
 			error(400, `defaultDisabledFeatures: ${e.message}`);
 		}
 		throw e;
 	}
-	const known = getRegisteredCategoryIds();
-	for (const entry of normalized) {
-		if (known.has(entry)) continue;
-		if (entry.startsWith('mcp:')) continue; // opaque MCP preservation
-		error(400, `defaultDisabledFeatures: unknown category "${entry}"`);
-	}
-	return normalized;
 }
 
 /**

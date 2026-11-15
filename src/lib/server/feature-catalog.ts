@@ -68,11 +68,10 @@ export function getAllFeatureCategoryLabels(
 
 /**
  * Set of category ids that are currently registered (built-in or configured
- * MCP). Used by the conversation-create seed and the custom-models validator
- * to silently drop / reject categories that point at MCP servers no longer
- * present in config.toml. Includes all per-user servers (no configured-set
- * filter) so validation stays tolerant of categories a user hasn't connected
- * yet.
+ * MCP). `validateDisabledFeatures` checks client-sent built-in categories
+ * against it (any `mcp:` id passes regardless). Includes all per-user servers
+ * (no configured-set filter) so validation stays tolerant of categories a
+ * user hasn't connected yet.
  */
 export function getRegisteredCategoryIds(): Set<string> {
 	return new Set(getAllFeatureCategoryLabels().map((c) => c.id));
