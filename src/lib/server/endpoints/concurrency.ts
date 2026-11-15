@@ -213,10 +213,11 @@ interface Gate {
  * pause must survive the process being recreated — that is half of what it is
  * for), and this module is exercised by pure-logic tests with no database. The
  * server entry installs the persisted source at boot; without one, nothing
- * starts paused, which is exactly the pre-pause behaviour.
+ * starts paused.
  *
  * Consulted when a gate is created, and by `isResourceGroupPaused` for a group
- * that has no gate yet. Once a gate exists, its own flag is the authority and `setResourceGroupPaused` keeps it in step with the store.
+ * that has no gate yet. Once a gate exists, its own flag is the authority and
+ * `setResourceGroupPaused` keeps it in step with the store.
  */
 let pausedSource: (resourceGroup: string) => boolean = () => false;
 
@@ -227,8 +228,7 @@ export function setPausedResourceGroupSource(source: (resourceGroup: string) => 
 /**
  * Every configured endpoint, for `presumeResident`. Injected for the same reason
  * as `pausedSource`: the answer comes from config.toml, and the pure-logic tests
- * of this module have none. Without a source nothing is presumed, which is the
- * old behaviour.
+ * of this module have none. Without a source nothing is presumed.
  */
 let membersSource: () => readonly LoadedEndpoint[] = () => [];
 
@@ -431,8 +431,7 @@ export interface AcquireOptions {
 	 * That failure is silent: no crash, no failing test, just a diagnostic
 	 * surface quietly under-reporting, discovered only by an operator wondering
 	 * why their GPU is busy. A rule in `CLAUDE.md` cannot catch it and a default
-	 * would paper over it, so the type does — the same move the relays made when
-	 * they replaced an optional `onStarted` hook with a required `inFlight`.
+	 * would paper over it, so the type does.
 	 */
 	work: SlotWork;
 	/**
@@ -560,7 +559,6 @@ async function takeSlot(
 			pump(gate);
 		}
 	}
-	// Survived the eviction — this slot is now doing what it acquired for.
 	record.state = 'active';
 	return makeSlot(gate, record);
 }
@@ -599,9 +597,8 @@ function pump(gate: Gate): void {
 		granted++;
 		waiter.grant();
 	}
-	// Granting shifts waiters off the front, so everyone still in line just moved
-	// up — re-report their new positions so a queued branch's "N ahead" counts
-	// down as the line drains. Skip when nothing was granted (positions unchanged).
+	// Granting shifts waiters off the front, so everyone still in line moved up;
+	// re-report positions so a queued branch's "N ahead" counts down.
 	if (granted > 0) notifyWaiterPositions(gate);
 }
 
@@ -692,12 +689,11 @@ function recordTaskWork(endpoint: LoadedEndpoint, work: AcquireOptions['work']):
 function acquire(endpoint: LoadedEndpoint, opts: AcquireOptions): Promise<EndpointSlot> {
 	const { signal, onQueued, onReleasing, work } = opts;
 	const priority = opts.priority ?? 'interactive';
-	// Keyed by RESOURCE GROUP, not endpoint id — which for an endpoint that
-	// didn't opt into a group are the same string, so this is the previous
-	// behaviour exactly. Taking the endpoint rather than `(id, max)` is
-	// deliberate: passing the id by hand is how a caller would silently opt out
-	// of its own group, and the two values have to come from the same place to
-	// stay consistent.
+	// Keyed by RESOURCE GROUP, not endpoint id (the same string for an endpoint
+	// that didn't opt into a group). Taking the endpoint rather than `(id, max)`
+	// is deliberate: passing the id by hand is how a caller would silently opt
+	// out of its own group, and the two values have to come from the same place
+	// to stay consistent.
 	const gate = getGate(endpoint.resourceGroup, endpoint.resourceGroupMaxConcurrent);
 
 	if (signal?.aborted) return Promise.reject(abortError());
@@ -713,9 +709,8 @@ function acquire(endpoint: LoadedEndpoint, opts: AcquireOptions): Promise<Endpoi
 		return takeSlot(gate, endpoint, work, signal, onReleasing);
 	}
 
-	// Slow path: enqueue. Report how many will be ahead before inserting. The
-	// line stays in grant order, so `ahead` is the index, here and in every
-	// later position report.
+	// The line stays in grant order, so `ahead` is the insertion index, here and
+	// in every later position report.
 	const ahead = insertionIndex(gate.waiters, priority);
 	onQueued?.({ ahead, paused: gate.paused });
 
@@ -730,8 +725,6 @@ function acquire(endpoint: LoadedEndpoint, opts: AcquireOptions): Promise<Endpoi
 			// `takeSlot` mints a fresh record on grant, restarting the clock at the
 			// moment the work actually starts.
 			record: workRecord(endpoint.id, work, 'queued'),
-			// Re-emit position as the line drains so the client's "N ahead" counts
-			// down. Routes through the same onQueued → `queued` SSE channel.
 			notifyAhead: onQueued,
 			priority,
 		};
@@ -874,7 +867,6 @@ export function getResourceGroupSnapshot(resourceGroup: string): ResourceGroupSn
 		resourceGroup,
 		active: gate.active,
 		waiting: gate.waiters.length,
-		/** null = effectively unlimited. */
 		max: Number.isFinite(gate.max) ? gate.max : null,
 		evicting: gate.evicting,
 		paused: gate.paused,

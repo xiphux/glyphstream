@@ -82,8 +82,8 @@
 	// Pull the deferred half of the layout payload. The initial document ships
 	// without the sidebar list, skills and feature categories — see the note in
 	// +layout.server.ts for why each is safe to leave out, and why customModels
-	// deliberately is NOT among them — so
-	// this is what turns them up, one navigation-shaped fetch after first paint.
+	// deliberately is NOT among them — so this is what turns them up, one
+	// navigation-shaped fetch after first paint.
 	//
 	// `invalidate` rather than a bespoke endpoint: the load already knows how to
 	// produce the full shape, and `app:conversations` is already the key meaning
@@ -100,11 +100,10 @@
 		// `__data.json` doesn't no-op. Kit hands it to `load_root_error_page` and
 		// `root.$set`s the result, which swaps the ENTIRE app for the root error
 		// component — `(app)/+error.svelte` is never consulted on this path — and
-		// there is no way back short of a manual reload. (It does not, as an
-		// earlier version of this comment claimed, trigger a native reload loop:
-		// that branch needs `app.server_loads[0] === 0` and this app's only server
-		// load is the `(app)` layout.) A `.catch()` wouldn't help either; the swap
-		// happens inside `_invalidate`.
+		// there is no way back short of a manual reload. (It does not trigger a
+		// native reload loop: that branch needs `app.server_loads[0] === 0` and this
+		// app's only server load is the `(app)` layout.) A `.catch()` wouldn't help
+		// either; the swap happens inside `_invalidate`.
 		//
 		// So: skip while offline, and recover on `online` or the next foreground —
 		// both routed through `refreshConversations`, which re-guards internally.
@@ -113,9 +112,9 @@
 	});
 
 	// Cold-start catch-up for the MCP-derived half of `featureCategories`. The
-	// layout load no longer blocks on MCP discovery (see isMcpReady) — doing so
-	// put a remote server's handshake in front of the first page render of a
-	// cold start, to learn a tool count. So the first load after a process
+	// layout load doesn't block on MCP discovery (see isMcpReady) — doing so
+	// would put a remote server's handshake in front of the first page render of
+	// a cold start, to learn a tool count. So the first load after a process
 	// restart renders with the catalog as it stood, reports `mcpSettled: false`,
 	// and we come back for the rest here, off the critical path.
 	//
@@ -235,7 +234,7 @@
 	// initial document defers — so mounting with an empty list and never looking
 	// again would drop the dot entirely on a hard load, which is the one case
 	// this seeding exists for. On an already-hydrated navigation `deferredLoaded`
-	// is true on the first flush and this behaves exactly as the old onMount did.
+	// is true on the first flush, so this runs straight away.
 	let seededGenerating = false;
 	$effect(() => {
 		if (seededGenerating || !data.deferredLoaded) return;
@@ -350,9 +349,9 @@
 		// on a prefs change, since the media query alone wouldn't have fired.
 		void schemePref;
 		// Read unconditionally (not inside the `p !== 'light'` short-circuit
-		// below) so this effect always subscribes to the query — matching the old
-		// always-registered `change` listener. Otherwise a forced-light cookie
-		// would unsubscribe, and a later OS flip wouldn't re-resolve.
+		// below) so this effect always subscribes to the query. Otherwise a
+		// forced-light cookie would unsubscribe, and a later OS flip wouldn't
+		// re-resolve.
 		const dark = systemDark.current;
 		// Resolve from the COOKIE, not the pref: the Preferences switcher writes
 		// it directly without invalidating, so it can be the fresher of the two.
@@ -375,9 +374,8 @@
 		else delete root.dataset.private;
 		// This is the THIRD thing that changes --color-surface, after theme and
 		// scheme, and it needs the same re-sync they get. The status-bar sampler
-		// used to follow the token through the cascade for free; it now carries
-		// an inline background (see theme-color.ts) that outranks the stylesheet,
-		// so without this the installed iOS status bar keeps the non-private
+		// carries an inline background (see theme-color.ts) that outranks the
+		// stylesheet, so without this the installed iOS status bar keeps the non-private
 		// surface while the whole app goes violet. Nothing else can cover it: no
 		// other call site depends on privateView, and effect order rules out a
 		// navigation doing it incidentally — the theme and scheme effects above
@@ -412,19 +410,6 @@
 	// every path starts with '/' — would otherwise match every nav.
 	const newChatPending = $derived(pendingPath === '/');
 
-	/**
-	 * Resolved entries for the sidebar's "Favorites" section. Each id in
-	 * `data.prefs.favoriteModels` is looked up against the layout-loaded
-	 * `data.models` (base models) + `data.customModels` (presets) and
-	 * mapped to a label for display. Ids that don't resolve — a deleted
-	 * preset, a removed endpoint — are dropped silently rather than
-	 * rendered as broken rows. Insertion order is preserved.
-	 *
-	 * Label rules mirror the picker's `triggerLabel`: custom presets show
-	 * their user-given name verbatim; base models drop any `owner/` prefix
-	 * so e.g. `meta-llama/Llama-3-70b` becomes `Llama-3-70b`. The full
-	 * detail is still reachable via hover (`title=` on the anchor).
-	 */
 	// Scroll-element handles for the two scrollable sidebar regions. Held
 	// so the auto-scroll effects below can imperatively jump them after a
 	// list-changing event the user just initiated — adding a favorite, or
@@ -504,6 +489,19 @@
 		]),
 	);
 
+	/**
+	 * Resolved entries for the sidebar's "Favorites" section. Each id in
+	 * `data.prefs.favoriteModels` is looked up against the layout-loaded
+	 * `data.models` (base models) + `data.customModels` (presets) and
+	 * mapped to a label for display. Ids that don't resolve — a deleted
+	 * preset, a removed endpoint — are dropped silently rather than
+	 * rendered as broken rows. Insertion order is preserved.
+	 *
+	 * Label rules mirror the picker's `triggerLabel`: custom presets show
+	 * their user-given name verbatim; base models drop any `owner/` prefix
+	 * so e.g. `meta-llama/Llama-3-70b` becomes `Llama-3-70b`. The full
+	 * detail is still reachable via hover (`title=` on the anchor).
+	 */
 	const favoriteEntries = $derived.by(() => {
 		const favs = data.prefs?.favoriteModels ?? [];
 		if (favs.length === 0) return [];
@@ -754,18 +752,17 @@
 				<div class="flex items-baseline gap-1.5">
 					<a href={resolve('/(app)')} class="font-semibold tracking-tight">GlyphStream</a>
 					<!-- Double-activate for the debug panel ("stats for nerds").
-						 A button, not the old span: it's interactive now, and that
-						 keeps it focusable so two quick Enter presses reach the
-						 panel the same way two taps do — counting click events
+						 A button so it's focusable: two quick Enter presses reach
+						 the panel the same way two taps do — counting click events
 						 gets keyboard parity for free, which a `dblclick`
-						 listener would not. Styled to stay exactly as
-						 unremarkable as it was; touch-manipulation so a
-						 double-tap opens the panel instead of zooming the page.
+						 listener would not. Styled to stay unremarkable;
+						 touch-manipulation so a double-tap opens the panel
+						 instead of zooming the page.
 
 						 Deliberately NO aria-label: the rendered "v1.2.3" is the
-						 accessible name. An earlier label read "GlyphStream
-						 version … Activate twice for debug info", which broke
-						 three ways at once — it collided with the theme picker's
+						 accessible name. A descriptive label ("GlyphStream
+						 version … Activate twice for debug info") broke three
+						 ways at once — it collided with the theme picker's
 						 "GlyphStream Signature frosted glass" button (both are on
 						 /settings/preferences, and a `/^GlyphStream/` role query
 						 then matches two elements), it announced a deliberately
@@ -1077,8 +1074,7 @@
 			 its children scroll themselves, so there is nothing for this to
 			 stick against.
 
-			 NO z-index, and that is checked rather than overlooked — two reviews
-			 have now called it out, because the drawer scrim above is
+			 NO z-index, and that is deliberate. The drawer scrim above is
 			 `fixed inset-0` at --z-index-drawer-backdrop (30) while this row is
 			 `auto`, so while the drawer is open the scrim does paint over the
 			 sampled point and does win the hit test. It still cannot take the
@@ -1089,12 +1085,8 @@
 			 the candidate's own. So the bar keeps THIS row's surface while the
 			 drawer is open. Shut, the scrim is opacity-0 + pointer-events-none,
 			 which is exactly the case WebKit's retryHonoringPointerEvents pass
-			 skips.
-			 The retired sampler carried z-index 35 to out-stack that scrim, and
-			 a comment asserting it was needed outlived the element; it was
-			 reasoning from a folk model, and a 1px strip at y=0 was never hit at
-			 y=4 anyway. Don't restore the z-index on that authority — it would
-			 also paint this row over the dimmed page. -->
+			 skips. Don't add a z-index to out-stack the scrim: it isn't needed,
+			 and it would paint this row over the dimmed page. -->
 		<div
 			class="sticky top-0 flex shrink-0 items-center gap-2 bg-surface px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:hidden"
 		>

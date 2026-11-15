@@ -1,11 +1,10 @@
 /**
  * Lazy on-demand thumbnail generation for gallery grid tiles.
  *
- * Why: gallery thumbnails were being rendered from full-resolution
- * originals (1024px+ PNGs at 1-2 MB each). Native `loading="lazy"`
- * defers off-screen tiles, but every tile that does intersect still
- * pulls the full bytes — a ~30-tile screen meant ~30+ MB of "just to
- * see the gallery."
+ * Why: rendering tiles from full-resolution originals (1024px+ PNGs at
+ * 1-2 MB each) is too heavy. Native `loading="lazy"` defers off-screen
+ * tiles, but every tile that does intersect still pulls the full bytes —
+ * a ~30-tile screen meant ~30+ MB "just to see the gallery."
  *
  * Lazy strategy: on first GET for a given media's thumbnail, the
  * original is downsized to <=512px on the long side and encoded as
@@ -21,29 +20,25 @@
  * VIDEO goes through the same path, with ffmpeg decoding one frame
  * where sharp would decode an image — same cache, same dedup, same
  * concurrency cap, same file naming, and deliberately the same
- * output size. It was image-only until the media directory moved to
- * network storage, at which point the old arrangement (a bare
- * `<video preload="metadata">` per tile, letting the browser fetch
- * its own poster frame) stopped being cheap: a non-faststart mp4
- * costs three range requests before the first frame can be decoded,
- * each one a round trip, and browsers are within their rights to
- * give up and render nothing. Which many did.
+ * output size. The alternative, a bare `<video preload="metadata">`
+ * per tile letting the browser fetch its own poster frame, is not cheap
+ * on network storage: a non-faststart mp4 costs three range requests
+ * (each a round trip) before the first frame can be decoded, and many
+ * browsers gave up and rendered nothing.
  *
  * Failure mode: if the input can't be decoded (corrupt file,
  * unsupported codec) we return the pre-WebP JPEG if there is one,
- * and otherwise null. For an image the endpoint
- * falls back to streaming the original — a slow tile, not a broken
- * one. For a VIDEO there is no such fallback, since a `poster`
- * pointing at an mp4 is meaningless; the endpoint 404s and the
- * browser shows its own empty state. Per-file failures don't poison
- * the cache.
+ * and otherwise null. For an image the endpoint falls back to
+ * streaming the original — a slow tile, not a broken one. For a VIDEO
+ * there is no such fallback, since a `poster` pointing at an mp4 is
+ * meaningless; the endpoint 404s and the browser shows its own empty
+ * state. Per-file failures don't poison the cache.
  *
  * DISK-STORE-ONLY: This module reads originals via raw `node:fs`
  * paths under `mediaDir()` and writes thumbs under `derivedDir()`
  * (the same directory unless DERIVED_DIR says otherwise). It does
- * NOT go through the
- * MediaStore interface and is therefore tied to the disk-backed
- * implementation. The gallery endpoint
+ * NOT go through the MediaStore interface and is therefore tied to the
+ * disk-backed implementation. The gallery endpoint
  * (routes/api/media/[id]/thumbnail/+server.ts) degrades gracefully
  * under an S3 store FOR IMAGES — `getOrCreateThumbnail` returns null
  * for missing source files, and the endpoint falls back to
@@ -52,9 +47,9 @@
  * does NOT extend to video: there is no fallback worth serving for a
  * `poster`, so the endpoint 404s and the tile is blank. Whoever
  * builds `S3MediaStore` needs to give the video path derived-asset
- * methods, not rely on this degrading the way the image path does. Extending the MediaStore interface with
- * derived-asset methods (openDerived / putDerived) is deferred to
- * a future v2 change.
+ * methods, not rely on this degrading the way the image path does.
+ * Extending the MediaStore interface with derived-asset methods
+ * (openDerived / putDerived) is deferred to v2.
  *
  * ffmpeg is a RUNTIME dependency of the video path only, and a
  * missing binary is just another decode failure — the image path
@@ -131,12 +126,11 @@ export function legacyThumbStoragePath(storagePath: string): string {
 /**
  * In-flight generations, keyed by thumbnail path.
  *
- * A cold gallery viewport requests 30-60 tiles at once, every one a cache miss,
- * and each miss used to start its own independent `sharp` pipeline — dozens of
- * concurrent libvips decodes of multi-MB PNGs, competing for sharp's own thread
- * pool, precisely at first paint of a new library. Two requests for the SAME id
- * also both generated, and both wrote to the same path with no tmp+rename (which
- * `DiskMediaStore.put` does have), so they raced on the output file.
+ * A cold gallery viewport requests 30-60 tiles at once, every one a cache miss.
+ * Without this, each miss starts its own `sharp` pipeline — dozens of concurrent
+ * libvips decodes of multi-MB PNGs, competing for sharp's own thread pool,
+ * precisely at first paint of a new library — and two requests for the SAME id
+ * both generate and race on the output file.
  *
  * Deduping collapses the duplicate work and makes the write single-writer per
  * path; the semaphore below bounds the rest.
@@ -155,7 +149,7 @@ const inFlight = new Map<string, Promise<ThumbnailRef | null>>();
  * Shared rather than per-kind so the total is bounded by one number. The cost
  * is head-of-line blocking — a fast image thumbnail can queue behind video
  * decodes — which is why the video path is bounded in time (FFMPEG_TIMEOUT_MS)
- * and no longer retries a decode that already failed.
+ * and remembers decodes that already failed (see `failed`).
  */
 const MAX_CONCURRENT_GENERATIONS = 3;
 let active = 0;
@@ -332,11 +326,11 @@ async function encodeVideoThumb(sourceAbs: string, tmpAbs: string): Promise<void
 	// Retry on "no frame came out", not on "ffmpeg was unhappy" — see `frameAt`
 	// for why the exit status is the wrong thing to key on. The only failure
 	// held back from the retry is a timeout.
-	// ONE budget across both attempts, not one each. The semaphore's rationale
-	// for sharing three slots with the image path is that video is bounded in
-	// time by FFMPEG_TIMEOUT_MS — which was only true per attempt, so a file that
-	// burned most of the budget and then errored got a second full one, holding a
-	// slot for roughly twice what the comment claimed.
+	//
+	// ONE budget across both attempts, not one each: the semaphore shares its
+	// slots with the image path on the premise that video is bounded by
+	// FFMPEG_TIMEOUT_MS, and a per-attempt budget would let a file hold a slot
+	// for twice that.
 	const startedAt = Date.now();
 	const first = await frameAt(sourceAbs, tmpAbs, SEEK_SECONDS, FFMPEG_TIMEOUT_MS);
 	if (first === 'ok') return;
@@ -351,10 +345,6 @@ async function encodeVideoThumb(sourceAbs: string, tmpAbs: string): Promise<void
 	// would see the FIRST attempt's partial JPEG, call it 'ok', and hand a
 	// truncated frame to the WebP encode, whose output the endpoint serves
 	// immutable for a year.
-	//
-	// This was genuinely safe until the retry was widened to fire on errors as
-	// well as on empty output; before that, an attempt that wrote bytes and threw
-	// never reached a second attempt at all.
 	await unlink(tmpAbs).catch(() => {});
 
 	// Whatever is left. The short-clip case this retry exists for fails in
@@ -645,13 +635,12 @@ async function generateThumbnail(
 		// DiskMediaStore.put.
 		const tmpAbs = `${thumbAbs}.${process.pid}.${randomUUID()}.tmp`;
 		try {
-			// mkdir handles the case where the thumb's shard doesn't exist yet —
-			// routinely, now that it may live under a DERIVED_DIR nothing else has
-			// written to. Inside the try because that directory may also be on a
-			// volume that is absent or read-only while MEDIA_DIR is healthy, and a
-			// throw here would reject getOrCreateThumbnail and 500 the tile. The
-			// catch below returns null instead, which is the endpoint's documented
-			// signal to degrade.
+			// The thumb's shard routinely doesn't exist yet, since it may live under
+			// a DERIVED_DIR nothing else has written to. Inside the try because that
+			// directory may also be on a volume that is absent or read-only while
+			// MEDIA_DIR is healthy, and a throw here would reject getOrCreateThumbnail
+			// and 500 the tile. The catch below returns null instead, which is the
+			// endpoint's documented signal to degrade.
 			mkdirSync(dirname(thumbAbs), { recursive: true });
 
 			try {

@@ -323,10 +323,8 @@ describe('serializeBranchForUpstream', () => {
 	});
 
 	it('round-trips a full tool-using turn: user → assistant(tool_call) → tool → assistant', async () => {
-		// This is the OpenAI wire shape after one tool round-trip — the
-		// real-world output of the relay loop in PRs 4-5. Verifies the
-		// serialized sequence is exactly what we'd post upstream on the
-		// follow-up request.
+		// The OpenAI wire shape after one tool round-trip of the relay loop:
+		// exactly what we'd post upstream on the follow-up request.
 		const branch: ChatMessage[] = [
 			msg('user', [{ type: 'text', text: 'what time is it in Tokyo?' }], 'u1'),
 			msg(

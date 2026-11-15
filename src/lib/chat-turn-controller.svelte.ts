@@ -2,13 +2,13 @@
  * Single-turn chat orchestration — the client-side state machine for the
  * ordinary (non-fan-out) turn lifecycle: send / edit / retry streaming, the
  * untrusted-tool approval-resume, and server-truth recovery of a generation
- * whose local fetch died (iOS suspend / network drop). Extracted from the chat
- * page so the four flows that used to mutate the same shared render state
- * inline — coordinated by ad-hoc `convId === turnConvId` / `activeAbort ===
- * abort` conventions — live behind one object with injected deps, unit-testable
- * in isolation. Mirrors fanout-controller.svelte.ts (a `$state` class the page
- * hosts); the two share the interruption flags (this controller owns them, the
- * fan-out reads them through `interrupted`).
+ * whose local fetch died (iOS suspend / network drop). The four flows mutate the
+ * same shared render state, so they live behind one object with injected deps,
+ * unit-testable in isolation, rather than inline in the page coordinated by
+ * ad-hoc `convId === turnConvId` / `activeAbort === abort` conventions.
+ * Mirrors fanout-controller.svelte.ts (a `$state` class the page hosts); the
+ * two share the interruption flags (this controller owns them, the fan-out
+ * reads them through `interrupted`).
  *
  * Owns: the in-flight bubble state (segments + open/progress/status/queued/
  * mcp-unavailable), the per-turn `busy`/`activeAbort`, the just-streamed message
@@ -65,7 +65,7 @@ import type {
  * message list, so the check is free there. The recovery poll deliberately does
  * NOT re-derive it — asking the server for the branch every 4s just to inspect
  * its last row is what made that poll expensive; it gates on the in-flight
- * registry instead, which `onGenerationSettled` now clears promptly.
+ * registry instead, which `onGenerationSettled` clears promptly.
  */
 function turnLooksSettled(messages: ChatMessage[]): boolean {
 	// The LITERAL last row, deliberately — not the reply a trailing reaction tool
@@ -352,15 +352,11 @@ export class ChatTurnController {
 			// render state; it belongs to a different conversation now.
 			shouldContinue: () => this.#deps.convId() === ctx.turnConvId,
 			onQueued: (ahead, paused) => {
-				// Waiting on a per-endpoint concurrency slot. Show "Queued…" until
-				// the slot is granted and the first real event lands.
 				this.inFlightQueued = { ahead, paused };
 				// Past the (pre-slot) enhancement phase — drop its transient status.
 				this.inFlightStatus = null;
 			},
 			onMcpUnavailable: (servers) => {
-				// A conversation-enabled per-user MCP server is down; its tools were
-				// skipped this turn. Surface the inline notice on the bubble.
 				this.inFlightMcpUnavailable = servers;
 			},
 			onStart: async (userMessage) => {
@@ -391,12 +387,12 @@ export class ChatTurnController {
 			// the previous bottom and the post-tick effect had to correct it anyway.
 			// Two forced layouts per streamed token, one of them measuring stale
 			// geometry.
+			//
 			// Content implies a slot: nothing upstream produces output before the
 			// gate grants one. `??=` so a real `start` keeps its own timestamp —
 			// this only backstops a stream that somehow reaches content without
-			// one. That used to be cosmetic; now that the sidebar's mark reads
-			// `inFlightStartedAt`, a missed `start` would leave a live generation
-			// wearing the QUEUED ring for its whole run.
+			// one. The sidebar's mark reads `inFlightStartedAt`, so a missed `start`
+			// would leave a live generation wearing the QUEUED ring for its whole run.
 			onText: (chunk) => {
 				this.inFlightQueued = null;
 				this.inFlightStartedAt ??= Date.now();
@@ -438,8 +434,6 @@ export class ChatTurnController {
 				this.liveReaction = { messageId, emoji };
 			},
 			onCanvasVersion: (c) => {
-				// A create_canvas / update_canvas edit landed — swap the pane to the
-				// new server-rendered state and flash the change.
 				this.#deps.applyCanvas(c);
 			},
 			onToolPendingApproval: (toolCallId, toolName, args) => {
@@ -461,9 +455,7 @@ export class ChatTurnController {
 				this.inFlightStatus = status;
 			},
 			onTitle: (newTitle) => {
-				// Task-model auto-title arrived ahead of `done`. Update the chat-page
-				// header immediately; the sidebar refreshes via refreshAll after
-				// the stream closes.
+				// The sidebar picks the title up from the post-stream refresh.
 				this.#deps.setTitle(newTitle);
 			},
 			onDone: ({ assistantMessage, sawToolCalls }) => {
@@ -601,8 +593,6 @@ export class ChatTurnController {
 
 		const abort = new AbortController();
 		this.activeAbort = abort;
-		// Wire body construction lives in `buildSendRequestBody` — see that module
-		// for the three modes (retry, edit, plain send).
 		const requestBody = buildSendRequestBody({
 			text,
 			attachedMediaIds,
@@ -859,14 +849,12 @@ export class ChatTurnController {
 				if (body.inFlightSince !== null) {
 					this.#deps.setServerGeneratingSince(body.inFlightGeneratingSince);
 				}
-				// The registry alone is the signal now: `onGenerationSettled` frees the
-				// entry as soon as the response is persisted, ahead of the title race,
-				// so it no longer lags the message landing the way it did when this
-				// also checked the branch leaf. Dropping that check is what lets the
-				// poll skip the message walk entirely — and it removes the trap that
-				// the leaf mid-tool-loop IS an assistant row, which a naive
-				// "assistant row landed ⇒ done" read would call finished while the
-				// server still had iterations to run.
+				// The registry alone is the signal: `onGenerationSettled` frees the
+				// entry as soon as the response is persisted, ahead of the title race.
+				// Not also checking the branch leaf is what lets the poll skip the
+				// message walk entirely — and avoids the trap that mid-tool-loop the
+				// leaf IS an assistant row, which a naive "assistant row landed ⇒ done"
+				// read would call finished while the server still had iterations to run.
 				if (body.inFlightSince === null && !stopped) {
 					stopped = true;
 					clearInterval(interval);
