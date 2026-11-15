@@ -79,8 +79,6 @@ export class GalleryFeed {
 		// (the last, short page).
 		if (initialUnits.length >= this.totalUnits && this.totalUnits > 0) {
 			this.#loadedPages.add(Math.floor((this.totalUnits - 1) / GalleryFeed.PAGE));
-		} else if (initialUnits.length % GalleryFeed.PAGE === 0 && initialUnits.length > 0) {
-			// exact page boundary already handled by `covered`
 		}
 	}
 

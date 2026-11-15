@@ -100,7 +100,7 @@ describe('the gate claims a pass only when one was earned', () => {
 	const gate = load('ci.yml').gate;
 	const script = gate?.steps?.find((step) => step.id === 'inherit')?.run ?? '';
 
-	it('runs on master and on tags, and nowhere else', () => {
+	it('runs on main and on tags, and nowhere else', () => {
 		// Both refs matter and for different reasons: main is the merge case,
 		// a tag is the release case. Dropping the tag clause would silently make
 		// every publish pay for a full re-run of checks it already has.

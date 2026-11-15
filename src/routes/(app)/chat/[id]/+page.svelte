@@ -2297,10 +2297,7 @@
 	// First-message handoff from /(app)/+page.svelte: when the new-chat page
 	// creates a conversation, it stashes the first message in sessionStorage
 	// and navigates here so the response can stream in this page's lifecycle.
-	// Payload is JSON-encoded {text, attachedMediaIds[]} so attachments
-	// picked on the new-chat page travel into the first send. The bare-string
-	// branch keeps backwards compat with any in-flight tabs from before the
-	// JSON shape — safe to delete a release or two from now.
+	// Payload is a JSON-encoded `PendingFirstMessage`; anything else is dropped.
 	let bootstrapped = $state(false);
 	$effect(() => {
 		if (bootstrapped || typeof window === 'undefined' || turn.busy) return;
@@ -2309,7 +2306,7 @@
 		if (pending) {
 			window.sessionStorage.removeItem(key);
 			bootstrapped = true;
-			let pendingText = pending;
+			let pendingText: string | null = null;
 			let pendingMediaIds: string[] = [];
 			let pendingFanout: FanoutModel[] | null = null;
 			let pendingSplitImageIds: string[] | null = null;
@@ -2338,8 +2335,9 @@
 					if (typeof ar === 'string' && ar) pendingAspectRatio = ar;
 				}
 			} catch {
-				// Old format — pending was already plain text.
+				// Not JSON: nothing to send.
 			}
+			if (pendingText === null) return;
 			// A multi-model and/or split-attachments first message fans out;
 			// otherwise it's a plain single send. Branches = the picked models
 			// (or the conversation's single model) crossed with the split images.

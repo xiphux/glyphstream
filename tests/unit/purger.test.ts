@@ -11,7 +11,6 @@ import { seedUser } from './_helpers/seed';
 const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
 	mediaDir: '',
-	graceMs: 0,
 }));
 
 vi.mock('#lib/server/env.js', () => ({
@@ -19,10 +18,6 @@ vi.mock('#lib/server/env.js', () => ({
 	// Coincident, as for any install that leaves DERIVED_DIR unset. The split
 	// itself is covered in media-derived-dir.test.ts.
 	derivedDir: () => mocks.mediaDir,
-	// Note: the purger no longer reads grace/interval from env (commit
-	// "Narrow purger to abandoned uploads only" hardcoded both). Kept
-	// `graceMs` on `mocks` only because earlier tests reference it for
-	// their own cutoff math, not because the purger consumes it.
 	dbPath: () => ':memory:',
 	configPath: () => '/tmp/nope.toml',
 	authSecret: () => 'test-secret',
@@ -44,7 +39,6 @@ beforeEach(() => {
 	const dir = mkdtempSync(resolve(tmpdir(), 'gs-purger-'));
 	mocks.mediaDir = dir;
 	tmpDirs.push(dir);
-	mocks.graceMs = 7 * 86_400_000; // default 7 days
 });
 
 afterEach(() => {

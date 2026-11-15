@@ -63,7 +63,6 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 			inFlightGeneratingSince: getInFlightGeneratingSince(params.id),
 			fanout: { ...fanout, siblings: keyed.filter((k) => !have.has(k.key)).map((k) => k.m) },
 			siblingKeys: keyed.map((k) => k.key),
-			avatarDrawSince: null,
 		};
 		return Response.json(body);
 	}
@@ -82,9 +81,6 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 		conversation: conv,
 		inFlightSince,
 		inFlightGeneratingSince,
-		// Always null; kept for a tab running a release that drew portraits as
-		// messages — see `ConversationRecoveryPoll.avatarDrawSince`.
-		avatarDrawSince: null,
 		fanout,
 	});
 };
