@@ -271,9 +271,9 @@ api_key_env = "MISSING_KEY"
 		// A missing config means "nothing is configured", which is already a legal
 		// state here ("Empty config is allowed — no endpoints yet"): a file that omits
 		// [[endpoints]] and a file that doesn't exist are the same situation. Throwing
-		// mattered once the OPTIONAL loaders started being read from hot paths
+		// would matter because the OPTIONAL loaders are read from hot paths
 		// (serialize-upstream, the media path) — config.toml is gitignored, so CI has
-		// none, and the whole unit suite went red on an ENOENT thrown from a module
+		// none, and the whole unit suite would go red on an ENOENT thrown from a module
 		// nobody would connect to config.
 		expect(loadEndpoints('/nonexistent/path/config.toml')).toEqual([]);
 	});

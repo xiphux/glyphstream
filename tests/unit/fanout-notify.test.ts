@@ -3,9 +3,8 @@
  * logic — fire only on the LAST branch (empty in-flight registry), skip when
  * nothing was produced, count as the greater of the client's fan-out size and
  * the produced count, and the per-modality noun — is the valuable part, so its
- * three
- * collaborators (in-flight registry, sibling query, push) are mocked and the
- * coordinator is driven directly.
+ * three collaborators (in-flight registry, sibling query, push) are mocked and
+ * the coordinator is driven directly.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -117,7 +116,7 @@ describe('notifyFanoutCompleteIfLast', () => {
 	});
 
 	it('stays silent when EVERY branch failed (only error siblings persisted)', () => {
-		// Failed branches now persist durable error siblings, so the row count is
+		// Failed branches persist durable error siblings, so the row count is
 		// non-zero — but they aren't results, so no false "N ready" push fires.
 		getInFlightEntries.mockReturnValue([]);
 		getSiblingAssistants.mockReturnValue(errorSiblings(4));

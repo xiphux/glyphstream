@@ -3,8 +3,8 @@
  * The invariant that's otherwise awkward to reach through the full handler:
  *  - resolveModelOverride: a fan-out branch's model is TRANSIENT — it must never
  *    be persisted (persist:false), or N concurrent branches clobber the
- *    conversation's stored default. This is the regression guard the plan called
- *    a linchpin ("silently rewrites users' conversation models").
+ *    conversation's stored default, silently rewriting users' conversation
+ *    models.
  */
 import { describe, it, expect } from 'vitest';
 import {

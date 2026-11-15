@@ -220,7 +220,7 @@ describe('getEndpointsStatus', () => {
 		// The confusing picture this tier removes: a batch of image sends with
 		// prompt enhancement on stacks up on the ENHANCER's endpoint, and the image
 		// endpoint's queue then fills one entry at a time with nobody submitting.
-		// Both halves of the pipeline are now visible from the start.
+		// Both halves of the pipeline are visible from the start.
 		const util = ep({ id: 'util', maxConcurrent: 1, resourceGroupMaxConcurrent: 1 });
 		const comfy = ep({ id: 'comfy', maxConcurrent: 1, resourceGroupMaxConcurrent: 1 });
 		listEndpointsMock.mockReturnValue([util, comfy]);

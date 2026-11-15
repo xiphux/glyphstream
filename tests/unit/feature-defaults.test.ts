@@ -1,5 +1,5 @@
 /**
- * Precedence for a new chat's feature opt-outs. Extracted from the new-chat
+ * Precedence for a new chat's feature opt-outs. Kept out of the new-chat
  * page's `$effect` specifically so it can be pinned here — the effect re-fires
  * on its own writes, and the ordering bug it can produce (a reused prompt's
  * toggles immediately overwritten by a default) is invisible until someone

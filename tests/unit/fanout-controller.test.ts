@@ -1,5 +1,5 @@
 /**
- * Unit tests for the extracted multi-model fan-out controller. Instantiated
+ * Unit tests for the multi-model fan-out controller. Instantiated
  * with mock deps + a URL-dispatching fetch stub, so the orchestration (server
  * recovery rebuild, the derived grid state, the pick/discard/stop/send flows)
  * is exercised without a live page or backend. $app/navigation + the title
@@ -480,10 +480,10 @@ describe('FanoutController — actions', () => {
 	});
 
 	it('teardown clears an in-flight action, so the next conversation still rebuilds', async () => {
-		// `picking` is the one gate term that used to survive a switch. Leaving a
-		// conversation mid-discard then made the next conversation's parked grid
-		// unreachable: its recovery state is recorded on arrival, and the stale
-		// lock rejected it.
+		// `picking` is a gate term too, so teardown must reset it. Surviving a
+		// switch, a conversation left mid-discard makes the next conversation's
+		// parked grid unreachable: its recovery state is recorded on arrival, and
+		// the stale lock rejects it.
 		let finishDelete!: () => void;
 		vi.stubGlobal(
 			'fetch',
@@ -792,8 +792,8 @@ describe('FanoutController — actions', () => {
 		user.role = 'user';
 		// A media keep-many grid: branch img1 completes; branch img2's stream ends
 		// with only a `start` and no terminal done/error event (proxy idle-timeout /
-		// graceful truncation). Before the fix, img2 dangled at 'streaming', keeping
-		// the whole grid non-settled (no Done/Dismiss, composer disabled).
+		// graceful truncation). Left unsettled, img2 would dangle at 'streaming',
+		// keeping the whole grid non-settled (no Done/Dismiss, composer disabled).
 		const fetchMock = vi.fn(async (url: string, init?: { body?: string }) => {
 			if (url.endsWith('/messages/prepare')) return jsonResponse({ userMessage: user });
 			const modelId = (JSON.parse(init?.body ?? '{}') as { modelId: string }).modelId;
@@ -915,7 +915,7 @@ describe('FanoutController — actions', () => {
 	it('send (image branches): prepares the user message then streams the grid', async () => {
 		const user = imageSibling('u1', '', null);
 		user.role = 'user';
-		// Image branches now stream over SSE (the relay emits start → done), like
+		// Image branches stream over SSE (the relay emits start → done), like
 		// chat/video — so each branch surfaces its queued/start state.
 		const fetchMock = vi.fn(async (url: string) => {
 			if (url.endsWith('/messages/prepare')) return jsonResponse({ userMessage: user });
@@ -945,7 +945,7 @@ describe('FanoutController — actions', () => {
 			// not the branches.
 			[{ modelId: 'bridge::sdxl', modelKind: 'image', displayName: 'SDXL' }],
 		);
-		// Branches POST with ?stream=1 now (no sync image path).
+		// Branches POST with ?stream=1 (there is no sync image path).
 		expect(fetchMock).toHaveBeenCalledWith(
 			expect.stringContaining('/messages?stream=1'),
 			expect.anything(),
@@ -1097,12 +1097,11 @@ describe('FanoutController — resolving a grid', () => {
 	});
 
 	it('takes down a grid where every branch failed', async () => {
-		// The exit that was missing. An all-failed comparison persists error
-		// siblings and nothing else, so the grid rebuilds from server truth on every
-		// reload while nothing on it can resolve the comparison: Discard refuses to
-		// remove the last column, and Done had no
-		// successful branch to select — so it contacted the server not at all and
-		// refreshAll put the same grid straight back. Done now clears the marker.
+		// An all-failed comparison persists error siblings and nothing else, so the
+		// grid rebuilds from server truth on every reload. Discard refuses to remove
+		// the last column and Done has no successful branch to select, so unless
+		// Done clears the marker nothing on the grid can resolve the comparison and
+		// refreshAll puts the same grid straight back.
 		const posts: Array<{ url: string; method: string }> = [];
 		vi.stubGlobal(
 			'fetch',
@@ -1114,7 +1113,7 @@ describe('FanoutController — resolving a grid', () => {
 		const { deps } = makeDeps();
 		const fc = new FanoutController(deps);
 		// A recovered grid of pure failures: error siblings DO carry `persisted`,
-		// which is why the old "nothing survived" test on `persisted` missed this.
+		// so a "nothing survived" test on `persisted` misses this case.
 		fc.syncFromServer({
 			parentMessageId: 'desc',
 			kind: 'image',
@@ -1141,8 +1140,8 @@ describe('FanoutController — resolving a grid', () => {
 	});
 
 	it('still promotes a real result when Done has one to promote', async () => {
-		// The other half: a grid with a survivor resolves by selecting it, exactly
-		// as before — the new clear must not swallow that path.
+		// The other half: a grid with a survivor resolves by selecting it — the
+		// marker clear must not swallow that path.
 		const posts: string[] = [];
 		vi.stubGlobal(
 			'fetch',
@@ -1174,10 +1173,9 @@ describe('FanoutController — resolving a grid', () => {
 	it('promotes an image that landed just before a Stop, rather than clearing', async () => {
 		// A branch can set `persisted` on its `done` event and THEN be marked
 		// 'cancelled' when a Stop arrives before the stream closes. That column
-		// holds a real image. While Done was a no-op for it this only cost a
-		// dead button; now that the no-survivor branch clears the marker, treating
-		// it as nothing would take the anchor's children off the active branch for
-		// good — so the predicate is "not an error", not "is done".
+		// holds a real image. Since the no-survivor branch clears the marker,
+		// treating it as nothing would take the anchor's children off the active
+		// branch for good — so the predicate is "not an error", not "is done".
 		const posts: Array<{ url: string; method: string }> = [];
 		vi.stubGlobal(
 			'fetch',
@@ -1247,7 +1245,7 @@ describe('FanoutController — recovered columns keep their aspect ratio', () =>
 	it('is null when the row records no shape', () => {
 		// Media generated before the column existed, a failed branch with no media
 		// row at all, or any upstream that reports no ratio. The re-roll then sends
-		// nothing and the model uses its own default, as it always did.
+		// nothing and the model uses its own default.
 		const { deps } = makeDeps();
 		const fc = new FanoutController(deps);
 		fc.syncFromServer({

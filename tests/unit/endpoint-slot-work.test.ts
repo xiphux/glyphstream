@@ -177,10 +177,9 @@ describe('getResourceGroupSnapshot', () => {
 	});
 
 	it('drops the holder when an eviction throws, not just the slot count', async () => {
-		// The unwind path. `active` was already decremented here before this
-		// change; without the matching holder delete the group would report a
-		// generation that does not exist for the life of the process — and on a
-		// cap-1 group that is the permanent state of the page.
+		// The unwind path decrements `active`; without the matching holder delete
+		// the group would report a generation that does not exist for the life of
+		// the process — and on a cap-1 group that is the permanent state of the page.
 		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
 		const bridge = ep('bridge', 1, 'gpu0');
 		releaseMock.mockImplementation(() => Promise.reject(new DOMException('stopped', 'AbortError')));

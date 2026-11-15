@@ -228,9 +228,10 @@ describe('an abort landing in a poll sleep', () => {
 
 describe('when the backend will not fully cooperate', () => {
 	it("keeps unloading the rest after one model's unload fails", async () => {
-		// The try used to wrap the whole loop, so a transient 503 on the first
-		// model abandoned every model behind it — silently leaving them resident,
-		// which is the OOM this exists to prevent, on any router holding two.
+		// The try is per model: wrapped around the whole loop, a transient 503 on
+		// the first model would abandon every model behind it — silently leaving
+		// them resident, which is the OOM this exists to prevent, on any router
+		// holding two.
 		const posted: string[] = [];
 		let listed = 0;
 		vi.stubGlobal(
