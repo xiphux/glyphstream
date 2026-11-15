@@ -127,7 +127,11 @@ describe('POST /api/user/skills', () => {
 				userLocals,
 				req('multipart/form-data', {
 					formData: async () => {
-						throw new Error('Content-Length exceeded BODY_SIZE_LIMIT (body too large)');
+						// Kit's real Content-Length wording, which no "too large" pattern matched.
+						throw Object.assign(new Error('Content-length of 5105 exceeds limit of 1024 bytes.'), {
+							name: 'SvelteKitError',
+							status: 413,
+						});
 					},
 				}),
 			),

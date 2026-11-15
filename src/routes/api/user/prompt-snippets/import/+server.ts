@@ -8,7 +8,7 @@
  */
 import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
-import { parseJsonBody } from '#lib/server/http.js';
+import { parseFormData, parseJsonBody } from '#lib/server/http.js';
 import { importSnippets } from '#lib/server/prompt-snippets/import-snippets.js';
 import type { RequestHandler } from './$types';
 
@@ -27,21 +27,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		content = body.content;
 		overwrite = body.overwrite === true;
 	} else if (contentType.includes('multipart/form-data')) {
-		let form: FormData;
-		try {
-			form = await request.formData();
-		} catch (e) {
-			// adapter-node aborts the body stream past BODY_SIZE_LIMIT, then
-			// formData() fails on the truncated body — surface a 413, not a 500.
-			const msg = e instanceof Error ? e.message : String(e);
-			if (/body.*too.*large|413|exceeded/i.test(msg)) {
-				error(
-					413,
-					'Upload exceeded the request body size limit. Raise BODY_SIZE_LIMIT in the environment.',
-				);
-			}
-			error(400, 'Body must be multipart/form-data.');
-		}
+		const form = await parseFormData(request, 'Body must be multipart/form-data.');
 		const file = form.get('file');
 		if (!(file instanceof File)) error(400, 'No file in the upload.');
 		content = await file.text();

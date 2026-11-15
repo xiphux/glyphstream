@@ -1,23 +1,51 @@
 import { createHash } from 'node:crypto';
 import { error } from '@sveltejs/kit';
 
+const BODY_TOO_LARGE =
+	'Request body exceeded the size limit. Raise BODY_SIZE_LIMIT in the environment.';
+
 /**
- * Parse a request's JSON body, throwing a 400 on a malformed body or a
- * body that isn't a JSON object. Beyond the object check it's a type
- * assertion only — no runtime schema validation; handlers narrow the
- * specific fields they read.
+ * Whether reading a request body failed because it exceeded adapter-node's
+ * BODY_SIZE_LIMIT. Kit rejects the body stream with an error carrying
+ * `status: 413` (its class isn't exported, and the message differs between a
+ * declared Content-Length and a chunked overrun), so the status is the only
+ * stable signal.
+ */
+export function isBodyTooLarge(e: unknown): boolean {
+	return typeof e === 'object' && e !== null && (e as { status?: unknown }).status === 413;
+}
+
+/**
+ * Parse a request's JSON body, throwing a 413 when it exceeded the body size
+ * limit and a 400 on a malformed body or a body that isn't a JSON object.
+ * Beyond the object check it's a type assertion only — no runtime schema
+ * validation; handlers narrow the specific fields they read.
  */
 export async function parseJsonBody<T>(request: Request): Promise<T> {
 	let parsed: unknown;
 	try {
 		parsed = await request.json();
-	} catch {
+	} catch (e) {
+		if (isBodyTooLarge(e)) error(413, BODY_TOO_LARGE);
 		error(400, 'Request body must be JSON');
 	}
 	if (parsed === null || typeof parsed !== 'object') {
 		error(400, 'Request body must be a JSON object');
 	}
 	return parsed as T;
+}
+
+/**
+ * Parse a request's multipart body: a 413 when it exceeded the body size
+ * limit, otherwise a 400 carrying `invalidMessage` for any parse failure.
+ */
+export async function parseFormData(request: Request, invalidMessage: string): Promise<FormData> {
+	try {
+		return await request.formData();
+	} catch (e) {
+		if (isBodyTooLarge(e)) error(413, BODY_TOO_LARGE);
+		error(400, invalidMessage);
+	}
 }
 
 /**

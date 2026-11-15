@@ -237,12 +237,13 @@ describe('POST /api/uploads', () => {
 	});
 
 	it("answers 413 when adapter-node's BODY_SIZE_LIMIT cut the body off", async () => {
-		// adapter-node aborts the body past BODY_SIZE_LIMIT and formData() then
-		// rejects with this wording; matching only "exceeded" sent it to the
-		// misleading "must be multipart" 400.
+		// Kit rejects the body stream with a SvelteKitError carrying the status.
 		const req = uploadRequest(new File([PNG], 'p.png', { type: 'image/png' }));
 		vi.spyOn(req, 'formData').mockRejectedValue(
-			new Error('Content-length of 26214602 exceeds limit of 26214400 bytes.'),
+			Object.assign(new Error('Content-length of 26214602 exceeds limit of 26214400 bytes.'), {
+				name: 'SvelteKitError',
+				status: 413,
+			}),
 		);
 		const res = await call(upload as Handler, req);
 		expect(res.status).toBe(413);

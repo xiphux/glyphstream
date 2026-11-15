@@ -18,6 +18,7 @@ import {
 	MAX_TAG_LENGTH,
 } from '#lib/server/prompt-snippets/validate.js';
 import { listPromptSnippetsForUser } from '#lib/server/db/queries/prompt-snippets.js';
+import { POST as importRoute } from '../../src/routes/api/user/prompt-snippets/import/+server';
 
 beforeEach(() => {
 	createTestDb();
@@ -638,5 +639,58 @@ describe('importSnippets', () => {
 			});
 			expect(result).toMatchObject({ ok: true, imported: 1 });
 		});
+	});
+});
+
+describe('POST /api/user/prompt-snippets/import', () => {
+	type Event = Parameters<typeof importRoute>[0];
+	function post(userId: string, request: Request) {
+		return importRoute({ locals: { user: { id: userId } }, request } as unknown as Event);
+	}
+	function multipart(formData: () => Promise<FormData>): Request {
+		return {
+			headers: new Headers({ 'content-type': 'multipart/form-data; boundary=B' }),
+			formData,
+		} as unknown as Request;
+	}
+
+	it('imports an uploaded file', async () => {
+		const u = seedUser();
+		const fd = new FormData();
+		fd.set('file', new File([SAMPLE], 'lib.md'));
+		const res = await post(
+			u.id,
+			multipart(() => Promise.resolve(fd)),
+		);
+		expect(await res.json()).toMatchObject({ imported: 2 });
+	});
+
+	// Kit's Content-Length rejection — the browser case, since a form upload
+	// always declares its length — wasn't matched by the old message regex.
+	it('answers 413 when the upload exceeded BODY_SIZE_LIMIT', async () => {
+		const u = seedUser();
+		const tooLarge = Object.assign(
+			new Error('Content-length of 5105 exceeds limit of 1024 bytes.'),
+			{ name: 'SvelteKitError', status: 413 },
+		);
+		await expect(
+			post(
+				u.id,
+				multipart(() => Promise.reject(tooLarge)),
+			),
+		).rejects.toMatchObject({
+			status: 413,
+		});
+		expect(listPromptSnippetsForUser(u.id)).toEqual([]);
+	});
+
+	it('answers 400 for a malformed multipart body', async () => {
+		const u = seedUser();
+		await expect(
+			post(
+				u.id,
+				multipart(() => Promise.reject(new TypeError('bad boundary'))),
+			),
+		).rejects.toMatchObject({ status: 400 });
 	});
 });

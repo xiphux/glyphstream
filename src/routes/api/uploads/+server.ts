@@ -31,6 +31,7 @@ import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import { error } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth/guard.js';
+import { parseFormData } from '#lib/server/http.js';
 import { insertMedia } from '#lib/server/db/queries/media.js';
 import { getMediaStore } from '#lib/server/media/disk-store.js';
 import { probeWrittenImage } from '#lib/server/media/dimensions.js';
@@ -66,34 +67,15 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	// little multipart framing can't be valid for any kind.
 	//
 	// Advisory only: Content-Length is absent on a chunked request, in which case
-	// this is a no-op and adapter-node's BODY_SIZE_LIMIT is the backstop (see the
-	// catch below). It costs one header read and removes the common case.
+	// this is a no-op and adapter-node's BODY_SIZE_LIMIT is the backstop, which
+	// `parseFormData` answers with a 413. It costs one header read and removes the
+	// common case.
 	const declaredLength = Number(request.headers.get('content-length'));
 	if (Number.isFinite(declaredLength) && declaredLength > MAX_UPLOAD_BYTES_FILE + MULTIPART_SLACK) {
 		error(413, `File too large (${declaredLength} bytes; max ${MAX_UPLOAD_BYTES_FILE})`);
 	}
 
-	let form: FormData;
-	try {
-		form = await request.formData();
-	} catch (e) {
-		// SvelteKit's adapter-node aborts the body stream when its
-		// BODY_SIZE_LIMIT (default 512 KB!) is exceeded, then `formData()`
-		// fails to parse the truncated body. Surface that as a 413 with
-		// an actionable message rather than a misleading 400 about
-		// content type. The Dockerfile sets BODY_SIZE_LIMIT (25 MiB + slack) by
-		// default, but a custom deployment with the upstream default
-		// would otherwise hit this for any non-trivial photo.
-		const msg = e instanceof Error ? e.message : String(e);
-		// adapter-node words it "Content-length of N exceeds limit of M bytes."
-		if (/too large|413|exceed/i.test(msg)) {
-			error(
-				413,
-				'Upload exceeded the request body size limit. Raise BODY_SIZE_LIMIT in the environment.',
-			);
-		}
-		error(400, 'Body must be multipart/form-data');
-	}
+	const form = await parseFormData(request, 'Body must be multipart/form-data');
 
 	const file = form.get('file');
 	if (!(file instanceof File)) {
