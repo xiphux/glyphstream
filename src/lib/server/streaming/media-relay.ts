@@ -335,7 +335,6 @@ export async function runMediaRelay(
 					safeClose();
 					return;
 				}
-				// Non-abort: best-effort — log and proceed to generation.
 				log.warn('prepare step failed (continuing):', errorMessage(e));
 			}
 		}
@@ -385,11 +384,6 @@ export async function runMediaRelay(
 			? Promise.resolve<string | null>(null)
 			: startTitleTaskIfFirstExchange(params.conversationId, params.userId);
 
-		// Modality-specific: produce + persist the media bytes. Returns null
-		// after emitting its own cancel event — bail quietly. Returns a
-		// MediaFailure WITHOUT emitting an error event — the scaffold below
-		// persists a durable error sibling (so a recovered fan-out can still
-		// show it) and only then emits the frame, carrying that row's id.
 		const produced = await generate({ write: safeWrite, abortSignal: params.abortSignal });
 		if (!produced) {
 			safeClose();

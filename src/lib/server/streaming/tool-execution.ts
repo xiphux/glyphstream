@@ -137,7 +137,7 @@ export async function executeToolCalls(
 
 	// Partition: tools the user hasn't approved (yet) get persisted as
 	// pending_approval rows and emit an SSE event for the inline prompt;
-	// every other tool runs inline as today.
+	// every other tool runs inline.
 	const settled = await Promise.all(
 		toolCallParts.map(async (part) => {
 			const tool = getTool(part.toolName);
@@ -182,8 +182,8 @@ export async function executeToolCalls(
 	for (const entry of settled) {
 		const part = entry.part;
 		// Pending rows carry `status: 'pending_approval'` + empty result;
-		// completed rows omit the status field to stay byte-identical with
-		// the pre-approval shape (read defenses default absent → completed).
+		// completed rows omit the status field (readers default absent →
+		// completed), so they match rows that predate approvals byte for byte.
 		// A completed search_tools result also persists `activatedToolNames` so
 		// a later turn's branch scan can re-load those tools (conversation-
 		// persistent loading).
@@ -220,14 +220,10 @@ export async function executeToolCalls(
 			tokensIn: null,
 			tokensOut: null,
 		});
-		// Tools may have created media during execute() (run_python
-		// writes generated files via MediaStore; future tools may do
-		// likewise). Link them to the freshly-persisted tool row so
-		// the renderer can surface them as attachments and the orphan
-		// reaper sees the same ref-count semantics user uploads use.
-		// Media MessageParts were pre-constructed by executeOneToolCall
-		// (shared by both the inline and approval-resume paths) so we
-		// just need to link and update here.
+		// Media a tool created during execute() (run_python's generated files) is
+		// linked to the tool row so the renderer surfaces it as attachments and
+		// the orphan reaper sees the same ref-count semantics user uploads use.
+		// The parts were already built by executeOneToolCall.
 		if (entry.kind === 'completed' && entry.execution.attachedMediaIds?.length) {
 			for (const mediaId of entry.execution.attachedMediaIds) {
 				linkMessageMedia(toolMsg.id, mediaId);
@@ -383,8 +379,8 @@ export async function executeOneToolCall(
 	}
 
 	// Cap what is stored and streamed. `max_tool_result_chars` only trims what
-	// goes upstream; the full result still landed in the message row and the
-	// SSE stream, so a script or MCP server that dumped megabytes kept them
+	// goes upstream; without this the full result lands in the message row and
+	// the SSE stream, and a script or MCP server that dumps megabytes keeps them
 	// forever. Head + tail survive (same elision the upstream cap uses).
 	if (execution.content.length > TOOL_RESULT_STORE_MAX_CHARS) {
 		execution = {

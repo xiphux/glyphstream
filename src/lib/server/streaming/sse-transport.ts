@@ -3,13 +3,11 @@
  *
  * All relays speak the same wire format — `event:`/`data:` frames of
  * StreamEvent JSON — and all must tolerate the client disconnecting
- * mid-stream while the recorder branch keeps running. Before this module
- * the two relays each carried their own copy of formatSSE, the
- * swallow-on-disconnect write, the controller.close() guard, and the
- * error-to-string chain — and they had already drifted: video-relay
- * never gained the abort detection the chat relay has. Keeping the
- * transport here means the relays can only diverge in their *logic*,
- * not their plumbing.
+ * mid-stream while the recorder branch keeps running. Per-relay copies of
+ * formatSSE, the swallow-on-disconnect write, the controller.close() guard and
+ * the error-to-string chain drift (a video relay without the chat relay's
+ * abort detection, for one); keeping the transport here means the relays can
+ * only diverge in their *logic*, not their plumbing.
  */
 
 import type { StreamEvent } from '#lib/types/api.js';
@@ -47,10 +45,10 @@ export const CANCELLED_MESSAGE = 'Cancelled';
  * and the upstream fetch's AbortSignal fires. Relays treat this as "end
  * here", not as an error to surface to the user.
  *
- * By NAME only. It used to also match any message containing "aborted",
- * which a request timeout's ("The operation was aborted due to timeout")
- * does — so a timed-out generation was reported as "Cancelled" and left no
- * error row. The endpoint client keeps a real abort an `AbortError` and
+ * By NAME only, never by a message containing "aborted": a request timeout's
+ * message ("The operation was aborted due to timeout") does, and matching it
+ * reports a timed-out generation as "Cancelled" with no error row. The
+ * endpoint client keeps a real abort an `AbortError` and
  * words a timeout as one (endpoints/client.ts `wrapFetchFailure`), and the
  * relays also check their own abort signal, which covers a Stop that
  * surfaces in any other shape.
@@ -87,9 +85,9 @@ export interface SseWriter {
 
 /**
  * How long consecutive deltas are gathered into one frame. One frame per
- * upstream token cost ~45 bytes of SSE framing (plus the transport's own
+ * upstream token costs ~45 bytes of SSE framing (plus the transport's own
  * per-write overhead) around a 3-5 character chunk, uncompressed, on every
- * turn — most of what a phone downloaded while a reply streamed. 50 ms is about
+ * turn — most of what a phone downloads while a reply streams. 50 ms is about
  * three of the client's 60 Hz render frames, short enough that the text still
  * reads as a smooth stream; it just arrives a few tokens at a time.
  */

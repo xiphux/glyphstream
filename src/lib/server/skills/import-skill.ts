@@ -93,9 +93,6 @@ export async function importSkillBundle(
 
 	const storagePath = skillStoragePath(userId, name);
 
-	// Insert the row first: the unique index rejects a concurrent same-name
-	// loser here, synchronously, before any disk write — so the loser can't
-	// clobber the winner's bundle at the shared path.
 	let skill: Skill;
 	try {
 		skill = createSkill({ userId, name, description, storagePath });
@@ -106,8 +103,6 @@ export async function importSkillBundle(
 		throw e;
 	}
 
-	// Then write the bundle; if that fails, roll back the row we just inserted
-	// so we never leave a catalog entry with no bundle on disk.
 	try {
 		await getSkillStore().putBundle(storagePath, files);
 	} catch (e) {

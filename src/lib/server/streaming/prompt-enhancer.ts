@@ -72,8 +72,7 @@ function templatesForMedium(medium: EnhancerMedium): {
 
 export interface EnhancePromptInput {
 	prompt: string;
-	/** Which medium's style pack to rewrite into. Defaults to 'image' for the
-	 *  original image-enhancement call sites. */
+	/** Which medium's style pack to rewrite into. Defaults to 'image'. */
 	medium?: EnhancerMedium;
 	/** The target model's canonical style key (for `medium`), or null to run the
 	 *  format-preserving clarify-only pass. Callers normalize to the medium. */
@@ -185,11 +184,8 @@ export async function enhancePrompt(input: EnhancePromptInput): Promise<EnhanceP
 		);
 		content = resp.choices?.[0]?.message?.content ?? '';
 	} catch (e) {
-		// A user Stop (the relay's abort signal firing mid-call) must cancel the
-		// WHOLE generation, not silently fall back to the original prompt — so
-		// re-throw it and let the relay's prepare step emit Cancelled + close.
-		// Everything else (timeout, 5xx, network, garbage) is a genuine failure
-		// and stays non-fatal: use the original prompt.
+		// A user Stop cancels the WHOLE generation (the relay's prepare step emits
+		// Cancelled); anything else falls back to the original prompt.
 		if (isAbortError(e) || input.signal?.aborted) throw e;
 		const cause =
 			e instanceof UpstreamError ? e.message : e instanceof Error ? e.message : String(e);
@@ -206,11 +202,6 @@ export async function enhancePrompt(input: EnhancePromptInput): Promise<EnhanceP
 		return { enhanced: original, changed: false };
 	}
 
-	// "Changed" decides whether we store the original alongside the enhanced (the
-	// lightbox's enhanced-vs-original split). Ignore generation-irrelevant
-	// trivia so a clarify-only pass that only appends a full stop (or fiddles
-	// surrounding whitespace) doesn't surface a spurious split — when the only
-	// diff is that noise, we treat it as unchanged and keep the user's prompt.
 	const changed = trivialNormalize(enhanced) !== trivialNormalize(trimmed);
 	if (log.enabled('debug') && changed) {
 		const mode = matched ? ' (preserve)' : '';

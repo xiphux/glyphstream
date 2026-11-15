@@ -306,7 +306,6 @@ class DeepseekR1Normalizer implements StreamNormalizer {
 			const idx = this.buffer.indexOf(target);
 
 			if (idx !== -1) {
-				// Found the next tag — emit the prefix in current mode, then flip.
 				if (idx > 0) {
 					out.push({
 						type: this.mode === 'text' ? 'text' : 'reasoning',
@@ -318,10 +317,8 @@ class DeepseekR1Normalizer implements StreamNormalizer {
 				continue;
 			}
 
-			// No full tag in buffer. Could the tail be a partial tag?
 			const partialLen = longestPartialPrefix(this.buffer, target);
 			if (partialLen > 0 && !isFinal) {
-				// Emit everything except the suspect tail; hold the tail.
 				const safe = this.buffer.slice(0, this.buffer.length - partialLen);
 				if (safe.length > 0) {
 					out.push({ type: this.mode === 'text' ? 'text' : 'reasoning', text: safe });
@@ -330,7 +327,6 @@ class DeepseekR1Normalizer implements StreamNormalizer {
 				break;
 			}
 
-			// All clear (or end of stream): emit the whole buffer.
 			out.push({ type: this.mode === 'text' ? 'text' : 'reasoning', text: this.buffer });
 			this.buffer = '';
 			break;
@@ -347,8 +343,6 @@ function longestPartialPrefix(buf: string, target: string): number {
 	}
 	return 0;
 }
-
-// --- factory ------------------------------------------------------------
 
 export function createNormalizer(quirk: ProviderQuirk): StreamNormalizer {
 	switch (quirk) {

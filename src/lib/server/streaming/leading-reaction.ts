@@ -152,8 +152,8 @@ const ID_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456
 
 /**
  * An id for the synthetic call. It is persisted and re-sent upstream on every
- * later turn, and until now every id came from an upstream, so it was always one
- * that upstream accepts. Nine alphanumerics is the strictest format in use —
+ * later turn, so it must be one every upstream accepts, as the ids they issue
+ * themselves are. Nine alphanumerics is the strictest format in use —
  * Mistral's tokenizer (vLLM with `mistral_common`) rejects anything else, which
  * would 400 every later turn of the conversation — and every other upstream
  * takes it.

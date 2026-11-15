@@ -2,8 +2,8 @@
  * Streaming image-generation relay — the one and only image-generation path,
  * used unconditionally by a single-mode send, each multi-model fan-out branch
  * and avatar draws alike. The generation-job runner drives it via
- * `runImageRelay` (see server/generation/jobs.ts); there's no sync POST→JSON
- * variant anymore.
+ * `runImageRelay` (see server/generation/jobs.ts); there is no sync POST→JSON
+ * variant.
  *
  * The full relay lifecycle (slot/queued, start, title, persist as a sibling,
  * notify, done) lives in the shared `startMediaRelay`
@@ -215,9 +215,9 @@ function buildImageRelay(params: ImageRelayParams): [MediaRelayScaffoldParams, M
  * The upstream response as stored on the message row, minus image bytes.
  *
  * A `b64_json` server returns the whole image inline, and that image is
- * already saved under media/. Keeping it in `raw_response_json` too grew the
- * database by the image size again for every picture, for a column kept only
- * for debugging. Each `b64_json` value is replaced with its length.
+ * already saved under media/. Keeping it in `raw_response_json` too would grow
+ * the database by the image size again for every picture, for a column kept
+ * only for debugging. Each `b64_json` value is replaced with its length.
  */
 export function rawResponseForStorage(upstream: unknown): string {
 	return JSON.stringify(upstream, (key, value: unknown) =>

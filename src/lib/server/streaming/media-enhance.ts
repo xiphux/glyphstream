@@ -60,6 +60,10 @@ export interface MediaEnhanceResult {
  * status via `ctx.write` (which also doubles as the fan-out dispatch-release
  * signal, so it's emitted before waiting on the enhancer slot), switching to
  * "Prompt enhancer paused…" for as long as the enhancer's endpoint is paused.
+ *
+ * There is no explicit "clear" event: the branch next acquires the generation
+ * slot and emits `queued`/`start`, and both clients clear the enhancing status
+ * on those, so it doesn't stick into the generating phase.
  */
 export async function runPromptEnhancement(
 	input: MediaEnhanceInput,
@@ -115,7 +119,4 @@ export async function runPromptEnhancement(
 	} finally {
 		enhSlot?.release();
 	}
-	// No explicit "clear" event: the branch next acquires the generation slot and
-	// emits `queued`/`start`, and both clients clear the enhancing status on
-	// those — so it doesn't stick into the generating phase.
 }

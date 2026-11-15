@@ -132,11 +132,10 @@ export function streamCompaction(args: StreamCompactionArgs): ReadableStream<Uin
 					return;
 				}
 				if (!summaryText) {
-					// `length` → the model ran out of its output budget before writing
-					// any summary (typically a thinking model whose reasoning ate the
-					// whole allowance, or a near-full window leaving no room). Surface
-					// that distinctly from a model that simply produced nothing, so the
-					// failure is actionable rather than a bare "empty summary".
+					// `length` (see `finishReason`) gets its own message, distinct from a
+					// model that simply produced nothing, so the failure is actionable
+					// rather than a bare "empty summary". A near-full window leaving no
+					// room for output ends the same way.
 					write({
 						type: 'error',
 						message:

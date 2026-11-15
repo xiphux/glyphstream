@@ -185,9 +185,9 @@ export type PromptShape = 'json' | 'comma-list' | 'tagged-prose' | 'prose';
  * is a documented exception in the other direction — a comma-set-off appositive
  * ("A knight, weary and cold, rides…") reaches the `tagged-prose` shape with no
  * tag in it, and that is left UNGATED on purpose; see `looksLikeBooruTags`. For
- * json it isn't either: the schema is model-specific (Ideogram 4's exact key set lives in
- * `STYLE_INSTRUCTIONS.json` and the per-model hint), and hand-written JSON with
- * the wrong keys is shaped perfectly while being exactly what the rewrite
+ * json it isn't either: the schema is model-specific (Ideogram 4's exact key set
+ * lives in `STYLE_INSTRUCTIONS.json` and the per-model hint), and hand-written
+ * JSON with the wrong keys is shaped perfectly while being exactly what the rewrite
  * exists to fix. Detection still reports the `json` shape honestly; this table
  * is where it's declined.
  */
@@ -222,8 +222,8 @@ const MIN_PROSE_WORDS = 12;
  *  signal. Deliberately excludes -ing forms: "standing on a rooftop" is a
  *  keyword phrase, "she is standing" is prose. `can` and `will` are also left
  *  out despite being auxiliaries: both are everyday prompt nouns ("watering
- *  can", "free will"), so they matched inside genuine tag lists and pushed them
- *  toward the prose shapes. Dropping a marker only ever moves a prompt toward
+ *  can", "free will"), so they would match inside genuine tag lists and push
+ *  them toward the prose shapes. Dropping a marker only ever moves a prompt toward
  *  "not detected", which is the normal rewrite path. */
 const CLAUSE_MARKER = /\b(?:is|are|was|were|be|been|being|has|have|had|would|could|should)\b/i;
 /** Sentence-terminal punctuation followed by more text — a real sentence break,
@@ -309,9 +309,9 @@ export function detectPromptShape(raw: unknown): PromptShape | null {
 
 	// A sentence break the segmentation ate. `split(/[,\n]+/)` consumes the
 	// newline that carried it, and `isClauseLike` only ever looks WITHIN a
-	// segment — so prose typed across short lines had every one of its boundaries
-	// erased, each line read as a verbless fragment, and the whole thing landed in
-	// the un-floored tag-list branch below. That is the one direction this
+	// segment — so prose typed across short lines has every one of its boundaries
+	// erased, each line reads as a verbless fragment, and the whole thing would
+	// land in the un-floored tag-list branch below. That is the one direction this
 	// detector must not be wrong in: a booru model would then be handed English
 	// sentences with the rewrite suppressed. So test the WHOLE string.
 	//
@@ -420,7 +420,7 @@ export function inputAlreadyMatchesStyle(prompt: string, style: PromptStyle): bo
  * loses on recency: the base is composed FIRST and states its rules as rules, so
  * a weak model reading "mostly REFORMAT it into the target style" up top and a
  * preserve instruction below resolves the contradiction by reformatting — the
- * same failure the user-turn verb had to be fixed for.
+ * same failure that makes `enhancePrompt`'s user-turn verb track the mode.
  *
  * Takes the style label as a plain string so it stays medium-agnostic; only the
  * image side detects today (see `prompt-enhancer.ts` for why).

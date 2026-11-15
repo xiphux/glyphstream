@@ -112,7 +112,7 @@ export function recordComparisonPick(
  * of one picture rather than sibling messages: `models` drew the candidates,
  * `winnerModel` the one picked. Same rules — once per model, no loss, nothing
  * for a comparison of one model against itself. A portrait counts as an avatar
- * comparison, as it did when its candidates were messages.
+ * comparison (`avatar_shown` / `avatar_win`).
  */
 export function recordPhotoComparisonPick(
 	winnerModel: string,

@@ -7,8 +7,8 @@
  * multi-model fan-out fires N branch requests against the same conversation,
  * each producing a sibling assistant message. So entries are keyed by
  * conversation id AND a per-branch key. A plain single send uses the
- * `DEFAULT_BRANCH` key, preserving the old one-at-a-time semantics (a second
- * default send aborts the prior). Fan-out branches each pass a distinct key
+ * `DEFAULT_BRANCH` key, with one-at-a-time semantics (a second default send
+ * aborts the prior). Fan-out branches each pass a distinct key
  * so they coexist instead of cancelling one another.
  *
  * Module-level Map is fine for single-process. With multiple replicas this
@@ -26,7 +26,7 @@ import type { ModelKind } from '#lib/types/api.js';
 import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '#lib/fanout.js';
 
 /** Key for a plain single-generation turn — at most one at a time per
- *  conversation, matching the pre-fan-out behavior. */
+ *  conversation. */
 export const DEFAULT_BRANCH = 'default';
 
 /**
@@ -44,8 +44,8 @@ export interface InFlightEntry {
 	 * An explicit field rather than a test on `branchKey`, because there is no
 	 * positive test available there: fan-out keys are `generateId()`, so key
 	 * matching can only ever say "not avatar", and the next side errand would be
-	 * silently readmitted as a turn. Defaults to true so every existing
-	 * registrant keeps its meaning without opting in.
+	 * silently readmitted as a turn. Defaults to true: only a side errand opts
+	 * out.
 	 */
 	isTurn: boolean;
 	controller: AbortController;
@@ -73,8 +73,9 @@ export interface InFlightEntry {
 	 *  concurrency slot), or null while still queued behind the gate. Stamped by
 	 *  the RELAY, which takes this entry as a required parameter precisely so a
 	 *  route cannot forget to wire it up; the synchronous send path reaches no
-	 *  relay and assigns it straight after `acquireEndpointSlot` resolves. Lets a recovered fan-out distinguish
-	 *  a QUEUED branch from a generating one + restore its elapsed timer. */
+	 *  relay and assigns it straight after `acquireEndpointSlot` resolves. Lets a
+	 *  recovered fan-out distinguish a QUEUED branch from a generating one +
+	 *  restore its elapsed timer. */
 	generationStartedAt: number | null;
 	/** Split-attachments input image this branch is editing / animating, or null
 	 *  for text-to-media. Lets a recovered fan-out keep the input thumbnail on
@@ -121,9 +122,6 @@ export function registerInFlight(
 		modelKind,
 		modelId,
 		sourceMediaId,
-		// Null until the relay acquires its slot + starts generating (it sets
-		// this when it emits `start`); a recovered fan-out uses it to tell a
-		// QUEUED branch from a generating one + restore the elapsed timer.
 		generationStartedAt: null,
 		background: false,
 	};
@@ -144,14 +142,14 @@ export function clearInFlight(conversationId: string, entry: InFlightEntry): voi
  * The entries that belong to the conversation's own TURN — a plain send or a
  * fan-out's branches — excluding side errands like an avatar draw.
  *
- * Three consumers reason about "is the turn finished": the fan-out recovery
- * state (how many columns are still generating), the aggregate fan-out
- * notification (am I the last branch), and `getInFlightSince` (is this client
- * looking at a generation it should be rendering). All were written when every
- * entry was necessarily part of one dispatch, and each breaks differently on a
- * foreign entry — the grid grows a phantom column that flips it to a media
- * layout and blocks picking, the "N ready" push is dropped entirely because no
- * branch ever finds the registry empty, and the recovery poll never terminates.
+ * Three consumers reason about "is the turn finished": the fan-out recovery state
+ * (how many columns are still generating), the aggregate fan-out notification (am
+ * I the last branch), and `getInFlightSince` (is this client looking at a
+ * generation it should be rendering). Each assumes every entry is part of one
+ * dispatch, and each breaks differently on a foreign entry — the grid grows a
+ * phantom column that flips it to a media layout and blocks picking, the "N
+ * ready" push is dropped entirely because no branch ever finds the registry
+ * empty, and the recovery poll never terminates.
  *
  * Deliberately NOT the callers that ask a different question:
  * `conversationFanoutAtCapacity` is a resource cap and a draw really does hold
@@ -240,13 +238,13 @@ export function filterFullyQueued(conversationIds: readonly string[]): string[] 
  *  entries, or null when none — whether a turn is in flight at all, which is
  *  what raises the recovered bubble and what the recovery poll terminates on.
  *  Not "generating since": a registered turn may still be queued behind the
- *  gate, so the elapsed timer counts from `getInFlightGeneratingSince`. */
+ *  gate, so the elapsed timer counts from `getInFlightGeneratingSince`.
+ *
+ *  Turn-scoped: an avatar draw isn't a turn this client should be rendering,
+ *  and counting it wedges the recovery poll — it terminates only on null —
+ *  leaving a phantom "Generating…" and a disabled composer for the whole
+ *  draw. */
 export function getInFlightSince(conversationId: string): number | null {
-	// Turn-scoped: this feeds the client's recovered-turn bubble and the poll
-	// that waits for it to clear. An avatar draw isn't a turn this client should
-	// be rendering, and counting it wedges that poll — it terminates only on
-	// null — leaving a phantom "Generating…" and a disabled composer for the
-	// whole draw.
 	const entries = conversationTurnEntries(conversationId);
 	if (entries.length === 0) return null;
 	let earliest = entries[0].startedAt;
@@ -262,10 +260,10 @@ export function getInFlightSince(conversationId: string): number | null {
  * `getInFlightSince` answers "since when has this been registered", which is
  * the wrong zero for an elapsed timer on a saturated endpoint: queue a stack of
  * video generations against a max_concurrent=1 GPU and each one waits hours
- * behind the others. A recovered bubble that counted from registration reported
- * that whole wait as "generating", then kept counting through the real run. The
- * fan-out grid never had this problem because its recovery payload carries each
- * branch's `generationStartedAt`; this is the same fact for a single turn.
+ * behind the others. A recovered bubble counting from registration would report
+ * that whole wait as "generating", then keep counting through the real run. The
+ * fan-out grid avoids this because its recovery payload carries each branch's
+ * `generationStartedAt`; this is the same fact for a single turn.
  *
  * Paired with `getInFlightSince` rather than replacing it: that one is also the
  * recovery poll's termination signal, and a queued turn is very much in flight.

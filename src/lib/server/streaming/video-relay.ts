@@ -71,8 +71,9 @@ export interface VideoRelayParams extends MediaRelayParams {
 	 * Fires with the bridge-side job id as soon as POST /v1/videos returns (or a
 	 * reattach resumes it), so the caller can stash it on the in-flight entry
 	 * for cancellation (DELETE /v1/videos/{id}) — and the job runner on its job
-	 * row, so a restart can pick the bridge job back up (see `reattach`). Keeps this relay decoupled from the
-	 * in-flight registry's keying — the caller owns which entry to update.
+	 * row, so a restart can pick the bridge job back up (see `reattach`). Keeps
+	 * this relay decoupled from the in-flight registry's keying — the caller owns
+	 * which entry to update.
 	 */
 	onJobId?: (jobId: string) => void;
 	/**
@@ -278,7 +279,6 @@ function buildVideoRelay(params: VideoRelayParams): [MediaRelayScaffoldParams, M
 		// poll loop warns once rather than on every tick.
 		const warnedStatuses = new Set<string>();
 
-		// Initial state
 		emitProgress(write, job, warnedStatuses);
 
 		let startedAt = Date.now();

@@ -184,11 +184,10 @@ export interface RelayParams {
 	 * REQUIRED, and taken as the entry rather than a callback, because that
 	 * stamp is the whole definition of "queued vs running" for every reader —
 	 * the sidebar mark, its poll, the layout seed, fan-out recovery — and an
-	 * optional `onStarted` hook made it a thing each route had to remember. One
-	 * route didn't, and its resumed turns reported as queued for their entire
-	 * run while holding the GPU. The gate handover happens here, so the stamp
-	 * belongs here; a new route now cannot fail to opt in, because there is
-	 * nothing to opt into.
+	 * optional `onStarted` hook makes it a thing each route has to remember: a
+	 * route that forgets reports its turns as queued for their entire run while
+	 * they hold the GPU. The gate handover happens here, so the stamp belongs
+	 * here; a route cannot fail to opt in, because there is nothing to opt into.
 	 */
 	inFlight: InFlightEntry;
 	// Note: chat fan-out is pick-one, so this relay has no regenerate path today
@@ -476,10 +475,6 @@ async function runChatTurn(
 	};
 	write(startEvent);
 
-	// Tell the client up front if any conversation-enabled per-user MCP server
-	// is down — its tools were circuit-broken out of this turn, so the inline
-	// notice explains why those tools aren't available rather than failing
-	// silently. Emitted once, right after `start`.
 	if (params.unavailableMcpServers && params.unavailableMcpServers.length > 0) {
 		write({ type: 'mcp_unavailable', servers: params.unavailableMcpServers });
 	}
@@ -495,8 +490,8 @@ async function runChatTurn(
 	let haltedForApproval = false;
 	// How many upstream round-trips this turn actually made. Reported on `done`
 	// so the client knows whether it's holding the whole turn or just its last
-	// row — it can no longer infer that from the tool-call frames, since a
-	// reaction emits none. See StreamDoneEvent.multiIteration.
+	// row — it can't infer that from the tool-call frames, since a reaction
+	// emits none. See StreamDoneEvent.multiIteration.
 	let iterationsRun = 0;
 	let currentRequestBody = params.requestBody;
 	let parentMessageId = params.initialParentMessageId ?? params.userMessage.id;
@@ -665,8 +660,8 @@ async function runChatTurn(
 			});
 
 			// Fire push notification for the completed turn — never per
-			// iteration. Same skip-on-cancel semantics as before. A fan-out
-			// branch suppresses its own (the route sends one aggregate instead).
+			// iteration, and not for a stopped one. A fan-out branch suppresses
+			// its own (the route sends one aggregate instead).
 			if (
 				!params.suppressNotify &&
 				!stoppedFinal &&
@@ -997,15 +992,9 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 	const toolCalls = streamError === null ? [...toolCallAccum.values()] : [];
 	for (const tc of toolCalls) {
 		if (dropUnhonouredReactions && isReactionTool(tc.name)) continue;
-		// For tools whose primary argument is source code (today:
-		// run_python's `code` parameter), pre-render that code through
-		// the same shiki-backed markdown pipeline that produces
-		// contentHtml. The renderer prefers `argsHtml` over the raw JSON
-		// args when present, so the persisted view reads as syntax-
-		// highlighted Python instead of a stringified JSON blob. Safe to
-		// no-op silently — JSON parse failure, missing field, unknown
-		// tool, render error: each path falls back to the un-highlighted
-		// JSON args via the absent field.
+		// The renderer prefers `argsHtml` over the raw JSON args, so a code-shaped
+		// argument (run_python's `code`) reads as highlighted code. Any failure
+		// leaves the field absent and falls back to the raw JSON args.
 		const argsHtml = await maybeRenderCodeArg(tc.name, tc.args);
 		parts.push({
 			type: 'tool_call',
@@ -1075,12 +1064,8 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 }
 
 /**
- * Translate one normalized delta into the corresponding client-facing
- * SSE event. Centralized so both the upstream-streaming loop and the
- * end-of-stream flush use exactly the same mapping.
- */
-/**
- * Forward one normalized delta to the client.
+ * Forward one normalized delta to the client. Shared by the upstream-streaming
+ * loop and the end-of-stream flush so both use exactly the same mapping.
  *
  * `hiddenToolCallIds` accumulates the ids of calls whose tool blocks must never
  * render — today only `react_to_message`, whose entire point is that it appears
