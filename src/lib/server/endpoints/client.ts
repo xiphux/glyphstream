@@ -922,9 +922,12 @@ export async function embeddings(
 		`Network error contacting endpoint "${endpoint.id}" at ${url}`,
 	);
 	await ensureOk(res, `Endpoint "${endpoint.id}" returned HTTP ${res.status} from /embeddings`);
-	// Here rather than at the callers: embeddings and rerank are the two task
-	// calls that skip the endpoint gate (where the other tasks are counted), and
-	// each has exactly one purpose.
+	// Counted here rather than at the gate: embeddings and rerank deliberately
+	// skip `acquireEndpointSlot`. Most calls come from a tool running inside a
+	// chat turn that already holds its slot for the whole turn, so acquiring
+	// again would queue behind that turn until the timeout at max_concurrent=1,
+	// or evict the turn's own model through a resource-group handover. The cost
+	// is that they don't show on /settings/endpoints.
 	recordModelEvent({ endpointId: endpoint.id, modelId: body.model }, 'task:embed');
 	return parseJson<EmbeddingsResponse>(
 		res,
@@ -1000,6 +1003,7 @@ export async function rerank(
 		`Network error contacting endpoint "${endpoint.id}" at ${url}`,
 	);
 	await ensureOk(res, `Endpoint "${endpoint.id}" returned HTTP ${res.status} from /rerank`);
+	// Ungated and counted here, like `embeddings()`.
 	recordModelEvent({ endpointId: endpoint.id, modelId: body.model }, 'task:rerank');
 	const parsed = await parseJson<unknown>(
 		res,

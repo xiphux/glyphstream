@@ -112,6 +112,8 @@ export async function searchMediaForUser(
 	// a model's output dimension would make cosineRank→dot throw, and there's no
 	// gallery +error.svelte to catch a 500. Mirrors denseRank in tools/memory.ts.
 	try {
+		// Ungated like every embeddings call: a sub-second search must not queue
+		// behind a long generation on the same endpoint (see `embeddings()`).
 		const qvec = await embedQuery(rawQuery, cfg, AbortSignal.timeout(cfg.timeoutSeconds * 1000));
 		if (!qvec) return ftsItems.slice(0, limit);
 
