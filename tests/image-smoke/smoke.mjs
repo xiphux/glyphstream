@@ -41,12 +41,20 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 // and kit 3 puts hooks.server under entries/. A name this list misses gets
 // imported: once that was the listener (EADDRINUSE on :3000) and a second set
 // of sweepers on the live DB.
+//
+// Vite's optional-peer-dep stubs are skipped for the opposite reason: each one
+// stands in for an uninstalled optional peer and exists only to throw, so it
+// fails here even when every importer guards it (proxy-agent-negotiate's
+// `import('kerberos')`, behind web-push, sits in a try/catch). Skipping them
+// hides nothing: an unguarded static import of a stub throws when its importer
+// is evaluated, and the importer is still imported here.
 const SKIP = [
 	/\/server\/adapter-index\.js$/, // listens on PORT, installs signal handlers
 	/\/server\/adapter-node-handler\.js$/, // calls server.init
 	/\/server\/handler\.js$/, // re-exports the handler above
 	/\/hooks\.server(\.js-[^/]*)?\.js$/, // entries/hooks.server.js (kit 3)
 	/\/worker\.js$/,
+	/\/__vite-optional-peer-dep_[^/]*\.js$/,
 ];
 
 const checks = {
