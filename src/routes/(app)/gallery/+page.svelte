@@ -606,8 +606,9 @@
 	 *
 	 * Exception: with the Favorites filter on, the toggle changes what the filtered
 	 * library *contains*, which no local badge patch can express — so browse reseeds
-	 * (and re-reads its load, which there is only the memoized Model facets) and
-	 * search drops the row.
+	 * and re-reads its load (only the memoized Model facets there), and search
+	 * drops the row. A failure in that refresh doesn't revert the star: the save
+	 * already landed.
 	 */
 	async function toggleFavorite(id: string, next: boolean) {
 		if (favoritingId) return;
@@ -624,6 +625,7 @@
 		error = null;
 		applyLocal(next);
 		if (unitKey) feed.patchUnitFavorite(unitKey, next ? 1 : -1);
+		let saved = false;
 		try {
 			const res = await fetch(`/api/media/${id}`, {
 				method: 'PATCH',
@@ -631,6 +633,7 @@
 				body: JSON.stringify({ favorite: next }),
 			});
 			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
+			saved = true;
 			// With the filter on, the item's membership in the *filtered* library just
 			// changed — in whichever direction — so the view showing it has to be
 			// rebuilt. Browse and search render different things and rebuild differently.
@@ -670,8 +673,10 @@
 				}
 			}
 		} catch (e) {
-			applyLocal(!next);
-			if (unitKey) feed.patchUnitFavorite(unitKey, next ? -1 : 1);
+			if (!saved) {
+				applyLocal(!next);
+				if (unitKey) feed.patchUnitFavorite(unitKey, next ? -1 : 1);
+			}
 			error = e instanceof Error ? e.message : 'Failed to update favorite';
 		} finally {
 			favoritingId = null;
