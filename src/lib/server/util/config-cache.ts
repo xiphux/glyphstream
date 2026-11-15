@@ -4,8 +4,7 @@
  *
  * Every cache made here registers itself, so a test that changes the config or
  * the environment resets all of them with one `resetConfigCachesForTests()`
- * instead of knowing which modules memoise what. That used to be eight
- * differently named reset hooks, and several getters had none.
+ * instead of knowing which modules memoise what.
  *
  * Call `memoizeConfig` at module scope only (directly, or through a factory
  * like `createModelResolver` that is itself called at module scope). Each call

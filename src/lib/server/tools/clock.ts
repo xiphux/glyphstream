@@ -1,6 +1,6 @@
 /**
- * `get_current_time` — the v1 proof-of-concept tool. Returns the current
- * date+time, optionally in a caller-specified IANA timezone. Uses the
+ * `get_current_time` — returns the current date+time, optionally in a
+ * caller-specified IANA timezone. Uses the
  * built-in `Intl.DateTimeFormat` for timezone validation + formatting so
  * there are zero new dependencies.
  *
@@ -69,9 +69,9 @@ export const clockTool: Tool = {
  * The zone to answer in: whatever the model asked for, else the USER's own zone
  * (browser-reported, on their preferences), else the server's.
  *
- * It used to default to UTC, which quietly made "what time is it?" wrong for
- * almost everybody — the model has no way to know the user's zone unless we tell
- * it, so it wasn't going to pass one, and UTC is nobody's wall clock.
+ * Not UTC: the model has no way to know the user's zone unless told, so it
+ * rarely passes one, and UTC is nobody's wall clock — defaulting to it makes
+ * "what time is it?" wrong for almost everybody.
  */
 function parseTimezone(args: unknown, userId: string): string {
 	if (args && typeof args === 'object' && 'timezone' in args) {

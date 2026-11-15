@@ -1,11 +1,10 @@
 /**
  * Shared URL policy for every server-side outbound path that forwards a
- * model-controlled URL. Today's callers: `fetch_url`, and the code
- * interpreter's host-side network proxy (`net-proxy.ts`), which every
- * fetch from Python is relayed to. Future
- * callers — any tool that emits HTTP from inside the Node process based
- * on model-supplied input — should route through here so the
- * "what we refuse and why" answer lives in exactly one place.
+ * model-controlled URL: `fetch_url`, and the code interpreter's host-side
+ * network proxy (`net-proxy.ts`), which every fetch from Python is relayed
+ * to. Any tool that emits HTTP from inside the Node process based on
+ * model-supplied input should route through here so the "what we refuse and
+ * why" answer lives in exactly one place.
  *
  * Three classes of refusal, applied in order:
  *
@@ -27,7 +26,7 @@
  *     backend the model has no legitimate reason to call it via a tool —
  *     that path goes through the streaming relay with proper auth and
  *     accounting. This is the "model can't end-around its own backend"
- *     guard the user called out: disabling `web` for the conversation
+ *     guard: disabling `web` for the conversation
  *     also blocks the conversation's bridge, and the model can't fish
  *     for a SearxNG admin endpoint by pasting its URL.
  *
@@ -69,7 +68,7 @@ export {
  *
  * The forbidden host set is built lazily on first call from
  * `loadEndpoints()` + `loadSearchConfig()`. Config is loaded once at boot
- * and doesn't reload at runtime in v1, so the cached set is stable for
+ * and doesn't reload at runtime, so the cached set is stable for
  * the process lifetime. Tests drop it between scenarios with
  * `resetConfigCachesForTests()`.
  */

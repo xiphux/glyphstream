@@ -61,7 +61,6 @@ export const updateCanvasTool: Tool = {
 			},
 		},
 	},
-	// Never statically advertised — appended per-request when a canvas exists.
 	isAvailable: () => false,
 	metadata: { displayLabel: 'Canvas', icon: 'file-text', category: 'canvas' },
 	async execute(args, ctx) {

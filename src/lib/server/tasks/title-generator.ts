@@ -149,12 +149,7 @@ export function buildTitlePrompt(exchange: {
 	];
 }
 
-/**
- * Strip the kinds of decorations LLMs habitually add to short
- * single-line outputs even when explicitly told not to: surrounding
- * quotes, trailing punctuation, leading "Title:" labels, plus
- * length-capping. Exported for testing.
- */
+/** `sanitizeModelLabel` tuned for titles. Exported for testing. */
 export function sanitizeTitle(raw: string): string {
 	return sanitizeModelLabel(raw, { labelWord: 'title', maxChars: MAX_TITLE_CHARS });
 }

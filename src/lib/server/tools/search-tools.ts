@@ -121,8 +121,6 @@ function renderMatches(matches: DeferredToolEntry[], query: string, catalogSize:
 export const searchToolsTool: Tool = {
 	definition: searchToolsDefinition(),
 	metadata: { displayLabel: 'Search tools', icon: 'search' },
-	// Advertised per-request by buildToolSearchRequestContext (only when deferred
-	// tools exist), never by the static registry — same trick as activate_skill.
 	isAvailable: () => false,
 	async execute(args, ctx: ToolContext): Promise<ToolExecution> {
 		const parsed = parseQueryArg(args);

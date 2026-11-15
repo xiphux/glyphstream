@@ -3,12 +3,10 @@
  * backfiller, topic backfiller, dreaming, conversation summaries, expired
  * sessions).
  *
- * Every one of them independently grew the same skeleton — a recursive
- * `setTimeout` chain, an idempotent `start`, a `stop` that tears the timer down —
- * and their comments said so out loud ("Mirrors the media purger's shape",
- * "Worker skeleton mirrors `dreaming.ts`"). Copying it also let the copies drift:
- * three had a generation token and two didn't, which is a real bug (see below).
- * One implementation removes the drift by construction.
+ * Each needs the same skeleton — a recursive `setTimeout` chain, an idempotent
+ * `start`, a `stop` that tears the timer down — and hand-copied skeletons drift:
+ * separate copies ended up with and without the generation token, which is a
+ * real bug (see below). One implementation removes the drift by construction.
  *
  * ## Why a generation token, not just `clearTimeout`
  *

@@ -1,10 +1,10 @@
 /**
  * Upload classification — given a content type, decide whether the upload
  * is accepted at all, what `media.kind` it lands under, and what size cap
- * applies. Pulled out of the route handler so the rules can be unit-tested
+ * applies. Kept out of the route handler so the rules can be unit-tested
  * directly without spinning up a SvelteKit request.
  *
- * Image and video uploads ride the existing AV pipeline (image-edit /
+ * Image and video uploads ride the AV pipeline (image-edit /
  * video-input-reference / vision data URLs). File uploads (`kind: 'file'`)
  * are the code-interpreter feeder — anything the model might want to
  * analyze with Python (xlsx, csv, pdf, json, txt, ...). The allowlist
@@ -22,7 +22,7 @@ import type { MediaKind } from '#lib/types/api.js';
 import { normalizeContentType, SVG_CONTENT_TYPE } from '#lib/server/media/content-type.js';
 
 /** Photos can be large (full-resolution iPhone photo on Pro models is
- *  well into double-digit MB). 20 MB matches the prior cap. */
+ *  well into double-digit MB). */
 export const MAX_UPLOAD_BYTES_IMAGE = 20 * 1024 * 1024;
 
 /** Documents tend to be smaller than full-res photos but can still go
@@ -64,8 +64,8 @@ export interface UploadClassification {
  *
  * Classifies on the *essence* rather than the raw header value. The raw value
  * can carry parameters (`image/svg+xml; charset=utf-8`), and matching those
- * against the SVG refusal with `===` used to fail while `startsWith('image/')`
- * still matched — storing a scriptable SVG as an ordinary image. Normalizing
+ * against the SVG refusal with `===` fails while `startsWith('image/')` still
+ * matches — storing a scriptable SVG as an ordinary image. Normalizing
  * here rather than at the call site keeps the guarantee even if a future
  * caller forgets.
  */

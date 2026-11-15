@@ -2,13 +2,13 @@
  * `run_python` — executes Python in this conversation's persistent
  * Pyodide interpreter. Variables persist across calls within the same
  * worker session; files written under /workspace/ are persisted as
- * conversation attachments (via the existing media store) and the
+ * conversation attachments (via the media store) and the
  * subsequent turn sees them again under their original names.
  *
  * Gating:
  *  - tool registration is conditional on the global config switch
  *    (`isCodeInterpreterEnabled`)
- *  - per-conversation visibility is the existing `code_interpreter`
+ *  - per-conversation visibility is the `code_interpreter`
  *    feature-category filter on the request-build tool list
  *  - Python NETWORK is gated by the conversation's `web` toggle and by the
  *    url-policy (SSRF + configured-backend block), both applied on the host:

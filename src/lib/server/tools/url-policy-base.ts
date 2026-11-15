@@ -38,9 +38,9 @@ export function assertHttpScheme(url: URL): void {
  * This check alone is not enough: `fetch` resolves the name again when it
  * connects, and a DNS-rebinding server can answer the second lookup with a
  * private address. So every caller ALSO fetches through {@link fetchRoutable},
- * which applies the same filter to the
- * lookup the socket actually uses. This early check stays because it gives a
- * clear refusal message before any connection is attempted.
+ * which applies the same filter to the lookup the socket actually uses. This
+ * early check stays because it gives a clear refusal message before any
+ * connection is attempted.
  */
 export async function assertHostnameRoutable(hostname: string): Promise<void> {
 	// A URL's hostname keeps the brackets around an IPv6 literal. Judge the

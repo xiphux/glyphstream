@@ -7,8 +7,8 @@
  * (`--reasoning-budget 0`). Measured on the task model this repo shipped with:
  * 4 of 30 conversation titles came back as e.g.
  * `"Brotli vs. Gzip Compression </think>"`, and that string is what the user
- * sees in their sidebar — `sanitizeModelLabel` strips quotes, labels and
- * trailing punctuation, but had nothing to say about a stray tag.
+ * sees in their sidebar — `sanitizeModelLabel`'s quote, label and
+ * trailing-punctuation strips do nothing about a stray tag.
  *
  * Deterministic rather than prompted, for the same reason the enhancer counts
  * booru subjects in code: a small model cannot be reliably instructed out of
@@ -31,15 +31,14 @@
  *      widowed closer with nothing after it).
  *
  * Limits, none of which have a rescue: only the LAST widowed closer is
- * considered, so `musing </think> answer </think>"` — two closers straddling
- * the model's own quoting — falls through to the plain strip and leaks the
- * musing. An unclosed `<think>` followed by
- * thinking and NO answer leaves the thinking (there is no answer in the string
- * to recover — callers already treat an empty result as failure, keeping the
- * fallback title / the user's prompt). And content legitimately *about* this
- * markup loses the word: a conversation titled "How to use <think> tags" comes
- * back as "How to use tags". Titles are user-editable, and silently deleting a
- * word beats surfacing raw markup.
+ * considered, so `musing </think> answer </think>"` — two closers straddling the
+ * model's own quoting — falls through to the plain strip and leaks the musing. An
+ * unclosed `<think>` followed by thinking and NO answer leaves the thinking
+ * (there is no answer in the string to recover — callers already treat an empty
+ * result as failure, keeping the fallback title / the user's prompt). And content
+ * legitimately *about* this markup loses the word: a conversation titled "How to
+ * use <think> tags" comes back as "How to use tags". Titles are user-editable,
+ * and silently deleting a word beats surfacing raw markup.
  */
 
 /** Tag names seen in the wild for the same thing. */
@@ -58,7 +57,7 @@ const BLOCK = new RegExp(`<(${TAG})${ATTRS}>[\\s\\S]*?<\\/\\1${ATTRS}>`, 'gi');
 /** Closing tags only — used to locate the reasoning/answer boundary. All four
  *  patterns take ATTRS on every tag, opener and closer alike, so a tag any of
  *  them finds is one LOOSE can also strip; a closer that only BLOCK tolerated
- *  used to leave its block undropped and leak the reasoning inside it. */
+ *  would leave its block undropped and leak the reasoning inside it. */
 const CLOSE = new RegExp(`<\\/(?:${TAG})${ATTRS}>`, 'gi');
 /** Whatever tag survives the passes above. */
 const LOOSE = new RegExp(`<\\/?(?:${TAG})${ATTRS}>`, 'gi');
@@ -69,7 +68,7 @@ const LOOSE = new RegExp(`<\\/?(?:${TAG})${ATTRS}>`, 'gi');
  *  quoting ends the string `…</think>"` — and taking that `"` as the answer
  *  yields a one-character title, or a one-character prompt for an image model,
  *  which is worse than the raw tag this module exists to remove. Falling
- *  through instead lets the existing quote-pair strip recover it. */
+ *  through instead lets the quote-pair strip recover it. */
 const HAS_CONTENT = /[\p{L}\p{N}]/u;
 
 /** The text following the LAST widowed closing tag, or null when there is no
@@ -86,7 +85,7 @@ function answerAfterWidowedClose(s: string): string | null {
 }
 
 /**
- * Note what this deliberately does NOT do: collapse whitespace. Only the label
+ * Deliberately does NOT collapse whitespace. Only the label
  * sanitizer wants that (its outputs are one line, and it collapses on its own).
  * Enhanced prompts are legitimately multi-line — a JSON prompt, and above all
  * `multimodal-script`, whose three labeled fields are separated by REQUIRED

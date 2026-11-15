@@ -22,9 +22,8 @@
  *
  * 1. Coverage is opt-in per call site, so the reported number is a FLOOR, not a
  *    total — a request can touch the database in places nothing here counts.
- *    `grep -rn 'timeDb(' src/` is the current answer to "what's covered";
- *    earlier revisions of this comment kept an inventory of other files and kept
- *    being wrong about it.
+ *    `grep -rn 'timeDb(' src/` is the answer to "what's covered"; an inventory
+ *    of files kept here goes stale.
  *
  * 2. The callback is SYNCHRONOUS and this never awaits, so it measures exactly
  *    the work before the wrapped function's first `await`. For an async function

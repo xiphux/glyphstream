@@ -12,7 +12,7 @@
  *     blocking syscall. `node:sqlite` is synchronous, so a read that misses the
  *     page cache and goes to the volume stalls the whole process for the length
  *     of the physical I/O while spending almost no CPU. This is the signature
- *     the whole investigation is looking for, and it is invisible to `cpu`,
+ *     this field exists to catch, and it is invisible to `cpu`,
  *     which reads near-zero for it, exactly like an idle server.
  *   not stalled + low cpu — this request waited on something that left the loop
  *     free, such as an awaited network call.

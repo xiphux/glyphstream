@@ -92,14 +92,14 @@ export const reactToMessageTool: Tool = {
 			// silent, that reacting does not cost it the reply, and how its RATE
 			// depends on the register.
 			//
-			// That last part was three suppressants to one weak permission —
-			// "use it sparingly", "most messages deserve none", "reacting to
-			// everything reads as insincere", then a vague "warmth and banter
-			// earn more". Read together that is an instruction not to react, and
-			// the observed behaviour matched: nothing across a long warm
-			// conversation, while an explicit request worked fine. The absolute
-			// is now a conditional rate, so the warm case gets a number to aim
-			// at instead of an exception to a prohibition.
+			// That last part is a conditional rate, not an absolute. Three
+			// suppressants to one weak permission — "use it sparingly", "most
+			// messages deserve none", "reacting to everything reads as
+			// insincere", then a vague "warmth and banter earn more" — read
+			// together as an instruction not to react, and the observed behaviour
+			// matched: nothing across a long warm conversation, while an explicit
+			// request worked fine. A rate gives the warm case a number to aim at
+			// instead of an exception to a prohibition.
 			//
 			// "You do not lose your reply" is aimed at a SECOND disincentive, and
 			// the one more likely to be doing the damage. It is phrased as the
@@ -108,9 +108,8 @@ export const reactToMessageTool: Tool = {
 			// round-trip — the header above says so, and a description that
 			// claimed otherwise would be contradicted by its own file. Under a
 			// template where content and tool_calls are mutually exclusive,
-			// reacting means
-			// emitting a turn with no prose in it and picking the reply up on the
-			// next iteration — so at decode time the model isn't weighing "add an
+			// reacting means emitting a turn with no prose in it and picking the
+			// reply up on the next iteration — so at decode time the model isn't weighing "add an
 			// emoji?" but "say nothing this turn?", which in an immersive
 			// conversation it will always decline. The model can't see that the
 			// loop hands the reply back, so the description has to tell it.
@@ -172,7 +171,6 @@ export const reactToMessageTool: Tool = {
  *  null when the model sent something that isn't one. */
 export function parseEmojiArg(args: unknown): string | null {
 	if (!args || typeof args !== 'object' || !('emoji' in args)) return null;
-	// `'emoji' in args` narrows args, so no assertion is needed here.
 	const raw: unknown = args.emoji;
 	if (typeof raw !== 'string') return null;
 	return validateEmoji(raw);

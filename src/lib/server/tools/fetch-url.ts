@@ -193,7 +193,7 @@ async function processResponse(
 
 	const raw = await readBodyWithCap(res, MAX_BODY_BYTES, parseCharset(contentType));
 
-	// `text` is the flattened readable view (today's `content` for the full /
+	// `text` is the flattened readable view (the `content` of the full /
 	// truncated paths); `structured` retains the article HTML + title so the
 	// relevance path can chunk on real heading structure. Non-HTML resources
 	// have no structure, so they fall through to the plain-text chunker.
@@ -229,7 +229,7 @@ async function processResponse(
 /**
  * Decide what slice of the readable text to return:
  * - under budget → the whole thing (no chunking, the common case);
- * - over budget, no `find` → head-truncate (preserves prior behavior);
+ * - over budget, no `find` → head-truncate;
  * - over budget, with `find` → relevance-select over the full body.
  *
  * Relevance is gated on an embedding model being configured, but the BM25 leg
@@ -408,10 +408,7 @@ function decodeEntities(s: string): string {
 	});
 }
 
-// `isPrivateIp` continues to be referenced by existing tests via the
-// import-from-fetch-url path (and possibly by callers that want the
-// pure predicate without a redirect loop). Re-export from the shared
-// module so the public surface here stays the same after the refactor.
+// Tests import the pure predicate from here.
 export { isPrivateIp };
 
 register(fetchUrlTool);

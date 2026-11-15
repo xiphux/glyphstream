@@ -11,13 +11,13 @@
  *     path-jailed to the skill directory.
  *
  * The per-user problem: the registry's `openaiToolDefinitions()` has only
- * static, non-per-user filters (`isAvailable()` takes no context). So both
+ * static, non-per-user filters (`isAvailable()` takes no context). So the skill
  * tools register with `isAvailable(): false` — they are NEVER advertised via
  * the static registry — while the message/tool-approval handlers append a
  * dynamically-built definition per request (with the user's skill names as an
  * `enum`, omitted entirely when the user has no enabled skills). The registry
  * entry still exists so the tool-loop's `registry.get(name)` resolves it for
- * execution. Both carry `category: 'skills'` so the per-conversation toggle and
+ * execution. All carry `category: 'skills'` so the per-conversation toggle and
  * the defensive `ctx.disabledFeatures` check seal them together.
  *
  * Unknown/disabled names return a recoverable `isError` result (mirror

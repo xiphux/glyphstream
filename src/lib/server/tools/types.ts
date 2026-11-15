@@ -1,7 +1,7 @@
 /**
  * Tool registry types. The Tool interface is the contract every registered
- * tool implements — built-in tools (clock, future web_search, etc.) and,
- * later, MCP-discovered tools that proxy to remote servers.
+ * tool implements — built-in tools and MCP-discovered tools that proxy to
+ * remote servers.
  *
  * `definition` is what we send upstream to the model (straight OpenAI
  * tools[] shape). `execute` is what we run when the model calls it.

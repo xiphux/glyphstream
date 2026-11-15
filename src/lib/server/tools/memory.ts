@@ -13,7 +13,7 @@
  * and embeddings-independent; embeddings are a semantic enhancement to the
  * query path, not a prerequisite for recall.
  *
- * All three tools carry `category: 'personalization'`. The existing
+ * All the memory tools carry `category: 'personalization'`. The
  * per-conversation toggle that gates the persona prompt also seals
  * these — one switch closes every avenue that ships personal context
  * to the model. The filter happens at openaiToolDefinitions() time
@@ -218,8 +218,7 @@ export const recallMemoryTool: Tool = {
 		// means even a ubiquitous term scores slightly above zero, so `> 0` is a
 		// clean "has any lexical signal at all" test.)
 		//
-		// Same reasoning, and the same fix, as `retrieval/tool-search.ts` — this path
-		// simply never got it.
+		// Same reasoning, and the same fix, as `retrieval/tool-search.ts`.
 		const rankings: ScoredChunk[][] = [
 			bm25Rank(
 				parsed.query,
@@ -257,10 +256,10 @@ export const recallMemoryTool: Tool = {
  * id + topic + content — the topic lets the model correlate a result back to the
  * index line it expanded.
  *
- * The frequency bump is a non-essential side effect (phase-2 telemetry), so a
- * failing UPDATE must never sink the successful read the model actually asked
- * for — catch and log, mirroring the dense leg's "degrade, never error the turn"
- * stance rather than the write tools' (where the write IS the point).
+ * The frequency bump is a non-essential side effect, so a failing UPDATE must
+ * never sink the successful read the model actually asked for — catch and log,
+ * mirroring the dense leg's "degrade, never error the turn" stance rather than
+ * the write tools' (where the write IS the point).
  */
 function finishRecall(userId: string, rows: MemoryRecallRow[]): ToolExecution {
 	const matches = rows.map((r) => ({ id: r.id, topic: r.topic ?? null, content: r.content }));

@@ -88,12 +88,7 @@ export function buildTopicPrompt(content: string): TaskMessage[] | null {
 	];
 }
 
-/**
- * Strip the decorations LLMs habitually add to short outputs — surrounding
- * quotes, a leading "Topic:" label, trailing punctuation — collapse whitespace,
- * and length-cap. Exported for testing. (Same shape as title-generator's
- * `sanitizeTitle`, retuned for the "Topic:" prefix and topic length.)
- */
+/** `sanitizeModelLabel` tuned for topics. Exported for testing. */
 export function sanitizeTopic(raw: string): string {
 	return sanitizeModelLabel(raw, { labelWord: 'topic', maxChars: MAX_TOPIC_CHARS });
 }

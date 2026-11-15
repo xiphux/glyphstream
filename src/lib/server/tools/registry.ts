@@ -1,9 +1,8 @@
 /**
- * Process-singleton tool registry. Built-in tools register themselves on
- * module import (via `./index.ts`'s side-effect imports); future MCP
- * tools will call `register()` at runtime once their server connection
- * is established. `get()` is how the loop looks a tool up by the name
- * the model emitted in a tool_call.
+ * Process-singleton tool registry. Built-in tools register themselves on module
+ * import (via `./index.ts`'s side-effect imports); MCP tools call `register()` at
+ * runtime once their server connection is established. `get()` is how the loop
+ * looks a tool up by the name the model emitted in a tool_call.
  */
 
 import type { DeferredToolEntry, OpenAIToolDefinition, Tool } from './types';
