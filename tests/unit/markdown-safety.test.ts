@@ -1,6 +1,6 @@
 /**
  * Both markdown renderers feed `{@html}`, so their escaping is the XSS
- * boundary for everything a model writes. The renderer tests only checked
+ * boundary for everything a model writes. The renderer tests only check
  * that a raw `<script>` is escaped; these pin the other ways markdown can
  * emit live HTML — link schemes, fence info strings, code bodies — so a
  * markdown-it major bump or an `html: true` slipping in fails here.

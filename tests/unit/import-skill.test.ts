@@ -93,8 +93,8 @@ describe('importSkillBundle', () => {
 
 	it('rolls back the catalog row when the bundle write fails (no dangling row)', async () => {
 		const u = seedUser();
-		// A 2 MiB+1 file trips putBundle's per-file cap AFTER the row is created
-		// (createSkill runs first now) — the row must be rolled back.
+		// A 2 MiB+1 file trips putBundle's per-file cap AFTER createSkill has
+		// created the row — the row must be rolled back.
 		const tooBig = { relPath: 'big.bin', bytes: Buffer.alloc(2 * 1024 * 1024 + 1) };
 		const res = await importSkillBundle(u.id, [f('SKILL.md', VALID_SKILL), tooBig]);
 		expect(res).toMatchObject({ ok: false, status: 400 });

@@ -604,8 +604,8 @@ describe('startImageRelay — backpressure + failure', () => {
 		const err = events.find((e) => e.type === 'error') as { message: string } | undefined;
 		expect(err?.message).toContain('bridge exploded');
 		expect(events.some((e) => e.type === 'done')).toBe(false);
-		// The failure is now durably recorded as an error sibling so a recovered
-		// fan-out can show it instead of silently dropping the column.
+		// Durably recorded as an error sibling so a recovered fan-out can show it
+		// instead of silently dropping the column.
 		const sibs = getSiblingAssistants(conv.id, userMessage.id);
 		expect(sibs).toHaveLength(1);
 		expect(sibs[0].parts[0]).toMatchObject({ type: 'error' });
@@ -871,8 +871,8 @@ describe('startImageRelay — prompt enhancement', () => {
 		enableEnhancer();
 		const onComplete = vi.fn();
 		// The user hit Stop during the enhancement call: enhancePrompt propagates
-		// the abort (it no longer swallows it), so the relay's pre-slot prepare
-		// step must cancel — not fall through to generation.
+		// the abort, so the relay's pre-slot prepare step must cancel — not fall
+		// through to generation.
 		mocks.enhancePrompt.mockRejectedValue(new DOMException('aborted', 'AbortError'));
 		const events = await drain(
 			startImageRelay(

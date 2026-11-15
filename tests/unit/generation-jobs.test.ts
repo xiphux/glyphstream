@@ -319,9 +319,9 @@ describe('a submitted job', () => {
 	it('persists an error column when the job fails outside the relay', async () => {
 		// The relay turns generation failures into events and error rows; a failure
 		// before it runs (here: the image-to-video source can't be read for a
-		// reason other than having been deleted) used to send only an SSE frame.
-		// A client that wasn't listening — a resumed job, a fan-out branch whose
-		// grid is rebuilt from the database — then found the column simply gone.
+		// reason other than having been deleted) needs a row too. With only an SSE
+		// frame, a client that wasn't listening — a resumed job, a fan-out branch
+		// whose grid is rebuilt from the database — finds the column simply gone.
 		const s = seed();
 		mocks.loadMediaBytesError = new Error('store unreadable');
 		const events = await drain(
@@ -508,8 +508,8 @@ describe('after a restart', () => {
 
 	it('tries again when the config cannot be loaded, instead of stranding the queue', () => {
 		// Every row is resolved against the endpoint registry. With config.toml
-		// unreadable at boot, that used to fail per row — after the queue had been
-		// marked resumed — so the jobs sat untouched until the next restart.
+		// unreadable at boot, that fails per row; if the queue were already marked
+		// resumed, the jobs would sit untouched until the next restart.
 		const s = seed();
 		leftover(s);
 		setResourceGroupPaused(endpoint(), true);

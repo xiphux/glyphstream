@@ -400,8 +400,8 @@ describe('updateMessageParts', () => {
 		// pending tool_result row to fill in its result — it does not
 		// append new rows. Active_leaf must stay anchored to that tool
 		// message so initialParentMessageId can re-use it on the
-		// continued iteration (the previous "branching on every
-		// approval cycle" bug came from this anchor drifting).
+		// continued iteration; a drifting anchor branches the thread on
+		// every approval cycle.
 		const u = seedUser();
 		const conv = createConversation({
 			userId: u.id,

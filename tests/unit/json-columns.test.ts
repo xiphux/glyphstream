@@ -61,8 +61,8 @@ describe('parseDisabledFeatures', () => {
 	});
 
 	it('preserves arbitrary non-empty strings (including MCP categories like mcp:foo)', () => {
-		// FeatureCategory was widened so dynamically-discovered MCP servers
-		// can contribute `mcp:<server-id>` opt-out categories. Round-tripping
+		// FeatureCategory admits `mcp:<server-id>` so dynamically-discovered MCP
+		// servers can contribute opt-out categories. Round-tripping
 		// must preserve a user's choice even when the backing server isn't
 		// currently registered (e.g. a transient config edit) — otherwise the
 		// next save would wipe the preference. Conversation-create silently

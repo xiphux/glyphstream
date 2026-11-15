@@ -2,11 +2,11 @@
  * `isMcpReady` — the synchronous "has bootstrap settled" flag the (app) layout
  * renders against instead of awaiting the handshakes.
  *
- * The layout used to `await awaitMcpReady()`, which put every global MCP
- * server's boot handshake on the critical path of the first page render after
- * a process start — a live round trip to a third party, unbounded, in front of
- * the first thing the user sees. It now renders immediately and reports
- * `mcpSettled`, and the client comes back for the tool counts afterwards.
+ * The layout renders immediately and reports `mcpSettled`, and the client comes
+ * back for the tool counts afterwards. Awaiting `awaitMcpReady()` instead would
+ * put every global MCP server's boot handshake on the critical path of the first
+ * page render after a process start — a live round trip to a third party,
+ * unbounded, in front of the first thing the user sees.
  *
  * Two properties make that safe, and both are here: the flag must be false
  * while bootstrap is genuinely still in flight (or the client never comes

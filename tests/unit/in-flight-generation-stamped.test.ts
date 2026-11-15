@@ -6,14 +6,13 @@
  * sidebar's mark, the layout seed and the 5s poll all read it through
  * `filterFullyQueued`, and a null one means "still behind the gate".
  *
- * The relays now stamp it themselves — they take the `InFlightEntry` as a
- * REQUIRED parameter — so for anything that goes through a relay, the type
- * checker is the guard and this test has nothing to add. It used to be the
- * only guard, back when the relay took an optional `onStarted` callback, and
- * the tool-approval resume shipped without one: it held the GPU and streamed
- * while every reader reported it as waiting in line, permanently, since the
- * client deliberately lets server truth win on activity. An optional hook
- * nobody is required to pass is not a contract.
+ * The relays stamp it themselves — they take the `InFlightEntry` as a REQUIRED
+ * parameter — so for anything that goes through a relay, the type checker is the
+ * guard and this test has nothing to add. It is required because an optional
+ * hook nobody has to pass is not a contract: a tool-approval resume that skips
+ * the stamp holds the GPU and streams while every reader reports it as waiting
+ * in line, permanently, since the client deliberately lets server truth win on
+ * activity.
  *
  * What remains are the two cases the type checker can't see, and both are the
  * same shape — a route that acquires a slot WITHOUT a relay doing it:

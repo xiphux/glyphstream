@@ -1,7 +1,7 @@
 /**
  * Route-handler tests for /api/auth/github/callback — the legacy GitHub
- * OAuth landing point, which now delegates to the shared
- * `handleOAuthCallback`. Three flows fan out from one entry point based on
+ * OAuth landing point, which delegates to the shared `handleOAuthCallback`.
+ * Three flows fan out from one entry point based on
  * which cookies are present (setup carry, link state, or just login state),
  * each with several refusal branches. A regression here breaks login, the
  * bootstrap path, AND the link-new flow simultaneously — high blast radius,
@@ -135,8 +135,6 @@ afterEach(() => {
 	closeTestDb();
 });
 
-// --- Setup branch ---------------------------------------------------------
-
 describe('GitHub callback — setup branch', () => {
 	function setupEvent(over: { state?: string; code?: string; carry?: string } = {}) {
 		const state = over.state ?? 'setup-state';
@@ -213,7 +211,7 @@ describe('GitHub callback — setup branch', () => {
 
 		const r = await expectRedirect(() => GET(event as never));
 		expect(r.location).toBe('/setup?error=invalid_oauth_state');
-		// Belt-and-suspenders: cookies cleared.
+		// Cleared on refusal too.
 		expect(store.has(SETUP_OAUTH_CARRY_COOKIE)).toBe(false);
 	});
 
@@ -240,7 +238,7 @@ describe('GitHub callback — setup branch', () => {
 
 	it('redirects the loser to /login when a parallel setup finishes during the profile fetch', async () => {
 		// The count check runs BEFORE the fetch's await; a setup completing in
-		// that window used to surface createInitialUser's throw as a 500.
+		// that window must not surface createInitialUser's throw as a 500.
 		mocks.duringProfileFetch = () => seedUser();
 		const { event } = setupEvent();
 
@@ -250,13 +248,10 @@ describe('GitHub callback — setup branch', () => {
 	});
 
 	it('does NOT re-check SETUP_TOKEN on the callback (idp redirect lacks it)', async () => {
-		// Regression guard: a previous version called setupGate(url) here,
-		// which spuriously failed when SETUP_TOKEN was configured because
-		// the IdP's redirect URI doesn't carry the operator's token. The
-		// signed carry's existence is the proof we want.
+		// Calling setupGate(url) here would spuriously fail whenever SETUP_TOKEN
+		// is configured, because the IdP's redirect URI doesn't carry the
+		// operator's token. The signed carry's existence is the proof.
 		const { event } = setupEvent();
-		// Token isn't in the URL — that's exactly what the IdP redirects to.
-		// Success path should still complete.
 		await expectRedirect(() => GET(event as never));
 		expect(mocks.testDb.select().from(users).all()).toHaveLength(1);
 	});
@@ -277,8 +272,6 @@ describe('GitHub callback — setup branch', () => {
 		expect(r.location).toBe('/setup?error=upstream_failure');
 	});
 });
-
-// --- Link branch ----------------------------------------------------------
 
 describe('GitHub callback — link branch', () => {
 	function linkEvent(opts: { userId: string; state?: string; code?: string } = { userId: '' }) {
@@ -367,8 +360,6 @@ describe('GitHub callback — link branch', () => {
 	});
 });
 
-// --- Login branch ---------------------------------------------------------
-
 describe('GitHub callback — login branch', () => {
 	function loginEvent(opts: { state?: string; code?: string } = {}) {
 		const state = opts.state ?? 'login-state';
@@ -433,8 +424,6 @@ describe('GitHub callback — login branch', () => {
 		expect(r.location).toBe('/login?error=invalid_oauth_state');
 	});
 });
-
-// --- Join branch ----------------------------------------------------------
 
 describe('GitHub callback — join branch', () => {
 	let adminId: string;
@@ -573,8 +562,6 @@ describe('GitHub callback — join branch', () => {
 		);
 	});
 });
-
-// --- Branch detection -----------------------------------------------------
 
 describe('GitHub callback — branch detection precedence', () => {
 	it('treats setup-carry as winning over link-state when both are set', async () => {

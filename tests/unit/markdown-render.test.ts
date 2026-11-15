@@ -155,7 +155,7 @@ describe('renderMarkdown — grammars load on demand', () => {
 
 	it('highlights fences nested in a list item or a blockquote on their first render', async () => {
 		// An indented or `>`-prefixed fence is still a fence; a line-start scan
-		// missed both, so they rendered plain until something else loaded the grammar.
+		// misses both, leaving them plain until something else loads the grammar.
 		const html = (await renderMarkdown(
 			'1. Query:\n\n    ```sql\n    SELECT 1;\n    ```\n\n> ```lua\n> local x = 1\n> ```',
 		))!;

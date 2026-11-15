@@ -1,12 +1,11 @@
 /**
  * Contract tests for the GitHub OAuth provider.
  *
- * GitHub was the one provider with no coverage of its own. `github-callback.test.ts`
- * mocks the provider wholesale to exercise the callback handler, and
- * `oauth-provider-profile.test.ts` covers only Google and OIDC — so once the
- * endpoint URLs moved in-tree (they used to belong to `arctic`), nothing pinned
- * them. A typo in the token endpoint, or a regression that started sending PKCE
- * to GitHub, would break every GitHub login with a fully green suite.
+ * `github-callback.test.ts` mocks the provider wholesale to exercise the callback
+ * handler, and `oauth-provider-profile.test.ts` covers only Google and OIDC, so
+ * nothing else pins the in-tree endpoint URLs. A typo in the token endpoint, or a
+ * regression that started sending PKCE to GitHub, would break every GitHub login
+ * with a fully green suite.
  *
  * Everything here stubs at `fetch`, so the real request construction runs. Two
  * groups of assertions:
@@ -132,9 +131,8 @@ describe('GitHub provider — token exchange', () => {
 
 	/**
 	 * GitHub answers a bad code with HTTP 200 and an error body rather than a
-	 * 4xx. This is the case that needed a dedicated code path in `arctic`, and
-	 * the reason `exchangeAuthorizationCode` tests the field rather than the
-	 * status — if that ever regressed, a failed exchange would look like a
+	 * 4xx, which is why `exchangeAuthorizationCode` tests the field rather than
+	 * the status — if that ever regressed, a failed exchange would look like a
 	 * success and fail later with a confusing "missing access_token".
 	 */
 	it('surfaces GitHub 200-with-error as an OAuth request error, not a token', async () => {
