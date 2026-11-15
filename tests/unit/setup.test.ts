@@ -40,10 +40,10 @@ function urlWith(query: Record<string, string> = {}): URL {
 
 describe('setupGate', () => {
 	it('requires a token even when the operator configured none', () => {
-		// SETUP_TOKEN used to be opt-in and shipped commented out, so a fresh
-		// install served an open wizard — anyone reaching the host before the
-		// operator finished could claim the admin account, which then closes
-		// /setup structurally against the real operator.
+		// With an opt-in SETUP_TOKEN, a fresh install serves an open wizard —
+		// anyone reaching the host before the operator finishes can claim the
+		// admin account, which then closes /setup structurally against the
+		// real operator.
 		expect(setupGate(urlWith())).toBe('needs-token');
 	});
 

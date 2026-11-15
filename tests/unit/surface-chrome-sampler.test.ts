@@ -76,8 +76,7 @@ describe('syncSurfaceChrome — status bar sampler', () => {
 
 	it('accepts an opaque black surface, which is not the same thing', () => {
 		// The guard must read the ALPHA channel, not "contains a zero".
-		// rgb(0, 0, 0) is a legitimate surface — a pure-black OLED dark theme —
-		// and an early version of this check rejected it.
+		// rgb(0, 0, 0) is a legitimate surface — a pure-black OLED dark theme.
 		const sampler = document.createElement('div');
 		sampler.className = 'status-bar-sampler';
 		document.body.appendChild(sampler);

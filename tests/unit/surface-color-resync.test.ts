@@ -43,7 +43,7 @@ function svelteFiles(dir: string): string[] {
  * added re-tint could land in any of those shapes and never be seen — this
  * file's own drift check, passing vacuously.
  *
- * A comment inside a prelude can now contribute a spurious attribute. That is
+ * A comment inside a prelude can contribute a spurious attribute. That is
  * the safe direction: a spurious one only adds a sync requirement somewhere.
  */
 function surfaceAttributes(): string[] {
@@ -167,11 +167,11 @@ describe('status-bar sampler class literal', () => {
 /**
  * The OTHER half of the same invariant, which had no guard at all.
  *
- * Colouring the iOS standalone status bar is now split across two mechanisms:
- * the sampler above on (auth), and — everywhere else, i.e. nearly the whole
- * app — the mobile top bar in (app)/+layout.svelte doing the job as itself.
- * Only the first half was pinned, so a restyle of the top bar could drop the
- * status bar back to the Liquid Glass blur with every test still green.
+ * Colouring the iOS standalone status bar is split across two mechanisms: the
+ * sampler above on (auth), and — everywhere else, i.e. nearly the whole app —
+ * the mobile top bar in (app)/+layout.svelte doing the job as itself. With
+ * only the first half pinned, a restyle of the top bar could drop the status
+ * bar back to the Liquid Glass blur with every test still green.
  *
  * Both classes are load-bearing for a reason the markup doesn't show:
  * WebKit's sampler (see the .status-bar-sampler rule in app.css) only
@@ -188,10 +188,10 @@ describe('(app) mobile top bar as the status-bar sampled element', () => {
 	 *
 	 * Anchored forward from `<main`, on the first class attribute containing
 	 * `sm:hidden` — the one property that identifies this row and nothing else
-	 * in the pane. It used to scan BACKWARDS from the hamburger's aria-label
-	 * for the nearest `class="`, which landed on the wrapper only because that
-	 * button happens to write `class` after `aria-label`; reordering two
-	 * attributes would have silently retargeted the assertions at the button.
+	 * in the pane. Scanning BACKWARDS from the hamburger's aria-label for the
+	 * nearest `class="` lands on the wrapper only because that button happens
+	 * to write `class` after `aria-label`; reordering two attributes would
+	 * silently retarget the assertions at the button.
 	 */
 	const topBarClasses = (): string[] => {
 		const layout = readFileSync(`${srcDir}routes/(app)/+layout.svelte`, 'utf-8');

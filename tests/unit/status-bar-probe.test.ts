@@ -75,9 +75,9 @@ function mount(
  * on the real implementation.
  */
 // A Map, not a WeakMap, so afterEach can clear it. `document.body` is the same
-// object for the whole file, so a stub left on it leaks into every later test —
-// which made the file order-dependent: once one case painted the body, the next
-// one silently inherited an oklch background and an 1024x800 rect.
+// object for the whole file, so a stub left on it leaks into every later test
+// and makes the file order-dependent: once one case paints the body, the next
+// one silently inherits an oklch background and an 1024x800 rect.
 const painted = new Map<Element, string>();
 function paint(el: Element, backgroundColor: string): void {
 	painted.set(el, backgroundColor);

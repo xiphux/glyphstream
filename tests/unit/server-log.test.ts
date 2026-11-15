@@ -1,6 +1,6 @@
 /**
- * The server logger: a `[scope]` prefix on the output the hand-written
- * `console.*('[scope] …')` calls produced, filtered by LOG_LEVEL.
+ * The server logger: `[scope]`-prefixed console output, filtered by
+ * LOG_LEVEL.
  */
 import process from 'node:process';
 import { afterEach, describe, expect, it, vi } from 'vitest';

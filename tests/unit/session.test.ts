@@ -210,11 +210,11 @@ describe('absolute session lifetime', () => {
 	}
 
 	it('signals renewal so the caller can re-issue the cookie', () => {
-		// Renewal used to slide expires_at in the DB while nothing re-issued
-		// the cookie, so the browser kept its original `expires`. The
-		// legitimate user got signed out 30 days after issue however active
-		// they were, while an exfiltrated raw token — bound by no cookie
-		// attribute at all — kept renewing its row indefinitely.
+		// Sliding expires_at in the DB without re-issuing the cookie leaves the
+		// browser on its original `expires`: the legitimate user is signed out
+		// 30 days after issue however active they are, while an exfiltrated
+		// raw token — bound by no cookie attribute at all — keeps renewing its
+		// row indefinitely.
 		const u = seedUser();
 		const token = seedSession(u.id, Date.now(), Date.now() + DAY);
 		expect(validateSessionToken(token)!.renewed).toBe(true);
@@ -361,11 +361,11 @@ describe('session listing + revocation', () => {
 
 describe('cookie Secure attribute', () => {
 	it('is derived from EXTERNAL_BASE_URL, not NODE_ENV', async () => {
-		// It used to key off NODE_ENV, which the Dockerfile sets but nothing
-		// else does — a `node build` under systemd shipped session cookies
-		// with no Secure attribute and no warning. EXTERNAL_BASE_URL has to be
-		// right already (the WebAuthn RP ID and OAuth redirect both derive
-		// from it), so keying to it fails safe instead.
+		// The Dockerfile sets NODE_ENV but nothing else does, so keying off it
+		// ships a `node build` under systemd session cookies with no Secure
+		// attribute and no warning. EXTERNAL_BASE_URL has to be right already
+		// (the WebAuthn RP ID and OAuth redirect both derive from it), so
+		// keying to it fails safe.
 		const { cookiesSecure } = await import('#lib/server/env.js');
 		const previous = process.env.EXTERNAL_BASE_URL;
 		const previousNodeEnv = process.env.NODE_ENV;

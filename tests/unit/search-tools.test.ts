@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Default: no embeddings configured → BM25-only, no network. (Same seams as the
-// fetch_url test.)
+// Default: no embeddings configured → BM25-only, no network.
 const loadEmbeddingsConfigMock = vi.hoisted(() => vi.fn());
 const getEndpointMock = vi.hoisted(() => vi.fn());
 const embeddingsMock = vi.hoisted(() => vi.fn());

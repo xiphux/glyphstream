@@ -62,7 +62,6 @@ beforeEach(() => {
 	mocks.runPython.mockReset();
 	mocks.collectConversationFiles.mockReset();
 	mocks.persistGeneratedFiles.mockReset();
-	// Sensible defaults: empty pre-file list, basic success result.
 	mocks.collectConversationFiles.mockResolvedValue([]);
 	mocks.runPython.mockResolvedValue({
 		stdout: 'hello\n',

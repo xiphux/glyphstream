@@ -9,8 +9,9 @@
  *
  *   - Static: each exported handler calls requireUser / requireAdmin (a bare
  *     `!locals.user` check is not enough: it answers a locked session 401,
- *     sending it to /login instead of /unlock); /api/admin/** calls requireAdmin; each (app) server load
- *     awaits parent() or calls requireUserPage (CLAUDE.md).
+ *     sending it to /login instead of /unlock); /api/admin/** calls
+ *     requireAdmin; each (app) server load awaits parent() or calls
+ *     requireUserPage (CLAUDE.md).
  *   - Dynamic: each guarded handler, invoked with no user, empty params and an
  *     empty body, answers 401 — proving the guard runs BEFORE the handler reads
  *     params, the body, or the database — and answers an app-locked session 423.
