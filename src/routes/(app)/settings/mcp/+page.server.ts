@@ -28,15 +28,14 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 	// Per-user states: global servers report the shared connection; per-user
 	// servers report this user's connection (or `needs-credential`).
 	//
-	// Budgeted, unlike before. This page deliberately does NOT `skipFailed` — the
-	// whole point of visiting it is to find out whether a server is reachable
-	// now, so re-attempting a failed one is the feature. But with no budget at
-	// all, `connectMcpServer` and then `listTools` each get the full
-	// `timeout_seconds` (30 by default), so one black-holing server held the page
-	// for up to a minute before anything rendered. A soft deadline renders
-	// whatever resolved and leaves the rest connecting in the background; the
-	// page already has a retry control and an `invalidate('settings:mcp')` to
-	// pick them up.
+	// This page deliberately does NOT `skipFailed` — the whole point of visiting
+	// it is to find out whether a server is reachable now, so re-attempting a
+	// failed one is the feature. But with no budget, `connectMcpServer` and then
+	// `listTools` each get the full `timeout_seconds` (30 by default), so one
+	// black-holing server would hold the page for up to a minute before anything
+	// rendered. A soft deadline renders whatever resolved and leaves the rest
+	// connecting in the background; the page's retry control and
+	// `invalidate('settings:mcp')` pick them up.
 	const states = await getUserServerStates(locals.user.id, {
 		connectBudgetMs: MCP_SETTINGS_CONNECT_BUDGET_MS,
 	});

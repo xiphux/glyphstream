@@ -44,8 +44,8 @@
 	// the browser here with the param attached, so this fires on enter, once —
 	// whereas an effect fires on every COMMIT, and `page.url` is a `$state.raw`
 	// holding a URL object SvelteKit republishes on each one, `invalidate()`
-	// included. That made the announcement outlive its link flow: the (app)
-	// layout's resume refresh re-toasted a link completed long ago.
+	// included. The announcement would outlive its link flow: the (app) layout's
+	// resume refresh would re-toast a link completed long ago.
 	//
 	// The strip is a replacing `goto`, and neither shortcut works. A raw
 	// `history.replaceState` swaps the entry's state object wholesale, dropping

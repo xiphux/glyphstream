@@ -93,9 +93,9 @@
 		// change on screen is worse than it looks: the NEXT toggle computes its
 		// array from this one, so a change the user was told had failed would ride
 		// along and get persisted silently.
-		// `?? []` for the same reason as the init read above: against a rolled-back
-		// server the key is absent, and spreading undefined here would throw inside
-		// an async handler — an unhandled rejection with the checkbox stuck.
+		// `?? []` (as in the init read above): against a rolled-back server the key
+		// is absent, and spreading undefined here would throw inside an async
+		// handler — an unhandled rejection with the checkbox stuck.
 		defaultDisabledFeatures = confirmed ? [...(confirmed.defaultDisabledFeatures ?? [])] : prev;
 	}
 
@@ -182,26 +182,21 @@
 		}
 	}
 
-	// Last-persisted snapshot. Text fields compare against it on blur so a
-	// no-op blur doesn't fire a redundant PATCH.
-	// Plain `let`, not $state — the last-known-server value, compared against
-	// inside the save handlers to skip no-op PATCHes and to revert on failure.
-	// Nothing renders it, so $state would only deep-proxy the object for nothing.
+	// Last-persisted snapshot, compared against inside the save handlers to skip
+	// no-op PATCHes and to revert on failure. Plain `let`, not $state: nothing
+	// renders it, so $state would only deep-proxy the object for nothing.
 	//
-	// The svelte-ignore below is STILL LIVE and must stay, despite `saved` no
-	// longer being a rune: `state_referenced_locally` fires on the *read* of
-	// `data.prefs` — `data` is a prop binding, read here at top-level script
-	// depth — not on what it is assigned to. Delete it and `pnpm check` warns.
-	// (Three separate reviewers have mis-read this as vestigial; it isn't.)
+	// The svelte-ignore below is LIVE and must stay even though `saved` is not a
+	// rune: `state_referenced_locally` fires on the *read* of `data.prefs` —
+	// `data` is a prop binding, read here at top-level script depth — not on what
+	// it is assigned to. Delete it and `pnpm check` warns. It is easy to mistake
+	// for vestigial; it isn't.
 	// svelte-ignore state_referenced_locally
 	let saved: UserPreferences = { ...data.prefs };
 	let savedFlash = $state(false);
 	let saveError = $state<string | null>(null);
 	let flashTimer: ReturnType<typeof setTimeout> | undefined;
 
-	// Single auto-save path for every preference: PATCH, refresh the
-	// snapshot, flash a quiet "Saved". (patchPrefs is declared below;
-	// function declarations hoist, so calling it here is fine.)
 	/**
 	 * Preferences the (app) LAYOUT feeds forward to other pages, so a save has to
 	 * re-run its load or the rest of the session keeps a stale copy.
@@ -217,9 +212,9 @@
 	 *   - autoCompaction* → the chat page's compaction controller
 	 *
 	 * The rest (About you, Custom instructions, the notification toggles) really
-	 * is page-local, and invalidating for those re-ran the whole layout load —
-	 * conversations, models, skills, the feature catalogue — for nothing, on
-	 * every blur. Add to this list rather than widening it to everything.
+	 * is page-local, and invalidating for those would re-run the whole layout
+	 * load — conversations, models, skills, the feature catalogue — for nothing,
+	 * on every blur. Add to this list rather than widening it to everything.
 	 */
 	const LAYOUT_FED_PREFS = new Set<keyof UserPreferences>([
 		'defaultDisabledFeatures',
@@ -230,6 +225,8 @@
 		'autoCompactionThreshold',
 	]);
 
+	/** Single auto-save path for every preference: PATCH, refresh the snapshot,
+	 *  flash a quiet "Saved". */
 	async function saveField(patch: Partial<UserPreferences>): Promise<UserPreferences | null> {
 		saveError = null;
 		const next = await patchPrefs(patch);
@@ -310,7 +307,7 @@
 	// device+install. So this page can render a checked box on a device that
 	// receives nothing — which is exactly what an iOS PWA delete/re-add
 	// produces (permission resets to `default`, the subscription is gone, the
-	// pref is untouched). Nothing healed it silently either: reconciliation
+	// pref is untouched). Nothing heals it silently either: reconciliation
 	// must never prompt, so the one cause it can't fix is the common one.
 	// Surface it explicitly instead of leaving the contradiction on screen.
 	const deviceGap = $derived(

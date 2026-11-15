@@ -244,14 +244,13 @@ character-focused design language…`;
 	{/snippet}
 
 	<div class="mx-auto flex max-w-2xl flex-col gap-4">
-		<!-- Editor -->
 		<section class="panel-card p-4">
 			<!-- The bottom margin is what separates this header from the editor
 			     form, so it only applies when that form is open. With the form
 			     closed this row is the section's only child, and an
-			     unconditional `mb-2` collapsed into nothing to separate — it
-			     just added 8px under a row already sitting in 16px of padding,
-			     which read as the header being off-centre in its own box. -->
+			     unconditional `mb-2` would separate it from nothing — just 8px
+			     under a row already sitting in 16px of padding, which reads as
+			     the header being off-centre in its own box. -->
 			<div class="flex items-center justify-between {editing === null ? '' : 'mb-2'}">
 				<h2 class="text-sm font-medium">
 					{editing === null ? 'Your library' : editing ? 'Edit snippet' : 'New snippet'}
@@ -410,7 +409,7 @@ character-focused design language…`;
 											{#if s.kinds.length === 0}
 												<!-- No kinds means generic, and that's exactly what the
 												     modality chips count it under. Rendering nothing here
-												     left it indistinguishable from a row whose chips
+												     leaves it indistinguishable from a row whose chips
 												     failed to load. -->
 												<span
 													class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] text-fg-muted italic"
@@ -453,7 +452,6 @@ character-focused design language…`;
 			{/if}
 		</section>
 
-		<!-- Import / export -->
 		<section class="panel-card p-4">
 			<h2 class="mb-2 text-sm font-medium">Import or export a library</h2>
 			<p class="mb-2 text-xs text-fg-muted">

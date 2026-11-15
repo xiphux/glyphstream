@@ -34,8 +34,8 @@
 	let name = $state('');
 	// Not `description`: that name is the snippet handed to <SettingsPage>
 	// below, which Svelte scopes over the page's markup — so a
-	// `bind:value={description}` there bound to the SNIPPET, and hydration threw
-	// (`source.equals is not a function`) the moment the form mounted.
+	// `bind:value={description}` there binds to the SNIPPET, and hydration throws
+	// (`source.equals is not a function`) the moment the form mounts.
 	let presetDescription = $state('');
 	let baseModelComposite = $state('');
 	let systemPrompt = $state('');
@@ -353,7 +353,6 @@
 	{/snippet}
 
 	<div class="mx-auto grid max-w-5xl gap-6 lg:grid-cols-[1fr_1fr]">
-		<!-- List -->
 		<section>
 			<h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-fg-muted">
 				Your presets ({data.customModels.length})
@@ -433,7 +432,6 @@
 			{/if}
 		</section>
 
-		<!-- Form -->
 		<section>
 			<div class="mb-3 flex items-center justify-between">
 				<h2 class="text-xs font-semibold uppercase tracking-wide text-fg-muted">
@@ -566,7 +564,7 @@
 								// The event's value: the binding may not have caught up yet.
 								replyStyle = e.currentTarget.value as ReplyStyle;
 								if (!checkInsTouched) checkIns = e.currentTarget.value === 'character';
-								// Not where nothing could develop them.
+								// Photos stay off when no image model could develop them.
 								if (!photosTouched) {
 									photos = e.currentTarget.value === 'character' && !noImageModel;
 								}

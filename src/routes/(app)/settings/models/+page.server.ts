@@ -14,13 +14,11 @@ import type { PageServerLoad } from './$types';
  *
  * Goes through `listAllModelsWithErrors` — the same stale-while-revalidate
  * cache `/api/models` and the (app) layout use — rather than calling
- * `listUpstreamModels` per endpoint directly. Calling upstream directly meant
- * this page was the one caller that never hit the cache: it re-fetched every
- * endpoint's /v1/models on every visit, and since `request_timeout_seconds`
- * defaults to 120, a single hung endpoint stalled SSR for two minutes and then
- * silently rendered an empty picker (the per-endpoint catch swallowed it into
- * `models: []` with `modelsError: null`). The cached path also surfaces the
- * real per-endpoint error instead of discarding it.
+ * `listUpstreamModels` per endpoint directly. A direct call bypasses the cache
+ * and re-fetches every endpoint's /v1/models on every visit; since
+ * `request_timeout_seconds` defaults to 120, a single hung endpoint would stall
+ * SSR for two minutes and then render an empty picker with no error. The
+ * cached path also surfaces the real per-endpoint error.
  */
 export const load: PageServerLoad = async ({ locals, parent }) => {
 	// Wait for the (app) layout's auth check before deref'ing locals.user.

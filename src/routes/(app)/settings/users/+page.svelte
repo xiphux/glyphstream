@@ -179,7 +179,6 @@
 		immediately and blocks new sign-ins; deleting removes the account and all of its data.
 	{/snippet}
 
-	<!-- Invite creation -->
 	<section>
 		<h2 class="mb-2 text-sm font-semibold">Invite a user</h2>
 		<div class="flex flex-wrap items-end gap-3">
@@ -229,7 +228,6 @@
 		{/if}
 	</section>
 
-	<!-- Pending / past invites -->
 	<section>
 		<h2 class="mb-2 text-sm font-semibold">Pending invites</h2>
 		{#if data.invites.length === 0}
@@ -271,7 +269,6 @@
 		{/if}
 	</section>
 
-	<!-- Users -->
 	<section>
 		<h2 class="mb-2 text-sm font-semibold">Accounts</h2>
 		<ul class="divide-y divide-border rounded-lg border border-border">

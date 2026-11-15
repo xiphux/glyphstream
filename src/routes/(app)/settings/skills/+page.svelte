@@ -124,7 +124,6 @@
 	{/snippet}
 
 	<div class="mx-auto flex max-w-2xl flex-col gap-4">
-		<!-- Import -->
 		<section class="panel-card p-4">
 			<h2 class="mb-2 text-sm font-medium">Import a skill</h2>
 			<textarea
@@ -182,7 +181,6 @@
 			</p>
 		</section>
 
-		<!-- List -->
 		<section class="panel-card p-4">
 			{#if data.skills.length === 0}
 				<p class="py-8 text-center text-sm text-fg-muted">

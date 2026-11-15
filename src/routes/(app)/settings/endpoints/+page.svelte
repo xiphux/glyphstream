@@ -58,18 +58,16 @@
 	// that harmless: a reload replaces `data` and nothing here reads it again, so
 	// the poll stays the single source of truth instead of fighting a stale SSR
 	// snapshot for the display.
-	// `.raw` because nothing ever writes an element in place: the whole snapshot
-	// is replaced by `applySnapshot` and read-only everywhere else (`configError`
-	// and `groups` in the template, nothing else). CLAUDE.md's rule is to grep the
-	// CONSUMERS before converting, not just this module — done, and there are no
-	// consumers outside this file, since a page component is nobody's import. If
-	// that ever changes, an element-level write here would signal nothing and this
-	// has to go back to deep `$state`. Skipping the proxy matters because the poll
-	// discards and rebuilds this whole tree every three seconds, for as long as
-	// the tab is open.
+	// `.raw` because nothing writes an element in place: `applySnapshot` replaces
+	// the whole snapshot and the template only reads `configError` and `groups`.
+	// A page component is nobody's import, so there are no consumers outside this
+	// file. If an element-level write ever appears, it would signal nothing and
+	// this has to go back to deep `$state`. Skipping the proxy matters because the
+	// poll discards and rebuilds this whole tree every three seconds, for as long
+	// as the tab is open.
 	// svelte-ignore state_referenced_locally
 	let status = $state.raw<EndpointsStatusResponse>(data.status);
-	// A SET, not a single id: with one slot, rechecking ANY endpoint disabled
+	// A SET, not a single id: with one slot, rechecking ANY endpoint would disable
 	// EVERY endpoint's button, on the one page whose job is comparing endpoints.
 	// Both the handler guard and the `disabled` binding read this — changing only
 	// the binding would leave the other buttons enabled but silently inert.
@@ -77,7 +75,7 @@
 	// Keyed by resource group, since that is what a pause acts on.
 	const pausing = new SvelteSet<string>();
 	// Endpoints whose queue list is expanded. Collapsed by default: a queue
-	// hundreds deep made the page a long scroll to reach the endpoints below it,
+	// hundreds deep makes the page a long scroll to reach the endpoints below it,
 	// and the Queued tile already says how deep it is. Held here rather than left
 	// to the <details> element so the rows are only mounted while someone is
 	// reading them — otherwise the 1s tick re-renders every row's waiting timer.
@@ -151,7 +149,7 @@
 		// Re-stamp `nowMs` from the SAME instant the skew was measured. `elapsed`
 		// computes `nowMs - skewMs - since`, so pairing a fresh skew with a `nowMs`
 		// up to a second stale subtracts that staleness from every duration on
-		// screen — durations visibly counted 4s, 3s, 5s. On a page whose whole job
+		// screen — durations visibly count 4s, 3s, 5s. On a page whose whole job
 		// is reporting how long something has been running, that is the one number
 		// that has to be monotonic.
 		nowMs = at;
