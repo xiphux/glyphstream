@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.53.1
+
 ### Changed
 
 - The API now rejects an unknown feature category in disabled features (a conversation's, a scheduled task's, or your saved new-chat defaults) with a 400, instead of storing it and leaving the feature on.
