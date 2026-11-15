@@ -287,10 +287,8 @@
 	const assistantIdentityFor = (m: ChatMessage): AssistantIdentity =>
 		assistantIdentityForMessage(m, data.conversation.modelId, conversationIdentity, catalogue.all);
 
-	// Read data eagerly so SSR includes messages on first paint; $effect
-	// below re-syncs on subsequent navigation invalidation. The warning
-	// about capturing the initial value is intentional here — that IS the
-	// behavior we want.
+	// Captures the initial value on purpose, so SSR includes messages on first
+	// paint; the $effect below re-syncs on subsequent navigation invalidation.
 	//
 	// `.raw`, not plain `$state`: every write to this array is a whole-array
 	// reassign (`setMessages([...])`, `.slice`, the re-seed below) and nothing
@@ -314,14 +312,14 @@
 	// reader scrolls up.
 	// svelte-ignore state_referenced_locally
 	let hasEarlier = $state(data.conversation.hasEarlierMessages ?? false);
-	// The scene at the top of what's loaded: the last marker above it, or the
-	// conversation's starting scene. Each message's scene follows from it (see
-	// `scenes`).
 	// A scene change the user has asked for with the composer's switch: it goes
 	// on top of their next message as a marker, so the model (and the thread)
 	// sees where it happened. Cleared once sent.
 	let sceneSwitch = $state<Scene | null>(null);
 
+	// The scene at the top of what's loaded: the last marker above it, or the
+	// conversation's starting scene. Each message's scene follows from it (see
+	// `scenes`).
 	// svelte-ignore state_referenced_locally
 	let sceneBefore = $state<Scene>(data.conversation.sceneBefore ?? data.conversation.startingScene);
 	// A load of earlier messages failed: the sentinel stops asking and offers a
@@ -406,8 +404,8 @@
 
 	// Side-by-side canvas pane. The server is authoritative; this holds the
 	// live doc + open state. Seeded from the page load, updated by
-	// canvas_version stream events during a turn (see ChatTurnController's
-	// #runChatStream in #lib/chat-turn-controller.svelte, via the applyCanvas dep).
+	// canvas_version stream events during a turn (via the turn controller's
+	// applyCanvas dep).
 	const canvas = new CanvasController();
 	// svelte-ignore state_referenced_locally
 	canvas.hydrate(data.canvases);
@@ -526,8 +524,8 @@
 			hydratedCanvasConvId = data.conversation.id;
 			canvas.hydrate(data.canvases);
 			// Feature toggles are per conversation and this component is reused
-			// across a switch, so without this the next conversation showed (and
-			// its first toggle saved back) the previous one's list. Same id gate
+			// across a switch, so without this the next conversation would show (and
+			// its first toggle save back) the previous one's list. Same id gate
 			// as the canvas: a same-conversation refresh must not overwrite an
 			// optimistic toggle whose PATCH is still in flight.
 			disabledFeatures = [...data.conversation.disabledFeatures];
@@ -543,12 +541,11 @@
 	});
 
 	// Also run it once at mount. The seeding effect above early-returns on its
-	// first run (its sentinel starts at the current `data.conversation`), and
-	// every other thing it seeds is separately initialized at its declaration —
-	// the auto-open was the one that wasn't, so entering a chat by full page load
-	// or from a non-chat route stopped opening the pane at all. Only the
-	// /chat/a → /chat/b path still worked, because there the component is reused
-	// and `data.conversation` identity genuinely changes.
+	// first run (its sentinel starts at the current `data.conversation`); every
+	// other thing it seeds is separately initialized at its declaration, but the
+	// auto-open isn't. Without this, only /chat/a → /chat/b (where the component
+	// is reused and `data.conversation` identity genuinely changes) would open the
+	// pane — never a full page load or entry from a non-chat route.
 	//
 	// Deliberately reads nothing reactive (every read is inside `untrack`), so it
 	// fires exactly once, after `canvas.hydrate` at init has populated `docs`.
@@ -560,7 +557,7 @@
 	// Single-turn orchestration (send/edit/retry streaming, approval-resume,
 	// server-truth recovery) + its shared render state — the in-flight bubble,
 	// `busy`, `activeAbort`, `streamedMessageId`, the approval-resume latch, and
-	// the suspend/offline flags — extracted to #lib/chat-turn-controller for
+	// the suspend/offline flags — live in #lib/chat-turn-controller for
 	// testability. Constructed up here (ahead of the fan-out controller) because
 	// the approval-pending derivations below read `turn.inFlightSegments`. The
 	// page owns the composer/picker bindings, the higher-level send() dispatch,
@@ -599,9 +596,7 @@
 	// via a side-map keyed by tool_call_id. The matching assistant
 	// message renders each of its tool_call parts as a ToolCallBlock
 	// inline (looking up the result here), so the user sees the call +
-	// result as one visual unit instead of two separate bubbles. This
-	// is the "folded into assistant bubble" UX the user picked over
-	// "separate sequential bubbles."
+	// result as one visual unit instead of two separate bubbles.
 	//
 	// `pendingApprovals` is the toolCallIds halted on untrusted MCP
 	// tools — non-empty hides the composer until the user posts
@@ -643,7 +638,7 @@
 
 	// Precompute merge flags once per render rather than calling
 	// computeMergeFlags inside the per-row {@const} in the {#each}.
-	// Each call is O(1) but it was running for every row on every
+	// Each call is O(1), but from the per-row {@const} it would run for every row on every
 	// reactive update; building the map up-front keeps render walks
 	// linear instead of having the per-row inputs (editing id,
 	// inFlightOpen) re-trigger work for every message.
@@ -673,7 +668,7 @@
 			// Skip the block build entirely for the overwhelming majority of
 			// assistant messages, which contain no canvas tool call at all. Building
 			// every message's blocks just to collect canvas cards — and discarding
-			// nearly all of it — made this O(messages x parts) of allocation on any
+			// nearly all of it — would make this O(messages x parts) of allocation on any
 			// `messages` change, which after a turn is a fresh identity for all of
 			// `visibleMessages`, `toolResultsByCallId` and `mergeFlagsById`.
 			if (!m.parts.some((p) => p.type === 'tool_call' && CANVAS_TOOLS.has(p.toolName))) {
@@ -700,8 +695,6 @@
 	// has one — at which point the Submit button enables and posts the
 	// batch as a single resume request.
 	let approvalDecisions = $state<Map<string, ApprovalAction>>(new Map());
-	// `approvalSubmitting` (+ its monotonic latch token) lives on the turn
-	// controller now — it owns the resume state machine.
 
 	// Reset decisions whenever the pending set changes (a resume just
 	// completed, or a new turn left a different set of pending tools).
@@ -827,7 +820,7 @@
 	// model list rather than snapshotted onto the conversation, so a server
 	// `--ctx-size` change is picked up on the next models-list load (navigation
 	// or the 60s stale-while-revalidate refresh), not mid-session. Null →
-	// ChatHeader shows just the raw token count, as before. See
+	// ChatHeader shows just the raw token count. See
 	// extractContextWindow (server side).
 	const modelContextWindow = $derived(catalogue.entry(modelId)?.contextWindow ?? null);
 
@@ -884,11 +877,11 @@
 	// the prompt_tokens of the next assistant message whose backend
 	// reported usage. Computed once per `messages` change with a single
 	// right-to-left sweep rather than once per row at render time —
-	// the previous per-row lookup made the message list render O(N²).
+	// a per-row lookup makes the message list render O(N²).
 	// Null when no downstream assistant reported usage (in-flight or
 	// cancelled turn, or backend doesn't return usage).
 	// Keyed by message id (not array index): visibleMessages drops tool rows and
-	// repositions compaction summaries, so it no longer aligns 1:1 with the raw
+	// repositions compaction summaries, so it doesn't align 1:1 with the raw
 	// `messages` branch this sweep walks.
 	const userSentTokens = $derived.by(() => {
 		const out = new Map<string, number | null>();
@@ -931,13 +924,9 @@
 	//
 	// Called only on a real id change (the conversation-entry effect below), not
 	// on every read of `data.conversation`: that makes the whole `data` prop a
-	// dependency, so a reset tied to it fired on *any* invalidation, not just a
-	// conversation change. It was invisible
-	// while every turn ended in `refreshAll()` — the clear was immediately
-	// followed by a re-seeded `messages`, which re-ran the auto-attach effect and
-	// put the image back — but it meant each turn needlessly tore down and
-	// rebuilt the composer's attachments, and a layout-only invalidation would
-	// clear them with nothing to restore them.
+	// dependency, so a reset tied to it would fire on *any* invalidation — tearing
+	// down and rebuilding the composer's attachments on every turn, and on a
+	// layout-only invalidation clearing them with nothing to restore them.
 	function resetComposerMediaOnSwitch() {
 		attachments.clear();
 		autoAttached = null;
@@ -947,8 +936,8 @@
 
 	// One place for what happens when the reused /chat/[id] component enters a
 	// different conversation (and, for most steps, on first entry). Each step is
-	// documented at its function. Collapsed from three effects with three sentinel
-	// ids, because a step that missed its reset is how two bugs shipped.
+	// documented at its function. One effect with one sentinel id rather than one
+	// per step, because a step that missed its reset is how two bugs shipped.
 	//
 	// Placed HERE, early, on purpose: effects run in declaration order within a
 	// flush, and the media reset must land before the image auto-attach effect
@@ -1018,10 +1007,6 @@
 
 	// --- viewport, focus + message-arrival state ---------------------------
 	//
-	// (Drag-drop and paste-to-attach are NOT here — they live on the composer
-	// itself, in ComposerCore.svelte, feeding the same `attachments.addFiles()`
-	// pipeline as the file picker. This header used to say otherwise.)
-	//
 	// Scroll-to-bottom affordance: shows a floating button just above the
 	// composer when the user has scrolled meaningfully away from the latest
 	// message. Same flag also gates the streaming auto-scroll so we don't
@@ -1035,11 +1020,10 @@
 	// math on every onscroll event, and the browser typically runs the
 	// observation off the main thread.
 	let isNearBottom = $state(true);
-	// An attachment rather than `bind:this` + a separate $effect: observeSentinel
-	// already returns a disconnect cleanup, which is exactly an attachment's
-	// contract, so the observer lives on the element it observes and the ref
-	// state disappears. Reading `scrollContainer` inside still re-runs it if the
-	// container changes, as the effect did.
+	// An attachment: observeSentinel returns a disconnect cleanup, which is
+	// exactly an attachment's contract, so the observer lives on the element it
+	// observes with no ref state. Reading `scrollContainer` inside re-runs it if
+	// the container changes.
 	const observeNearBottom = (node: HTMLElement) =>
 		observeSentinel(scrollContainer, node, (v) => (isNearBottom = v), {
 			rootMargin: '0px 0px 100px 0px',
@@ -1048,8 +1032,8 @@
 	// Loading earlier messages. The page opens on the branch's newest window; a
 	// sentinel above the first message loads the window before it as the reader
 	// nears the top, until there is nothing earlier. Prepending is the one change
-	// the scroll model here didn't have to handle before: everything else arrives
-	// at the bottom.
+	// the scroll model has to absorb above the reader: everything else arrives at
+	// the bottom.
 	let loadingEarlier = $state(false);
 	// Off until the conversation has been placed on entry: before that the list
 	// sits at scrollTop 0 for a moment, and the sentinel would read as "reader at
@@ -1270,7 +1254,7 @@
 		//
 		// Kicked off at idle rather than straight away. These are only needed to
 		// render a *streaming* reply, so opening an existing thread to read it
-		// never uses them — but firing at mount put 120 KB gzip in contention with
+		// never uses them — and firing at mount puts 120 KB gzip in contention with
 		// the initial route graph on every chat open, including read-only ones.
 		// Idle keeps the "already loaded before the first token arrives" property
 		// (the user still has to type and send) without competing with first paint.
@@ -1299,8 +1283,8 @@
 	// Deep link from the search modal: a URL hash like `#msg-<id>` scrolls that
 	// message to the middle and flashes it. afterNavigate rather than onMount:
 	// it fires on the first entry AND when search lands in another conversation,
-	// which reuses this page without remounting it — onMount only ever saw the
-	// first. Waits a tick for the message wrappers to be in the DOM.
+	// which reuses this page without remounting it — onMount would only ever see
+	// the first. Waits a tick for the message wrappers to be in the DOM.
 	afterNavigate(({ to }) => {
 		const match = to?.url.hash.match(/^#msg-(.+)$/);
 		if (!match) return;
@@ -1336,7 +1320,7 @@
 	 * Intro for a message wrapper. Three modes, picked at mount time:
 	 *  - reduced-motion / pre-mount / the live-streamed row → no animation
 	 *    (the streamed row suppresses its own re-fade so the persist swap is
-	 *    seamless — preserved from the previous in:fade).
+	 *    seamless).
 	 *  - mid branch-switch → directional fade + horizontal slide.
 	 *  - otherwise → the subtle opacity-only arrival fade.
 	 */
@@ -1383,13 +1367,8 @@
 		composerRef.focus();
 	});
 
-	// The in-flight fetch's AbortController (`turn.activeAbort`) and the
-	// suspend/offline interruption flags (`turn.wasHiddenDuringFetch` /
-	// `turn.wasOfflineDuringFetch`) live on the turn controller now — the
-	// visibility/online listeners below flip them via turn.markHidden/markOffline.
-
-	// Live connectivity state (distinct from turn's per-fetch offline latch, which is a
-	// per-fetch latch). Drives the composer's offline notice + disabled Send:
+	// Live connectivity state (distinct from turn's per-fetch offline latch).
+	// Drives the composer's offline notice + disabled Send:
 	// while offline we block sending rather than firing a doomed fetch, so the
 	// typed message stays in the box (and its draft) instead of being cleared
 	// into a "Load failed". navigator.onLine === false is reliable; a true is
@@ -1401,7 +1380,7 @@
 	// whatever the <svelte:window> online/offline handlers assign.
 	let isOffline = $derived(browser && !navigator.onLine);
 
-	// Multi-model fan-out controller (state + orchestration extracted to
+	// Multi-model fan-out controller (state + orchestration live in
 	// #lib/fanout-controller for testability). The page owns the composer/picker
 	// bindings + a few effects that delegate here; the controller reaches shared
 	// page state through these getters/setters.
@@ -1456,10 +1435,10 @@
 		modelLabel: (id) => modelDisplayName(id),
 	});
 
-	// The inline media lightbox: tap a generated image to open it, swipe through
-	// the conversation's media, star it, or discard its fan-out branch.
 	// The page's stars, shared by the fan-out grid and the lightbox.
 	const favorites = new MediaFavorites();
+	// The inline media lightbox: tap a generated image to open it, swipe through
+	// the conversation's media, star it, or discard its fan-out branch.
 	const lightbox = new ChatLightbox({
 		conversationId: () => data.conversation.id,
 		// The dialog's photo comparison while one is up, over the thread's grid.
@@ -1580,12 +1559,6 @@
 		}
 	}
 
-	// In-flight assistant render state (segments + open/progress/status/queued/
-	// mcp-unavailable) lives on `turn` — while streaming it shows a transient
-	// "assistant" bubble that isn't yet a row in the messages array; on `done`
-	// the canonical persisted ChatMessage is spliced into messages. The
-	// segments-to-blocks conversion is `turn.inFlightBlocks`.
-
 	// --- Multi-model fan-out -------------------------------------------------
 	// The model picker's compare "cart" (model id → count) + whether compare
 	// mode is on. Bound into ChatComposer → ModelPicker. When the cart is
@@ -1637,8 +1610,8 @@
 	// (notably `turn.inFlightBlocks`). Reassigning the array would re-trigger
 	// this very effect (which reads the segments to iterate), causing
 	// a self-perpetuating rAF loop at 60Hz that fires the auto-scroll
-	// effect each frame — which yanked the scroll position back to the
-	// bottom whenever the user tried to scroll up, even when idle.
+	// effect each frame — which yanks the scroll position back to the
+	// bottom whenever the user tries to scroll up, even when idle.
 	let inFlightHtmlFrame = 0;
 	$effect(() => {
 		// Touch every text segment's text so the effect re-runs whenever
@@ -1922,9 +1895,9 @@
 	// When the in-flight turn acquired its endpoint slot — the zero the elapsed
 	// timer counts from. Queue time is not generation time: behind a
 	// max_concurrent=1 endpoint a turn can wait hours, and counting from the send
-	// (or, recovered, from registration) reported that whole wait as generating
-	// and then kept counting through the real run. Null while queued, which hides
-	// the timer; the fan-out grid's per-column timer follows the same rule. A
+	// (or, recovered, from registration) would report that whole wait as
+	// generating and keep counting through the real run. Null while queued, which
+	// hides the timer; the fan-out grid's per-column timer follows the same rule. A
 	// recovered bubble takes the server's stamp so it stays honest across a
 	// suspension; a live one takes `start` (or the first content frame).
 	const generationStartedAt = $derived(
@@ -2025,10 +1998,10 @@
 			// (queued -> active, if the turn was queued at all), which is neither
 			// guaranteed to happen nor guaranteed to land after the poll. So the
 			// dot would be gone for the rest of the session — precisely for a
-			// thread the user is about to walk away from. Widest for a fan-out, whose `/prepare` round trip
-			// opens the window for hundreds of ms. Re-marking is a no-op when the
-			// id is already present, so this settles in one extra run rather than
-			// looping.
+			// thread the user is about to walk away from. Widest for a fan-out,
+			// whose `/prepare` round trip opens the window for hundreds of ms.
+			// Re-marking is a no-op when the id is already present, so this settles
+			// in one extra run rather than looping.
 			//
 			// Note this subscribes to MEMBERSHIP only, never to the activity flag
 			// this same call publishes — see generating-conversations' module
@@ -2230,8 +2203,8 @@
 
 	// Where a conversation opens. /chat/a → /chat/b reuses this component, and
 	// with it `scrollContainer` and its scrollTop — so the effect above, which
-	// only follows content while already near the bottom, left b opened wherever
-	// a was scrolled to. Entering a conversation positions explicitly instead: at
+	// only follows content while already near the bottom, would leave b opened
+	// wherever a was scrolled to. Entering a conversation positions explicitly instead: at
 	// the top of a parked fan-out grid (so its results read from the first one,
 	// rather than from past the end of the last), otherwise at the latest
 	// message. Keyed on the id VALUE, which only a navigation to another
@@ -2451,7 +2424,7 @@
 	// the in-flight turn state, these are component-local and the /chat/[id]
 	// component is reused across conversation switches: without this the
 	// previous chat's half-typed text would bleed into the next, and a stale
-	// an open edit session (whose target message doesn't exist in the new
+	// open edit session (whose target message doesn't exist in the new
 	// conversation) would hide the composer with no inline editor to replace
 	// it, leaving no way to type. Drafts are per-conversation, so each switch
 	// loads its own (usually empty); see #lib/composer-draft. Called only on a
@@ -2509,8 +2482,8 @@
 			// return value supplies the KIND that the cart's homogeneity filter keys
 			// off, and inventing one for an id we couldn't resolve would build a
 			// mixed-kind cart the picker rejects on arrival. If `ensure` failed
-			// outright the models drop, as they did before — a network failure, not
-			// the ordinary partial-catalogue state this whole path is about.
+			// outright the models drop — a network failure, not the ordinary
+			// partial-catalogue state this whole path is about.
 			(id) => catalogue.entry(id),
 		);
 		// A cart resolves against base models only, so the preset upgrade is a
@@ -2655,11 +2628,11 @@
 			private={isPrivate}
 			avatar={canGenerateAvatar
 				? {
-						// Server-computed, deliberately NOT `avatarWorkflow.imageModels.length > 0` like the
-						// list two lines below. This gates whether the affordance appears
-						// at all, and the client holds a first-paint slice — it would
-						// count zero on a perfectly healthy install and silently remove
-						// the feature. The list behind the button is fetched on click.
+						// Server-computed, deliberately NOT `avatarWorkflow.imageModels.length > 0`
+						// like the list two lines below. This gates whether the affordance
+						// appears at all, and the client holds a first-paint slice — it would
+						// count zero on a perfectly healthy install and silently remove the
+						// feature. The list behind the button is fetched on click.
 						hasImageModel: data.hasImageModel,
 						avatarMediaId: assistantAvatarMediaId,
 						hasSource: !!avatarWorkflow.sourceMessage,
@@ -2682,7 +2655,7 @@
 		Scroll area fills the full height *behind* the floating composer
 		(see below); the message list pads its own bottom by the composer's
 		measured height so the last message scrolls clear. No mask-fade —
-		content now slides under the frosted-glass composer, which is the
+		content slides under the frosted-glass composer, which is the
 		transition, rather than dissolving into the page bg.
 	-->
 		<div bind:this={scrollContainer} class="flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4">
@@ -2765,8 +2738,7 @@
 					mergeWithPrev/mergeWithNext: consecutive assistant messages
 					from a multi-iteration tool-using turn (iter 0 has tool_call
 					parts, iter 1+ has the follow-up text) are persisted as
-					separate rows but should render as ONE bubble — that's the
-					"folded into assistant bubble" UX the user picked. We do it
+					separate rows but should render as ONE bubble. We do it
 					by collapsing the gap + sharing corners + suppressing the
 					duplicate role label / interstitial action bar.
 				-->
@@ -2788,13 +2760,13 @@
 					not the v3 prefix (`!mb-0`).
 				-->
 						<!--
-						Do NOT put `content-visibility: auto` on this wrapper. It was
-						tried and reverted (and measured unneeded: scrolling held 60 fps
-						through 400 turns; what grew was the payload, which loading the
-						branch in windows now bounds). Off-screen rows collapse to their `contain-intrinsic-size`
-						placeholder, which makes the scroll container's `scrollHeight`
-						an ESTIMATE (measured 20638px against a real 42537px on a
-						40-turn thread). Pin-to-bottom here is
+						Do NOT put `content-visibility: auto` on this wrapper. It isn't
+						needed (measured: scrolling held 60 fps through 400 turns; what
+						grew was the payload, which loading the branch in windows
+						bounds), and it breaks pin-to-bottom. Off-screen rows collapse
+						to their `contain-intrinsic-size` placeholder, which makes the
+						scroll container's `scrollHeight` an ESTIMATE (measured 20638px
+						against a real 42537px on a 40-turn thread). Pin-to-bottom here is
 						`scrollTop = el.scrollHeight`, so a short estimate scrolls to
 						the bottom of a document that doesn't exist, and a row mounting
 						collapsed on stream-finalize snaps the view off the reply.
@@ -3091,34 +3063,6 @@
 	{/if}
 </div>
 
-<!--
-	In-conversation media lightbox. State + fetch live in `ChatLightbox`
-	(owned by this page) so the chat owns the open/close lifecycle; the
-	component is purely presentational. `onDelete` is passed only for an image in an open media
-	fan-out grid, where it discards that branch exactly as the grid's trash
-	button does (see ChatLightbox.discard). Otherwise destructive media
-	deletion belongs in the gallery surface. `conversationsUsingThis` is
-	never passed: listing "conversations referencing this" would just be a
-	circular link back to where the user already is.
-	`inConversation` switches the gallery-launch button labels to
-	wording that makes it explicit they start a *new* chat, since the
-	user is currently inside one and "Regenerate" otherwise reads
-	ambiguously.
-
-	Dynamically imported on first open so the ~10 KB gz chunk stays out
-	of the chat-route critical path — most chat sessions never tap an
-	image. Vite caches the resolved module, so subsequent opens reuse
-	it without a network fetch. The `{#await}` only mounts under the
-	`{#if lightbox.media}` guard, which the fetch in ChatLightbox.open sets
-	~100-200 ms after the tap — easily long enough for the import chunk
-	to land in parallel on the first open.
--->
-<!--
-	The avatar draw dialog loads on first open, like the lightbox below: it's
-	opened from the avatar menu, and most sessions never do. It holds no state of
-	its own (everything is bound to `avatarWorkflow`), so unmounting it on close
-	loses nothing.
--->
 {#snippet photoComparisonGrid()}
 	<FanoutColumns
 		columns={photoGrid.columns}
@@ -3135,6 +3079,13 @@
 		favoriteBusy={favorites.pendingId !== null}
 	/>
 {/snippet}
+
+<!--
+	The avatar draw dialog loads on first open, like the lightbox below: it's
+	opened from the avatar menu, and most sessions never do. It holds no state of
+	its own (everything is bound to `avatarWorkflow`), so unmounting it on close
+	loses nothing.
+-->
 {#if avatarWorkflow.open}
 	{#await import('#lib/components/chat/AvatarDrawDialog.svelte') then { default: AvatarDrawDialog }}
 		<AvatarDrawDialog
@@ -3164,6 +3115,28 @@
 	{/await}
 {/if}
 
+<!--
+	In-conversation media lightbox. State + fetch live in `ChatLightbox`
+	(owned by this page) so the chat owns the open/close lifecycle; the
+	component is purely presentational. `onDelete` is passed only for an image
+	in an open media fan-out grid, where it discards that branch exactly as the
+	grid's trash button does (see ChatLightbox.discard). Otherwise destructive media
+	deletion belongs in the gallery surface. `conversationsUsingThis` is
+	never passed: listing "conversations referencing this" would just be a
+	circular link back to where the user already is.
+	`inConversation` switches the gallery-launch button labels to
+	wording that makes it explicit they start a *new* chat, since the
+	user is currently inside one and "Regenerate" otherwise reads
+	ambiguously.
+
+	Dynamically imported on first open so the ~10 KB gz chunk stays out
+	of the chat-route critical path — most chat sessions never tap an
+	image. Vite caches the resolved module, so subsequent opens reuse
+	it without a network fetch. The `{#await}` only mounts under the
+	`{#if lightbox.media}` guard, which the fetch in ChatLightbox.open sets
+	~100-200 ms after the tap — easily long enough for the import chunk
+	to land in parallel on the first open.
+-->
 {#if lightbox.media}
 	{#await import('#lib/components/MediaLightbox.svelte') then { default: MediaLightbox }}
 		<MediaLightbox

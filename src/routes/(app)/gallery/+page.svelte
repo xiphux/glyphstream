@@ -65,10 +65,9 @@
 	const tzOffset = () => -new Date().getTimezoneOffset();
 
 	// A hung fetch must never strand the grid in a loading/placeholder state with
-	// no recovery, so every gallery fetch is time-boxed with an AbortController
-	// (the old cursor-pagination path used the same pattern). On timeout the fetch
-	// rejects, the caller's catch/finally runs, and the range/reload becomes
-	// retriable again.
+	// no recovery, so every gallery fetch is time-boxed with an AbortController.
+	// On timeout the fetch rejects, the caller's catch/finally runs, and the
+	// range/reload becomes retriable again.
 	async function fetchWithTimeout(url: string, ms = 15_000): Promise<Response> {
 		const ctrl = new AbortController();
 		const timer = setTimeout(() => ctrl.abort(), ms);
@@ -176,8 +175,8 @@
 			// On a filter/stacking change, snap to the top as the new layout lands:
 			// the seeded first page always covers the top viewport, so the grid fills
 			// with real tiles instead of flashing placeholders (which a deep scroll
-			// position would show until its range demand-loaded). Matches the old
-			// filter-switch scroll reset. A delete keeps its place instead.
+			// position would show until its range demand-loaded). A delete keeps its
+			// place instead.
 			if (resetScroll && scrollContainer) {
 				scrollContainer.scrollTop = 0;
 				scrollTop = 0;
@@ -225,17 +224,17 @@
 		searchItems = [...(data.searchItems ?? [])];
 	});
 
-	// Load / reload the browse layout+units client-side whenever the filters or
-	// stacking change (and once on mount). Fetched here — not SSR'd — so the day
-	// buckets use the viewer's real tz. Waits for the tiles before any test/user
-	// interaction, so there's no mid-interaction reseed.
 	// The filters as one primitive. The effect below reads THIS rather than
 	// `data.kind` etc.: a replaced `data` object with the same filters — the
 	// (app) layout's deferred refetch on every cold load, its refresh on
 	// focus/resume — re-runs anything that reads through `data`, and the feed
-	// then refetched layout + units and jumped back to the top. A derived string
+	// would refetch layout + units and jump back to the top. A derived string
 	// only notifies when its value changes.
 	const browseFilterKey = $derived(`${data.kind}|${data.model}|${data.favorite}`);
+	// Load / reload the browse layout+units client-side whenever the filters or
+	// stacking change (and once on mount). Fetched here — not SSR'd — so the day
+	// buckets use the viewer's real tz. Waits for the tiles before any test/user
+	// interaction, so there's no mid-interaction reseed.
 	$effect(() => {
 		if (searching) return;
 		// deps: filters + stacking
@@ -291,7 +290,7 @@
 	// The query this page last pushed into the URL. A search navigation lands
 	// after the debounce, by which time the user has usually typed more — so
 	// the box resyncs from the URL only when the URL's query is one we didn't
-	// put there (back/forward, a link). Resyncing on our own commit reverted
+	// put there (back/forward, a link). Resyncing on our own commit would revert
 	// the box to the searched prefix, eating whatever was typed meanwhile.
 	// svelte-ignore state_referenced_locally
 	let committedQuery = data.q ?? '';
@@ -412,10 +411,6 @@
 	let lightboxConversations = $state<MediaConversationRef[] | null>(null);
 	let conversationsError = $state<string | null>(null);
 
-	// Open the lightbox for a media id. Drill/search rows are already full
-	// MediaListItems (instant); a top-level grid tile carries only a thin unit,
-	// so its leader is fetched — through a cache the lightbox prefetches the
-	// neighbours into, so a swipe usually finds the row already here.
 	// Bumped by every open and close. A top-level tile (or a carousel swipe to
 	// one) fetches its row; if the user has since opened another item, swiped
 	// on, or closed the preview, that late response must not replace — or
@@ -450,6 +445,10 @@
 		});
 	}
 
+	// Open the lightbox for a media id. Drill/search rows are already full
+	// MediaListItems (instant); a top-level grid tile carries only a thin unit,
+	// so its leader is fetched — through a cache the lightbox prefetches the
+	// neighbours into, so a swipe usually finds the row already here.
 	async function openLightboxById(id: string) {
 		const local = localLightboxItem(id) ?? lightboxItems.peek(id);
 		if (local) {
@@ -548,8 +547,7 @@
 			return;
 		}
 		// Re-anchor: a conversation stack keeps its stable id key; a prompt run
-		// re-keys to its newest surviving member (replacing the old
-		// `reanchorDrillOnDelete` from the items-based path).
+		// re-keys to its newest surviving member.
 		const leader = survivors[0];
 		drillItems = survivors;
 		drillUnit = {
@@ -595,11 +593,11 @@
 	 * there's no cheap load to re-run here. This page ships the whole visible
 	 * library, so an `invalidate` to move one star would re-serialize it, and a
 	 * feed reseed is two more round trips for a badge. So the local copies flip
-	 * immediately and revert on failure. (A star no longer invalidates the server's
+	 * immediately and revert on failure. (A star doesn't invalidate the server's
 	 * memo for an UNFILTERED view — see `galleryUserFingerprint`'s split — so the
-	 * reseed this avoids is a round trip, not an O(library) restack. It still is
-	 * one when the Favorites filter is on, which is the branch below that reseeds
-	 * on purpose.)
+	 * reseed this avoids is a round trip, not an O(library) restack. It is one
+	 * when the Favorites filter is on, which is the branch below that reseeds on
+	 * purpose.)
 	 *
 	 * The three item lists are separate copies of the same rows (lightbox, drill
 	 * members, search results), so each is patched; the grid tile's badge is
@@ -647,7 +645,7 @@
 				} else {
 					// An unstar drops the item from the grid; a re-star has to put it back —
 					// that's the obvious undo, with the lightbox still open on the item, and
-					// it used to leave the row starred on the server but missing from the
+					// skipping it leaves the row starred on the server but missing from the
 					// grid until a manual reload. Only the unstar names an id, since nothing
 					// leaves the library on a re-star.
 					//
@@ -747,14 +745,11 @@
 	const months = $derived(feed.layout ? monthTicksFromLayout(feed.layout.days) : []);
 	let activeSectionKey = $state<string | null>(null);
 
-	// Every section header stays mounted (only tiles are windowed), so the rail's
-	// header-measurement logic works unchanged.
+	// Every section header stays mounted (only tiles are windowed), so the rail
+	// can measure any of them.
 	const sectionHeaders = new Map<string, HTMLElement>();
-	// An attachment (Svelte's modern replacement for `use:`). The action this
-	// replaced needed an explicit `update`/`destroy` pair to re-key the map;
-	// here a changed `key` just re-runs the attachment, and the returned
-	// teardown drops the old entry first — so the same re-keying falls out of
-	// the normal lifecycle.
+	// An attachment: a changed `key` re-runs it, and the returned teardown drops
+	// the old entry first, so re-keying the map falls out of the normal lifecycle.
 	function registerHeader(key: string) {
 		return (node: HTMLElement) => {
 			sectionHeaders.set(key, node);
@@ -1082,8 +1077,8 @@
 				{#if !drillUnit}
 					{#if searchExpanded}
 						<!-- w-32 on mobile is a width budget: title + open box + Favorites +
-						     View options + Select must fit one row at 360px (w-40 wrapped).
-						     Recently deleted hides while this is open; it didn't fit too. -->
+						     View options + Select must fit one row at 360px (w-40 wraps).
+						     Recently deleted hides while this is open; it doesn't fit either. -->
 						<div class="relative">
 							<input
 								type="search"
@@ -1293,8 +1288,9 @@
 				</div>
 			{:else}
 				<!-- A single media tile from a full MediaListItem — shared by search +
-				     drill-in. Grid tiles use the /thumbnail variant (512px long side, sharp for images and ffmpeg for video,
-				     disk-cached), not the full-resolution /content the lightbox pulls. -->
+				     drill-in. Grid tiles use the /thumbnail variant (512px long side,
+				     sharp for images and ffmpeg for video, disk-cached), not the
+				     full-resolution /content the lightbox pulls. -->
 				{#snippet mediaTile(m: MediaListItem)}
 					{@const isSelected = selectMode && selected.has(m.id)}
 					<GalleryTile

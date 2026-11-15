@@ -28,15 +28,15 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	// `await parent()` sets SvelteKit's `uses.parent`, and the client marks a
 	// node invalid whenever its parent re-ran. This page returns a window of the
 	// active branch with `content_html` (5-20x the source text for shiki code
-	// blocks), so that coupling made every `invalidate('app:conversations')` —
-	// fired on tab refocus, and after each completed turn — re-serialize and
-	// re-download it to refresh a sidebar title and sort order. Measured, when
-	// it was still the whole branch, at 35 KB for a 40-turn seeded thread and
+	// blocks), so that coupling would make every `invalidate('app:conversations')`
+	// — fired on tab refocus, and after each completed turn — re-serialize and
+	// re-download it to refresh a sidebar title and sort order. Measured, on the
+	// whole branch before windowing, at 35 KB for a 40-turn seeded thread and
 	// megabytes for a long code-heavy one.
 	//
-	// Nothing here reads parent data (the old call discarded its result), so
-	// dropping it costs nothing and restores the targeted invalidation the
-	// layout's `depends('app:conversations')` comment already describes.
+	// Nothing here reads parent data, so skipping it costs nothing and keeps the
+	// targeted invalidation the layout's `depends('app:conversations')` comment
+	// describes.
 	requireUserPage(locals, url);
 	// Only the branch's newest window: a long thread was otherwise megabytes of
 	// HTML on every open (8 MB at 200 turns). Older messages come from
@@ -78,18 +78,18 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	// into a `/api/media/:id/thumbnail` URL, and this payload is on the
 	// critical path for the whole conversation.
 	//
-	// Only the LABEL still depends on the preset, deliberately: a conversation
+	// Only the LABEL depends on the preset, deliberately: a conversation
 	// avatar changes what the model looks like, not what it's called.
 	let assistantLabel = friendlyModelName(conversation.modelId);
 	let presetAvatarMediaId: string | null = null;
 	// Hoisted to a const before the closure because narrowing a PROPERTY doesn't
 	// survive into a callback: reading `conversation.customModelId` inside
 	// `timeDb` is `string | null` again, and TS2345s. Narrowing a VARIABLE does
-	// survive, which is why the const works — and why `locals.user.id` below
-	// needs no `!` after `requireUserPage`, whose assertion signature narrows
-	// `locals` itself. (A `!` on the property would also compile and is NOT what
-	// no-unnecessary-type-assertion flags — verified — since it genuinely changes
-	// the type. The const is preferred here only for reading without one.)
+	// survive — which is also why `locals.user.id` below needs no `!` after
+	// `requireUserPage`, whose assertion signature narrows `locals` itself. (A `!`
+	// on the property would also compile, and no-unnecessary-type-assertion
+	// doesn't flag it since it genuinely changes the type; the const just reads
+	// cleaner.)
 	const presetId = conversation.customModelId;
 	if (presetId) {
 		const cm = timeDb(locals, () => getCustomModelForUser(presetId, locals.user.id));
@@ -129,19 +129,19 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	//
 	// It is the composer's picker trigger (which falls back to the alarming "Choose
 	// a model…" when it can't resolve its own value), the context-window readout,
-	// the submit gate, and anything rendering a per-MESSAGE id: `assistantIdentityForMessage` for a turn answered
-	// by something other than the conversation default, and the recovered fan-out
-	// columns, whose header labels are baked at rebuild time inside an `untrack` and
-	// so never re-render if the entry shows up later. Resolving those on the client
-	// would leave both showing raw `endpoint::owner/model` ids until something else
-	// happened to load the catalogue — permanently, for the columns.
+	// the submit gate, and anything rendering a per-MESSAGE id:
+	// `assistantIdentityForMessage` for a turn answered by something other than the
+	// conversation default, and the recovered fan-out columns, whose header labels
+	// are baked at rebuild time inside an `untrack` and so never re-render if the
+	// entry shows up later. Resolving those on the client would leave both showing
+	// raw `endpoint::owner/model` ids until something else happened to load the
+	// catalogue — permanently, for the columns.
 	//
 	// Cheap and bounded: `listAllModels` is an in-memory stale-while-revalidate
 	// cache, the ids come from an index-only query (`idx_messages_conv_model`), and
 	// a conversation refers to a handful of distinct models (one, until you switch
-	// mid-thread or fan out).
-	// That is the trade — a few hundred bytes per conversation against the catalogue
-	// itself, which stays off the payload entirely.
+	// mid-thread or fan out). That is the trade — a few hundred bytes per
+	// conversation against the catalogue itself, which stays off the payload.
 	const modelResults = await listAllModelsWithErrors();
 	const allModels = modelResults.flatMap((r) => r.models);
 	const referencedModelIds = [

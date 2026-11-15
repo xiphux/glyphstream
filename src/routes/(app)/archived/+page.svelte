@@ -27,11 +27,10 @@
 		}
 	}
 
-	// Delete uses the shared <DeleteConversationDialog> (rendered at the
-	// bottom of the markup) so the archived list behaves exactly like
-	// the sidebar: a real confirm modal with the orphan-media checkbox,
-	// not a bare window.confirm() with no media option. requestDelete
-	// opens it; performDelete runs once the user confirms.
+	// Delete goes through the shared <DeleteConversationDialog> so the archived
+	// list behaves like the sidebar: a real confirm modal with the orphan-media
+	// checkbox, not a bare window.confirm(). requestDelete opens it;
+	// performDelete runs once the user confirms.
 	function requestDelete(id: string) {
 		if (busyId) return;
 		deleteTargetId = id;
@@ -115,8 +114,4 @@
 	</div>
 </div>
 
-<!--
-	Shared delete-confirm dialog — the same modal the sidebar uses, so
-	deleting an archived thread offers the orphan-media checkbox too.
--->
 <DeleteConversationDialog bind:targetId={deleteTargetId} onconfirm={performDelete} />

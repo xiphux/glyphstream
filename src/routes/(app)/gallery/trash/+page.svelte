@@ -27,10 +27,10 @@
 	// rather than leaving it showing something that's gone.
 	let viewingId = $state<string | null>(null);
 
-	// Render the grid a page at a time. The trash can hold up to a thousand
-	// items (the 30-day window); the server rendered every tile and the browser
-	// built every node up front. Selection, "empty trash" and the lightbox all
-	// work from `data.items`, so only the drawing is windowed.
+	// Render the grid a page at a time: the trash can hold up to a thousand items
+	// (the 30-day window), too many tiles to build up front. Selection, "empty
+	// trash" and the lightbox all work from `data.items`, so only the drawing is
+	// windowed.
 	const PAGE = 120;
 	let shown = $state(PAGE);
 	let scroller = $state<HTMLElement | null>(null);
