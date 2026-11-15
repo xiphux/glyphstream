@@ -25,7 +25,7 @@
  * mark A acknowledged (the sentinel is already set) without ever dismissing it,
  * stranding its notification permanently.
  *
- * Extracted from the chat page so the decision — and the deferral below, whose
+ * Kept out of the chat page so the decision — and the deferral below, whose
  * whole reason for existing is an event ordering we can't reproduce in CI — is
  * exercised by `tests/unit/notification-ack.test.ts` rather than by reasoning
  * about iOS. Same split the push arbiter uses: a decision that's testable in

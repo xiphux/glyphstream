@@ -1,22 +1,20 @@
 /**
  * Helpers that mutate the user's saved multi-model sets — named groups of
  * models (e.g. "Favorite Image Models") that re-populate the model picker's
- * compare cart in one click. The shared write path is `setModelSets`, which
- * PATCHes the *full* `modelSets` array (the same fire-and-invalidate shape
- * as `favorite-models.ts`).
+ * compare cart in one click.
  *
- * Like favorites, this is fire-and-`invalidate('app:prefs')`: we send the new
- * array, then reload `data.prefs` so every place that reads the sets (the
- * picker's "Saved sets" section) re-renders from the layout's snapshot —
- * scoped to the layout's key so saving a set doesn't re-run the open page's
- * load along with it. No optimistic
- * update — the picker reads sets from `data.prefs.modelSets`, and a local
- * optimistic copy would briefly disagree with the server during in-flight
- * requests. A toast surfaces failures; success is its own visible feedback.
+ * Like `favorite-models.ts`, writes are fire-and-`invalidate('app:prefs')`:
+ * `setModelSets` PATCHes the *full* `modelSets` array, then reloads
+ * `data.prefs` so every place that reads the sets (the picker's "Saved sets"
+ * section) re-renders from the layout's snapshot — scoped to the layout's key
+ * so saving a set doesn't re-run the open page's load along with it. No
+ * optimistic update — the picker reads sets from `data.prefs.modelSets`, and a
+ * local optimistic copy would briefly disagree with the server during
+ * in-flight requests. A toast surfaces failures; success is its own visible
+ * feedback.
  *
- * `mergeModelSet` is a pure helper (no I/O) so the picker can compute the
- * merged compare cart synchronously and unit-test the de-dupe in isolation,
- * mirroring `reorder` in `favorite-models.ts`.
+ * `mergeModelSet` is pure (no I/O) so the picker can compute the merged compare
+ * cart synchronously and unit-test the de-dupe in isolation.
  */
 
 import { invalidate } from '$app/navigation';

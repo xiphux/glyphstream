@@ -1,13 +1,13 @@
 /**
  * Minimal OAuth 2.0 / OIDC authorization-code client.
  *
- * Replaces `arctic`, which was deprecated in July 2026 with no successor —
- * its author's advice is to inline the ~200 lines you actually use, and
- * ships 0BSD-licensed reference snippets to copy. This is that inlining,
- * covering exactly the surface the three providers need (authorization
- * URL, code exchange, ID-token decode) and nothing else. It also drops
- * `@oslojs/{crypto,encoding,jwt}`, which existed only to polyfill what
- * `node:crypto` and Buffer already do.
+ * In-tree rather than `arctic`, which was deprecated in July 2026 with no
+ * successor — its author's advice is to inline the ~200 lines you actually
+ * use, and ships 0BSD-licensed reference snippets to copy. This is that
+ * inlining, covering exactly the surface the three providers need
+ * (authorization URL, code exchange, ID-token decode) and nothing else, with
+ * `node:crypto` and Buffer in place of the `@oslojs/{crypto,encoding,jwt}`
+ * polyfills.
  *
  * Server-only by construction (`#lib/server`), hence `node:crypto` rather
  * than WebCrypto — the SHA-256 is then synchronous, so building a PKCE
@@ -23,16 +23,13 @@
 import { createHash, randomBytes } from 'node:crypto';
 
 /**
- * How long to wait on the authorization server's token endpoint. arctic
- * imposed no bound, so a black-holed IdP hung the login request until the
- * OS TCP timeout. 10s matches the OIDC discovery fetch in `oidc.ts`.
+ * How long to wait on the authorization server's token endpoint. Unbounded,
+ * a black-holed IdP hangs the login request until the OS TCP timeout. 10s
+ * matches the OIDC discovery fetch in `oidc.ts`.
  */
 const TOKEN_REQUEST_TIMEOUT_MS = 10_000;
 
-/**
- * Sent because GitHub rejects requests without a User-Agent. Any value
- * works; arctic sent "arctic".
- */
+/** Sent because GitHub rejects requests without a User-Agent. Any value works. */
 const USER_AGENT = 'glyphstream';
 
 /**
@@ -250,9 +247,8 @@ export async function exchangeAuthorizationCode(
 
 	// Checked on 200 as well as the two error statuses, and the 200 case is
 	// load-bearing: GitHub answers a failed exchange with
-	// `200 {"error": "bad_verification_code"}` rather than a 4xx, which is why
-	// arctic needed a whole separate GitHub code path. Testing the field
-	// rather than the status covers both shapes in one branch — and a
+	// `200 {"error": "bad_verification_code"}` rather than a 4xx. Testing the
+	// field rather than the status covers both shapes in one branch — and a
 	// spec-compliant success response can never carry `error`
 	// (RFC 6749 §5.1), so there's no ambiguity to trade away.
 	//
@@ -262,11 +258,6 @@ export async function exchangeAuthorizationCode(
 	// login. arctic's generic client drew the line in the same place, so
 	// widening it is a deliberate change to make, not an oversight to fix in
 	// passing.
-	//
-	// GitHub is the one place classification did move: arctic's GitHub-specific
-	// path threw on ANY non-200 without reading the body, so a GitHub 4xx error
-	// document used to reach the user as `upstream_failure` and now correctly
-	// reaches it as `oauth_exchange_failed`.
 	if (typeof parsed.error === 'string') {
 		throw new OAuth2RequestError(
 			parsed.error,

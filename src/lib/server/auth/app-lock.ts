@@ -87,7 +87,8 @@ export interface AppLockDecision {
  * page is visible. Any other request — a recovery poll for a generation, say —
  * can fire from a hidden page on platforms that throttle background timers
  * rather than freezing them (desktop Chrome, Android), and letting those slide
- * the window kept a backgrounded app unlocked for as long as the generation ran.
+ * the window would keep a backgrounded app unlocked for as long as the
+ * generation ran.
  * The keep-alive's own interval is sized to hold the window open on its own
  * (see `appLockKeepAliveMs`), so nothing else needs to.
  *

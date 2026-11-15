@@ -1,9 +1,8 @@
 /**
- * GitHub OAuth provider. Folds the former `src/lib/server/auth/github.ts`
- * module into the registry shape. GitHub does NOT use PKCE, so
- * `codeVerifier` is always null. Its callback stays at the legacy
- * `/api/auth/github/callback` path so existing operators' registered
- * OAuth-app callback URL keeps working with no reconfiguration.
+ * GitHub OAuth provider. GitHub does NOT use PKCE, so `codeVerifier` is
+ * always null. Its callback stays at the legacy `/api/auth/github/callback`
+ * path so existing operators' registered OAuth-app callback URL keeps working
+ * with no reconfiguration.
  */
 import { buildAuthorizationURL, exchangeAuthorizationCode, generateState } from './oauth2';
 import {

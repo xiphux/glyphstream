@@ -8,8 +8,7 @@ import { countUsers } from '../db/queries/users';
  *
  * Written as a TypeScript assertion function: after `requireUser(locals)`
  * the compiler narrows `locals.user` to non-null for the rest of the
- * handler, so existing `locals.user.id` accesses keep type-checking with
- * no rename.
+ * handler.
  *
  * This is the single definition of the /api/* surface's 401 and 423. The bare
  * /api/* routes guard themselves here (rather than in hooks.server.ts)

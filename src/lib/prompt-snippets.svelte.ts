@@ -4,9 +4,9 @@
  * Deliberately NOT loaded through the `(app)` layout the way `enabledSkills`
  * is. A realistic library is ~100 style paragraphs — roughly 60 KB raw — and
  * riding that on every page load would add meaningfully to the chat route's
- * initial payload for a feature many sessions never touch. Instead
- * the composer calls `ensureSnippetsLoaded()` the first time the trigger char
- * is typed, and the result is cached for the session.
+ * initial payload for a feature many sessions never touch. Instead the composer
+ * calls `ensureSnippetsLoaded()` the first time the trigger char is typed, and
+ * the result is cached for the session.
  *
  * A user with NO snippets caches the empty result too, so they pay exactly one
  * request ever rather than one per keystroke.
@@ -31,7 +31,7 @@ export function snippetList(): PromptSnippet[] {
  * How long to wait before retrying after a failed load.
  *
  * The caller fires on every keystroke AND every caret move inside a `;` token,
- * so without a cooldown one failing endpoint turned a single attempted snippet
+ * so without a cooldown one failing endpoint turns a single attempted snippet
  * use into ~20 requests — adding load exactly when the server is already
  * unhealthy, and filling the console with errors while the user is just typing.
  */

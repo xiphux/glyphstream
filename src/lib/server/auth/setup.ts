@@ -16,20 +16,18 @@
  *
  * ## Why a token is always required
  *
- * `SETUP_TOKEN` used to be opt-in, and shipped commented out — so the
- * default posture on a fresh install was an open wizard. Anyone who reached
- * the host between `docker compose up` and the operator finishing setup could
- * claim the admin account, which then closes `/setup` structurally against
- * the real operator; recovery means hand-editing SQLite. The window is small
- * but it's exactly the window where DNS has been pointed at a new host and
- * nobody is watching it yet.
+ * Without a token, a fresh install's default posture is an open wizard.
+ * Anyone who reaches the host between `docker compose up` and the operator
+ * finishing setup could claim the admin account, which then closes `/setup`
+ * structurally against the real operator; recovery means hand-editing SQLite.
+ * The window is small but it's exactly the window where DNS has been pointed
+ * at a new host and nobody is watching it yet.
  *
- * When the operator hasn't set one, we now mint a random token for the
- * process and print it to stderr with the URL to use. First run costs a
- * glance at the logs (`docker compose logs`); an unattended instance is no
- * longer claimable. The generated token lives only in memory, so a restart
- * before setup completes mints a new one — fine, since the operator is
- * reading the log either way.
+ * When the operator hasn't set one, we mint a random token for the process
+ * and print it to stderr with the URL to use. First run costs a glance at the
+ * logs (`docker compose logs`); an unattended instance is not claimable. The
+ * generated token lives only in memory, so a restart before setup completes
+ * mints a new one — fine, since the operator is reading the log either way.
  *
  * Generation is lazy, inside the `countUsers() === 0` branch, so an
  * established instance never mints or logs anything.

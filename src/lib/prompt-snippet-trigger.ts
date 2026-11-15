@@ -32,9 +32,9 @@ export interface SnippetQuery {
  *
  * `\s` rather than a hand-listed set: it already covers the Unicode spaces and
  * every line terminator, including U+2028 — the soft break word processors and
- * PDFs emit. Listing only space/tab/LF/CR meant a `;` typed at the start of a
- * line that followed a pasted soft break failed the start-of-word rule, so the
- * menu silently declined to open with nothing to explain why.
+ * PDFs emit. With only space/tab/LF/CR listed, a `;` typed at the start of a
+ * line that follows a pasted soft break fails the start-of-word rule, so the
+ * menu silently declines to open with nothing to explain why.
  */
 function isWhitespace(ch: string): boolean {
 	return /\s/.test(ch);
@@ -60,7 +60,6 @@ export function snippetMenuQuery(text: string, caret: number): SnippetQuery | nu
 		const ch = text[i];
 		if (isWhitespace(ch)) return null;
 		if (ch !== SNIPPET_TRIGGER) continue;
-		// Start-of-word rule.
 		if (i > 0 && !isWhitespace(text[i - 1])) return null;
 		return { query: text.slice(i + 1, caret), start: i };
 	}

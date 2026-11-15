@@ -74,10 +74,11 @@ export class ModelCatalogue {
 	 * Separate from `status` so the two questions a truncated listing raises can be
 	 * answered independently: "have we fetched everything we're going to?" (yes —
 	 * so stop refetching) and "is this id's absence meaningful?" (no, for these
-	 * endpoints). Collapsing them into a permanent `partial` kept `ensureAll` from
-	 * ever short-circuiting, so a box that is simply powered off — the ordinary
-	 * state of a self-hosted inference machine — re-pulled the whole catalogue on
-	 * every single picker open, which is the cost this class exists to avoid.
+	 * endpoints). Collapsing them into a permanent `partial` would keep `ensureAll`
+	 * from ever short-circuiting, so a box that is simply powered off — the
+	 * ordinary state of a self-hosted inference machine — would re-pull the whole
+	 * catalogue on every single picker open, which is the cost this class exists
+	 * to avoid.
 	 */
 	#unresolvedEndpoints = $state.raw<ReadonlySet<string>>(new Set());
 	/**
@@ -242,9 +243,9 @@ export class ModelCatalogue {
 	 * and fan-outs, and one round trip per model would turn a cart into N.
 	 */
 	async ensure(ids: readonly string[]): Promise<void> {
-		// Deliberately NOT short-circuited on `status === 'full'`. Since `full` now
-		// means "fetched everything the server offered" rather than "every configured
-		// model is present", an id on an endpoint that was down during that load is
+		// Deliberately NOT short-circuited on `status === 'full'`. `full` means
+		// "fetched everything the server offered", not "every configured model is
+		// present", so an id on an endpoint that was down during that load is
 		// still genuinely open — `membership` reports it 'unsure', and the filter
 		// below is what decides there is nothing to do. Short-circuiting here would
 		// make those ids unaskable forever.

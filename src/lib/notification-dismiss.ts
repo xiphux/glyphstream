@@ -31,7 +31,7 @@ export async function dismissConversationNotifications(conversationId: string): 
 		// is registered (dev builds), which would leak a pending promise.
 		registration = await navigator.serviceWorker.getRegistration();
 		// Nested rather than an early return, so every path reaches the badge
-		// resync below — an early return here would skip it.
+		// resync below.
 		if (registration?.getNotifications) {
 			const notifications = await registration.getNotifications({ tag: conversationId });
 			for (const notification of notifications) notification.close();

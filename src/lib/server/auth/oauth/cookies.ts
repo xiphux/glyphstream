@@ -1,9 +1,7 @@
 /**
- * Cookie names shared across every OAuth provider's flow. These were
- * GitHub-specific (`STATE_COOKIE` etc. lived in `auth/github.ts`) before
- * the registry refactor; they're provider-shared now because the four
- * flows (login / setup / join / link) are identical across providers and
- * mutually exclusive within a single browser round-trip.
+ * Cookie names shared across every OAuth provider's flow: the four flows
+ * (login / setup / join / link) are identical across providers and mutually
+ * exclusive within a single browser round-trip.
  *
  * The matching `start` endpoint writes the cookie; the callback reads it
  * back to defend against CSRF — the two MUST agree, so each name lives

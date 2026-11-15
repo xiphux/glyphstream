@@ -11,9 +11,8 @@
  * timing-safe compare. The payload's `exp` field is checked against
  * `Date.now()` so even a stolen cookie can't be replayed past its TTL.
  *
- * Not session tokens — sessions stay in the existing cookie-token /
- * DB-sha256 split. These are stateless single-use markers tied to
- * one ceremony.
+ * Not session tokens — sessions use the cookie-token / DB-sha256 split.
+ * These are stateless single-use markers tied to one ceremony.
  */
 import type { Cookies } from '@sveltejs/kit';
 import { createHmac, timingSafeEqual } from 'node:crypto';
@@ -91,9 +90,10 @@ export function setCarryCookie(
  * own defaults, and its default `secure` is true outside dev unless the host
  * is literally `localhost`. Our cookies are set with `secure` keyed to
  * EXTERNAL_BASE_URL, so on a plain-http deployment reached by IP or LAN name
- * the clearing cookie carried `Secure` over http and the browser ignored it:
- * logout left the session cookie behind, and the single-use passkey
- * challenge and OAuth state cookies survived the step that consumed them.
+ * a bare delete's clearing cookie carries `Secure` over http and the browser
+ * ignores it: logout leaves the session cookie behind, and the single-use
+ * passkey challenge and OAuth state cookies survive the step that consumed
+ * them.
  */
 export function clearAuthCookie(cookies: Cookies, name: string): void {
 	cookies.delete(name, { path: '/', httpOnly: true, sameSite: 'lax', secure: cookiesSecure() });

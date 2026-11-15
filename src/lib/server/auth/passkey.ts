@@ -5,7 +5,7 @@
  * request headers — a flapping `Host` from a misconfigured reverse proxy
  * would otherwise silently invalidate every registered credential.
  * Changing EXTERNAL_BASE_URL after passkeys exist is a deliberate
- * operational hazard (documented in the README).
+ * operational hazard (documented in docs/authentication.md).
  *
  * All public functions are async; SimpleWebAuthn's API is promise-based
  * even when the work is synchronous.
@@ -42,8 +42,7 @@ import { memoizeConfig } from '../util/config-cache';
 import { generateId } from '../util/id';
 
 /** Short-lived httpOnly cookies that carry the challenge between the
- *  "options" and "verify" halves of each ceremony. Mirrors the shape of
- *  the existing GitHub OAuth state cookie. */
+ *  "options" and "verify" halves of each ceremony. */
 const REGISTRATION_COOKIE = 'glyphstream_passkey_reg_challenge';
 const LOGIN_COOKIE = 'glyphstream_passkey_login_challenge';
 const UNLOCK_COOKIE = 'glyphstream_passkey_unlock_challenge';

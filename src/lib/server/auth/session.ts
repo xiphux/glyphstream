@@ -110,11 +110,11 @@ export function createSession(
  * "no auth."
  *
  * When this renews, it sets `renewed` on the returned context and the caller
- * MUST call `setSessionCookie` again. Renewal used to move `expires_at` in the
- * DB while nothing re-issued the cookie, so the browser kept its original
- * `expires` date — which cut both ways. A legitimate user got signed out 30
- * days after issue no matter how active they were, while an exfiltrated raw
- * token, unbound by any cookie attribute, kept renewing its row forever.
+ * MUST call `setSessionCookie` again. Moving `expires_at` in the DB without
+ * re-issuing the cookie leaves the browser on its original `expires` date,
+ * which cuts both ways: a legitimate user is signed out 30 days after issue no
+ * matter how active they are, while an exfiltrated raw token, unbound by any
+ * cookie attribute, keeps renewing its row forever.
  */
 export function validateSessionToken(token: string): AuthContext | null {
 	if (!token) return null;

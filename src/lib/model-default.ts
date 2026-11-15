@@ -2,11 +2,11 @@
  * Which model the new-chat composer starts on, and the slice of the catalogue
  * first paint needs to render it.
  *
- * Extracted so the SERVER can answer both questions. It used to be decided in
- * `(app)/+page.svelte` from `data.models`, which meant the whole catalogue had
- * to be in the document before the composer could show anything — and on an
- * endpoint like OpenRouter that catalogue is ~2000 entries and 558KB of JSON,
- * shipped into every page load to answer a question about roughly three of them.
+ * Lives outside the page so the SERVER can answer both questions. Deciding it in
+ * `(app)/+page.svelte` from `data.models` would need the whole catalogue in the
+ * document before the composer could show anything — and on an endpoint like
+ * OpenRouter that catalogue is ~2000 entries and 558KB of JSON, shipped into
+ * every page load to answer a question about roughly three of them.
  *
  * Pure, and shared rather than reimplemented, because the alternative is two
  * copies of a precedence rule that drift silently: the page would pick one model

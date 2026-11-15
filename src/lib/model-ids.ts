@@ -6,8 +6,8 @@
  * client records every id it SENT as definitively answered. A client batch
  * larger than the server's cap would therefore remember the dropped tail as
  * "no such model" without ever having asked — the exact silent false negative
- * the catalogue is built to avoid. Two constants that merely happened to agree
- * left that one careless edit away.
+ * the catalogue is built to avoid. Two constants that merely happen to agree
+ * would leave that one careless edit away.
  *
  * Client-safe (no `#lib/server` imports), so the route and the store can both
  * reach it.
@@ -21,8 +21,8 @@ export const MAX_MODEL_IDS_PER_REQUEST = 200;
  * is the canonical encoder of this grammar but lives under `#lib/server` and so
  * cannot be reached from browser code. Kept to the same edge cases on purpose —
  * no separator, an empty endpoint half, or a trailing separator all yield null —
- * because the alternative the client reached for was `id.slice(0, id.indexOf(
- * '::'))`, which returns the id minus its last character for a bare id.
+ * because the obvious inline alternative, `id.slice(0, id.indexOf('::'))`,
+ * returns the id minus its last character for a bare id.
  */
 export function endpointIdOf(modelId: string): string | null {
 	const idx = modelId.indexOf('::');
@@ -35,13 +35,13 @@ export function endpointIdOf(modelId: string): string | null {
  * pair — what "regenerate this" seeds the model picker with.
  *
  * The two columns are NOT endpoint + upstream halves, which is the natural
- * reading and was the wrong one: every generated row writes `sourceModel` from
- * the relay's `storedModelId`, which is the ALREADY-JOINED `endpointId::
- * upstreamId` id (that's why `friendlyModelName` strips a `::` prefix off it,
- * and why the gallery's `?model=` facet filters on whole internal ids). Joining
- * it to `sourceEndpointId` again produced `bridge::bridge::flux`, which resolves
- * to nothing — so the launch intent's model was silently dropped and the
- * new-chat page fell back to the default, usually a chat model.
+ * reading and the wrong one: every generated row writes `sourceModel` from the
+ * relay's `storedModelId`, which is the ALREADY-JOINED `endpointId::upstreamId`
+ * id (that's why `friendlyModelName` strips a `::` prefix off it, and why the
+ * gallery's `?model=` facet filters on whole internal ids). Joining it to
+ * `sourceEndpointId` again yields `bridge::bridge::flux`, which resolves to
+ * nothing — the launch intent's model is silently dropped and the new-chat page
+ * falls back to the default, usually a chat model.
  *
  * The compose branch is therefore defence in depth, not a live case: no writer
  * in the tree stores a bare upstream id NEXT TO an endpoint. The rows that
@@ -73,10 +73,10 @@ export function mediaSourceModelId(
  * upstream `displayName` to be useful — most models embed enough meaning in
  * their slug that the cleaned-up version is fine.
  *
- * Lives here, alongside the grammar it parses, rather than under `#lib/server`
- * where it started: it is pure string work with no server dependency, and the
- * lightbox renders a media row's `sourceModel` on the client, where a
- * `#lib/server` import is not allowed to go.
+ * Lives here, alongside the grammar it parses, rather than under `#lib/server`:
+ * it is pure string work with no server dependency, and the lightbox renders a
+ * media row's `sourceModel` on the client, where a `#lib/server` import is not
+ * allowed to go.
  */
 export function friendlyModelName(internalId: string): string {
 	const sep = internalId.indexOf('::');
