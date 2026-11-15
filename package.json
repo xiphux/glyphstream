@@ -94,7 +94,7 @@
 		"undici": "^8.11.2",
 		"vite": "^8.2.2",
 		"vitest": "^5.0.0",
-		"web-push": "^3.6.7",
+		"web-push": "^4.0.0",
 		"workbox-expiration": "^7.4.1",
 		"workbox-precaching": "^7.4.1",
 		"workbox-routing": "^7.4.1",
