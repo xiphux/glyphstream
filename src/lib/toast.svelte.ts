@@ -38,11 +38,10 @@ export interface Toast {
 
 interface ShowOptions {
 	action?: ToastAction;
-	/** Secondary line under the message — a completion's body line, say. Callers
-	 *  passed this long before it was declared here, and TypeScript could not
-	 *  see the mistake: they spread it in, and excess-property checking does not
-	 *  apply to spread properties. Every such description was silently dropped.
-	 *  Keep it declared so the next one type-checks against something real. */
+	/** Secondary line under the message — a completion's body line, say. Must
+	 *  stay declared: callers spread their options in, and excess-property
+	 *  checking does not apply to spread properties, so an undeclared field is
+	 *  silently dropped with no type error. */
 	description?: string;
 	/** Override auto-dismiss timeout in ms. Pass 0 to keep the toast
 	 *  visible until explicit dismiss/replacement. */

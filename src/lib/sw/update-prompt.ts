@@ -11,8 +11,7 @@
  * Left to the lifecycle alone, that fires on the FIRST launch after every
  * deploy, offering a refresh onto the build already on screen. Which is the
  * quickest way to train someone to ignore the one prompt that has to be
- * believed — and this app only just got that prompt working again after it
- * spent a release silently broken.
+ * believed.
  *
  * So the rule compares builds instead of trusting the lifecycle. Kept here as
  * a pure function, in the shape `arbiter.ts` established: the decision is

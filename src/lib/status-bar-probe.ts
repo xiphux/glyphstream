@@ -76,12 +76,12 @@ function describe(el: Element): string {
 /**
  * Alpha 0 means "nothing painted here", not "painted transparent".
  *
- * Every notation, not just `rgb()`. This used to match `/^rgba?\(…\)$/` and
- * return false for anything else — which read every `oklch()` background in
- * this app as "no background at all", i.e. every surface it exists to measure.
- * Callers normalise through toLegacyRgb first, but that deliberately passes a
- * translucent colour through unconverted, so a non-rgb string still arrives
- * here and must be understood rather than discarded.
+ * Every notation, not just `rgb()`: matching only `/^rgba?\(…\)$/` would read
+ * every `oklch()` background in this app as "no background at all", i.e. every
+ * surface it exists to measure. Callers normalise through toLegacyRgb first,
+ * but that deliberately passes a translucent colour through unconverted, so a
+ * non-rgb string still arrives here and must be understood rather than
+ * discarded.
  *
  * An unrecognised serialisation counts as PAINTED. The direction matters: this
  * module's contract is that a failure is the trustworthy answer, so the one
@@ -117,14 +117,12 @@ export function probeStatusBarContainer(): StatusBarProbe {
 	// Highest stacking order wins, document order breaking ties — an
 	// approximation of "the one the hit test would have landed on".
 	//
-	// This used to take the last match in document order outright, justified as
-	// paint order "among equally-stacked elements". The candidates here are not
-	// equally stacked: the drawer's scrim is `fixed inset-0` at
+	// Document order alone is not paint order here, because the candidates are
+	// not equally stacked: the drawer's scrim is `fixed inset-0` at
 	// --z-index-drawer-backdrop (30) while the mobile top bar is `sticky` at
 	// `auto`, and the bar is ~460 lines further down the layout, so document
 	// order alone picks the bar while the scrim is what actually paints over
-	// the probe point. Comparing z first makes the code mean what that comment
-	// already claimed.
+	// the probe point.
 	//
 	// Still an approximation, and knowingly: `auto` is scored 0, which is right
 	// only while every candidate shares a stacking context. Nothing in this app
@@ -181,10 +179,10 @@ export function probeStatusBarContainer(): StatusBarProbe {
 	for (let el: HTMLElement | null = container; el; el = el.parentElement) {
 		const style = getComputedStyle(el);
 		// The prefixed lookup is a fallback for engines that don't expose the
-		// unprefixed property at all, NOT "the one WebKit reports", as this said
-		// before someone traced it: wherever `backdropFilter` exists it computes
-		// to the string 'none', which is truthy, so `||` short-circuits and the
-		// second lookup never runs. Safari 18+ aliases the two anyway.
+		// unprefixed property at all, NOT "the one WebKit reports": wherever
+		// `backdropFilter` exists it computes to the string 'none', which is
+		// truthy, so `||` short-circuits and the second lookup never runs.
+		// Safari 18+ aliases the two anyway.
 		const filter = style.backdropFilter || style.getPropertyValue('-webkit-backdrop-filter');
 		if (filter && filter !== 'none') {
 			return { container: label, color: null, reason: `backdrop-filter on ${describe(el)}` };

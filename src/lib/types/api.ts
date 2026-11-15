@@ -470,9 +470,9 @@ export type MessagePart =
 			 * draw's image: the user should see what came out at full size, but
 			 * re-sending an image on every subsequent turn is rent for something the
 			 * reply it illustrates already says in far fewer tokens — and a
-			 * non-vision model can't read it at all. (Those images now land as
-			 * versions on their reply, in `message_images`, not as parts; older rows
-			 * may still carry one.)
+			 * non-vision model can't read it at all. (Photo and portrait draws land
+			 * as versions on their reply, in `message_images`, not as parts; only
+			 * older rows carry one.)
 			 *
 			 * Deliberately decided at PERSIST time and never revisited. "Payload is
 			 * rent, and its prefix must be stable": what the user did may change the
@@ -1200,12 +1200,12 @@ export interface SendMessageRequest {
 	attachedMediaIds?: string[];
 	/**
 	 * Override the default "child of active_leaf" parent for the new
-	 * user message. Used historically by the Edit flow — passing the
-	 * original user message's parent made the new message a sibling
-	 * of the original. Still accepted as a fallback for callers that
-	 * already construct it; the cleaner contract is `editedMessageId`
-	 * below, which lets the server derive the parent (and correctly
-	 * handles the root-edit case where the parent is itself null).
+	 * user message — passing the original user message's parent makes
+	 * the new message a sibling of the original. Accepted as a fallback
+	 * for callers that already construct it; the cleaner contract is
+	 * `editedMessageId` below, which lets the server derive the parent
+	 * (and correctly handles the root-edit case where the parent is
+	 * itself null).
 	 */
 	parentMessageId?: string;
 	/**
@@ -1263,8 +1263,8 @@ export interface SendMessageRequest {
 	 * Additive re-roll: marks this branch as a lone regenerate (another variation
 	 * appended to an existing grid) rather than one of an initial fan-out group.
 	 * Image/video re-rolls are non-destructive — the new sibling is added next to
-	 * the original, which the user keeps or discards. The server no longer branches
-	 * on this — a re-roll folds into the same aggregate "N ready" as any fan-out
+	 * the original, which the user keeps or discards. The server doesn't branch on
+	 * this — a re-roll folds into the same aggregate "N ready" as any fan-out
 	 * branch — so it rides along only as an explicit wire marker. Ignored unless
 	 * `fanoutBranch`.
 	 */
@@ -1449,11 +1449,11 @@ export interface StreamDoneEvent {
 	 * only the last one — the intermediate assistant and `role:'tool'` rows exist
 	 * server-side and the client has to refetch to see them.
 	 *
-	 * The client used to infer this from having seen a `tool_call_start`, which
-	 * stopped being sound once a tool could be invisible: a reaction suppresses
-	 * all four of its `tool_call_*` frames, so a turn that reacted with no text
-	 * (the model wrote nothing, the relay looped) looked single-iteration and the
-	 * client silently kept a message list missing two persisted rows.
+	 * Inferring this from having seen a `tool_call_start` is unsound, because a
+	 * tool can be invisible: a reaction suppresses all four of its `tool_call_*`
+	 * frames, so a turn that reacted with no text (the model wrote nothing, the
+	 * relay looped) would look single-iteration and the client would silently
+	 * keep a message list missing two persisted rows.
 	 *
 	 * Stated by the server rather than inferred, and only when it's TRUE, because
 	 * the alternative — treating every reaction as multi-iteration — would force
@@ -1567,13 +1567,6 @@ export interface StreamToolPendingApprovalEvent {
 }
 
 /**
- * Sent once at the start of a turn (right after `start`) when one or more
- * per-user MCP servers ENABLED for this conversation are currently down —
- * their tools were skipped this turn rather than retried, so the model ran
- * without them. The client shows an inline notice on the in-flight bubble.
- * Absent entirely when every enabled server is usable.
- */
-/**
  * A per-user MCP server enabled for a conversation but currently down
  * (circuit-broken `failed` state) — its tools were skipped this turn. Shared by
  * the request-assembly handlers, the relay, the stream event, and the client
@@ -1585,6 +1578,13 @@ export interface McpUnavailableServer {
 	error: string | null;
 }
 
+/**
+ * Sent once at the start of a turn (right after `start`) when one or more
+ * per-user MCP servers ENABLED for this conversation are currently down —
+ * their tools were skipped this turn rather than retried, so the model ran
+ * without them. The client shows an inline notice on the in-flight bubble.
+ * Absent entirely when every enabled server is usable.
+ */
 export interface StreamMcpUnavailableEvent {
 	type: 'mcp_unavailable';
 	servers: McpUnavailableServer[];
@@ -1766,7 +1766,7 @@ export interface PromptSnippet {
  * *overhead*: re-sent verbatim every turn, and untouchable by compaction (which
  * only folds history). `history:*` is what compaction can reclaim. Keeping them
  * apart is the whole point — a thread whose bulk is overhead won't get smaller
- * no matter how many times you compact it, and until now nothing said so.
+ * no matter how many times you compact it.
  */
 export type ContextSegmentKey =
 	| 'system:environment'
@@ -1825,12 +1825,10 @@ export interface ContextBreakdown {
  * These are wire contracts, not row shapes: the gallery grid, the in-chat
  * lightbox carousel and the chat page all consume them over /api/media/*.
  *
- * They lived in `server/db/queries/media.ts` and were imported straight from
- * there by client-safe modules (`gallery-stacks.ts`, `gallery-feed.svelte.ts`,
- * the gallery + chat pages). Type-only, so nothing shipped — but it meant the
- * browser's contract was whatever a SELECT happened to project, with no
- * boundary at which a change would be noticed. Every other feature already
- * declares its DTOs here; media is now consistent with them.
+ * Declared here rather than beside the queries in `server/db/queries/media.ts`:
+ * a type-only import from there ships nothing, but it would make the browser's
+ * contract whatever a SELECT happens to project, with no boundary at which a
+ * change would be noticed.
  * ------------------------------------------------------------------------- */
 
 /** Union of valid `media.kind` values. 'file' covers anything that isn't
@@ -2189,10 +2187,10 @@ export interface EndpointsStatusResponse {
 	now: number;
 }
 
-// --- Moved from server query modules (audit A4) ----------------------------
-// Wire shapes the client renders. They lived beside the queries that produce
-// them, so a client import reached into #lib/server and a SELECT change was an
-// unannounced API change; three were hand-copied client-side and had drifted.
+// --- account, search and admin shapes --------------------------------------
+// Wire shapes the client renders. Declared here rather than beside the queries
+// that produce them, so a SELECT change can't be an unannounced API change and
+// the client needs no hand-copied duplicates to drift.
 
 export type PasskeyDeviceType = 'singleDevice' | 'multiDevice';
 

@@ -122,9 +122,8 @@ export function isClaimable(
 
 /**
  * Write the target a notification tap is headed for. Best-effort and never
- * throws: failing to write it costs the cold-launch navigation, which is
- * exactly what happened before this existed — it must not also break the
- * postMessage path that works today.
+ * throws: failing to write it costs only the cold-launch navigation, and must
+ * not also break the postMessage path that serves a warm tap.
  */
 export async function recordPendingNavigation(
 	cacheStorage: PendingNavCacheStorage,
@@ -161,7 +160,7 @@ export async function claimPendingNavigation(
 		// Read the body BEFORE deleting the entry it came from. Chromium backs a
 		// matched Response with a blob that outlives the delete, but WebKit is the
 		// engine this whole module exists for, and a throw here lands in the catch
-		// below as a plain null — silently reinstating the bug being fixed, with no
+		// below as a plain null — silently dropping the tapped thread again, with no
 		// signal anywhere. The order costs nothing, so don't depend on the answer.
 		const parsed: unknown = await hit.json();
 		await cache.delete(PENDING_NAV_KEY);

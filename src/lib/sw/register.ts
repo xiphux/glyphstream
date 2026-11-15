@@ -2,11 +2,10 @@
  * Service-worker registration with a user-driven update prompt.
  *
  * A port of vite-plugin-pwa's `registerSW` in its `registerType: 'prompt'`
- * mode, which this replaced when the plugin went: the worker is built by
- * SvelteKit, and this was the only part of the plugin still doing anything at
- * runtime. Kept to the same event semantics, because the root layout's update
- * flow was built and debugged against them — with one deliberate exception, when
- * a takeover reloads the page (see `promptRaised`).
+ * mode: the worker is built by SvelteKit, so this is the only part of that
+ * plugin the app needs at runtime. Kept to the same event semantics, because the
+ * root layout's update flow was built and debugged against them — with one
+ * deliberate exception, when a takeover reloads the page (see `promptRaised`).
  *
  * 'prompt', not auto-update: a new worker downloads in the background and
  * WAITS until the user opts in through UpdateBanner. Swapping it silently on
@@ -54,9 +53,8 @@ export function registerServiceWorker({
 	// Deliberately not the plugin's test, `event.isUpdate`: workbox-window fixes
 	// that at registration, from whether anything controlled the page THEN. A
 	// page first opened before any worker installed keeps `isUpdate: false` for
-	// its whole life, so a Refresh tapped later in that same session activated
-	// the new worker and never reloaded. (Found verifying this port; the plugin
-	// had the same gap.)
+	// its whole life, so a Refresh tapped later in that same session would
+	// activate the new worker and never reload. (The plugin has the same gap.)
 	let promptRaised = false;
 	const prompt = () => {
 		void onNeedRefresh().then(

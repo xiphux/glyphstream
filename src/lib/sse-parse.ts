@@ -6,9 +6,8 @@
  * concatenated with newlines).
  *
  * Wraps `eventsource-parser` — the spec-complete, dependency-free, isomorphic
- * parser that underpins the major LLM SDKs — so we no longer maintain two
- * hand-rolled copies. Two deliberate deviations from the bare library preserve
- * the behavior our consumers were built against:
+ * parser that underpins the major LLM SDKs. Two deliberate deviations from the
+ * bare library preserve the behavior our consumers depend on:
  *
  *   1. `event` defaults to `"message"` when a block omits an `event:` line.
  *      The library leaves it `undefined`; our client dispatches by event name
@@ -71,7 +70,7 @@ export async function* parseSSEStream(
 		},
 		onError(err) {
 			// Only the buffer cap is fatal. unknown-field / invalid-retry are
-			// non-fatal: the field is ignored, exactly as the prior parser did.
+			// non-fatal: the field is ignored.
 			if (err.type === 'max-buffer-size-exceeded') {
 				state.overflow = new SSEBufferOverflowError(MAX_SSE_BUFFER_BYTES);
 			}

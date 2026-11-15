@@ -1,11 +1,10 @@
 /**
  * Sync the active surface color to the two places that can't read it from CSS.
  *
- * Named for the job rather than for one of its outputs: it was
- * syncThemeColorMeta when the meta tag was the only consumer, and a function
- * whose name points at half its effects is one a later edit tidies down to
- * that half. "Surface chrome" is the two of them together — the browser's and
- * the OS's, both taking a color the page can only hand over, never delegate.
+ * Named for the job rather than for one of its outputs: a function whose name
+ * points at half its effects is one a later edit tidies down to that half.
+ * "Surface chrome" is the two of them together — the browser's and the OS's,
+ * both taking a color the page can only hand over, never delegate.
  *
  * The two places: `<meta name="theme-color">`, which tints browser chrome
  * (Safari tabs, Android) and non-iOS installed-app bars, and the
@@ -13,20 +12,18 @@
  * top bar is what iOS samples, and it needs nothing from here because it takes
  * its colour from the cascade like any other row.
  *
- * Only the META needs toLegacyRgb. This used to claim the sampler needed it
- * too, on the theory that iOS would drop the oklch the stylesheet sets — the
- * theory that had the status bar coming up blurred on a cold launch. It is
- * wrong: WebKit's gate is `styleColor.isResolvedColor()`, which excludes
- * unresolved values like currentColor, not modern colour spaces (see the
- * sampler rule in app.css for what the real gates are). The sampler write is
- * kept because it is free and harmless, not because it is load-bearing.
+ * Only the META needs toLegacyRgb. The sampler does not: iOS does not drop the
+ * oklch the stylesheet sets — a theory that once misdiagnosed the status bar
+ * coming up blurred on a cold launch. WebKit's gate is
+ * `styleColor.isResolvedColor()`, which excludes unresolved values like
+ * currentColor, not modern colour spaces (see the sampler rule in app.css for
+ * what the real gates are). The sampler write is kept because it is free and
+ * harmless, not because it is load-bearing.
  *
- * That last sentence is a claim worth keeping true rather than assuming. It
- * briefly wasn't: status-bar-probe read computed backgrounds with an rgb()-only
- * parser, so this inline write was the only reason the probe reported correctly
- * on (auth), and deleting it would have broken the one route group that worked.
- * The probe normalises for itself now (it imports toLegacyRgb below), so
- * nothing downstream depends on this write landing first.
+ * That last sentence is a claim worth keeping true rather than assuming. Nothing
+ * downstream may depend on this write landing first: status-bar-probe
+ * normalises for itself (it imports toLegacyRgb below) rather than relying on
+ * the inline rgb() this leaves on the sampler.
  *
  * We read the *resolved* body background (the `--color-surface` token) rather
  * than the raw custom property, then normalise it to legacy `rgb()` — see
@@ -40,15 +37,13 @@
 /**
  * Normalise a computed CSS colour to legacy `rgb()`.
  *
- * This used to be assumed unnecessary — the docstring above claimed the
- * browser had "already computed to an rgb value". It hasn't for a while:
- * `--color-surface` is authored in oklch, and both engines now serialise a
- * non-legacy colour in its OWN space, so getComputedStyle returns the string
- * `oklch(0.15 0.012 258)` verbatim. Measured on Chromium 151 and WebKit 26.5;
- * both agree. That string then went straight into the meta tag, which is
- * precisely what the "oklch support there isn't universal" caveat existed to
- * avoid — iOS only learned oklch in 15.4, and a theme-color it can't parse is
- * ignored, dropping the status bar back to the default.
+ * The browser does not hand back rgb() on its own: `--color-surface` is
+ * authored in oklch, and both engines serialise a non-legacy colour in its OWN
+ * space, so getComputedStyle returns the string `oklch(0.15 0.012 258)`
+ * verbatim. Measured on Chromium 151 and WebKit 26.5; both agree. Written
+ * straight into the meta tag, that string is unsafe where oklch support isn't
+ * universal — iOS only learned oklch in 15.4, and a theme-color it can't parse
+ * is ignored, dropping the status bar back to the default.
  *
  * The canvas is the conversion: assigning any colour the engine understands to
  * fillStyle and reading the painted pixel yields sRGB bytes, with no colour
@@ -77,7 +72,7 @@ export function toLegacyRgb(value: string): string {
 		// (default in Tor Browser) blanks getImageData to opaque white, and
 		// Brave farbles the bytes. Either would otherwise be written out as a
 		// confidently wrong colour — a white status bar over the dark surface,
-		// which is worse than the oklch string this replaced, since an
+		// which is worse than passing the oklch string through, since an
 		// unparseable theme-color is merely ignored.
 		ctx.fillStyle = '#010203';
 		ctx.fillRect(0, 0, 1, 1);
@@ -114,11 +109,11 @@ export function toLegacyRgb(value: string): string {
  *
  * It has to be rejected explicitly. The `!bg` guard below doesn't catch it (the
  * string is truthy) and neither does toLegacyRgb, whose `/^(rgb|#)/` fast path
- * matches `rgba(` and hands it straight back. Writing it used to cost one bad
- * theme-color attribute that the next call overwrote; now it would also pin a
- * TRANSPARENT inline background on the sampler, which outranks the stylesheet
- * until the next theme, scheme or private flip — i.e. it would manufacture, on
- * purpose, the see-through status bar this whole mechanism exists to prevent.
+ * matches `rgba(` and hands it straight back. Writing it would cost more than
+ * one bad theme-color attribute that the next call overwrites: it would also
+ * pin a TRANSPARENT inline background on the sampler, which outranks the
+ * stylesheet until the next theme, scheme or private flip — i.e. it would
+ * manufacture, on purpose, the see-through status bar this whole mechanism exists to prevent.
  */
 const isFullyTransparent = (value: string): boolean => {
 	const inner = /^rgba?\(([^)]*)\)$/i.exec(value.trim())?.[1];
@@ -146,7 +141,7 @@ export function syncSurfaceChrome(): void {
 	// stylesheet; this restates it as resolved rgb().
 	//
 	// The guard is load-bearing, not defensive. The element exists ONLY on the
-	// (auth) routes now — inside (app) the mobile top bar is what iOS samples,
+	// (auth) routes — inside (app) the mobile top bar is what iOS samples,
 	// and it needs nothing from here because it takes its colour from the
 	// cascade — so on most of the app this query correctly finds nothing and
 	// this call does only the meta above.

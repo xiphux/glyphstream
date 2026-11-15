@@ -14,9 +14,9 @@
  * a deploy costs only the chunks that get used.
  *
  * The reason it's needed is measured, not theoretical. These assets are already
- * served `max-age=31536000, immutable`, and the assumption was that the
- * browser's own HTTP cache would cover repeat loads. On an iOS home-screen app
- * it does not: the debug panel reported 41 of 41 chunks coming from the network
+ * served `max-age=31536000, immutable`, so the browser's own HTTP cache looks
+ * like it should cover repeat loads. On an iOS home-screen app it does not: the
+ * debug panel reported 41 of 41 chunks coming from the network
  * on three consecutive cold launches of an unchanged build, hours apart. WebKit
  * does not reliably keep a standalone web app's disk cache across termination.
  * Cache Storage is explicit, app-owned, and survives.
@@ -30,9 +30,9 @@ export const CHUNK_CACHE_NAME = 'glyphstream-app-chunks';
 /**
  * Two builds' worth with some headroom (~102 entries each as of the app-lock
  * `/unlock` route), so a deploy can land without evicting the chunks the
- * still-open page is running from. Past that, least
- * recently used goes first — genuinely last-used, off workbox's IndexedDB
- * timestamp — which is the right order: it's the previous build's.
+ * still-open page is running from. Past that, least recently used goes first —
+ * genuinely last-used, off workbox's IndexedDB timestamp — which is the right
+ * order: it's the previous build's.
  */
 export const CHUNK_CACHE_MAX_ENTRIES = 250;
 

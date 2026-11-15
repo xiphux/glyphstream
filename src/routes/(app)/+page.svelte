@@ -178,20 +178,18 @@
 	// NOT an `$effect` reading `page.url`, which is the same thing only by
 	// accident: `page.url` is a `$state.raw` holding a URL *object*, and
 	// SvelteKit publishes a fresh one on every commit — `invalidate()` included,
-	// which never navigated. So the (app) layout's resume refresh re-ran this
-	// and re-applied the param over a model the user had picked by hand, the
-	// exact clobber the old comment here said it was untracking to avoid. A
-	// navigation is what this wants, and a navigation is what it now asks for.
+	// which never navigated. So the (app) layout's resume refresh would re-run
+	// it and re-apply the param over a model the user had picked by hand. A
+	// navigation is what this wants, and a navigation is what it asks for.
 	//
-	// Nothing below needs `untrack` any more, for the same reason: a callback is
-	// not a reactive context, so reading `data` or the catalogue creates no
-	// dependency there is any need to hide.
+	// Nothing below needs `untrack`, for the same reason: a callback is not a
+	// reactive context, so reading `data` or the catalogue creates no dependency
+	// there is any need to hide.
 	//
-	// One ordering change comes with that: a callback runs after the mount
-	// effects, not before them, so on a cold deep link the fallback default
-	// below paints first and this overwrites it, where an effect declared above
-	// it used to win outright. Benign — every `modelId` consumer is idempotent —
-	// but it is why the selection can flip once on arrival.
+	// One ordering consequence: a callback runs after the mount effects, not
+	// before them, so on a cold deep link the fallback default below paints
+	// first and this overwrites it. Benign — every `modelId` consumer is
+	// idempotent — but it is why the selection can flip once on arrival.
 	afterNavigate(({ shallow, type }) => {
 		// Skip shallow updates — see the note at the (app) layout's afterNavigate.
 		if (shallow && type === 'goto') return;
@@ -220,9 +218,9 @@
 		// (where these links come from) are in the seed, so `ensure` returns
 		// without a request on the common path.
 		void catalogue.ensure([urlModel]).then(() => {
-			// Applied unconditionally, as the synchronous version was — the server's
-			// default has already landed by now, and the URL is the more specific
-			// instruction. The one thing re-checked is that the URL still SAYS this:
+			// Applied unconditionally — the server's default has already landed by
+			// now, and the URL is the more specific instruction. The one thing
+			// re-checked is that the URL still SAYS this:
 			// tapping two favourites in quick succession would otherwise let the
 			// first one's slower resolve overwrite the second.
 			if (page.url.searchParams.get('model') !== urlModel) return;
@@ -234,7 +232,7 @@
 	// pickup) has set a model yet.
 	//
 	// The precedence itself (top qualifying favorite, else first chat-then-image-
-	// then-video) now runs on the SERVER, in `pickDefaultModelId`, so the composer
+	// then-video) runs on the SERVER, in `pickDefaultModelId`, so the composer
 	// can render its selection without the full catalogue having reached the
 	// browser. Keeping the rule in one shared function is the point: computing it
 	// here as well would be a second copy free to disagree with the one the server
@@ -609,8 +607,8 @@
 		// on every share-sheet entry. (Nothing here may start reading `page.url.hash`
 		// without revisiting that.)
 		queueMicrotask(() => {
-			// `.catch`, not try/catch: `goto` reports failure by rejecting, where
-			// `replaceState` threw synchronously.
+			// `.catch`, not try/catch: `goto` reports failure by rejecting, not by
+			// throwing synchronously.
 			goto(window.location.pathname + window.location.search, {
 				shallow: true,
 				replace: true,
@@ -629,9 +627,9 @@
 	// A replacing `goto`, where the fragment handler above correctly uses a
 	// shallow update, because this one reads `page.url` and that one reads the
 	// address bar. A shallow update (`goto(…, { shallow: true })`, formerly
-	// Kit's `replaceState`) is the shallow-routing API: it rewrites
-	// the bar while recording the page's REAL url — `?notice=` included — in the
-	// entry's `PAGE_URL_KEY`, and never updates `page.url`. So a Back onto that
+	// Kit's `replaceState`) is the shallow-routing API: it rewrites the bar
+	// while recording the page's REAL url — `?notice=` included — in the entry's
+	// `PAGE_URL_KEY`, and never updates `page.url`. So a Back onto that
 	// entry once another navigation has moved the navigation index takes Kit's
 	// full popstate path, which restores `page.url` from `PAGE_URL_KEY` and
 	// dispatches afterNavigate: the toast fires again, and because this handler
@@ -641,10 +639,11 @@
 	//
 	// A navigation writes a fresh entry with no `PAGE_URL_KEY` at all, and
 	// updates `page.url`. It is cheap here: nothing on this route reads `url` in
-	// a way that invalidates a node, so no `__data.json` is fetched. `reset: false`
-	// (keep focus and scroll) is load-bearing, not decoration — the composer's autofocus is a MOUNT
-	// effect and won't re-run on a same-route navigation, so without it the goto
-	// would blur the box this page exists to put the cursor in. The target keeps
+	// a way that invalidates a node, so no `__data.json` is fetched.
+	// `reset: false` (keep focus and scroll) is load-bearing, not decoration — the
+	// composer's autofocus is a MOUNT effect and won't re-run on a same-route
+	// navigation, so without it the goto would blur the box this page exists to
+	// put the cursor in. The target keeps
 	// using `window.location.hash` rather than `page.url`'s: by now the handler
 	// above has stripped the fragment from the bar, and re-injecting it would
 	// re-trigger that handler for nothing.

@@ -7,7 +7,7 @@
  * server/push/notify.ts) — but by different means: `preview` is omitted, while
  * `conversationTitle` is REPLACED by GENERIC_TITLE. The title is the sharper of
  * the two: a fresh thread's title is the user's own first message verbatim, so
- * a media generation's OS notification used to read the prompt back on the lock
+ * a media generation's OS notification would read the prompt back on the lock
  * screen. Either way the user learns that something finished and what kind of
  * thing it was, and nothing about which thread it belongs to or what it says.
  *

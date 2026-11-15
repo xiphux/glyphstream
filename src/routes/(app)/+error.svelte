@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
 	// Errors thrown by a page load under (app) render here, inside the app
 	// layout — so the sidebar (desktop) and the hamburger top bar (mobile)
-	// stay reachable. Without this, SvelteKit's bare fallback error page took
+	// stay reachable. Without this, SvelteKit's bare fallback error page takes
 	// over the whole viewport, which in a standalone PWA is a dead end: no
 	// back button, no chrome, only a force-quit. The explicit home link is
 	// the belt to that suspenders.
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 </script>
 

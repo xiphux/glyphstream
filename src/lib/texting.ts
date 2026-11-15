@@ -118,7 +118,6 @@ export function splitTopLevelHtml(html: string, keepBreaks = false): string[] {
 function pushChunk(out: string[], chunk: string, keepBreaks: boolean): void {
 	const trimmed = chunk.trim();
 	if (!trimmed) return;
-	// A thematic break is a divider, not something anyone texted.
 	if (!keepBreaks && /^<hr\b[^>]*>$/i.test(trimmed)) return;
 	out.push(trimmed);
 }

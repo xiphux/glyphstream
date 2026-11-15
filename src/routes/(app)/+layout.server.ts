@@ -65,8 +65,8 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 	// in-flight stream stay untouched — only this layout load re-runs. (That
 	// re-runs the whole load body, not just listConversations. Cheap while WARM —
 	// cached models + local SQLite — but the deferral note below measures that
-	// same body at 751ms on a COLD container, which is why part of it now runs
-	// after first paint instead of before.)
+	// same body at 751ms on a COLD container, which is why part of it runs after
+	// first paint instead of before.)
 	depends('app:conversations');
 	// Preferences that live on `prefs` and are mutated from surfaces outside
 	// /settings/preferences — favorite models (the picker's star, the sidebar's
@@ -100,9 +100,9 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 	// The trade is not free, and the accounting is worth stating. `__data.json` is
 	// per-NODE, not per-field, so the follow-up re-serializes this whole payload and
 	// re-runs `getUserPreferences`, `listAllModels` and `listCustomModelsForUser` a
-	// second time. `models` used to dominate that cost and no longer does — it is
-	// trimmed on every load now, follow-up included (see below) — so what's left is
-	// the two DB reads and a cache lookup. It also re-runs the CURRENT PAGE's
+	// second time. `models` doesn't dominate that cost — it is trimmed on every
+	// load, follow-up included (see below) — so what's left is the two DB reads
+	// and a cache lookup. It also re-runs the CURRENT PAGE's
 	// server load — every `(app)` page `await parent()`s except `chat/[id]`, and
 	// CLAUDE.md's own note says a node whose parent re-ran is marked invalid — so
 	// a cold `/archived` re-lists and re-serializes its conversations, and a cold
@@ -123,11 +123,11 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 	const customModels = timeDb(locals, () => listCustomModelsForUser(locals.user!.id));
 	const allModels = await listAllModels();
 	// Which model the composer starts on, decided HERE rather than on the client.
-	// The page used to derive this from the full catalogue, which meant the whole
-	// catalogue had to be in the document before the composer could render — and
-	// an aggregator endpoint advertises thousands of models. Measured on the
-	// operator's box: /api/models is 571KB of JSON, and essentially all of it was
-	// embedded in every single document to answer a question about ~3 entries.
+	// Deriving it on the client needs the full catalogue in the document before
+	// the composer can render — and an aggregator endpoint advertises thousands
+	// of models. Measured on the operator's box: /api/models is 571KB of JSON,
+	// essentially all of it embedded in every document to answer a question about
+	// ~3 entries.
 	//
 	// Shared with the client through one pure function rather than reimplemented,
 	// because a second copy of the precedence rule drifts silently: the server
@@ -196,7 +196,7 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 		// home page's model-default effect latches — it picks a base model when the
 		// lookup misses and then returns early on every later run, so an empty
 		// first render is permanent for the life of the page. Since `prefs` (and so
-		// `favoriteModels`) is not deferred either, deferring this produced exactly
+		// `favoriteModels`) is not deferred either, deferring this produces exactly
 		// the asymmetry that silently drops a favourited preset's system prompt on
 		// the PWA's cold launch. It is also the cheapest query here — a handful of
 		// rows per user — so it buys almost none of the win it would cost.
