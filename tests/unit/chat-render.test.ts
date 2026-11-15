@@ -49,8 +49,6 @@ function msg(
 
 const NO_TOOL_RESULTS = new Map<string, ToolResultEntry>();
 
-// --- messageToBlocks: persisted message → render blocks -----------------
-
 describe('messageToBlocks', () => {
 	it('renders a plain user message as one plain-text block', () => {
 		const blocks = messageToBlocks(msg('user', [{ type: 'text', text: 'hello' }]), NO_TOOL_RESULTS);
@@ -250,8 +248,6 @@ describe('messageToBlocks', () => {
 	});
 });
 
-// --- inFlightToBlocks: live streaming state → render blocks -------------
-
 describe('inFlightToBlocks', () => {
 	it('returns just a reasoning block when only a reasoning segment is present', () => {
 		const segs: InFlightSegment[] = [{ kind: 'reasoning', text: 'thinking...' }];
@@ -308,10 +304,8 @@ describe('inFlightToBlocks', () => {
 	});
 
 	it('preserves segment arrival order (text → tool → text → tool → text)', () => {
-		// This is the multi-tool case the unified renderer was built to
-		// handle. The OLD in-flight code with separate text/postText
-		// buffers couldn't represent this correctly — all post-tool text
-		// would cluster after all the tool blocks.
+		// The multi-tool case: separate text/postText buffers can't represent
+		// it — all post-tool text would cluster after all the tool blocks.
 		const segs: InFlightSegment[] = [
 			{ kind: 'text', text: 't0', html: '<p>t0</p>' },
 			{ kind: 'tool_call', toolCallId: 'a', toolName: 'x', arguments: '{}', status: 'done' },
@@ -326,11 +320,10 @@ describe('inFlightToBlocks', () => {
 	});
 
 	it('renders reasoning at its chronological position, not always at the top', () => {
-		// Regression guard: the old code put reasoning ABOVE everything
-		// regardless of arrival order, so a model that did
-		// text → reasoning → text would render reasoning above all the
-		// text. Users complained that history got "reordered after the
-		// fact." Now reasoning slots in where it actually streamed.
+		// Regression guard: with reasoning pinned ABOVE everything regardless
+		// of arrival order, a model that did text → reasoning → text rendered
+		// reasoning above all the text, and users saw history get "reordered
+		// after the fact." Reasoning slots in where it actually streamed.
 		const segs: InFlightSegment[] = [
 			{ kind: 'text', text: 'pre', html: '<p>pre</p>' },
 			{ kind: 'reasoning', text: 'mid-thought' },
@@ -750,8 +743,6 @@ describe('markToolCallPendingApproval', () => {
 		expect(next[1]).toMatchObject({ status: 'pending_approval' });
 	});
 });
-
-// --- bubble-merge flags ------------------------------------------------
 
 describe('canvas tool helpers', () => {
 	it('identifies the canvas tools', () => {

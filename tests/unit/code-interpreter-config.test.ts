@@ -165,9 +165,9 @@ pyodide_index_url = 42
 	});
 
 	it('falls back to defaults when the file does not exist', () => {
-		// Same situation as an absent [code_interpreter] block — which this module's
-		// own header already promises yields defaults. See endpoints/config.ts for
-		// why the throw was load-bearing (config.toml is gitignored, so CI has none).
+		// Same situation as an absent [code_interpreter] block, which this module's
+		// own header promises yields defaults. A throw here breaks CI, where
+		// config.toml (gitignored) doesn't exist; see readConfigToml in config/toml.ts.
 		writeConfig(''); // an empty config: the behaviour a missing one must match
 		const fromEmpty = loadCodeInterpreterConfig(configPath);
 		const fromMissing = loadCodeInterpreterConfig(join(tmpDir, 'does-not-exist.toml'));

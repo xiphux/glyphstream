@@ -4,8 +4,6 @@
  * stream-summary → persist-anchor flow deterministically — including the
  * discard-on-empty and discard-on-abort safety rules that protect against ever
  * writing a partial anchor.
- *
- * Modeled on relay-tool-loop.test.ts / video-relay.test.ts.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
@@ -391,7 +389,6 @@ describe('streamCompaction — per-endpoint concurrency gate', () => {
 
 	it('releases the slot when the upstream errors', async () => {
 		const { conversationId, userMsg, leaf } = seedBranch();
-		// Upstream throws on connect.
 		mocks.upstreamResponses = [
 			() => {
 				throw new Error('connection refused');
@@ -444,11 +441,9 @@ describe('streamCompaction — per-endpoint concurrency gate', () => {
 			streamCompaction({ conversationId, plan, abortSignal: abort.signal }),
 		);
 
-		// Verify it queued.
 		await new Promise((r) => setTimeout(r, 10));
 		expect(getResourceQueueDepth(gated.id)).toEqual({ active: 1, waiting: 1 });
 
-		// Stop while queued.
 		abort.abort();
 		const events = await eventsPromise;
 		const err = events.find(

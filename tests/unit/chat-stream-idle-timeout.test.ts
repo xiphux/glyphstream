@@ -129,7 +129,6 @@ describe('chatCompletionStream idle watchdog', () => {
 
 		const drained = drain(res);
 		await vi.advanceTimersByTimeAsync(95_000);
-		// Prefill was not aborted; the token came through.
 		expect(await drained).toBe('first token');
 	});
 });

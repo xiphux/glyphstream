@@ -1,5 +1,5 @@
 /**
- * Unit tests for the extracted single-turn controller. Instantiated with mock
+ * Unit tests for the single-turn controller. Instantiated with mock
  * deps + a URL-dispatching fetch stub emitting SSE (`data: {json}\n\n`), so the
  * send / edit / retry / approval-resume / recover state machine is exercised
  * without a live page or backend. $app/navigation + the title spinner are
@@ -384,7 +384,7 @@ describe('ChatTurnController — slot acquisition', () => {
 	});
 
 	it('treats content as proof of a slot when no start frame arrived', async () => {
-		// The mark now depends on this field, so a stream that reaches content
+		// The sidebar mark depends on this field, so a stream that reaches content
 		// without a `start` must not leave a live generation wearing the queued
 		// ring for its whole run.
 		const sse = pushableSse();
@@ -478,18 +478,18 @@ describe('ChatTurnController — approval resume', () => {
 		// error, which would also yield a single invalidate but skip this) — so the
 		// single-invalidate assertion below genuinely exercises the guard.
 		expect(state.approvalCleared).toBe(1);
-		// The in-turn guard (deps.convId() === turnConvId) is now false, so the
-		// inner post-stream invalidate is skipped — and submitApproval's outer one
-		// runs in its place, for the sidebar. Regression guard: the old inline runApprovalStream took a
-		// `convId` param that shadowed the reactive one, making this check
-		// permanently true (dead abandon-on-switch guard); it would invalidate twice.
+		// The in-turn guard (deps.convId() === turnConvId) is false, so the inner
+		// post-stream invalidate is skipped — and submitApproval's outer one runs
+		// in its place, for the sidebar. Regression guard: a `convId` param that
+		// shadows the reactive one makes this check permanently true (a dead
+		// abandon-on-switch guard), and it invalidates twice.
 		expect(refreshAll).toHaveBeenCalledTimes(1);
 		vi.unstubAllGlobals();
 	});
 
-	// The page routes setApprovalError into the same banner as setError. It used
-	// to write a `$state` that nothing rendered, so a resume that failed here was
-	// invisible to the user — they saw the approval prompt sit there, unexplained.
+	// The page routes setApprovalError into the same banner as setError. Written
+	// to a `$state` that nothing renders, a resume that failed here is invisible
+	// to the user — the approval prompt just sits there, unexplained.
 	it('reports a failed resume through setApprovalError', async () => {
 		const fetchMock = vi.fn(async (url: string) => {
 			if (url.endsWith('/tool-approval')) throw new Error('upstream exploded');
@@ -506,7 +506,7 @@ describe('ChatTurnController — approval resume', () => {
 		expect(turn.approvalSubmitting).toBe(false);
 		// And the decisions must be cleared. The page auto-submits whenever every
 		// pending call has a decision and no submit is running; a failed resume
-		// leaves the calls pending, so keeping the decisions re-posted the same
+		// leaves the calls pending, so keeping the decisions would re-post the same
 		// approval (plus a full refreshAll) the moment the latch released, forever.
 		expect(state.approvalCleared).toBe(1);
 		vi.unstubAllGlobals();
@@ -598,16 +598,15 @@ describe('ChatTurnController — stop / recovery / teardown', () => {
 	});
 
 	it('still recovers while a TEXTLESS reaction turn waits on its second iteration', () => {
-		// The shape no test used to construct, and the reason a regression slipped
-		// through. The relay only short-circuits when the reaction came WITH text;
-		// with none it persists the tool row, advances the leaf onto it, and makes
-		// a second upstream call to get the actual reply. On chat templates where
-		// content and tool_calls are mutually exclusive that is EVERY reaction, and
-		// the window is a whole generation wide.
+		// The relay only short-circuits when the reaction came WITH text; with none
+		// it persists the tool row, advances the leaf onto it, and makes a second
+		// upstream call to get the actual reply. On chat templates where content
+		// and tool_calls are mutually exclusive that is EVERY reaction, and the
+		// window is a whole generation wide.
 		//
-		// Resolving past that tool row to the empty reply reported the turn as
+		// Resolving past that tool row to the empty reply reports the turn as
 		// settled: no recovery bubble, composer re-enabled, and the reply landing
-		// in a tab that had stopped listening for it.
+		// in a tab that has stopped listening for it.
 		const { deps, state } = makeDeps();
 		const turn = new ChatTurnController(deps);
 		state.serverInFlightSince = 1000;
@@ -701,8 +700,8 @@ describe('ChatTurnController — stop / recovery / teardown', () => {
 
 	it('a recovered turn with no slot yet reads as queued, and stops once it has one', () => {
 		// The iOS-suspension case on a max_concurrent=1 endpoint: the page reloads
-		// onto a turn that is registered but still waiting behind the gate. It
-		// used to recover as plain "generating", timer running from registration.
+		// onto a turn that is registered but still waiting behind the gate. It must
+		// not recover as plain "generating", timer running from registration.
 		const { deps, state } = makeDeps();
 		state.serverInFlightSince = 1000;
 		state.messages = [userMsg('u1')];

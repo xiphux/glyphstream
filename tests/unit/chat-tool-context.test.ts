@@ -1,9 +1,9 @@
 /**
- * Characterization tests for buildChatToolContext — the shared per-request tool
- * assembly extracted from the /messages and /tool-approval handlers. These lock
- * the assembly ORDER, the supportsTools gating, the single per-user-state
+ * Characterization tests for buildChatToolContext — the per-request tool
+ * assembly shared by the /messages and /tool-approval handlers. These lock the
+ * assembly ORDER, the supportsTools gating, the single per-user-state
  * resolution threaded through both consumers, and the MCP approval gate, so the
- * two handlers can't drift after the dedupe. The data-producing dependencies are
+ * two handlers can't drift. The data-producing dependencies are
  * mocked; the pure folding glue (appendSkillsCatalog / appendToolSearchHint /
  * collectActivatedToolNames) runs for real.
  */

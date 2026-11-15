@@ -1,19 +1,15 @@
 /**
  * Wire-body construction tests for the chat-send pipeline.
  *
- * This is the regression-guard for an actual production bug: after
- * the server-side edit-routing refactor (commit 962cfb3) switched
- * the saveEdit flow to send `editedMessageId` instead of
- * `parentMessageId`, the chat page's inline requestBody construction
- * never started forwarding `editedMessageId` to the wire. The
- * server's resolveParentForUserMessage was tested in isolation and
- * worked correctly; the actual chat-page → server pipe was where
- * the field got silently dropped. By the time the user noticed,
- * all edits — root or not — were appending instead of branching.
+ * Regression guard for a production bug: the server routes an edit by
+ * `editedMessageId` (commit 962cfb3), but the chat page's inline request
+ * body never forwarded it. resolveParentForUserMessage was tested in
+ * isolation and worked; the field was silently dropped on the chat-page →
+ * server pipe, so every edit — root or not — appended instead of branching.
  *
- * Pin every mode + every option combination that produced wire-shape
- * surprises, so the next refactor that touches request-body shape
- * fails fast here.
+ * Pin every mode + option combination that has produced wire-shape
+ * surprises, so a refactor that touches the request-body shape fails fast
+ * here.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -37,12 +33,10 @@ describe('buildSendRequestBody', () => {
 	});
 
 	it('forwards editedMessageId when set — REGRESSION GUARD', () => {
-		// This is the specific test that catches the production bug
-		// where edits silently appended instead of branching. The
-		// previous inline body builder spread parentMessageId only;
-		// editedMessageId fell off the wire entirely. If this test
-		// fails, the chat page's send pipeline is dropping the edit
-		// signal and edits won't branch.
+		// The production bug in the header: an inline body builder that
+		// spread only parentMessageId dropped editedMessageId off the wire.
+		// If this fails, the send pipeline is dropping the edit signal and
+		// edits append instead of branching.
 		const body = buildSendRequestBody({
 			...BASE,
 			options: { editedMessageId: 'msg-123' },
@@ -149,8 +143,8 @@ describe('buildSendRequestBody', () => {
 });
 
 describe('buildSendRequestBody — aspectRatio', () => {
-	// The field had NO coverage here, which is how an unthreaded send path shipped:
-	// every caller looked right in isolation, and nothing asserted the body shape.
+	// An unthreaded send path looks right at every caller in isolation; only an
+	// assertion on the body shape catches it.
 	it('is omitted when unset, on both the plain and retry shapes', () => {
 		expect(buildSendRequestBody(BASE)).not.toHaveProperty('aspectRatio');
 		expect(

@@ -63,9 +63,9 @@ describe('parseChangelog', () => {
 	});
 
 	it('does not read a "## " line inside a fenced code block as a heading', () => {
-		// The dangerous shape: a fenced line that looks like a version. Before
-		// fence tracking this passed validation AND truncated v1.0.0's body at
-		// the fence, so the published notes silently lost everything below it.
+		// The dangerous shape: a fenced line that looks like a version. Without
+		// fence tracking this passes validation AND truncates v1.0.0's body at
+		// the fence, so the published notes silently lose everything below it.
 		const text = [
 			'# Changelog',
 			'',
@@ -109,9 +109,8 @@ describe('parseChangelog', () => {
 	});
 
 	it('reads a heading indented up to three spaces, as CommonMark and GitHub do', () => {
-		// Anchoring at column 0 meant this rendered as a section everywhere a
-		// reader looked while the parser read it as body text — the third way
-		// to lose a heading with nothing reporting it.
+		// Anchored at column 0, the parser reads this as body text while every
+		// renderer shows a section — a heading lost with nothing reporting it.
 		const text = '# Changelog\n\n## v1.1.0\n\n- new\n\n  ## v1.0.0\n\n- old\n';
 		expect(parseChangelog(text).map((s) => s.heading)).toEqual(['v1.1.0', 'v1.0.0']);
 		expect(validate(text)).toEqual([]);
@@ -125,17 +124,17 @@ describe('parseChangelog', () => {
 
 	it('does not open a fence on a backtick line whose info string holds a backtick', () => {
 		// CommonMark forbids a backtick in a backtick fence's info string, so
-		// GitHub renders this as prose. Treating it as a fence made validate
+		// GitHub renders this as prose. Treating it as a fence makes validate
 		// reject a file that is fine.
 		const text = '# Changelog\n\n## v1.1.0\n\n```text with `code` inside\n\n- an entry\n';
 		expect(validate(text)).toEqual([]);
 	});
 
 	it('tracks fences identically in a CRLF file', () => {
-		// `text.split('\n')` leaves the `\r` on every line. An earlier fence
-		// regex ended in `(.*)$`, and since `.` does not match `\r` and `$` is
-		// end-of-input, it failed on EVERY fence line of a CRLF file — turning
-		// fence tracking off for the whole document with nothing to show for it.
+		// `text.split('\n')` leaves the `\r` on every line. A fence regex ending
+		// in `(.*)$` fails on EVERY fence line of a CRLF file, since `.` does not
+		// match `\r` and `$` is end-of-input — turning fence tracking off for the
+		// whole document with nothing to show for it.
 		const lf = [
 			'# Changelog',
 			'',
@@ -166,7 +165,7 @@ describe('parseChangelog', () => {
 
 	it('does not let a closing fence carry an info string', () => {
 		// CommonMark allows an info string only on the opener, so ```bash inside
-		// an open block is content. Treating it as a closer made the `## ` line
+		// an open block is content. Treating it as a closer makes the `## ` line
 		// after it a section heading, splitting the body at a line GitHub
 		// renders as code.
 		const text = [
@@ -291,8 +290,8 @@ describe('validate', () => {
 	});
 
 	it('rejects a file with no released versions', () => {
-		// The Rust port asserted this and these did not — a divergence in a rule
-		// all three claim to share. Structurally fine, but it cannot release.
+		// Structurally fine, but it cannot release. The Rust port asserts this
+		// too; all three ports of this parser must share the rule.
 		expect(validate('# Changelog\n\n## Unreleased\n\n- a\n')).toContain(
 			'no released versions found',
 		);

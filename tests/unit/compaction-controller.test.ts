@@ -1,5 +1,5 @@
 /**
- * Unit tests for the extracted compaction controller. Instantiated with mock
+ * Unit tests for the compaction controller. Instantiated with mock
  * deps + a fetch stub, so the manual / auto / undo flows are exercised without a
  * live page or backend. $app/navigation, the toast host and the confirm dialog
  * are module-mocked; the controller runs its real runes (the sveltekit() vitest
@@ -8,9 +8,9 @@
  * The thing most worth pinning down is the shared precondition. Three entry
  * points (manual compact, auto-compact-before-send, undo) must all refuse while
  * a turn is streaming or a fan-out comparison is parked — compaction advances
- * the active leaf, which would silently drop a parked compare grid. Inline in
- * the page these were three hand-copied early returns; here they're one getter,
- * and these tests are what holds that.
+ * the active leaf, which would silently drop a parked compare grid. They share
+ * one getter rather than three hand-copied early returns, and these tests are
+ * what holds that.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 

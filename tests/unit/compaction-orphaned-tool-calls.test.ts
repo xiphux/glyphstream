@@ -54,11 +54,11 @@ beforeEach(() => {
 });
 afterEach(() => closeTestDb());
 
-/** A thread long enough to be past `keepTurns`, whose FIRST turn carries an
- *  assistant `tool_call` with no answering `tool` row on the branch. */
 /** ~250 tokens of text per turn, so the folded history is worth compacting. */
 const FILLER = 'lorem ipsum dolor sit amet '.repeat(40);
 
+/** A thread long enough to be past `keepTurns`, whose FIRST turn carries an
+ *  assistant `tool_call` with no answering `tool` row on the branch. */
 function seedBranchWithOrphan(): { conversationId: string; userId: string } {
 	const u = seedUser();
 	const conv = createConversation({

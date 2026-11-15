@@ -228,9 +228,8 @@ describe('the release body and the build matrix agree on platforms', () => {
  * a bad tag and GHCR, and it is the one guard here that `gate` can never cover:
  * gate inherits a pass by CONTENT, and the same tree can be tagged anything.
  *
- * foundry pins its equivalent hand edit with a test. These two assertions are
- * the same idea — that the step still exists, and still runs before anything is
- * pushed to the registry.
+ * These two assertions pin that the step still exists, and still runs before
+ * anything is pushed to the registry (foundry pins its equivalent the same way).
  */
 describe('the tag is checked before anything reaches the registry', () => {
 	const docker = parse(readFileSync(join(WORKFLOWS, 'docker.yml'), 'utf8')) as {

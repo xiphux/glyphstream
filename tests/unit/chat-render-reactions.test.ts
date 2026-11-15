@@ -74,7 +74,7 @@ describe('isReactionTool / parseReactionEmoji', () => {
 	// The gap that mattered: these all parse as JSON and carry a non-empty
 	// STRING, so a structural check waves them through. They reach the renderer
 	// because the relay's recorder persists a tool call's arguments verbatim,
-	// BEFORE the tool runs — so the tool rejecting them never stopped the badge
+	// BEFORE the tool runs — so the tool rejecting them doesn't stop the badge
 	// from being drawn from the durable record on the next load.
 	it.each([
 		['a shortcode', '{"emoji":":+1:"}'],
@@ -278,8 +278,8 @@ describe('buildRenderedConversation — reactionsByMessageId', () => {
 	it('folds a hidden reaction row\u2019s reasoning into the reply, as the live stream does', () => {
 		// A reasoning model thinks before the reaction call AND before the reply.
 		// Live, both stream into one Reasoning block (no segment opens for the
-		// hidden call). Kept as its own row, the reaction drew a second toggle over
-		// the reply with nothing under it.
+		// hidden call). Kept as its own row, the reaction would draw a second toggle
+		// over the reply with nothing under it.
 		const { visibleMessages } = buildRenderedConversation([
 			msg('u1', 'user', [{ type: 'text', text: 'I got the job!!' }]),
 			msg('a1', 'assistant', [{ type: 'text', text: '' }, reactionPart('\ud83c\udf89')], {
@@ -334,8 +334,8 @@ describe('buildRenderedConversation — reactionsByMessageId', () => {
 		// Rejected at CANDIDATE-COLLECTION time, before the isError pass two tests
 		// up ever gets a chance: `parseReactionEmoji` fails validation, so nothing
 		// is collected. There is deliberately no tool row here — this is the
-		// validation path, not the result path. Before the shared validation this
-		// drew ":+1:" onto the user's bubble, permanently.
+		// validation path, not the result path. Without the shared validation this
+		// draws ":+1:" onto the user's bubble, permanently.
 		const { reactionsByMessageId } = buildRenderedConversation([
 			msg('u1', 'user', [{ type: 'text', text: 'I got the job!!' }]),
 			msg('a1', 'assistant', [

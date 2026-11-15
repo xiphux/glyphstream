@@ -1,5 +1,5 @@
 /**
- * Unit tests for the chat page's media lightbox, lifted out of the page.
+ * Unit tests for the chat page's media lightbox.
  *
  * Runs the real runes (the sveltekit() vitest plugin compiles the .svelte.ts
  * module) against a stubbed fan-out controller and `fetch`. The fan-out stub
@@ -374,8 +374,8 @@ describe('discarding from a fan-out grid', () => {
 
 	/**
 	 * Swiping isn't blocked while a discard is in flight. A swipe onto another
-	 * image of the same (batch) branch left `media` on an image the discard then
-	 * took out of `siblings` — and a `media` missing from the set renders the
+	 * image of the same (batch) branch can leave `media` on an image the discard
+	 * then takes out of `siblings` — and a `media` missing from the set renders the
 	 * lightbox's single-item view, with no track to swipe, until it is reopened.
 	 */
 	it('moves off a batch sibling swiped to while its branch was being discarded', async () => {
