@@ -72,8 +72,8 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 	// the send path never needs — but they are exactly what this endpoint exists to
 	// report: the upstream's own `prompt_tokens` is the ONLY authoritative
 	// measurement we ever get, and the gap between it and our chars/4 estimate is
-	// where the image tokens live. Fetching 'serialization' here silently pinned
-	// `reportedPromptTokens` to null and blanked that whole row of the panel.
+	// where the image tokens live. Fetching 'serialization' here silently pins
+	// `reportedPromptTokens` to null and blanks that whole row of the panel.
 	//
 	// The heavy columns (content_html, reasoning_text) are dead weight here, but
 	// this is a read-only probe on an explicit user action, not the hot path.
@@ -123,7 +123,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 	//
 	// Memoized per request: the walk calls this once per image PART, and the same
 	// media commonly appears several times on a branch (re-attached across turns,
-	// or carried by a fan-out's siblings). Without the memo each occurrence cost
+	// or carried by a fan-out's siblings). Without the memo each occurrence costs
 	// its own row lookup plus an async disk stat for the variant.
 	const mediaSizeCache = new Map<string, Promise<MediaSize | null>>();
 	const mediaSize = (mediaId: string): Promise<MediaSize | null> => {

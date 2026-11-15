@@ -32,13 +32,13 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 	// The recovery readers (`?fanout=1`), wanting different halves: the fan-out
 	// controller's 4s poll reads `fanout` (+ inFlightSince) to rebuild the compare
 	// grid as branches land; the single-turn recovery poll reads ONLY
-	// `inFlightSince` (+ `inFlightGeneratingSince`, to flip a recovered bubble
-	// from Queued to generating when the gate hands over). Neither wants the
-	// message list, so skip
-	// getConversationDetail's walkActiveBranch (+ content_html serialization)
-	// entirely here; a poll over a long thread would otherwise re-fetch the whole
-	// thing each tick. getConversationMeta is the light, ownership-checked fetch
-	// that still carries the activeLeafMessageId getFanoutRecoveryState needs.
+	// `inFlightSince` (+ `inFlightGeneratingSince`, to flip a recovered bubble from
+	// Queued to generating when the gate hands over). Neither wants the message
+	// list, so skip getConversationDetail's walkActiveBranch (+ content_html
+	// serialization) entirely here; a poll over a long thread would otherwise
+	// re-fetch the whole thing each tick. getConversationMeta is the light,
+	// ownership-checked fetch that still carries the activeLeafMessageId
+	// getFanoutRecoveryState needs.
 	//
 	// Contract the single-turn caller depends on: `inFlightSince` must stay
 	// accurate for a NON-fan-out conversation too. That poll terminates only when
@@ -82,8 +82,8 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 		conversation: conv,
 		inFlightSince,
 		inFlightGeneratingSince,
-		// For a tab from before portraits moved onto replies — see
-		// `ConversationRecoveryPoll.avatarDrawSince`.
+		// Always null; kept for a tab running a release that drew portraits as
+		// messages — see `ConversationRecoveryPoll.avatarDrawSince`.
 		avatarDrawSince: null,
 		fanout,
 	});
@@ -139,7 +139,6 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 		return new Response(null, { status: 204 });
 	}
 
-	// Rename path
 	if (typeof body.title !== 'string') {
 		error(400, 'title must be a string');
 	}

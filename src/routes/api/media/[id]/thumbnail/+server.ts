@@ -43,15 +43,13 @@ import type { RequestHandler } from './$types';
  * browsers happily keep the thumb in memory between gallery
  * navigations.
  *
- * Serves images and videos. Video used to be excluded on the reasoning
- * that `preload="metadata"` + `#t=0.1` already fetched one frame rather
- * than the whole file — which was cheap enough while media sat on a
- * local disk, and stopped being true on two counts once it didn't.
- * `preload="metadata"` does not oblige a browser to decode a frame at
- * all (iOS Safari frequently doesn't), and a non-faststart mp4 — which
- * is most of what ComfyUI writes — makes it spend three range requests
- * finding the index before it could even try. The visible result was
- * blank tiles. A cached ~25 KB thumbnail costs one request and always works.
+ * Serves videos too, rather than leaving the browser to fetch one frame via
+ * `preload="metadata"` + `#t=0.1` — cheap enough while media sits on a local
+ * disk, but not once it doesn't, on two counts. `preload="metadata"` does not oblige a
+ * browser to decode a frame at all (iOS Safari frequently doesn't), and a
+ * non-faststart mp4 — most of what ComfyUI writes — makes it spend three
+ * range requests finding the index before it can even try. The visible result
+ * is blank tiles. A cached ~25 KB thumbnail costs one request and always works.
  */
 export const GET: RequestHandler = async ({ locals, params, url }) => {
 	requireUser(locals);
@@ -83,8 +81,7 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
 	// A video has no fallback worth serving: this URL is consumed as a `poster`,
 	// and pointing that at an mp4 renders nothing while pulling the whole file
 	// over the wire to find that out. 404 instead and let the browser show its
-	// own empty state — the same thing it showed before this endpoint handled
-	// video at all.
+	// own empty state.
 	if (row.kind === 'video') {
 		// A plain Response rather than `error()` so this can carry a header:
 		// SvelteKit's error path emits no `Cache-Control`, and a 404 with no
@@ -129,7 +126,7 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
 	// path is the easier one to reach: sharp fails on an oversized or
 	// namespace-malformed SVG, and the code-interpreter maps a written `.svg`
 	// to `kind: 'image'` — so a model coaxed into writing one lands here
-	// rather than at /content, which already had the rule.
+	// rather than at /content, which applies the same rule.
 	if (isNeverInlineType(row.contentType)) {
 		headers['Content-Disposition'] = attachmentDisposition(row.originalFilename ?? row.id);
 	}

@@ -120,8 +120,9 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// doesn't resolve to a real endpoint) the user picking any real model
 	// here unblocks the send without a separate "fix this chat" flow.
 	// `system_prompt`, `parameters_json`, and `custom_model_id` stay put.
-	// The model this send moves the conversation away from, for the stats —
-	// recorded once the send is known to go ahead, below.
+	//
+	// `switchedFrom`: the model this send moves the conversation away from, for
+	// the stats — recorded once the send is known to go ahead, below.
 	let switchedFrom: { modelId: string; kind: ModelKind | null } | null = null;
 	if (typeof body.modelId === 'string' && body.modelId && body.modelId !== meta.modelId) {
 		const newParsed = parseModelId(body.modelId);
@@ -224,8 +225,8 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		// new (regenerated) assistant attaches as a sibling of
 		// assistant_0. Retry semantics is "do the whole turn over," not
 		// "just regenerate the final text"; without the walk, a retry on
-		// the last assistant of a multi-iteration turn errored with "no
-		// user-message parent" because the immediate parent was a tool.
+		// the last assistant of a multi-iteration turn would error with "no
+		// user-message parent" because the immediate parent is a tool.
 		userMessage = findUserMessageAncestor(params.id, target.id) ?? undefined;
 		if (!userMessage) {
 			error(400, 'Retry target has no user-message ancestor');
@@ -296,13 +297,11 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// columns that neither its own settled columns nor the live grid show.
 	const sourceMediaId = isMediaKind(meta.modelKind) ? (dispatchMediaIds[0] ?? null) : null;
 
-	// --- image / video: a durable generation job --------------------------------
-	// Prompt → media, no chat history. Queued as a job the server owns (see
-	// server/generation/jobs.ts), so it survives a restart; the response streams
-	// the job's events — `queued` while waiting on the endpoint's concurrency
-	// slot, `start` on acquire, `done` with the persisted media — exactly as the
-	// relay always has. The job registers itself in flight, so the registration
-	// below is chat-only.
+	// Image / video: prompt → media, no chat history. Queued as a job the server
+	// owns (see server/generation/jobs.ts), so it survives a restart; the response
+	// streams the job's events — `queued` while waiting on the endpoint's
+	// concurrency slot, `start` on acquire, `done` with the persisted media. The
+	// job registers itself in flight, so the registration below is chat-only.
 	if (meta.modelKind === 'image' || meta.modelKind === 'video') {
 		const kind = meta.modelKind;
 		// Resolve the target model's prompt-style metadata (live, cached) so the
@@ -385,14 +384,12 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// Every fan-out branch — the initial dispatch AND any additive re-roll
 	// (Regenerate) — suppresses its own per-branch notification and defers to a
 	// single aggregate "N ready" that fires when the LAST branch settles. Folding
-	// re-rolls in is what makes a mid-flight Regenerate behave: the aggregate now
+	// re-rolls in is what makes a mid-flight Regenerate behave: the aggregate
 	// waits for it instead of firing when the original batch happens to drain, and
 	// a re-roll that finishes last still fires it (rather than being lost). A lone
 	// re-roll on an already-settled grid is just a fan-out of one — it registers
 	// alone, so it's immediately "last" and fires its own aggregate.
 	const fanoutSize = typeof body.fanoutSize === 'number' ? body.fanoutSize : undefined;
-	// Every relay's onComplete: free the in-flight slot, then let the
-	// last-to-finish branch fire the one aggregate notify.
 	// Free the registry entry as soon as the GENERATION settles, which the relays
 	// signal before parking on the auto-title race — the entry means "a
 	// generation is running", and past `done` none is. Idempotent: clearInFlight
@@ -400,7 +397,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// call is a no-op and a fast follow-up turn's entry is never clobbered.
 	//
 	// Note what this costs: `notifyFanoutCompleteIfLast` infers "last branch"
-	// from the registry going empty, and that clear is no longer the statement
+	// from the registry going empty, and that clear is not the statement
 	// immediately before the check. Exactly-once survives only because every
 	// fan-out branch passes `suppressTitleTask`, leaving a microtask-sized gap
 	// between settle and stream close that no sibling's I/O can land in. A
@@ -421,6 +418,8 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		if (leafBeforeRetry) restoreActiveLeafIfUnchanged(params.id, userMessage.id, leafBeforeRetry);
 	};
 
+	// Every relay's onComplete: free the in-flight slot, then let the
+	// last-to-finish branch fire the one aggregate notify.
 	const onBranchComplete = () => {
 		clearInFlight(params.id, inFlight);
 		undoRetryRewind();

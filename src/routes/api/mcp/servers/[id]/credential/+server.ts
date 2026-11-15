@@ -33,7 +33,6 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 	if (!token) error(400, 'A non-empty token is required');
 
 	setMcpCredential(locals.user.id, id, token);
-	// Drop any stale connection so the re-handshake uses the new token.
 	await dropUserConnection(id, locals.user.id);
 	const result = await retryMcpServer(id, locals.user.id);
 	return Response.json({ state: result.state, error: result.error });

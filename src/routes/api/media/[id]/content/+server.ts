@@ -29,9 +29,9 @@ import type { RequestHandler } from './$types';
  * under the user's session.
  *
  * The disposition test runs against the *normalized* essence, not the stored
- * string. Rows written before content types were normalized on write can
- * carry a parameter (`image/svg+xml; charset=utf-8`), and an `===` compare
- * against the bare essence missed exactly those — the bypass this guards.
+ * string. Rows written before content types were normalized on write can carry a
+ * parameter (`image/svg+xml; charset=utf-8`), which an `===` compare against the
+ * bare essence misses — the bypass this guards.
  */
 export const GET: RequestHandler = async ({ locals, params, request, url }) => {
 	requireUser(locals);

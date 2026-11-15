@@ -180,9 +180,8 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				result: execResult.execution.content,
 				...(execResult.execution.isError ? { isError: true } : {}),
 			};
-			// Media MessageParts were pre-constructed by executeOneToolCall
-			// (which also handles the lookup via getMediaForUser). We still
-			// need to link each attached media to the tool message row.
+			// executeOneToolCall builds the media parts; linking the media to the
+			// tool message row is left to the caller.
 			if (execResult.execution.attachedMediaIds?.length) {
 				for (const mediaId of execResult.execution.attachedMediaIds) {
 					linkMessageMedia(toolMsg.id, mediaId);
@@ -251,7 +250,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 	// The same model fields the send path registers with: in-flight readers (the
 	// conversation list's generating marker, the endpoint view) describe a
-	// resumed turn by them, and an entry without them read as an unknown model.
+	// resumed turn by them, and an entry without them reads as an unknown model.
 	const inFlight = registerInFlight(params.id, endpoint, undefined, meta.modelKind, meta.modelId);
 
 	// Assembled exactly as the send path does (shared startChatTurn), seeded from

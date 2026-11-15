@@ -18,8 +18,6 @@ export const POST: RequestHandler = async ({ locals, params }) => {
 	// Verify ownership of the conversation before letting anyone cancel it.
 	requireFound(getConversationMeta(params.id, locals.user.id), 'Conversation not found');
 
-	// Nothing in flight is not an error — succeed silently so the client UI can
-	// stay simple.
 	return Response.json({
 		cancelled: await cancelInFlightGenerations(params.id, { sparePhotos: true }),
 	});

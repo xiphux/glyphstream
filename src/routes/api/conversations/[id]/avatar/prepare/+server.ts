@@ -1,7 +1,7 @@
 /**
  * POST /api/conversations/:id/avatar/prepare — retired, with ../generate (see
- * there). An avatar comparison no longer parks the thread: it's several
- * portrait draws onto the description, picked from like a photo comparison.
+ * there). An avatar comparison doesn't park the thread: it's several portrait
+ * draws onto the description, picked from like a photo comparison.
  */
 
 import { error } from '@sveltejs/kit';

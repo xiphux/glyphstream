@@ -109,8 +109,8 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// (cleared when the user picks / dismisses, via selectBranch).
 	setFanoutParent(params.id, locals.user.id, userMessage.id);
 
-	// Title generation runs once for the whole fan-out (branches suppress it).
-	// Fire-and-forget: the new title surfaces on the client's post-fan-out
+	// Title generation runs once for the whole fan-out, here (branches suppress
+	// it). Fire-and-forget: the new title surfaces on the client's post-fan-out
 	// invalidate, not via this response.
 	void startTitleTaskIfFirstExchange(params.id, locals.user.id);
 
