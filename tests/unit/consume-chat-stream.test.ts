@@ -126,8 +126,8 @@ describe('consumeChatStream', () => {
 		// A reaction suppresses all four of its `tool_call_*` frames, so a turn
 		// that reacted and wrote nothing — the relay loops for the reply — leaves
 		// the accumulator false while the server really did persist rows this
-		// client has never seen. Inferring from the frames alone dropped them,
-		// and with them the badge. The server states it on `done` instead.
+		// client has never seen. Inferring from the frames alone drops them, and
+		// with them the badge, so the server states it on `done`.
 		const onDone = vi.fn();
 		const body = streamFromEvents([
 			{ type: 'reaction', messageId: 'user-1', emoji: '🎉' },

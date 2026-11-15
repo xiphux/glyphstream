@@ -1,6 +1,6 @@
 /**
  * The one send rule both composers use: the chat page's (`ChatComposer`) and
- * the new-chat page's. They used to compute it separately and had drifted.
+ * the new-chat page's, shared so the two can't drift apart.
  */
 import { describe, expect, it } from 'vitest';
 import { composerSendBlocker, sendBlockerTitle, type ComposerSendState } from '#lib/composer.js';

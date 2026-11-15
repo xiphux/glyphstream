@@ -2,16 +2,15 @@
  * Route-handler test for GET /api/conversations/[id]/context.
  *
  * `buildContextBreakdown` has its own (thorough) unit tests, and they all pass a
- * hand-built branch — which is exactly why they could not catch the bug this file
- * exists to prevent.
+ * hand-built branch, so they can't catch the bug this file exists to prevent.
  *
  * The send path walks the branch with `columns: 'serialization'`, a projection
  * that deliberately nulls `tokens_in` / `tokens_out` (the send path never needs
- * them). This endpoint copied that call. But the upstream's own `prompt_tokens`
- * is the ONE authoritative token measurement the app ever gets, and the gap
- * between it and our chars/4 estimate is where image tokens live — reporting it
- * is half the point of the panel. With the stripped projection it was pinned to
- * null, and that row of the panel silently never rendered.
+ * them). But the upstream's own `prompt_tokens` is the ONE authoritative token
+ * measurement the app ever gets, and the gap between it and our chars/4 estimate
+ * is where image tokens live — reporting it is half the point of the panel. If
+ * this endpoint copies the send path's call, it is pinned to null and that row of
+ * the panel silently never renders.
  *
  * A unit test over `buildContextBreakdown` can't see this: it's a mismatch
  * BETWEEN two correct components. So the assertion lives here, at the seam.

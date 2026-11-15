@@ -81,12 +81,12 @@ describe('buildOverview', () => {
 	});
 
 	it('fails the rebuild when a fold batch comes back empty, rather than cold-starting the map', async () => {
-		// The fold assigns each call's result to `map`, so an empty one used to reset it:
+		// The fold assigns each call's result to `map`, so an empty one would reset it:
 		// the next batch would restart from "(none yet)" and the final map would silently
-		// omit every topic from the earlier batches. That map is truthy, so it sailed past
-		// the worker's empty-check and got stored — lossy, with the watermark stamped
-		// behind it. An empty completion now throws (callMemoryModel), and the fold must
-		// let it through so the worker skips the user and retries next sweep.
+		// omit every topic from the earlier batches. That map is truthy, so it would sail
+		// past the worker's empty-check and be stored — lossy, with the watermark stamped
+		// behind it. An empty completion throws (callMemoryModel), and the fold must let
+		// it through so the worker skips the user and retries next sweep.
 		const summaries = Array.from({ length: 8 }, (_, i) => `summary ${i} ` + 'x'.repeat(580));
 		callMock
 			.mockResolvedValueOnce('## Work\n- API deploys')

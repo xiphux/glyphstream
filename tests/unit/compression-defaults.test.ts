@@ -1,9 +1,9 @@
 /**
  * Both compression switches default ON and turn off only on an explicit
- * falsy value. COMPRESS_DYNAMIC used to default off, on the theory that a
- * proxy compresses and doing it twice is waste; a proxy passes an
- * already-encoded response through, so it never happened twice — and the
- * deploys whose proxy couldn't compress shipped everything raw.
+ * falsy value. Defaulting COMPRESS_DYNAMIC off on the theory that a proxy
+ * compresses and doing it twice is waste is wrong: a proxy passes an
+ * already-encoded response through, so it never happens twice — and deploys
+ * whose proxy can't compress ship everything raw.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { compressDynamicResponses, compressStreamingResponses } from '#lib/server/env.js';

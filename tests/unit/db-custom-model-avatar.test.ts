@@ -583,7 +583,7 @@ describe('appendMessage — advanceActiveLeafIfCurrent', () => {
 	});
 
 	it('advances unconditionally when no guard is supplied', () => {
-		// Every pre-existing caller relies on this — the guard is opt-in.
+		// Every other caller relies on this — the guard is opt-in.
 		const u = seedUser();
 		const { conv, description } = seedBranch(u.id);
 		const later = appendMessage({

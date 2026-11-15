@@ -447,7 +447,6 @@ describe('updateConversationModel', () => {
 		const after = list.find((c) => c.id === conv.id);
 		expect(after).toBeDefined();
 		expect(after!.updatedAt).toBeGreaterThan(before ? 0 : -1);
-		// And the row should still be there & owned.
 		expect(after!.id).toBe(conv.id);
 	});
 
@@ -770,16 +769,9 @@ describe('branching: siblings + selectBranch', () => {
 
 describe('deleteBranch', () => {
 	/**
-	 * Build a tree with two sibling user messages (edit branches), each with
-	 * an assistant child. Returns ids so individual tests can drive deletions.
-	 *
-	 *           root user (U0)
-	 *           ├── assistant (A0)
-	 *           ?
-	 *           edit: two sibling users branching off the same parent (null)
-	 *
-	 * For simplicity we just create two root siblings with assistant children
-	 * under each — same shape as "user edits the root message twice."
+	 * Build two sibling root user messages (the shape of "user edits the root
+	 * message"), each with an assistant child. Returns ids so individual tests
+	 * can drive deletions.
 	 */
 	function buildTwoBranches() {
 		const u = seedUser();
@@ -1002,8 +994,6 @@ describe('deleteBranch', () => {
 });
 
 describe('countOrphanMediaInConversation', () => {
-	// Helpers to keep each test short — most need the same conversation
-	// + assistant message shape with media linked.
 	function setupConvWithAssistant(userId: string, modelKind: 'image' | 'video' = 'image') {
 		const conv = createConversation({
 			userId,
@@ -1360,12 +1350,10 @@ describe('deleteConversation with the deleteMedia flag', () => {
 });
 
 describe('resolveParentForUserMessage', () => {
-	// Shape under test: pure function that maps the route-level inputs
-	// (conversation context + optional client-provided routing fields)
-	// to "what should the new user message's parent_message_id be?".
-	// Three logical cases (edit / explicit parent / continue leaf) and
-	// a couple of validation failure modes, all driven by table-ish
-	// individual `it()` blocks for readability.
+	// Maps the route-level inputs (conversation context + optional
+	// client-provided routing fields) to the new user message's
+	// parent_message_id. Three cases (edit / explicit parent / continue leaf)
+	// and a couple of validation failure modes.
 
 	function setupConvWithBranch(userId: string) {
 		const conv = createConversation({
@@ -1397,11 +1385,10 @@ describe('resolveParentForUserMessage', () => {
 	}
 
 	it('editedMessageId pointing at the conversation root returns parentMessageId=null', () => {
-		// This is the bug-fix regression test: editing the conversation's
-		// first user message should produce a fresh root sibling, NOT
-		// an append onto the current leaf. Pre-fix the route handler
-		// dropped null parents on the wire and the server fell back to
-		// activeLeaf — silently breaking branching for root edits.
+		// Regression guard: editing the conversation's first user message must
+		// produce a fresh root sibling, NOT an append onto the current leaf. A
+		// route handler that drops null parents on the wire makes the server
+		// fall back to activeLeaf — silently breaking branching for root edits.
 		const u = seedUser();
 		const { conv, root } = setupConvWithBranch(u.id);
 		const result = resolveParentForUserMessage({
@@ -1738,8 +1725,6 @@ describe('multi-model fan-out: sibling appends + active_leaf pinning', () => {
 		expect(byId.get(b.id)).toBe('bridge::b');
 	});
 
-	// --- grid order ------------------------------------------------------
-	//
 	// A compare grid is drawn in the order the user enqueued the models, but a
 	// row's created_at is when its branch FINISHED — and branches an endpoint
 	// runs in parallel finish out of order. `fanout_index` is the dispatch
@@ -1819,8 +1804,7 @@ describe('multi-model fan-out: sibling appends + active_leaf pinning', () => {
 		});
 
 		it('keeps a wholly un-indexed fan-out in its old chronological order', () => {
-			// Rows that predate the column: nothing to sort by but created_at, which
-			// is what they were ordered by before it existed.
+			// Rows that predate the column have nothing to sort by but created_at.
 			const { conv, user } = seedConvWithUser();
 			land(conv.id, user.id, 'first', null);
 			land(conv.id, user.id, 'second', null);
@@ -2069,7 +2053,7 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(user.id);
 
 		const res = deleteBranch(conv.id, finished.id, u.id);
-		// Not refused — the old blanket no-siblings guard wrongly blocked this.
+		// Not refused — a blanket no-siblings guard would wrongly block this.
 		expect(res && 'deletedIds' in res).toBe(true);
 		expect(getMessage(conv.id, finished.id)).toBeNull();
 		// Leaf + marker stay put so the in-flight branch repopulates the grid.
@@ -2295,7 +2279,7 @@ describe('appendMessage — the returned message', () => {
 	// The chat page swaps its optimistic bubble for this return value (the
 	// `start` event), so it must carry what a full read of the row would.
 	// Without `dispatchedModels`, "New chat from this prompt" on a just-sent
-	// comparison fell back to a single model until the page reloaded.
+	// comparison falls back to a single model until the page reloads.
 	it('carries the same fields a later read of the row does', () => {
 		const u = seedUser();
 		const conv = createConversation({

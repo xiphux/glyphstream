@@ -6,7 +6,7 @@
  * This is where a drizzle-orm RC has already bitten: rc.4 made a bare `blob()`
  * default to JSON mode, which would have written embeddings and passkey keys as
  * JSON text and read them back as garbage. `mode: 'buffer'` is the fix, and
- * nothing asserted it. The storage check matters as much as the round trip — a
+ * only this file asserts it. The storage check matters as much as the round trip — a
  * codec change that is symmetric still passes a write-then-read test while every
  * row written before the upgrade becomes unreadable.
  *

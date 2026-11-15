@@ -191,8 +191,8 @@ describe('summarizeConversation', () => {
 	});
 
 	it('does not silently drop a chunk when one map call comes back empty', async () => {
-		// The map/reduce loop folds each call's result into a list, so an empty one used
-		// to contribute nothing and let the reduce produce a gist missing a slice of the
+		// The map/reduce loop folds each call's result into a list, so an empty one would
+		// contribute nothing and let the reduce produce a gist missing a slice of the
 		// transcript — a lossy summary indistinguishable from a whole one, stored with
 		// the watermark stamped behind it.
 		const long = 'x'.repeat(40_000);
@@ -211,8 +211,8 @@ describe('summarizeConversation', () => {
 		acquireMock.mockResolvedValue({ release });
 		reply('gist');
 		await summarizeConversation(MODEL, [mkMsg('user', 'a'), mkMsg('assistant', 'b')], 8000);
-		// The gate takes the endpoint now — it reads the resource group and that
-		// group's cap off it, so passing an id by hand can't bypass the group.
+		// The gate takes the endpoint — it reads the resource group and that group's
+		// cap off it, so passing an id by hand can't bypass the group.
 		expect(acquireMock).toHaveBeenCalledWith(
 			expect.objectContaining({ id: 'gpu', resourceGroup: 'gpu', resourceGroupMaxConcurrent: 1 }),
 			expect.anything(),
@@ -283,8 +283,8 @@ describe('summarizeConversation — recovery from an over-window rejection', () 
 			.mockRejectedValueOnce(overflow400(104317, 98304))
 			.mockResolvedValue({ choices: [{ message: { content: 'a gist' } }] });
 
-		// One enormous pasted message. Pre-split, this was an unplaceable chunk: no
-		// budget could hold it, so the retry would shrink forever and re-send it whole.
+		// One enormous pasted message. Unsplit, it is an unplaceable chunk: no budget
+		// could hold it, so the retry would shrink forever and re-send it whole.
 		const out = await summarizeConversation(
 			MODEL,
 			[mkMsg('user', 'z'.repeat(400_000))],

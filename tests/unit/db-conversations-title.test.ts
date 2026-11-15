@@ -71,9 +71,7 @@ describe('title_source state machine', () => {
 			modelId: 'bridge::gpt-4o',
 			modelKind: 'chat',
 		});
-		// First AI write succeeds
 		expect(setConversationTitleIfFallback(conv.id, u.id, 'First AI')).toBe(true);
-		// Second write fails (already ai-sourced)
 		expect(setConversationTitleIfFallback(conv.id, u.id, 'Second AI')).toBe(false);
 		expect(getConversationTitleSource(conv.id, u.id)).toBe('ai');
 	});
@@ -299,9 +297,9 @@ describe('getConversationFirstExchange', () => {
 	});
 
 	it('is deterministic when two sibling assistants share a timestamp', () => {
-		// The real requirement. Ordering on `created_at` alone left the winner up
-		// to whichever index the planner picked, so extending
-		// idx_messages_conv_created silently changed the answer. Which sibling
+		// The real requirement. Ordering on `created_at` alone leaves the winner up
+		// to whichever index the planner picks, so extending
+		// idx_messages_conv_created silently changes the answer. Which sibling
 		// wins is arbitrary (ids are UUIDv4, so "inserted first" isn't recoverable
 		// from the columns) — that it's the SAME one every time is not.
 		const u = seedUser();

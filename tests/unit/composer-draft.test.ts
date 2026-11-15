@@ -54,7 +54,6 @@ describe('saveDraft / loadDraft / clearDraft', () => {
 		saveDraft('conv-1', 'text');
 		saveDraft('conv-1', '   ');
 		expect(loadDraft('conv-1')).toBe('');
-		// And the key is actually gone, not just blanked.
 		expect(localStorage.getItem(key('conv-1'))).toBeNull();
 	});
 
@@ -152,7 +151,6 @@ describe('createDraftWriter', () => {
 		writer.save('conv-b', 'draft for B');
 		vi.advanceTimersByTime(500);
 		expect(loadDraft('conv-b')).toBe('draft for B');
-		// A is untouched by B's writes.
 		expect(loadDraft('conv-a')).toBe('draft for A');
 
 		writer.dispose();

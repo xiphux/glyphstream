@@ -200,7 +200,6 @@ describe('maybeCompressResponse — skip rules', () => {
 	it('skips bodies under the 1 KB threshold', async () => {
 		const out = await maybeCompressResponse(makeResponse('{"ok":true}'), makeRequest(ACCEPT_ALL));
 		expect(out.headers.get('Content-Encoding')).toBeNull();
-		// And the round-tripped body is unchanged.
 		expect(await out.text()).toBe('{"ok":true}');
 	});
 
@@ -219,8 +218,8 @@ describe('maybeCompressResponse — skip rules', () => {
 
 describe('compression does not block the event loop', () => {
 	/**
-	 * The codecs used to run through zlib's *Sync variants, which occupy the
-	 * event loop for the whole compression. On this single-process server that
+	 * zlib's *Sync variants occupy the event loop for the whole compression. On
+	 * this single-process server that
 	 * stalls every other in-flight request — including SSE forwarding for other
 	 * users' live generations. At brotli-4's ~70-100 MB/s a multi-MB conversation
 	 * payload is tens of milliseconds of global stall, on exactly the deploy this

@@ -1,18 +1,16 @@
 /**
  * The unit suite must not read the developer's real ./config.toml.
  *
- * It used to. `vitest.config.ts` set `env: { CONFIG_PATH: … }`, but `configPath()`
- * reads `$env/dynamic/private`, which is populated by the SvelteKit SERVER at
- * runtime and is an EMPTY object under vitest — so the setting never landed and
- * every read fell through to the './config.toml' fallback. Tests that don't fully
- * mock the config layer therefore behaved one way on a dev machine (a real config,
- * with [search] and [embeddings] blocks) and another way in CI (no config at all).
+ * `vitest.config.ts` sets `env: { CONFIG_PATH: … }`, which reaches `configPath()`
+ * only because env.ts reads `process.env` directly (see the note at its top). A
+ * Kit env module like `$env/dynamic/private` is populated by the SvelteKit SERVER
+ * at runtime and is an EMPTY object under vitest, so the setting never lands and
+ * every read falls through to the './config.toml' fallback. Tests that don't fully
+ * mock the config layer then behave one way on a dev machine (a real config, with
+ * [search] and [embeddings] blocks) and another way in CI (no config at all).
  *
- * env.ts now reads `process.env` directly (SvelteKit 3; see the note at its top),
- * which is exactly what vitest's `env` block sets. This test is the guard: it fails
- * the moment config reads stop reaching that setting — say, a move back to a Kit
- * env module — rather than letting the suite quietly go back to reading whatever
- * happens to be on the machine running it.
+ * This test fails the moment config reads stop reaching that setting, rather than
+ * letting the suite quietly read whatever happens to be on the machine running it.
  */
 import { describe, expect, it } from 'vitest';
 import { configPath } from '#lib/server/env.js';

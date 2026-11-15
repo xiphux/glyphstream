@@ -101,7 +101,7 @@ describe('parseConsolidation', () => {
 	});
 
 	it('keeps a richer multi-sentence reword within the content cap', () => {
-		// The loosened prompt lets the pass distill to a short paragraph, not just a
+		// The prompt lets the pass distill to a short paragraph, not just a
 		// bare sentence — such an op must survive validation.
 		const rich =
 			'Works at Globex; previously at Acme. Moved for the shift to backend Go work, ' +

@@ -225,8 +225,8 @@ describe('runSummarySweep', () => {
 		const c1 = seedConv(u.id);
 		const c2 = seedConv(u.id);
 		// A permanent, request-specific 400 that shrinking cannot fix. The next
-		// conversation (and the overview build) still succeed — the old behavior bailed
-		// the whole sweep here, wedging the oldest-first backlog behind one bad chat.
+		// conversation (and the overview build) still succeed — bailing the whole sweep
+		// here would wedge the oldest-first backlog behind one bad chat.
 		chatMock
 			.mockRejectedValueOnce(new UpstreamError('unsupported input', 400, null))
 			.mockResolvedValue({ choices: [{ message: { content: 'A gist of the chat.' } }] });

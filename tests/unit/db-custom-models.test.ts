@@ -216,7 +216,6 @@ describe('custom-models CRUD', () => {
 			parameters: null,
 		});
 		expect(cm.defaultDisabledFeatures).toEqual([]);
-		// Round-trip through the DB — the read-back should match.
 		expect(getCustomModelForUser(cm.id, u.id)?.defaultDisabledFeatures).toEqual([]);
 	});
 
@@ -250,7 +249,6 @@ describe('custom-models CRUD', () => {
 			parameters: null,
 			defaultDisabledFeatures: ['personalization'],
 		});
-		// Change to a different category.
 		const updated = updateCustomModel(cm.id, u.id, {
 			defaultDisabledFeatures: ['web'],
 		});
