@@ -18,8 +18,18 @@ vi.mock('#lib/server/db/queries/memories.js', () => ({
 }));
 
 import { startTopicBackfiller, stopTopicBackfiller } from '#lib/server/memory/topic-backfill.js';
+import { resetEndpointGatesForTests } from '#lib/server/endpoints/concurrency.js';
 
-const MODEL = { endpoint: {}, upstreamId: 'm' };
+// Each row's call takes the endpoint's gate slot, which reads these fields.
+const MODEL = {
+	endpoint: {
+		id: 'task',
+		resourceGroup: 'task',
+		resourceGroupMaxConcurrent: 1,
+		requestTimeoutSeconds: 120,
+	},
+	upstreamId: 'm',
+};
 const ROW = [{ id: 'm1', content: 'note' }];
 
 /** Hold the model call open so a sweep can be caught mid-flight; returns a
@@ -40,6 +50,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	stopTopicBackfiller();
+	resetEndpointGatesForTests();
 	vi.useRealTimers();
 });
 

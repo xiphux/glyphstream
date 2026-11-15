@@ -18,10 +18,11 @@
  * job, not a request path, so the per-user read-isolation invariant doesn't apply.
  */
 
-import { getTaskModel } from '../tasks/task-model';
+import { getTaskModel, type ResolvedTaskModel } from '../tasks/task-model';
 import { generateMemoryTopic, fallbackTopic } from '../tasks/topic-generator';
 import { listMemoriesNeedingTopic, setMemoryTopic } from '../db/queries/memories';
 import { createSweeper } from '../util/sweeper';
+import { acquireEndpointSlot } from '../endpoints/concurrency';
 import { createLogger } from '../log';
 
 const log = createLogger('topic-backfill');
@@ -61,11 +62,11 @@ export async function runTopicBackfillSweep(): Promise<{ filled: number; drained
 			for (const row of rows) {
 				let topic: string | null;
 				try {
-					topic = await generateMemoryTopic(model, row.content);
+					topic = await labelRow(model, row.content);
 				} catch (e) {
-					// Endpoint down / timeout — stop and leave the rest for the next
-					// sweep rather than fallback-labelling everything while the model
-					// is unavailable.
+					// Endpoint down / timeout / no slot in time — stop and leave the
+					// rest for the next sweep rather than fallback-labelling everything
+					// while the model is unavailable.
 					log.warn('task model call failed, retrying next sweep:', e);
 					return { filled, drained: false };
 				}
@@ -86,6 +87,26 @@ export async function runTopicBackfillSweep(): Promise<{ filled: number; drained
 		return { filled, drained: false };
 	} finally {
 		running = false;
+	}
+}
+
+/**
+ * Label one row under the task endpoint's concurrency slot, taken per row (not
+ * per sweep) so a 200-row backlog never holds the endpoint between calls.
+ * `background` priority queues it behind every user's turn; the wait is bounded
+ * because a background waiter can otherwise park indefinitely under steady load
+ * or on a paused group, and `stop()` can't cancel a pending await.
+ */
+async function labelRow(model: ResolvedTaskModel, content: string): Promise<string | null> {
+	const slot = await acquireEndpointSlot(model.endpoint, {
+		work: { purpose: 'topic', modelId: model.upstreamId },
+		priority: 'background',
+		signal: AbortSignal.timeout(model.endpoint.requestTimeoutSeconds * 1000),
+	});
+	try {
+		return await generateMemoryTopic(model, content);
+	} finally {
+		slot.release();
 	}
 }
 

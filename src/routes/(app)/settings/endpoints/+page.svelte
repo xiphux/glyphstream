@@ -331,6 +331,8 @@
 				return 'Prompt enhance';
 			case 'title':
 				return 'Title';
+			case 'topic':
+				return 'Memory topic';
 			case 'compaction':
 				return 'Compaction';
 			case 'memory':

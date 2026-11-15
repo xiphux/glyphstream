@@ -97,7 +97,7 @@ tests/e2e/            # playwright (production-build webServer)
   `running` re-entrancy guard — those are exported and called directly by
   tests, so the guard is part of their contract, not the lifecycle's.
 - **The gate — not the conversation in-flight registry — is the source of
-  truth for endpoint occupancy** on `/settings/endpoints`: only 3 of the 9
+  truth for endpoint occupancy** on `/settings/endpoints`: only 3 of the 10
   `acquireEndpointSlot` paths register in that registry, so the rest would show
   as an occupied endpoint with nothing accounted against it. `work` (purpose +
   model id) is therefore REQUIRED on `AcquireOptions`; the queue-semantics tests

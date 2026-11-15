@@ -12,12 +12,38 @@ vi.mock('#lib/server/tasks/task-model.js', () => ({ getTaskModel: taskModelMock 
 
 import { runTopicBackfillSweep } from '#lib/server/memory/topic-backfill.js';
 import {
+	acquireEndpointSlot,
+	getResourceGroupSnapshot,
+	resetEndpointGatesForTests,
+} from '#lib/server/endpoints/concurrency.js';
+import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
+import { getDb } from '#lib/server/db/client.js';
+import { modelStatsDaily } from '#lib/server/db/schema.js';
+import {
 	createMemory,
 	listMemoriesNeedingTopic,
 	listMemoryTierRows,
 } from '#lib/server/db/queries/memories.js';
 
-const MODEL = { endpoint: {}, upstreamId: 'm' };
+const ENDPOINT: LoadedEndpoint = {
+	id: 'task',
+	displayName: 'task',
+	baseUrl: 'http://task/v1',
+	apiKey: null,
+	requestTimeoutSeconds: 120,
+	providerQuirk: 'passthrough',
+	groupBy: 'endpoint',
+	supportsTools: false,
+	maxConcurrent: 1,
+	resourceGroup: 'task',
+	resourceGroupMaxConcurrent: 1,
+	release: null,
+	contextWindow: null,
+	modelContextWindows: {},
+	modelPromptStyles: {},
+	modelPromptHints: {},
+};
+const MODEL = { endpoint: ENDPOINT, upstreamId: 'm' };
 
 function reply(content: string) {
 	chatMock.mockResolvedValue({ choices: [{ message: { content } }] });
@@ -31,7 +57,10 @@ beforeEach(() => {
 	reply('Generated topic');
 });
 
-afterEach(() => closeTestDb());
+afterEach(() => {
+	resetEndpointGatesForTests();
+	closeTestDb();
+});
 
 describe('runTopicBackfillSweep', () => {
 	it('is a no-op when no task model is configured', async () => {
@@ -87,5 +116,83 @@ describe('runTopicBackfillSweep', () => {
 		createMemory(u.id, 'fact');
 		expect(await runTopicBackfillSweep()).toEqual({ filled: 0, drained: false });
 		expect(listMemoriesNeedingTopic(100)).toHaveLength(1); // still queued for retry
+	});
+
+	it('holds a topic slot on the task endpoint while the call is in flight', async () => {
+		let finish!: (v: unknown) => void;
+		chatMock.mockImplementation(() => {
+			const snap = getResourceGroupSnapshot('task');
+			expect(snap?.holders).toEqual([
+				expect.objectContaining({ purpose: 'topic', modelId: 'm', state: 'active' }),
+			]);
+			return new Promise((r) => (finish = r));
+		});
+		createMemory(seedUser().id, 'fact');
+
+		const sweep = runTopicBackfillSweep();
+		await vi.waitFor(() => expect(chatMock).toHaveBeenCalledOnce());
+		finish({ choices: [{ message: { content: 'Topic' } }] });
+		expect((await sweep).filled).toBe(1);
+		expect(getResourceGroupSnapshot('task')?.holders).toEqual([]);
+	});
+
+	it('waits behind a holder of a capacity-1 endpoint and queues as background', async () => {
+		const held = await acquireEndpointSlot(ENDPOINT, { work: { purpose: 'chat' } });
+		createMemory(seedUser().id, 'fact');
+
+		const sweep = runTopicBackfillSweep();
+		await vi.waitFor(() =>
+			expect(getResourceGroupSnapshot('task')?.queued).toEqual([
+				expect.objectContaining({ purpose: 'topic', state: 'queued' }),
+			]),
+		);
+		expect(chatMock).not.toHaveBeenCalled();
+
+		// An interactive turn arriving later still goes ahead of the backlog.
+		const turn = acquireEndpointSlot(ENDPOINT, { work: { purpose: 'chat' } });
+		expect(getResourceGroupSnapshot('task')?.queued.map((q) => q.purpose)).toEqual([
+			'chat',
+			'topic',
+		]);
+		held.release();
+		(await turn).release();
+
+		expect((await sweep).filled).toBe(1);
+		expect(chatMock).toHaveBeenCalledOnce();
+	});
+
+	it('gives up on the slot after one request-timeout, leaving rows queued', async () => {
+		// Fake timers don't drive AbortSignal.timeout, so hand the sweep a signal
+		// the test controls.
+		const wait = new AbortController();
+		const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(wait.signal);
+		try {
+			const held = await acquireEndpointSlot(ENDPOINT, { work: { purpose: 'chat' } });
+			createMemory(seedUser().id, 'fact');
+
+			const sweep = runTopicBackfillSweep();
+			expect(timeout).toHaveBeenCalledWith(ENDPOINT.requestTimeoutSeconds * 1000);
+			wait.abort(new DOMException('timed out', 'TimeoutError'));
+			expect(await sweep).toEqual({ filled: 0, drained: false });
+			expect(chatMock).not.toHaveBeenCalled();
+			expect(listMemoriesNeedingTopic(100)).toHaveLength(1);
+			expect(getResourceGroupSnapshot('task')?.queued).toEqual([]);
+			held.release();
+		} finally {
+			timeout.mockRestore();
+		}
+	});
+
+	it('counts each labelling call once as task:topic', async () => {
+		const u = seedUser();
+		createMemory(u.id, 'one');
+		createMemory(u.id, 'two');
+		await runTopicBackfillSweep();
+		const rows = getDb()
+			.select()
+			.from(modelStatsDaily)
+			.all()
+			.filter((r) => r.metric === 'task:topic');
+		expect(rows).toEqual([expect.objectContaining({ endpointId: 'task', modelId: 'm', count: 2 })]);
 	});
 });

@@ -11,6 +11,7 @@ arrived.
 
 ### Fixed
 
+- Background topic labelling of older memories now respects each endpoint's `max_concurrent` and resource-group limits, waiting behind chat turns instead of running alongside them, and shows on `/settings/endpoints` as "Memory topic".
 - A request body over `BODY_SIZE_LIMIT` now gets a 413 that names the setting, instead of a misleading 400 ("Body must be multipart/form-data" when importing skills or prompt snippets, "Request body must be JSON" on JSON endpoints).
 
 ## v0.53.0

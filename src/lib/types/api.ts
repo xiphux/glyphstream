@@ -2038,6 +2038,7 @@ export type EndpointSlotPurpose =
 	| 'video'
 	| 'enhance'
 	| 'title'
+	| 'topic'
 	| 'compaction'
 	| 'memory'
 	| 'dream'

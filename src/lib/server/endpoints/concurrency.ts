@@ -421,12 +421,12 @@ export interface AcquireOptions {
 	 * What this acquisition is for, surfaced by `getResourceGroupSnapshot` to the
 	 * admin endpoint view.
 	 *
-	 * REQUIRED. Six of the nine paths that take a slot never touch the
+	 * REQUIRED. Seven of the ten paths that take a slot never touch the
 	 * conversation in-flight registry — compaction (both paths), dreaming, memory
-	 * summaries, prompt enhancement and title generation — so an undeclared
-	 * acquisition shows up on a `max_concurrent = 1` box as an occupied endpoint
-	 * with nothing accounted against it, which is the exact confusion the admin
-	 * view exists to remove.
+	 * summaries, memory topic labelling, prompt enhancement and title
+	 * generation — so an undeclared acquisition shows up on a
+	 * `max_concurrent = 1` box as an occupied endpoint with nothing accounted
+	 * against it, which is the exact confusion the admin view exists to remove.
 	 *
 	 * That failure is silent: no crash, no failing test, just a diagnostic
 	 * surface quietly under-reporting, discovered only by an operator wondering
@@ -664,6 +664,7 @@ export function acquireEndpointSlot(
 /** The gate purposes that are background tasks rather than a person's turn. */
 const TASK_PURPOSES = new Set<EndpointSlotPurpose>([
 	'title',
+	'topic',
 	'memory',
 	'dream',
 	'compaction',
@@ -682,7 +683,7 @@ function recordTaskWork(endpoint: LoadedEndpoint, work: AcquireOptions['work']):
 	const modelId = parseModelId(work.modelId)?.upstreamId ?? work.modelId;
 	recordModelEvent(
 		{ endpointId: endpoint.id, modelId },
-		`task:${work.purpose as 'title' | 'memory' | 'dream' | 'compaction' | 'enhance'}`,
+		`task:${work.purpose as 'title' | 'topic' | 'memory' | 'dream' | 'compaction' | 'enhance'}`,
 	);
 }
 
