@@ -706,7 +706,9 @@ body {
    can't mask the sampler, below overlay so it doesn't draw a hairline across
    the lightbox. Neither pressure exists on these three routes — there is no
    drawer and no lightbox — so the tier is kept only because nothing here
-   argues for moving it. z-index-ladder.test.ts still pins the ordering. */
+   argues for moving it. z-index-ladder.test.ts asserts no ordering; it fails
+   if the sampler is mounted outside (auth)/+layout.svelte, which is the point
+   at which both bounds matter again. */
 .status-bar-sampler {
 	display: none;
 }

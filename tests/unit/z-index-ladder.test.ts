@@ -34,15 +34,15 @@ import { describe, expect, it } from 'vitest';
 const srcDir = fileURLToPath(new URL('../../src/', import.meta.url));
 const cssPath = fileURLToPath(new URL('../../src/app.css', import.meta.url));
 
-function svelteFiles(dir: string): string[] {
+function sourceFiles(dir: string, name: RegExp): string[] {
 	return readdirSync(dir).flatMap((entry) => {
 		const full = `${dir}${entry}`;
-		if (statSync(full).isDirectory()) return svelteFiles(`${full}/`);
-		return entry.endsWith('.svelte') ? [full] : [];
+		if (statSync(full).isDirectory()) return sourceFiles(`${full}/`, name);
+		return name.test(entry) ? [full] : [];
 	});
 }
 
-const files = svelteFiles(srcDir).map((path) => ({
+const files = sourceFiles(srcDir, /\.svelte$/).map((path) => ({
 	path: path.slice(srcDir.length),
 	text: readFileSync(path, 'utf-8'),
 }));
@@ -75,39 +75,19 @@ describe('global stacking ladder', () => {
 		expect(t.get('overlay')!).toBeGreaterThan(t.get('sidebar')!);
 	});
 
-	it('keeps the status-bar sampler in its band: over the scrim, under overlays', () => {
-		// HISTORICAL, and the assertions are kept for inertia rather than for
-		// the reasons below — read app.css's sampler rule before acting on this.
-		// The sampler now exists only on the (auth) routes, where neither
-		// pressure applies: those three pages have no drawer and no lightbox.
-		// It is also 12px, not the 1px the ceiling argument was about.
-		//
-		// What the two bounds were for, when the sampler was on every route:
-		//
-		// Floor: the drawer backdrop is `fixed inset-0`, always mounted and
-		// merely faded out when shut, so a sampler below it lost this edge
-		// permanently — iOS read a transparent element and fell back to the
-		// translucent bar.
-		//
-		// Ceiling: at the top of the ladder the sampler painted a 1px
-		// surface-coloured hairline over every full-viewport dark overlay, since
-		// under the `default` status-bar style this strip is on-screen content.
-		// Sitting under the overlay tier removed the hairline, which is the part
-		// that was real. The reason given alongside it — "an open lightbox is
-		// what iOS samples, which is the colour the bar should take" — is not:
-		// a `fixed inset-0` overlay is viewport-sized on both axes, so WebKit
-		// classifies it IsViewportSizedCandidate and `preferExistingColor` keeps
-		// the colour already committed for the edge. The bar stays the page's
-		// either way.
-		//
-		// Both bounds are still asserted because each was violated in turn, and a
-		// bare "outranks the backdrop" passes the version that caused the
-		// hairline — so if the sampler ever returns to a route that has either,
-		// the tier it needs is already pinned.
-		const t = declaredTiers();
-		const statusBar = t.get('status-bar')!;
-		expect(statusBar).toBeGreaterThan(t.get('drawer-backdrop')!);
-		expect(statusBar).toBeLessThan(t.get('overlay')!);
+	it('mounts the status-bar sampler only on the (auth) routes', () => {
+		// The status-bar tier's place between drawer-backdrop and overlay is only
+		// observable where the drawer scrim and the overlays exist, which is under
+		// (app) — none of them mount on the (auth) routes. If the sampler is ever
+		// mounted somewhere else, restore assertions on its ordering against both:
+		// above the scrim, which is always mounted and would otherwise hide it
+		// from iOS, and below overlay, or it draws a strip across the lightbox.
+		const usage =
+			/class(?:Name)?\s*=\s*["'{`][^"'}`]*\bstatus-bar-sampler\b|class:status-bar-sampler\b|classList\.(?:add|toggle)\([^)]*status-bar-sampler/;
+		const users = sourceFiles(srcDir, /\.(svelte|ts|html)$/)
+			.filter((path) => usage.test(readFileSync(path, 'utf-8')))
+			.map((path) => path.slice(srcDir.length));
+		expect(users).toEqual(['routes/(auth)/+layout.svelte']);
 	});
 
 	it('assigns every tier a distinct value', () => {
