@@ -168,3 +168,49 @@ test('the data-scheme swap changes computed theme colors', async ({ page }) => {
 		(await probe('light', 'text-fg ring-1')).ring,
 	);
 });
+
+test('prose inline code follows the theme tokens and stands off a bubble', async ({ page }) => {
+	await page.goto('/');
+	await page.waitForLoadState('networkidle');
+	/** Inline-code and bubble backgrounds under `theme` (null = default), in one evaluate. */
+	const probe = (theme: string | null) =>
+		page.evaluate((t) => {
+			const root = document.documentElement;
+			root.setAttribute('data-scheme', 'light');
+			if (t) root.setAttribute('data-theme', t);
+			else root.removeAttribute('data-theme');
+			const bubble = document.createElement('div');
+			bubble.className = 'bg-surface-raised';
+			bubble.innerHTML =
+				'<div class="gs-prose"><p>run <code>ls</code></p><pre><code>x</code></pre></div>';
+			document.body.append(bubble);
+			const out = {
+				bubble: getComputedStyle(bubble).backgroundColor,
+				code: getComputedStyle(bubble.querySelector('p > code')!).backgroundColor,
+				pre: getComputedStyle(bubble.querySelector('pre')!).backgroundColor,
+			};
+			bubble.remove();
+			return out;
+		}, theme);
+
+	const base = await probe(null);
+	const claude = await probe('claude');
+	expect(claude.code, 'inline code is out of the theme’s reach').not.toBe(base.code);
+	for (const s of [base, claude]) {
+		expect(s.code, 'inline code vanishes into the bubble').not.toBe(s.bubble);
+		expect(s.pre, 'fallback <pre> vanishes into the bubble').not.toBe(s.bubble);
+	}
+});
+
+test('the sidebar slide is instant under prefers-reduced-motion', async ({ page }) => {
+	const sidebarTransition = () =>
+		page.evaluate(
+			() => getComputedStyle(document.querySelector('aside.z-sidebar')!).transitionProperty,
+		);
+	await page.emulateMedia({ reducedMotion: 'no-preference' });
+	await page.goto('/');
+	await page.waitForLoadState('networkidle');
+	expect(await sidebarTransition()).toContain('translate');
+	await page.emulateMedia({ reducedMotion: 'reduce' });
+	expect(await sidebarTransition()).toBe('none');
+});

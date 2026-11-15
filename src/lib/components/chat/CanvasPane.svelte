@@ -8,6 +8,7 @@
 <script lang="ts">
 	import { X } from '@lucide/svelte';
 	import { cubicOut } from 'svelte/easing';
+	import { prefersReducedMotion } from 'svelte/motion';
 	import type { CanvasVersion } from '#lib/types/api.js';
 
 	interface Props {
@@ -37,10 +38,8 @@
 	 * animation (the inner reads it, left-anchored + clipped) so the document
 	 * text doesn't rewrap as the column grows/shrinks — it slides instead.
 	 *
-	 * Deliberately does NOT gate on prefers-reduced-motion: the left sidebar's
-	 * collapse (a plain CSS transition) doesn't either, and matching it keeps the
-	 * two panels consistent. This is a mild 200ms panel slide, not vestibular
-	 * motion.
+	 * Instant under prefers-reduced-motion, like the left sidebar's slide (a CSS
+	 * transition that `motion-reduce:` switches off), so the two panels match.
 	 *
 	 * Uses a per-frame `tick` (plain inline styles) rather than a `css` keyframe:
 	 * Svelte compiles `css` into a Web Animations keyframe, and Safari's WAAPI
@@ -52,7 +51,7 @@
 		const wide = window.matchMedia?.('(min-width: 768px)').matches ?? false;
 		const width = node.offsetWidth;
 		return {
-			duration,
+			duration: prefersReducedMotion.current ? 0 : duration,
 			easing: cubicOut,
 			tick: (t: number) => {
 				if (wide) {

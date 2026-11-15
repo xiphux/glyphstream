@@ -1,3 +1,5 @@
+import { resolve } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { test, expect } from './fixtures/test';
 import { resetData, seedMediaPrompts } from './helpers';
 
@@ -31,6 +33,19 @@ const STAR_BADGE = 'li[data-tile] [title="Favorite"]';
  *  `exact` matters: role-name matching is substring-based, and a favorited stack
  *  card's accessible name ends in "N favorites", so a loose "Favorites" would
  *  match the grid as well as this toggle. */
+/** Give seeded rows a source model and, optionally, a star — straight to the
+ *  DB the webServer reads (helpers.seedMediaPrompts sets neither). */
+function setMediaModels(rows: Array<{ id: string; model: string; favorite: boolean }>): void {
+	const db = new DatabaseSync(resolve('./tests/.e2e-data/test.db'));
+	db.exec('PRAGMA busy_timeout = 5000');
+	try {
+		const stmt = db.prepare('UPDATE media SET source_model = ?, favorited_at = ? WHERE id = ?');
+		for (const r of rows) stmt.run(r.model, r.favorite ? 1_700_000_000_000 : null, r.id);
+	} finally {
+		db.close();
+	}
+}
+
 async function toggleFavoritesFilter(page: import('@playwright/test').Page): Promise<void> {
 	await page.getByRole('button', { name: 'Favorites', exact: true }).click();
 }
@@ -217,5 +232,50 @@ test.describe('gallery: favorites', () => {
 		await toggleFavoritesFilter(page);
 		await expect(page.getByText('2 results for "sunset"')).toBeVisible();
 		await expect(page.locator(TILE)).toHaveCount(2);
+	});
+
+	test("unstarring a model's only favorite drops it from the Model filter", async ({ page }) => {
+		// The Model dropdown's counts come from the page load and are narrowed by the
+		// Favorites filter, so a toggle that empties a model's filtered set has to
+		// re-read them, or the dropdown offers a model that leads to an empty grid.
+		// Five rows: the memo fingerprint is keyed on row counts, and sibling tests
+		// seed three and four (see the drilled-in stack test).
+		resetData();
+		seedMediaPrompts([
+			'a red kite',
+			'a blue whale',
+			'a green field',
+			'a grey cloud',
+			'a gold coin',
+		]);
+		setMediaModels([
+			{ id: 'e2e-media-0000', model: 'model-a', favorite: true },
+			{ id: 'e2e-media-0001', model: 'model-b', favorite: true },
+			{ id: 'e2e-media-0002', model: 'model-c', favorite: true },
+		]);
+		await page.goto('/gallery?fav=1');
+		await expect(page.locator(TILE)).toHaveCount(3);
+		// Inline on desktop, CSS-hidden on mobile — present in the DOM either way.
+		const option = (model: string) =>
+			page.locator(`select[aria-label="Filter by model"] option[value="${model}"]`).first();
+		await expect(option('model-b')).toHaveCount(1);
+
+		let layoutFetches = 0;
+		page.on('request', (r) => {
+			if (new URL(r.url()).pathname === '/api/media/layout') layoutFetches++;
+		});
+
+		await page.locator('li[data-tile] img[src*="e2e-media-0001"]').click();
+		await page.getByRole('button', { name: 'Remove from favorites' }).click();
+		await expect(page.getByRole('button', { name: 'Add to favorites' })).toBeVisible();
+		await page.getByRole('button', { name: 'Close', exact: true }).click();
+
+		await expect(page.locator(TILE)).toHaveCount(2);
+		await expect(option('model-b')).toHaveCount(0);
+		await expect(option('model-a')).toHaveCount(1);
+		// The re-read must not reseed the feed a second time: the reload effect keys on
+		// the filters, which the toggle didn't change.
+		await page.waitForLoadState('networkidle');
+		expect(layoutFetches).toBe(1);
 	});
 });

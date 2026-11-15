@@ -29,7 +29,7 @@ export const clockTool: Tool = {
 				properties: {
 					timezone: {
 						type: 'string',
-						description: 'IANA timezone name. Defaults to UTC if omitted.',
+						description: "IANA timezone name. Omit for the user's zone.",
 					},
 				},
 				additionalProperties: false,

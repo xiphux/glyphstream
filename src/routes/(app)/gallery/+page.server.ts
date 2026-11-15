@@ -17,12 +17,13 @@ import type { PageServerLoad } from './$types';
  *     server's, not a client re-sort, because the result set is capped: the
  *     newest 150 matches aren't the best-scoring 150 put in date order.
  */
-export const load: PageServerLoad = async ({ locals, url }) => {
+export const load: PageServerLoad = async ({ locals, url, depends }) => {
 	// `requireUserPage`, not `await parent()`: parent() would re-run this load —
 	// a ranked search of up to 150 items with their prompts, plus a query
 	// embedding sent to the upstream — every time the layout reloads, which is
 	// every return to the app. See CLAUDE.md on `requireUserPage`.
 	requireUserPage(locals, url);
+	depends('app:gallery');
 	const kindParam = url.searchParams.get('kind');
 	const kind = kindParam === 'image' || kindParam === 'video' ? kindParam : null;
 	const model = url.searchParams.get('model') ?? null;

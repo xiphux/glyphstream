@@ -9,8 +9,15 @@ arrived.
 
 ## Unreleased
 
+### Changed
+
+- The sidebar and canvas pane slide instantly when the system asks for reduced motion.
+
 ### Fixed
 
+- Inline code, table headers, blockquotes, rules and unhighlighted code blocks in messages now follow the Claude and ChatGPT themes, and inline code and table headers are no longer invisible inside chat bubbles.
+- With the gallery's Favorites filter on, the Model filter updates when you unstar an item instead of offering a model with nothing left to show.
+- The clock tool no longer tells the model it defaults to UTC; it uses your timezone.
 - Several `run_python` or skill-script calls in one turn now run in the order the model issued them; a call that had to start the interpreter could run after the ones behind it.
 - When `run_python` or a skill script can't save the files it generated, the model is now told which ones, instead of telling you they're attached.
 - Background topic labelling of older memories now respects each endpoint's `max_concurrent` and resource-group limits, waiting behind chat turns instead of running alongside them, and shows on `/settings/endpoints` as "Memory topic".

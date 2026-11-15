@@ -24,7 +24,10 @@ Two transports ship in v1:
   `idle_timeout_seconds = 0` to keep the subprocess alive indefinitely.
 - **`http`**: GlyphStream connects to a
   [Streamable HTTP](https://modelcontextprotocol.io/docs/concepts/transports#streamable-http)
-  endpoint. No idle reaper — HTTP keeps no expensive state at rest.
+  endpoint. An `auth = "global"` connection is never reaped (HTTP keeps no
+  expensive state at rest); `auth = "per_user"` connections are reaped after
+  `idle_timeout_seconds`, like stdio, so N users × M servers of sessions
+  don't linger.
 
 ## Setup
 

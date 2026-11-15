@@ -437,7 +437,9 @@
 #     i.e. 15 minutes) and re-spawned transparently on the next call.
 #     Set to 0 to keep the subprocess alive indefinitely.
 #   - "http": GlyphStream connects to a Streamable HTTP MCP endpoint.
-#     No idle reaping (HTTP keeps no expensive state at rest).
+#     Not reaped with auth = "global" (HTTP keeps no expensive state at
+#     rest); auth = "per_user" connections are reaped after
+#     `idle_timeout_seconds`, like stdio.
 #
 # MCP tools default to "ask every time" — the chat pauses with an Allow /
 # Allow Always / Reject prompt before the tool runs. "Allow Always" stores

@@ -590,7 +590,7 @@
 	/** Star / unstar one item from the lightbox.
 	 *
 	 * Optimistic, unlike the model-favorites star (which re-reads `data.prefs`):
-	 * there's no cheap load to re-run here. In search mode the page load is a
+	 * a re-read isn't cheap in general. In search mode the page load is a
 	 * ranked search of up to 150 items plus a query embedding, so an
 	 * `invalidate` to move one star would redo it, and a feed reseed is two
 	 * more round trips for a badge. So the local copies flip
@@ -606,7 +606,8 @@
 	 *
 	 * Exception: with the Favorites filter on, the toggle changes what the filtered
 	 * library *contains*, which no local badge patch can express — so browse reseeds
-	 * and search drops the row.
+	 * (and re-reads its load, which there is only the memoized Model facets) and
+	 * search drops the row.
 	 */
 	async function toggleFavorite(id: string, next: boolean) {
 		if (favoritingId) return;
@@ -660,14 +661,12 @@
 					// off its filtered leader), so it is not a one-liner; left as-is
 					// deliberately rather than papered over.
 					await refreshAfterMutation(next ? new Set<string>() : new Set([id]));
-					// Not invalidating the page load here is deliberate, and measured. The
-					// Model dropdown's counts come from that load and are narrowed by
-					// `favorite`, so a toggle leaves them stale — it can even offer a model
-					// whose favorites-filtered result is now empty (a dead-end click, and any
-					// navigation or filter change re-reads them). But replacing `data` also
-					// re-triggers the reload effect below, so an `invalidate` here measured
-					// TWO `/api/media/layout` fetches per toggle instead of one — paying real
-					// work on every star to keep a cosmetic count exact.
+					// Re-read the page load so the Model dropdown's favorites-narrowed counts
+					// follow the toggle (otherwise it can offer a model whose filtered result
+					// is now empty). Cheap: browse mode's load is just the memoized facets,
+					// and the reload effect keys on `browseFilterKey`, so a replaced `data`
+					// with the same filters doesn't reseed the feed again.
+					await invalidate('app:gallery');
 				}
 			}
 		} catch (e) {

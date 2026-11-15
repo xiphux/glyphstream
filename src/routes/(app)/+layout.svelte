@@ -712,7 +712,8 @@
 		 just their lucide icons with `title` tooltips.
 		 The transition list is `translate`, not `transform`: Tailwind v4
 		 compiles -translate-x-full to the standalone `translate` property,
-		 so naming `transform` here transitions nothing and the drawer pops. -->
+		 so naming `transform` here transitions nothing and the drawer pops.
+		 Instant under prefers-reduced-motion, as is the canvas pane's slide. -->
 	<!--
 		`convUi.busyId !== null` makes the entire sidebar inert while an
 		archive/delete is in flight. The dropdown menu's Content lives
@@ -725,7 +726,7 @@
 		Archived sidebar link.
 	-->
 	<aside
-		class="fixed inset-y-0 left-0 z-sidebar flex w-64 shrink-0 flex-col overflow-x-hidden border-r border-border bg-surface-sidebar transition-[translate,width] duration-200 sm:static sm:translate-x-0 {drawerOpen
+		class="fixed inset-y-0 left-0 z-sidebar flex w-64 shrink-0 flex-col overflow-x-hidden border-r border-border bg-surface-sidebar transition-[translate,width] duration-200 motion-reduce:transition-none sm:static sm:translate-x-0 {drawerOpen
 			? 'translate-x-0'
 			: '-translate-x-full sm:translate-x-0'} {collapsed ? 'sm:w-14' : 'sm:w-64'} {convUi.busyId !==
 		null
