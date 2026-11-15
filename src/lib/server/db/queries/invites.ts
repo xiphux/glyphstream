@@ -71,14 +71,14 @@ export interface ValidInvite {
  * to a "this invite link is invalid or expired" page). `now` is injectable for
  * tests.
  *
- * The issuer join is a revocation guard. Redemption used to check only the
- * token hash and expiry, so every invite an admin had issued — including one
- * carrying `role: 'admin'`, redeemable for up to the 30-day cap — stayed live
- * after that admin was disabled. That's backwards: disable is precisely the
- * non-destructive action an operator reaches for when an admin account is
- * compromised, chosen over delete so the account's conversations and media
- * survive. Delete already revoked (the FK cascades), so the safer-looking
- * button was the one that left the door open.
+ * The issuer join is a revocation guard. Checking only the token hash and
+ * expiry would leave every invite an admin had issued — including one carrying
+ * `role: 'admin'`, redeemable for up to the 30-day cap — live after that admin
+ * was disabled. Disable is precisely the non-destructive action an operator
+ * reaches for when an admin account is compromised, chosen over delete so the
+ * account's conversations and media survive. Delete revokes regardless (the FK
+ * cascades), so without this the safer-looking button would be the one that
+ * left the door open.
  *
  * Checking issuer state at redemption rather than deleting invites inside
  * `setUserDisabled` also covers a future demote path, and re-arms the invites

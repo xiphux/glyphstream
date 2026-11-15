@@ -127,7 +127,6 @@ export function countOrphanMediaInConversation(
 		const k = kindOf.get(mediaId);
 		if (k === 'image') images++;
 		else if (k === 'video') videos++;
-		// kind === 'file': intentionally not counted; see comment above.
 	}
 	return { images, videos };
 }
@@ -150,7 +149,7 @@ export function countOrphanMediaInConversation(
  * the regular decrement path takes over for the remaining (still-
  * referenced) media — that's the only path through which non-orphan
  * rows get their ref_count adjusted. The trashed rows' own join rows are
- * left for that decrement and the message cascade to clear, as before.
+ * left for that decrement and the message cascade to clear.
  *
  * Scope: generated media only — uploaded media follows the purger's
  * own auto-sweep path and is not affected by user-driven "also
@@ -301,12 +300,12 @@ export function findPurgeCandidates(
  * upload never passes through the trash), returning the storage paths for the
  * caller to unlink AFTER this commits.
  *
- * Claim-then-unlink, like `claimExpiredTrash`. The purger used to unlink first
- * and mark afterwards, and during that awaited unlink the row still read as
- * live: a message attaching it right then linked it (clearing nothing the mark
- * looked at), and the mark then tombstoned a row a message now referenced, with
- * no file behind it — every later send of that conversation failed on it. Now
- * an attach lands either before the claim (the link clears
+ * Claim-then-unlink, like `claimExpiredTrash`. Unlinking first and marking
+ * afterwards leaves the row reading as live during the awaited unlink: a
+ * message attaching it right then links it (clearing nothing the mark looks
+ * at), and the mark then tombstones a row a message now references, with no
+ * file behind it — every later send of that conversation fails on it. With the
+ * claim, an attach lands either before it (the link clears
  * `unreferenced_since`, so the row no longer qualifies) or after it (it sees a
  * deleted row and is refused). A failed unlink leaks the file instead of
  * being retried — the same trade `claimExpiredTrash` makes.
@@ -337,9 +336,9 @@ export function claimAbandonedUploads(olderThanMs: number, limit = 500): PurgeCa
  * `idx_media_trash`, which holds only the trash.
  *
  * Claim-then-unlink, like the upload phase, and here it matters more: a
- * trashed row can be RESTORED. Marking after an awaited unlink left a window
- * in which a restore cleared `deleted_at`, the unlink took the bytes anyway,
- * and the row came back to the gallery as a permanently broken tile. Here the
+ * trashed row can be RESTORED. Marking after an awaited unlink leaves a window
+ * in which a restore clears `deleted_at`, the unlink takes the bytes anyway,
+ * and the row comes back to the gallery as a permanently broken tile. Here the
  * select and the stamp are one synchronous transaction, so a restore lands
  * either before (the row no longer matches and is skipped) or after (it sees
  * `purged_at` and refuses). The cost is the same as `purgeTrashForUser`'s: a

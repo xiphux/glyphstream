@@ -2,6 +2,19 @@
  * "Recently deleted": moving generated media to the trash, listing it,
  * restoring it, and purging it for good. Expiry of old trash is the purger's
  * (`maintenance.ts`).
+ *
+ * A user delete (gallery, branch or conversation) moves media to the trash
+ * rather than unlinking it: `deleted_at` is stamped, so every live-row
+ * predicate in the tree stops seeing it, but the bytes stay and `purged_at`
+ * stays NULL. The purger's trash phase unlinks them once `TRASH_RETENTION_MS`
+ * has passed (`claimExpiredTrash`); until then `restoreMediaForUser` puts the
+ * row back.
+ *
+ * What a restore does NOT bring back is the row's message links. The delete
+ * drops its `message_media` join rows and zeroes `ref_count`, and the branch or
+ * conversation that held it may be gone or have moved on, so a restored asset
+ * returns to the library as an orphan — listed in the gallery with no
+ * conversation. Generated orphans are never reaped, so that is a stable state.
  */
 import { and, desc, eq, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
 import { getDb } from '../../client';
@@ -184,5 +197,3 @@ export function purgeTrashForUser(
 		.returning({ id: media.id, storagePath: media.storagePath })
 		.all();
 }
-
-// --- Per-conversation orphan analysis (drives the delete-conversation UI) ---

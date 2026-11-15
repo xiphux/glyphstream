@@ -82,7 +82,7 @@ export function insertMedia(input: MediaInsertInput): { id: string } {
 			createdAt: now,
 			refCount: 0,
 			// Uploads start in the "candidate for purge" state — if the user
-			// picks a file but never sends the message, the existing purger
+			// picks a file but never sends the message, the purger
 			// will sweep it after the grace period. linkMessageMedia clears
 			// this back to null when the file actually gets attached.
 			unreferencedSince: origin === 'uploaded' ? now : null,

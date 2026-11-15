@@ -47,11 +47,10 @@ function countVersions(artifactId: string): number {
 /**
  * Version counts for several artifacts in one grouped query.
  *
- * `toCanvasDoc` called `countVersions` per row, so listing a conversation's
- * canvases issued one extra statement per canvas — on every send with an active
- * canvas (`augmentRequestForCanvas`) and on every `update_canvas`. Each was
- * index-served, but N round trips through the driver for a number that one
- * GROUP BY answers.
+ * Listing a conversation's canvases runs on every send with an active canvas
+ * (`augmentRequestForCanvas`) and on every `update_canvas`. `countVersions` per
+ * row is index-served, but it costs N round trips through the driver for a
+ * number that one GROUP BY answers.
  */
 function countVersionsFor(artifactIds: string[]): Map<string, number> {
 	if (artifactIds.length === 0) return new Map();

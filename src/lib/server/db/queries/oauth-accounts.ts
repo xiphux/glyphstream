@@ -2,7 +2,7 @@
  * OAuth provider bindings. One row per (provider, external_id) pair;
  * `findUserByOAuth` is the primary login lookup. Binding is *deliberate*
  * — the OAuth callback never auto-creates a row. New bindings come
- * either from PR 2's `/setup` wizard (first user + first binding,
+ * either from the `/setup` wizard (first user + first binding,
  * atomically) or from the Settings → Security "Link …" flow (existing
  * session calls `addOAuthAccount` directly).
  *
@@ -111,8 +111,8 @@ export function touchOAuthAccount(
 		.run();
 }
 
-/** User-scoped unlink — PR 2's settings page calls this. Returns true
- *  iff a row matched (i.e. the binding existed on this user). */
+/** User-scoped unlink, from the settings page. Returns true iff a row
+ *  matched (i.e. the binding existed on this user). */
 export function deleteOAuthAccount(userId: string, provider: string): boolean {
 	const db = getDb();
 	const result = db
@@ -122,7 +122,7 @@ export function deleteOAuthAccount(userId: string, provider: string): boolean {
 	return result.changes > 0;
 }
 
-/** PR 2's last-method guard: combined with passkey count, refuses an
+/** For the last-method guard: combined with passkey count, refuses an
  *  unlink that would leave the user with no way to sign in. */
 export function countOAuthAccountsForUser(userId: string): number {
 	const db = getDb();

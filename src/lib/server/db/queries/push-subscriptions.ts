@@ -40,18 +40,18 @@ interface UpsertInput {
  * created_at, which keeps "first subscribed" stable for the future
  * "your devices" UI.
  *
- * The upsert used to also SET user_id to the caller, which made it the one
- * write in the codebase that mutated a row without first proving the caller
- * owned it: anyone who knew another user's endpoint URL could re-point that
- * device at their own notifications, which carry conversation titles and
- * message previews. The endpoint is high-entropy and no route discloses it,
- * so this was hard to reach — but "hard to guess" isn't the ownership
- * invariant the rest of the schema holds to.
+ * A foreign row is deleted and replaced rather than adopted. An upsert that
+ * also SET user_id to the caller would mutate a row without first proving the
+ * caller owned it: anyone who knew another user's endpoint URL could re-point
+ * that device at their own notifications, which carry conversation titles and
+ * message previews. The endpoint is high-entropy and no route discloses it, so
+ * that is hard to reach — but "hard to guess" isn't the ownership invariant
+ * the rest of the schema holds to.
  *
- * A foreign row is now deleted and replaced rather than adopted. That keeps
- * the shared-browser case working (the same physical device re-subscribing
- * under a second account gets a clean row) while making the ownership
- * transfer explicit rather than a silent side effect of an UPDATE.
+ * Delete-and-replace keeps the shared-browser case working (the same physical
+ * device re-subscribing under a second account gets a clean row) while making
+ * the ownership transfer explicit rather than a silent side effect of an
+ * UPDATE.
  */
 export function upsertPushSubscription(input: UpsertInput): PushSubscriptionRow {
 	const db = getDb();

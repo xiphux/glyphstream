@@ -2,8 +2,8 @@
  * What a gallery item is and which media the gallery may show: the shared
  * projection, visibility rule and kind filter, and the per-item finishing
  * (favorite flag, conversation title). Used by the gallery, search and trash
- * queries; not re-exported from the `media.ts` barrel except the two names
- * callers outside used before the split.
+ * queries; the `media.ts` barrel re-exports only the names callers outside
+ * the media modules need.
  */
 import { and, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { getDb } from '../../client';

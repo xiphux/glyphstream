@@ -105,8 +105,8 @@ export function validatePhotos(raw: unknown): boolean {
 }
 
 export function validateReplyStyle(raw: unknown): ReplyStyle {
-	// 'texting' became 'character' (which starts out texting). A settings page
-	// cached in an installed app from before still sends the old name.
+	// 'texting' is the old name for 'character' (which starts out texting), and
+	// a settings page cached in an installed app can still send it.
 	if (raw === 'texting') return 'character';
 	if (!REPLY_STYLES.includes(raw as ReplyStyle)) {
 		error(400, `'replyStyle' must be one of: ${REPLY_STYLES.join(', ')}`);

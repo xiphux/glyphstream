@@ -150,7 +150,7 @@ export function listMediaForUser(
 	// id < ?)` planned as a multi-index OR plus a temp b-tree sort, re-sorting
 	// everything older than the cursor on every page: ~22 ms per deep page at
 	// 30k media against ~0.04 ms for this form, which walks the index from the
-	// cursor. The first page has no cursor, which is why it hid.
+	// cursor. The first page has no cursor, so only deeper pages pay for it.
 	const cursorWhere = (() => {
 		if (!opts.cursor) return undefined;
 		const [cAt, cId] = opts.cursor.split(':');
@@ -159,11 +159,9 @@ export function listMediaForUser(
 		return sql`(${media.createdAt}, ${media.id}) < (${at}, ${cId})`;
 	})();
 
-	// Default to image+video only. Adding `kind: 'file'` to the schema
-	// means an unfiltered `listMediaForUser` would suddenly surface
-	// xlsx/pdf attachments in the gallery; pin the default so that
-	// change to the schema is silent and explicit at every call site
-	// that wants the wider set.
+	// Default to image+video only, so `file`-kind xlsx/pdf attachments never
+	// surface in the gallery; a call site that wants the wider set asks for it
+	// explicitly.
 	const allowedKinds: readonly MediaKind[] = opts.kind
 		? [opts.kind]
 		: (opts.kinds ?? ['image', 'video']);
@@ -473,18 +471,3 @@ export function setMediaFavorite(mediaId: string, userId: string, favorite: bool
 	}
 	return changed;
 }
-
-// --- Trash (gallery / branch / conversation delete) ----------------------
-//
-// A user delete moves media to "Recently deleted" rather than unlinking it:
-// `deleted_at` is stamped (so every live-row predicate in the tree stops
-// seeing it, exactly as before the trash existed) but the bytes stay and
-// `purged_at` stays NULL. The purger's trash phase unlinks them once
-// `TRASH_RETENTION_MS` has passed (`claimExpiredTrash`); until
-// then `restoreMediaForUser` puts the row back.
-//
-// What a restore does NOT bring back is the row's message links. The delete
-// drops its `message_media` join rows and zeroes `ref_count`, and the branch or
-// conversation that held it may be gone or have moved on, so a restored asset
-// returns to the library as an orphan — listed in the gallery with no
-// conversation. Generated orphans are never reaped, so that is a stable state.

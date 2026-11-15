@@ -87,22 +87,22 @@ interface AppendInput {
 }
 
 /**
+ * Every `messages` column the ChatMessage mapping reads: all but
+ * `raw_response_json`. That column holds the upstream's whole response — on
+ * rows stored before `rawResponseForStorage` stripped image bytes, a `b64_json`
+ * server's entire PNG (megabytes) — and nothing reads it back; selecting it
+ * would make each branch load and each fan-out poll decode it. Rows built for
+ * rowToChatMessage select this.
+ */
+const { rawResponseJson: _rawResponseJson, ...chatMessageColumns } = getTableColumns(messages);
+type ChatMessageRow = Omit<typeof messages.$inferSelect, 'rawResponseJson'>;
+
+/**
  * Append a message under `parentMessageId`. By default also points the
  * conversation's active_leaf_message_id at the new message; pass
  * `advanceActiveLeaf: false` to insert a sibling without moving the leaf
  * (fan-out). Returns the newly inserted row shaped as a ChatMessage.
  */
-
-/**
- * Every `messages` column the ChatMessage mapping reads: all but
- * `raw_response_json`. That column holds the upstream's whole response, which
- * for a `b64_json` image server used to be the entire PNG (megabytes), and
- * nothing reads it back; selecting it anyway made each branch load and each
- * fan-out poll decode it. Rows built for rowToChatMessage select this.
- */
-const { rawResponseJson: _rawResponseJson, ...chatMessageColumns } = getTableColumns(messages);
-type ChatMessageRow = Omit<typeof messages.$inferSelect, 'rawResponseJson'>;
-
 export function appendMessage(input: AppendInput): ChatMessage {
 	const db = getDb();
 	const id = generateId();
@@ -143,15 +143,14 @@ export function appendMessage(input: AppendInput): ChatMessage {
 			// `advanceActiveLeafIfCurrent` adds the leaf to the WHERE, making this
 			// a compare-and-swap: a caller whose anchor went stale while it worked
 			// leaves the branch where the user left it. Absent (every caller but a
-			// check-in's reminder), the predicate is just the conversation id, as
-			// before.
+			// check-in's reminder), the predicate is just the conversation id.
 			// Resolved HERE, inside the transaction and through `tx`, not by the
 			// caller before it started work: a reaction landing in between moves
-			// the leaf onto a `role:'tool'` row
-			// that an anchor computed up front would no longer match. Asking whether the CURRENT
-			// leaf still reply-resolves to the caller's anchor keeps the guard's
-			// meaning — "has the branch moved on?" — while letting reaction
-			// bookkeeping through. The tool row then drops off the branch, which
+			// the leaf onto a `role:'tool'` row that an anchor computed up front
+			// would no longer match. Asking whether the CURRENT leaf still
+			// reply-resolves to the caller's anchor keeps the guard's meaning —
+			// "has the branch moved on?" — while letting reaction bookkeeping
+			// through. The tool row then drops off the branch, which
 			// `dropOrphanedToolCalls` handles at send time.
 			let casAnchor = input.advanceActiveLeafIfCurrent;
 			if (casAnchor !== undefined) {
@@ -478,8 +477,8 @@ function attachImages(conversationId: string, msgs: ChatMessage[]): void {
  * Two-step load to keep the heavy columns (content_json, content_html,
  * reasoning_text, raw_response_json) bounded by the active branch length
  * rather than the whole conversation. Long-edited threads can carry 2-3x
- * the active-branch size in orphaned sibling subtrees; the previous
- * single-query load pulled all of their JSON for no consumer.
+ * the active-branch size in orphaned sibling subtrees; a single-query load
+ * would pull all of their JSON for no consumer.
  *
  *   1. Skeleton scan of (id, parent_message_id, role, created_at) — every row
  *      in the conversation, but each is a few dozen bytes. Drives the
@@ -729,13 +728,14 @@ export function selectBranch(
 	return { newActiveLeaf: cursor };
 }
 
-/** Fetch a single message scoped to a conversation. Used by retry — the
- * server needs to look up the assistant message being retried + its
- * parent user message. Includes parentMessageId on the returned object
- * (the walk path doesn't, since order encodes parent→child there). */
-/** `reader` lets a caller already inside a transaction pass its `tx` instead of
- *  reaching for the connection singleton. Defaults to `getDb()`, so ordinary
- *  callers are unchanged. */
+/**
+ * Fetch a single message scoped to a conversation. Used by retry — the server
+ * needs to look up the assistant message being retried + its parent user
+ * message. Includes parentMessageId on the returned object (the walk path
+ * doesn't, since order encodes parent→child there). `reader` lets a caller
+ * already inside a transaction pass its `tx` instead of the connection
+ * singleton.
+ */
 export function getMessage(
 	conversationId: string,
 	messageId: string,
@@ -771,8 +771,8 @@ export function getFirstRootMessageId(conversationId: string): string | null {
  * The branch leaf as "the last REPLY", looking past a trailing chain of
  * `role:'tool'` rows that answer nothing but reactions.
  *
- * Every settled turn used to end on an assistant row, and several guards are
- * written against that. A reaction breaks it: the relay short-circuits right
+ * Several guards are written against a settled turn ending on an assistant
+ * row. A reaction breaks that: the relay short-circuits right
  * after `executeToolCalls`, which has already advanced the leaf onto the
  * reaction's `role:'tool'` row, and nothing moves it back. The row stays on the
  * branch — taking it off would leave an assistant `tool_calls` unanswered — so
@@ -847,14 +847,14 @@ export function getSiblingAssistants(
 		.all();
 	// Dispatch order, not completion order. `created_at` is when a branch
 	// FINISHED, and branches the endpoint runs in parallel finish out of order —
-	// so ordering by it rebuilt the grid shuffled against the one the user was
-	// looking at before the reload. `fanout_index` is the position the client
+	// so ordering by it would rebuild the grid shuffled against the one the user
+	// was looking at before the reload. `fanout_index` is the position the client
 	// dispatched each branch at, and it's what the live grid is drawn in.
 	//
 	// Un-indexed rows (non-fan-out appends, and anything predating the column)
 	// sort chronologically AHEAD of every indexed one rather than falling to the
-	// end. A fan-out whose rows all predate the column is entirely un-indexed and so keeps its old
-	// chronological order.
+	// end. A fan-out whose rows all predate the column is entirely un-indexed and
+	// so keeps its chronological order.
 	rows.sort((a, b) => {
 		const ai = a.fanoutIndex;
 		const bi = b.fanoutIndex;
@@ -947,15 +947,14 @@ export function getSiblingAssistants(
  *   user → assistant_0 → tool_0 → assistant_1 → ...
  * and a retry click on any assistant in that chain needs to find the
  * single user message that started the turn so the new (regenerated)
- * assistant attaches as a sibling of assistant_0. The pre-PR2 retry
- * code assumed the assistant's immediate parent was the user message —
- * true for single-iteration turns, false here.
+ * assistant attaches as a sibling of assistant_0. The assistant's immediate
+ * parent is the user message only in a single-iteration turn.
  *
  * Caps at 100 hops as a safety bound against ill-formed cycles
  * (shouldn't exist, but a runaway walk would loop forever).
  *
  * Single skeleton fetch of (id, parent, role) for the whole conversation
- * + in-memory walk. The N+1 form (one getMessage per hop) ran up to 100
+ * + in-memory walk. The N+1 form (one getMessage per hop) would run up to 100
  * round-trips per retry click on long tool turns.
  */
 export function findUserMessageAncestor(
@@ -987,6 +986,10 @@ export function findUserMessageAncestor(
 	return null;
 }
 
+export type ResolveParentResult =
+	| { ok: true; parentMessageId: string | null }
+	| { ok: false; reason: 'edited-message-not-found' | 'parent-message-not-found'; id: string };
+
 /**
  * Resolve the parent for a newly-appended user message, given the
  * conversation's current active leaf and the optional client-provided
@@ -1005,17 +1008,13 @@ export function findUserMessageAncestor(
  *      is the active leaf.
  *
  * Empty-string variants of either field are treated as absent, matching
- * the route handler's pre-existing truthiness guard.
+ * the route handler's truthiness guard.
  *
  * Returns a discriminated result so the caller (the HTTP route) can map
  * misses to the appropriate 400. We deliberately don't throw SvelteKit's
  * `error()` from here — keeps this helper pure-ish and unit-testable
  * without the route-handler harness.
  */
-export type ResolveParentResult =
-	| { ok: true; parentMessageId: string | null }
-	| { ok: false; reason: 'edited-message-not-found' | 'parent-message-not-found'; id: string };
-
 export function resolveParentForUserMessage(input: {
 	conversationId: string;
 	activeLeafMessageId: string | null;
@@ -1079,15 +1078,6 @@ export function restoreActiveLeafIfUnchanged(
 	return Number(res.changes) > 0;
 }
 
-/**
- * "Edit" v1 behavior: set the conversation's active_leaf to the parent of
- * `messageId`, orphaning the descendants on what was the active branch.
- * Rows are NOT deleted — they remain reachable as alternate-branch siblings
- * once we wire the v2 branching UI. Returns the new active_leaf id (or null
- * if we just truncated to nothing).
- *
- * Returns null if `messageId` doesn't belong to `conversationId`.
- */
 /**
  * Delete an alternate-branch sibling and its entire subtree of descendants.
  * Intended for the UI's "delete this branch" affordance — when the user has
@@ -1160,8 +1150,8 @@ export function deleteBranch(
 		// siblings). Used both as the active-leaf replacement and in the refusal.
 		// Newest first, ties by id descending — the same order deepestDescendant
 		// walks children in, so the replacement below is the branch selectBranch
-		// on the parent would land on (its documented contract). Unsorted, it was
-		// whatever order the index scan returned: in practice the OLDEST.
+		// on the parent would land on (its documented contract). Unsorted, it would
+		// be whatever order the index scan returns: in practice the OLDEST.
 		const siblings = all
 			.filter((r) => r.parentId === target.parentId && r.id !== messageId)
 			.sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
@@ -1201,8 +1191,8 @@ export function deleteBranch(
 		// fan-out pinned at its anchor message where one branch has finished
 		// and another is still generating (not yet a persisted sibling) — the user
 		// prunes the finished dud while the leaf (and the marker) stay put, and the
-		// in-flight branch repopulates the grid. The old blanket "no siblings →
-		// refuse" wrongly blocked that, leaving a disabled delete button.
+		// in-flight branch repopulates the grid. A blanket "no siblings → refuse"
+		// would block that, leaving a disabled delete button.
 		if (leafInDeleted && siblings.length === 0) {
 			return { refusedReason: 'no-siblings' as const };
 		}
@@ -1238,8 +1228,8 @@ export function deleteBranch(
 		//   4. message delete (cascades to message_media via ON DELETE
 		//      CASCADE, which is why we did the bookkeeping above)
 		//
-		// Step 2 is the new piece — branch-delete is "I rejected this
-		// variant" so any media that exists ONLY on this branch should
+		// Step 2 exists because branch-delete is "I rejected this
+		// variant", so any media that exists ONLY on this branch should
 		// go with it. Shared media (auto-attach into a follow-up
 		// conversation, or the same image used across multiple branches
 		// before this one) stays put because its ref_count is greater
@@ -1279,6 +1269,14 @@ export function deleteBranch(
 	});
 }
 
+/**
+ * Set the conversation's active_leaf to the parent of `messageId`, orphaning
+ * the descendants on what was the active branch. Rows are NOT deleted — they
+ * remain reachable as alternate-branch siblings. Returns the new active_leaf id
+ * (or null if we just truncated to nothing).
+ *
+ * Returns null if `messageId` doesn't belong to `conversationId`.
+ */
 export function truncateAtMessage(
 	conversationId: string,
 	messageId: string,

@@ -125,10 +125,10 @@ export function createConversation(input: CreateInput): ConversationDetail {
  * Just the ids of a user's most recent conversations, newest-first — the
  * generating-dot poll's whole input.
  *
- * The poll used `listConversations()` and immediately `.map(c => c.id)`,
- * building 150 full summaries (titles, model ids, timestamps, flags) to throw
- * all but one column away, on an interval, for as long as any dot is showing.
- * Same LIMIT and ordering so the two stay consistent.
+ * Not `listConversations().map(c => c.id)`: that builds 150 full summaries
+ * (titles, model ids, timestamps, flags) to throw all but one column away, on an
+ * interval, for as long as any dot is showing. Same LIMIT and ordering so the
+ * two stay consistent.
  */
 export function listConversationIds(userId: string): string[] {
 	const db = getDb();
@@ -499,8 +499,8 @@ export function setDisabledFeatures(
 
 /**
  * Set conversation.title and update the `titleSource` provenance marker.
- * The source defaults to 'fallback' to preserve the original callsite
- * behavior (auto-set first-N-chars preview at message-create time).
+ * The source defaults to 'fallback', the auto-set first-N-chars preview at
+ * message-create time.
  *
  * Callers that have just learned the *origin* of the title should pass the
  * appropriate source so the title-gen state machine reads correctly:
@@ -564,7 +564,7 @@ export function listConversationsNeedingSummary(
 				lt(conversations.updatedAt, now - settleMs),
 				// "Has at least 2 messages." EXISTS with OFFSET 1 short-circuits at the
 				// second row (index-served by idx_messages_conv_*) rather than counting
-				// every message per surviving conversation like `count(*) >= 2` did.
+				// every message per surviving conversation as `count(*) >= 2` would.
 				sql`exists (select 1 from ${messages} where ${messages.conversationId} = ${conversations.id} limit 1 offset 1)`,
 			),
 		)
@@ -657,6 +657,8 @@ export function setConversationTitleIfFallback(
 	return res.changes > 0;
 }
 
+export class RenameValidationError extends Error {}
+
 /**
  * User-initiated rename. Scoped by `userId` (ownership check) and validates
  * the trimmed title is 1-200 chars. Sets `titleSource = 'user'`, which
@@ -665,8 +667,6 @@ export function setConversationTitleIfFallback(
  * (404) or no-op (already same title); validation errors throw so the
  * caller can surface them as 400.
  */
-export class RenameValidationError extends Error {}
-
 export function renameConversation(id: string, userId: string, newTitle: string): boolean {
 	const trimmed = newTitle.trim();
 	if (trimmed.length === 0) {
@@ -686,6 +686,13 @@ export function renameConversation(id: string, userId: string, newTitle: string)
 	return res.changes > 0;
 }
 
+export interface FirstExchange {
+	userText: string;
+	userMediaKinds: Array<'image' | 'video'>;
+	assistantText: string | null;
+	assistantHasMedia: boolean;
+}
+
 /**
  * Read the first user message and first assistant response for a
  * conversation, used as input to the title generator. The "first
@@ -699,13 +706,6 @@ export function renameConversation(id: string, userId: string, newTitle: string)
  * at call time, but defensive). `assistantParts` is null when only the
  * user message exists (multimodal in-flight: the asset hasn't landed).
  */
-export interface FirstExchange {
-	userText: string;
-	userMediaKinds: Array<'image' | 'video'>;
-	assistantText: string | null;
-	assistantHasMedia: boolean;
-}
-
 export function getConversationFirstExchange(id: string, userId: string): FirstExchange | null {
 	const db = getDb();
 	// Ownership guard: this pivots on messages by conversation_id (messages
@@ -776,21 +776,6 @@ export function getConversationFirstExchange(id: string, userId: string): FirstE
 }
 
 /**
- * Delete a conversation and decrement ref counts for any media referenced
- * by its messages. The schema's FK cascade (conversations → messages →
- * message_media) drops the join rows but bypasses Drizzle, so without an
- * explicit decrement step `media.ref_count` would stay inflated and the
- * purger (or, for generated media, the explicit delete path) wouldn't
- * know to collect them.
- *
- * When `deleteMedia` is true, also moves to the trash generated media that
- * would orphan as a result — i.e. media whose only references are in
- * this conversation. Uploaded media is unaffected regardless (it
- * follows the purger's own auto-sweep schedule under the library
- * model). Returns the ids trashed; nothing is unlinked here — the
- * purger expires the trash.
- */
-/**
  * Outcome of `setConversationAvatar`. Mirrors `SetAvatarResult` on the preset
  * side so the two routes can map identically to 404 / 400.
  */
@@ -831,14 +816,14 @@ export function setConversationAvatar(
 						eq(media.id, mediaId),
 						eq(media.userId, userId),
 						// Every avatar surface renders an <img> against
-						// /api/media/:id/thumbnail. That endpoint serves video too now,
-						// so the guard is no longer about what it will refuse — it is
-						// about what an avatar should BE: a video poster in an <img> is
-						// a still frame masquerading as a picture the user chose, and a
-						// spreadsheet is a permanently broken avatar. Either also pins a
-						// ref_count on an upload the purger can then never reap. The
-						// clients already filter to images; this is the server not taking
-						// their word for it.
+						// /api/media/:id/thumbnail. That endpoint serves video too, so
+						// the guard isn't about what it will refuse but about what an
+						// avatar should BE: a video poster in an <img> is a still frame
+						// masquerading as a picture the user chose, and a spreadsheet is
+						// a permanently broken avatar. Either also pins a ref_count on an
+						// upload the purger can then never reap. The clients already
+						// filter to images; this is the server not taking their word for
+						// it.
 						eq(media.kind, 'image'),
 						isNull(media.deletedAt),
 					),
@@ -855,6 +840,21 @@ export function setConversationAvatar(
 	});
 }
 
+/**
+ * Delete a conversation and decrement ref counts for any media referenced
+ * by its messages. The schema's FK cascade (conversations → messages →
+ * message_media) drops the join rows but bypasses Drizzle, so without an
+ * explicit decrement step `media.ref_count` would stay inflated and the
+ * purger (or, for generated media, the explicit delete path) wouldn't
+ * know to collect them.
+ *
+ * When `deleteMedia` is true, also moves to the trash generated media that
+ * would orphan as a result — i.e. media whose only references are in
+ * this conversation. Uploaded media is unaffected regardless (it
+ * follows the purger's own auto-sweep schedule under the library
+ * model). Returns the ids trashed; nothing is unlinked here — the
+ * purger expires the trash.
+ */
 export function deleteConversation(
 	id: string,
 	userId: string,

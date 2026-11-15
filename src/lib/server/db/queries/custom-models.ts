@@ -20,7 +20,7 @@ interface CreateInput {
 	baseModelId: string;
 	systemPrompt: string | null;
 	parameters: CustomModelParameters | null;
-	/** Omit / pass [] for the historical default "all features on". */
+	/** Omit / pass [] for the default "all features on". */
 	defaultDisabledFeatures?: FeatureCategory[];
 	/** Omit for 'standard'. */
 	replyStyle?: ReplyStyle;
@@ -239,14 +239,14 @@ export function setCustomModelAvatar(
 						eq(media.id, mediaId),
 						eq(media.userId, userId),
 						// Every avatar surface renders an <img> against
-						// /api/media/:id/thumbnail. That endpoint serves video too now,
-						// so the guard is no longer about what it will refuse — it is
-						// about what an avatar should BE: a video poster in an <img> is
-						// a still frame masquerading as a picture the user chose, and a
-						// spreadsheet is a permanently broken avatar. Either also pins a
-						// ref_count on an upload the purger can then never reap. The
-						// clients already filter to images; this is the server not taking
-						// their word for it.
+						// /api/media/:id/thumbnail. That endpoint serves video too, so
+						// the guard isn't about what it will refuse but about what an
+						// avatar should BE: a video poster in an <img> is a still frame
+						// masquerading as a picture the user chose, and a spreadsheet is
+						// a permanently broken avatar. Either also pins a ref_count on an
+						// upload the purger can then never reap. The clients already
+						// filter to images; this is the server not taking their word for
+						// it.
 						eq(media.kind, 'image'),
 						isNull(media.deletedAt),
 					),

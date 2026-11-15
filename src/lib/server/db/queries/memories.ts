@@ -7,7 +7,7 @@
  * the embedding-backfill worker's helpers (`listMemoriesNeedingEmbedding`,
  * `setMemoryEmbedding`), which run cross-user by design — see their own notes.
  *
- * Soft-delete invariant (phase 4): the dreaming consolidation pass never
+ * Soft-delete invariant: the dreaming consolidation pass never
  * hard-deletes — it tombstones a merged/pruned row via `softDeleteMemory`
  * (`deleted_at` set, `superseded_by_memory_id` = the survivor). **Every reader
  * here filters `deleted_at IS NULL`** so a tombstone is invisible everywhere
@@ -40,8 +40,7 @@ import { memories, users } from '../schema';
  *
  * Insertion order, NOT `id`: ids are random UUIDs, so sorting by them would
  * make every tie a coin flip decided at insert time. rowid keeps the order these
- * rows were written in — the earlier save wins, which is what the plan happened
- * to return before — while making it total.
+ * rows were written in — the earlier save wins — while making it total.
  *
  * Stable for the life of the file, not forever: `memories.id` is TEXT, so rowid
  * is implicit, and a VACUUM or a dump/restore may renumber it (see the operator
@@ -71,7 +70,7 @@ export interface MemoryIndexRow {
 }
 
 /**
- * A memory's ranking inputs for phase-2 tiering: the index fields plus the body
+ * A memory's ranking inputs for tiering: the index fields plus the body
  * length and the recall/recency counters. Carries `len` (a `length(content)`)
  * rather than the body so ranking never materializes cold bodies. A structural
  * superset of `MemoryIndexRow`, so a cold-tier row is usable directly as an
@@ -137,7 +136,7 @@ export function memoryStats(userId: string): { count: number; totalChars: number
 }
 
 /**
- * The ranking rows for phase-2 tiering: one row per memory with its `topic`, a
+ * The ranking rows for tiering: one row per memory with its `topic`, a
  * body `snippet`, the body length `len`, and the recall/recency counters —
  * oldest-first (same stable-ordering rationale as `listMemoriesForUser`).
  * Selects `length(content)` and `substr(content,1,80)` but NOT the full body, so
@@ -146,7 +145,7 @@ export function memoryStats(userId: string): { count: number; totalChars: number
  * rendered directly as the topic index (`MemoryTierRow` ⊃ `MemoryIndexRow`), and
  * the hot ids are re-fetched in full via `listMemoryBodies`. The `snippet` is
  * the fallback index label for rows whose `topic` is still null (pre-topic rows,
- * until phase-3 backfill).
+ * until the topic backfill reaches them).
  */
 export function listMemoryTierRows(userId: string): MemoryTierRow[] {
 	const db = getDb();
@@ -194,10 +193,10 @@ export function listMemoryBodies(userId: string, ids: string[]): Memory[] {
  * Like `listMemoriesForUser` but also returns the persisted embedding + the
  * model that produced it, for every live memory of the user.
  *
- * NOTE: the recall tool no longer uses this — it reads the corpus blob-free via
- * `listMemoriesForRecall` and loads a bounded vector set via
- * `listMemoryRecallVectors` (so a large store isn't a whole-corpus blob scan).
- * This full-blob read is retained for tests / embedding-backfill assertions.
+ * NOTE: only tests / embedding-backfill assertions use this full-blob read. The
+ * recall tool reads the corpus blob-free via `listMemoriesForRecall` and loads a
+ * bounded vector set via `listMemoryRecallVectors`, so a large store isn't a
+ * whole-corpus blob scan.
  *
  * Ordered `createdAt ASC` then insertion order — the same total order as
  * `listMemoriesForRecall`, so the two agree on tied-row order (which
@@ -265,13 +264,11 @@ export const RECALL_DENSE_CORPUS_CAP = 5000;
  * cosine ranks back onto the full recall corpus by id. Tiebroken by insertion
  * order (`INSERT_ORDER`) so which rows make the cap, and their order, don't
  * depend on the query plan.
- */
-/**
- * COST, measured before caching this: at the full 5000-vector cap with 1024-dim
- * vectors the whole dense leg is ~28ms — 12.5ms to load the blobs, 4.1ms to
- * decode them, 11.5ms to rank. Caching the decoded corpus (the obvious move)
- * removes the load and decode, ~17ms, and leaves the ranking, which is
- * irreducible.
+ *
+ * Uncached, deliberately. At the full 5000-vector cap with 1024-dim vectors the
+ * whole dense leg is ~28ms — 12.5ms to load the blobs, 4.1ms to decode them,
+ * 11.5ms to rank. Caching the decoded corpus (the obvious move) would remove the
+ * load and decode, ~17ms, and leave the ranking, which is irreducible.
  *
  * Not worth it: 17ms on an explicit user action (a typed search, or the model
  * calling `recall_memory`) bought with a cache whose staleness shows up as
@@ -384,7 +381,7 @@ export function setMemoryEmbedding(
 }
 
 /**
- * Null-topic rows — the phase-3 topic-backfill worker's queue. Served by the
+ * Null-topic rows — the topic-backfill worker's queue. Served by the
  * partial index `idx_memories_untopiced`, so draining the historical backlog is
  * an index scan. Cross-user by design (background worker, not a request path —
  * same read-isolation exemption as `listMemoriesNeedingEmbedding`). Since
@@ -434,7 +431,7 @@ export function setMemoryTopic(id: string, expectedContent: string, topic: strin
  * `topic` is the model-authored index label. The `save_memory` tool always
  * supplies one; it defaults to null here so internal/back-office callers (and
  * setup in tests) can create a row without one — those render via the snippet
- * fallback until the phase-3 dreaming pass backfills a real topic.
+ * fallback until the topic-backfill worker gives it a real topic.
  */
 export function createMemory(
 	userId: string,
@@ -481,9 +478,9 @@ export function updateMemory(
 		topic?: string | null;
 	} = {
 		content,
+		updatedAt: Date.now(),
 		// Null the stored vector so the backfill worker re-embeds the new
 		// content — a stale embedding would recall the memory by its old text.
-		updatedAt: Date.now(),
 		embedding: null,
 		embeddingModel: null,
 	};

@@ -67,9 +67,9 @@ export function getDb(): DB {
 	sqlite.exec('PRAGMA cache_size = -64000');
 	// Map the whole database, with room to grow. SQLite's own default is 0 —
 	// mmap OFF entirely (`DEFAULT_MMAP_SIZE=0` in node's build) — so any value
-	// here is ours, and the previous 30MB was not a considered ceiling. It had
-	// become one: a production database measured at 40.6MB served its last
-	// quarter through `read(2)`, which is the worst shape for this deployment.
+	// here is ours. A cap below the file size is a ceiling: a production database
+	// measured at 40.6MB under a 30MB cap served its last quarter through
+	// `read(2)`, which is the worst shape for this deployment.
 	//
 	// The distinction that matters is not syscall-vs-no-syscall, it's WHICH KIND
 	// of memory holds the pages. Mapped pages are file-backed and clean, so a
@@ -88,10 +88,10 @@ export function getDb(): DB {
 	//     where `read(2)` would have returned SQLITE_IOERR for SQLite to handle.
 	//   - The file is writable through the process's address space, so a stray
 	//     pointer can corrupt the database rather than a heap copy of it.
-	// Neither is new here: 30MB was already mapped, and it held the hot pages.
-	// This widens existing exposure rather than opening a new kind. It does
-	// assume the database is on a LOCAL filesystem — mmap over NFS/SMB is not
-	// reliable, so a DB_PATH pointing at a mounted share wants this back at 0.
+	// Any nonzero mapping carries both, and the hot pages are mapped at any
+	// size, so a larger value widens the exposure rather than adding a new kind.
+	// It does assume the database is on a LOCAL filesystem — mmap over NFS/SMB is
+	// not reliable, so a DB_PATH pointing at a mounted share wants this at 0.
 	sqlite.exec('PRAGMA mmap_size = 268435456');
 
 	const db = drizzle({ client: sqlite });

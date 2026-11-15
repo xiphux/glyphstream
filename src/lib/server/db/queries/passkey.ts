@@ -92,9 +92,8 @@ function parseTransports(raw: string | null): AuthenticatorTransport[] | null {
 	try {
 		const parsed: unknown = JSON.parse(raw);
 		if (!Array.isArray(parsed)) return null;
-		// Preserve the "[] when no valid hints" shape this path has always
-		// returned (vs. pickKnownTransports' null) so the stored-column read is
-		// behavior-identical.
+		// The stored-column read keeps its "[] when no valid hints" shape,
+		// unlike pickKnownTransports' null.
 		return pickKnownTransports(parsed) ?? [];
 	} catch {
 		// Malformed JSON in the DB shouldn't crash a login — drop to "no
@@ -175,9 +174,8 @@ export interface UserForCredential {
 }
 
 /** Join helper: given a credential id, return the owning user's
- *  internal id + revocation flag (login-verify uses `disabledAt`
- *  instead of the dropped allowlist re-check). Null when the
- *  credential doesn't exist. */
+ *  internal id + revocation flag (login-verify checks `disabledAt`).
+ *  Null when the credential doesn't exist. */
 export function findUserForCredential(credentialId: string): UserForCredential | null {
 	const db = getDb();
 	const row = db
