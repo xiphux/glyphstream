@@ -7,11 +7,11 @@
  * outliving the moment it was made for:
  *
  *   - A keep-alive can be in flight when iOS suspends the app. Guarding with a
- *     plain "in flight" flag made the resume's own check a no-op, so the page
- *     stayed covered until the next tick — or the stale request settled with a
- *     200 from BEFORE the lapse and uncovered the page on its say-so.
+ *     plain "in flight" flag would make the resume's own check a no-op, so the
+ *     page stays covered until the next tick — or the stale request settles with
+ *     a 200 from BEFORE the lapse and uncovers the page on its say-so.
  *   - A stalled request (half-open socket on a network handover) never settles,
- *     so the same flag silently stopped every later check until a reload.
+ *     so the same flag would silently stop every later check until a reload.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -188,7 +188,7 @@ describe('app-lock resume check', () => {
 		// Tapping a completion notification resumes the app AND posts
 		// navigate_to_conversation into it. The lock redirect supersedes that
 		// navigation, so the thread has to ride along in `from` — reading the
-		// committed URL sent the user to the page they were on before the tap.
+		// committed URL would send the user to the page they were on before the tap.
 		stub().navigating.current = {
 			from: { url: new URL('http://localhost/chat/abc') },
 			to: { url: new URL('http://localhost/chat/tapped') },

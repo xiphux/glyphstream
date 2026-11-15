@@ -4,8 +4,8 @@
  * The settings page hits this to render the management UI. The model's
  * read path is the system-prompt injection (composePersonaSystemPrompt),
  * not this endpoint. The model's write path is the save/update/forget
- * tools, not a POST/PATCH — locked-in scope for the MVP is view + delete
- * only, no manual add/edit from the UI.
+ * tools, not a POST/PATCH — the UI is view + delete only, with no manual
+ * add/edit.
  */
 
 import { requireUser } from '#lib/server/auth/guard.js';

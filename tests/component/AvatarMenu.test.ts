@@ -1,6 +1,4 @@
 /**
- * Component test for AvatarMenu.
- *
  * The menu is where the two-step flow explains itself, so what's worth pinning
  * is that it tells the truth about which step is available and why: no image
  * model, no reply to draw from, or a description that's already been drawn (a

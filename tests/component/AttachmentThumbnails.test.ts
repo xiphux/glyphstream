@@ -1,6 +1,4 @@
 /**
- * Component test for AttachmentThumbnails.
- *
  * The component reads `attachments.items` and calls `attachments.remove(id)`.
  * We use a minimal stand-in store that exposes just those two — building a
  * real AttachmentStore would drag in encodeJpeg / URL.createObjectURL paths

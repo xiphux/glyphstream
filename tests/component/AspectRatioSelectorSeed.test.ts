@@ -120,8 +120,8 @@ describe('AspectRatioSelector — the Default entry', () => {
 	});
 
 	it('is reachable again after picking a shape — the gap this closed', async () => {
-		// Before Default existed, a stored preference made the workflow's own shape
-		// permanently unreachable: every render forced a concrete value.
+		// Without Default, a stored preference would make the workflow's own shape
+		// permanently unreachable: every render would force a concrete value.
 		render(AspectRatioSelector, { props: { options: OPTIONS, value: null } });
 		await pick('16:9');
 		expect(trigger()).toHaveTextContent('16:9');

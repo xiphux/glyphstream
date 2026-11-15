@@ -1,6 +1,6 @@
 /**
- * Component test for BaseDialog — the shared shell for ConfirmDialog
- * and DeleteConversationDialog. Verifies the alertdialog role, Escape
+ * BaseDialog — the shared shell for ConfirmDialog and
+ * DeleteConversationDialog. Verifies the alertdialog role, Escape
  * handling, and backdrop-vs-panel click discrimination in one place
  * so both callers inherit the contract.
  *

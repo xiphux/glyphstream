@@ -53,8 +53,7 @@ function requireString(v: unknown, field: string): string {
  * Run the same scheme + private-IP check our `fetch_url` tool uses so a
  * malicious or compromised client can't aim the push channel at
  * 169.254.169.254 (AWS metadata), an internal admin endpoint, or a
- * `file:`/`gopher:` URL. Multi-user deployments (v2) inherit the same
- * protection without further work.
+ * `file:`/`gopher:` URL.
  */
 async function validatePushEndpoint(raw: string): Promise<void> {
 	let url: URL;

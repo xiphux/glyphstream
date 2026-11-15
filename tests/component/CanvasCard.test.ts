@@ -1,6 +1,6 @@
 /**
- * Component test for CanvasCard — the inline clickable reference to a canvas
- * that renders in the conversation and reopens the pane.
+ * CanvasCard — the inline clickable reference to a canvas that renders in the
+ * conversation and reopens the pane.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -20,7 +20,7 @@ describe('CanvasCard', () => {
 		});
 		expect(screen.getByText('My Doc')).toBeInTheDocument();
 		expect(screen.getByText(/open canvas/i)).toBeInTheDocument();
-		// Phase 1 opens current state, so no misleading version number on the card.
+		// The card opens the current state, so a version number would mislead.
 		expect(screen.queryByText(/v2|version 2/i)).toBeNull();
 		screen.getByRole('button').click();
 		expect(onOpen).toHaveBeenCalledWith('art_1');

@@ -1,6 +1,5 @@
 /**
- * Component test for AvatarDrawDialog — the review step before a generation is
- * spent.
+ * AvatarDrawDialog — the review step before a generation is spent.
  *
  * It exists because a roleplay model often answers in character first and
  * complies second, so the reply can carry prose the image model shouldn't see.

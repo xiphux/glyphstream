@@ -2,11 +2,11 @@
  * AttachmentStore adds a picked file's placeholder BEFORE it resizes the
  * image, not after.
  *
- * Added after the await, the file wasn't in the strip while it resized: a send
- * (or a conversation switch) in that window cleared the strip and sent without
- * it, and the file then reappeared afterwards — uploaded — in the next
- * message's attachments. And `isBusy` read false the whole time, so nothing
- * held the send back.
+ * Added after the await, the file would be missing from the strip while it
+ * resized: a send (or a conversation switch) in that window would clear the
+ * strip and send without it, and the file would then reappear afterwards —
+ * uploaded — in the next message's attachments. And `isBusy` would read false
+ * the whole time, so nothing would hold the send back.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AttachmentStore } from '#lib/attachments.svelte.js';
@@ -90,7 +90,7 @@ describe('AttachmentStore', () => {
 
 	it('previews an already-stored image with its display copy, never the original', () => {
 		// The bubble or lightbox the user picked it from loaded /display, so the
-		// preview usually costs nothing; /content was the full original.
+		// preview usually costs nothing; /content is the full original.
 		const store = new AttachmentStore();
 		store.attachExisting('g1');
 		expect(store.items[0]).toMatchObject({ mediaId: 'g1', objectUrl: '/api/media/g1/display' });

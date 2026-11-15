@@ -61,7 +61,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	// Reject on the declared length BEFORE touching the body. `formData()`
 	// materializes the entire multipart payload in memory, and the per-kind
 	// `maxBytes` check below only runs once it already has — so an oversized
-	// upload was fully buffered just to be told it was too big. The largest any
+	// upload would be fully buffered just to be told it was too big. The largest any
 	// classification permits is MAX_UPLOAD_BYTES_FILE; anything past that plus a
 	// little multipart framing can't be valid for any kind.
 	//
@@ -119,7 +119,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	if (file.size === 0) error(400, 'Empty file');
 
 	// Streamed from the parsed form's File rather than copied out with
-	// `file.arrayBuffer()` first: that copy held a second whole-file buffer
+	// `file.arrayBuffer()` first: that copy would hold a second whole-file buffer
 	// beside the form's own at the peak of every upload.
 	const store = getMediaStore();
 	const upload = () => Readable.fromWeb(file.stream() as NodeReadableStream<Uint8Array>);

@@ -9,7 +9,7 @@
  *    difference is load-bearing: the root-level shell (`__PRECACHE_MANIFEST__`,
  *    listed by vite.config.ts) is PRECACHED at install, while the hashed
  *    `/_app/immutable/*` chunks are cached at RUNTIME as they're fetched (see
- *    #lib/sw/asset-route for why that split, and why precaching the chunks was
+ *    #lib/sw/asset-route for why that split, and why precaching the chunks is
  *    the wrong tool). Those two routes are the whole interception surface:
  *    /api/*, SSE streams and SSR'd HTML still pass straight through to the
  *    network, which is the "default route is no route" behavior that makes
@@ -107,13 +107,13 @@ registerRoute(
 // script against the installed one — identical bytes and the browser aborts
 // the update before `updatefound`, so register.ts never calls onNeedRefresh
 // and UpdateBanner never appears. Every other byte in this worker is stable
-// across a release, and since the precache narrowed to seven root-level
-// assets that don't change between releases either (0eff6c02), so is the
-// precache list, whose revisions are content hashes. The compiled worker was byte-identical across a
-// version bump plus a client rebuild, which had quietly retired the update
-// prompt: an iOS PWA resumed after a deploy would go on running the old
-// client against the new server indefinitely, since a resume re-checks the
-// worker but never reloads the page.
+// across a release, and so is the precache list: its seven root-level assets
+// don't change between releases (0eff6c02), and its revisions are content
+// hashes. Without
+// the stamp the compiled worker is byte-identical across a version bump plus a
+// client rebuild, which quietly retires the update prompt: an iOS PWA resumed
+// after a deploy goes on running the old client against the new server
+// indefinitely, since a resume re-checks the worker but never reloads the page.
 //
 // Assigning onto `self` rather than leaving an unused const is what keeps a
 // minifier from dropping it. The side benefit is that `__GLYPHSTREAM_BUILD__`
@@ -125,14 +125,14 @@ self.__GLYPHSTREAM_BUILD__ = __APP_VERSION__;
 // it there activates the new worker immediately and the worker never enters
 // the `waiting` state. The update prompt (#lib/sw/register.ts) is built on
 // workbox-window, which raises the event behind onNeedRefresh ONLY for a
-// waiting worker: skipWaiting here meant the new SW silently claimed the open
-// page, UpdateBanner never rendered, and the page went on running the old
-// client bundle against the new server until something else reloaded it.
+// waiting worker: skipWaiting here lets the new SW silently claim the open
+// page, UpdateBanner never renders, and the page goes on running the old
+// client bundle against the new server until something else reloads it.
 //
-// Instead we wait, and let the user's click drive activation: register.ts's
-// activate() posts SKIP_WAITING to the waiting worker and reloads once the
-// controller changes. Dismissing the banner leaves the worker waiting, which
-// is what UpdateBanner's own comment already promised.
+// Instead the user's click drives activation: register.ts's activate() posts
+// SKIP_WAITING to the waiting worker and reloads once the controller changes.
+// Dismissing the banner leaves the worker waiting, as UpdateBanner's own
+// comment promises.
 self.addEventListener('message', (event: ExtendableMessageEvent) => {
 	const data = event.data as { type?: string } | undefined;
 	if (data?.type === 'SKIP_WAITING') {
@@ -317,9 +317,9 @@ async function focusOrOpen(conversationId: string): Promise<void> {
 	const targetPath = `/chat/${conversationId}`;
 	// Started, deliberately NOT awaited here. Two constraints pull against each
 	// other: the write must be in flight before any window can ask for it, and
-	// `openWindow` below must keep the awaits in front of it down to the ones
-	// that were always there (see its comment — an await it doesn't expect can
-	// cost the user activation it needs). Kicking the promise off now and
+	// `openWindow` below must have no awaits in front of it beyond the ones it
+	// already has (see its comment — an await it doesn't expect can cost the
+	// user activation it needs). Kicking the promise off now and
 	// settling it in the `finally` satisfies both, and `waitUntil` in the caller
 	// keeps the worker alive for it either way.
 	const recorded = recordPendingNavigation(self.caches, conversationId, Date.now());
@@ -347,12 +347,12 @@ async function focusOrOpenWindow(conversationId: string, targetPath: string): Pr
 				// conversation and lets it dismiss a notification the user never
 				// looked at. Posting first means the navigation is already
 				// pending by the time visibility flips, which is the signal the
-				// route checks. The openWindow fallback below gains no awaits in
-				// front of it, so it keeps its user activation — but note it is
-				// no longer reachable from a focus failure; see just below.
+				// route checks. Posting puts no await in front of the openWindow
+				// fallback below, so it keeps its user activation — but a focus
+				// failure doesn't reach that fallback; see just below.
 				c.postMessage({ kind: 'navigate_to_conversation', conversationId });
 				// A focus() rejection (rare — some platforms refuse it without
-				// user activation) no longer falls through to openWindow: the
+				// user activation) doesn't fall through to openWindow: the
 				// page has already been told to navigate, so a new window would
 				// just duplicate a thread that's already loading.
 				await c.focus().catch(() => {});
