@@ -11,6 +11,8 @@ import type { CanvasVersion } from '#lib/types/api.js';
 
 const copyText = vi.hoisted(() => vi.fn(async (_text: string) => true));
 vi.mock('#lib/code-copy.js', () => ({ copyText }));
+const toastError = vi.hoisted(() => vi.fn());
+vi.mock('#lib/toast.svelte.js', () => ({ toast: { error: toastError } }));
 
 function doc(overrides: Partial<CanvasVersion> = {}): CanvasVersion {
 	return {
@@ -93,6 +95,7 @@ describe('CanvasPane', () => {
 		afterEach(() => {
 			vi.restoreAllMocks();
 			copyText.mockClear();
+			toastError.mockClear();
 		});
 
 		it('copies the raw markdown, not the rendered HTML', async () => {
@@ -100,6 +103,14 @@ describe('CanvasPane', () => {
 			screen.getByRole('button', { name: 'Copy markdown' }).click();
 			expect(copyText).toHaveBeenCalledWith('# Heading\n\nbody');
 			await waitFor(() => expect(screen.getByRole('button', { name: 'Copied' })).toBeVisible());
+		});
+
+		it('says so when the clipboard cannot be written', async () => {
+			copyText.mockResolvedValueOnce(false);
+			render(CanvasPane, { props: props() });
+			screen.getByRole('button', { name: 'Copy markdown' }).click();
+			await waitFor(() => expect(toastError).toHaveBeenCalledOnce());
+			expect(screen.queryByRole('button', { name: 'Copied' })).toBeNull();
 		});
 
 		it('downloads the raw markdown as a file named after the title', async () => {

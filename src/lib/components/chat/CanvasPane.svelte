@@ -11,6 +11,7 @@
 	import { prefersReducedMotion } from 'svelte/motion';
 	import type { CanvasVersion } from '#lib/types/api.js';
 	import { copyText } from '#lib/code-copy.js';
+	import { toast } from '#lib/toast.svelte.js';
 
 	interface Props {
 		/** The document currently shown. */
@@ -99,7 +100,10 @@
 	let copied = $state(false);
 	let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 	async function copy() {
-		if (!(await copyText(doc.content))) return;
+		if (!(await copyText(doc.content))) {
+			toast.error("Couldn't copy — use Download instead");
+			return;
+		}
 		copied = true;
 		clearTimeout(copiedTimer);
 		copiedTimer = setTimeout(() => (copied = false), 1500);
