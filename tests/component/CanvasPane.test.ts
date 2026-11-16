@@ -105,6 +105,20 @@ describe('CanvasPane', () => {
 			await waitFor(() => expect(screen.getByRole('button', { name: 'Copied' })).toBeVisible());
 		});
 
+		it("doesn't carry the copied confirmation to another canvas", async () => {
+			const a = doc({ artifactId: 'a1', title: 'Deck' });
+			const b = doc({ artifactId: 'a2', title: 'Talking points' });
+			const { rerender } = render(CanvasPane, { props: props({ doc: a, docs: [a, b] }) });
+			screen.getByRole('button', { name: 'Copy markdown' }).click();
+			await waitFor(() => expect(screen.getByRole('button', { name: 'Copied' })).toBeVisible());
+
+			await rerender({ doc: b });
+			expect(screen.getByRole('button', { name: 'Copy markdown' })).toBeVisible();
+
+			await rerender({ doc: a });
+			expect(screen.getByRole('button', { name: 'Copied' })).toBeVisible();
+		});
+
 		it('says so when the clipboard cannot be written', async () => {
 			copyText.mockResolvedValueOnce(false);
 			render(CanvasPane, { props: props() });

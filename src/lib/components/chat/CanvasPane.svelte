@@ -97,16 +97,19 @@
 		setTimeout(() => URL.revokeObjectURL(url), 1000);
 	}
 
-	let copied = $state(false);
+	/** The canvas whose copy is being confirmed, so a tab switch doesn't carry it. */
+	let copiedId = $state<string | null>(null);
+	let copied = $derived(copiedId === doc.artifactId);
 	let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 	async function copy() {
+		const { artifactId } = doc;
 		if (!(await copyText(doc.content))) {
 			toast.error("Couldn't copy — use Download instead");
 			return;
 		}
-		copied = true;
+		copiedId = artifactId;
 		clearTimeout(copiedTimer);
-		copiedTimer = setTimeout(() => (copied = false), 1500);
+		copiedTimer = setTimeout(() => (copiedId = null), 1500);
 	}
 	$effect(() => () => clearTimeout(copiedTimer));
 
