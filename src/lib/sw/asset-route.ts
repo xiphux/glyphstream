@@ -28,13 +28,13 @@ export const IMMUTABLE_PREFIX = '/_app/immutable/';
 export const CHUNK_CACHE_NAME = 'glyphstream-app-chunks';
 
 /**
- * Two builds' worth with some headroom (~102 entries each as of the app-lock
- * `/unlock` route), so a deploy can land without evicting the chunks the
+ * Two builds' worth with some headroom (~126 entries each as of the canvas
+ * copy/download buttons), so a deploy can land without evicting the chunks the
  * still-open page is running from. Past that, least recently used goes first —
  * genuinely last-used, off workbox's IndexedDB timestamp — which is the right
  * order: it's the previous build's.
  */
-export const CHUNK_CACHE_MAX_ENTRIES = 250;
+export const CHUNK_CACHE_MAX_ENTRIES = 320;
 
 // There is deliberately no `maxAgeSeconds` companion to the entry cap, and it is
 // worth saying why, because adding one reads as obvious housekeeping.
