@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.54.0
+
 ### Added
 
 - Copy a canvas's markdown to the clipboard, or download it as a `.md` file, from the canvas pane's header.
