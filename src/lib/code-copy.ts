@@ -84,7 +84,7 @@ export async function handleCodeCopyClick(e: MouseEvent): Promise<void> {
  * still works there, and in every browser, from inside a click. Its absence is
  * checked synchronously so that path runs within the click's user activation.
  */
-async function copyText(text: string): Promise<boolean> {
+export async function copyText(text: string): Promise<boolean> {
 	if (window.isSecureContext && navigator.clipboard) {
 		try {
 			await navigator.clipboard.writeText(text);

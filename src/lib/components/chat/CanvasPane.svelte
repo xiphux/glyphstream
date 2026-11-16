@@ -6,10 +6,11 @@
 	desktop it docks as a right column; on mobile it's a full-screen overlay.
 -->
 <script lang="ts">
-	import { X } from '@lucide/svelte';
+	import { Check, Copy, Download, X } from '@lucide/svelte';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
 	import type { CanvasVersion } from '#lib/types/api.js';
+	import { copyText } from '#lib/code-copy.js';
 
 	interface Props {
 		/** The document currently shown. */
@@ -74,6 +75,37 @@
 		};
 	}
 
+	/** `My Doc: v2!` → `my-doc-v2.md`; letters outside ASCII survive. */
+	function markdownFilename(title: string | null): string {
+		const slug = (title ?? '')
+			.toLowerCase()
+			.replace(/[^\p{L}\p{N}]+/gu, '-')
+			.replace(/^-+|-+$/g, '');
+		return `${slug || 'canvas'}.md`;
+	}
+
+	function download() {
+		const url = URL.createObjectURL(
+			new Blob([doc.content], { type: 'text/markdown;charset=utf-8' }),
+		);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = markdownFilename(doc.title);
+		a.click();
+		// Revoking synchronously can cancel the download in Safari.
+		setTimeout(() => URL.revokeObjectURL(url), 1000);
+	}
+
+	let copied = $state(false);
+	let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+	async function copy() {
+		if (!(await copyText(doc.content))) return;
+		copied = true;
+		clearTimeout(copiedTimer);
+		copiedTimer = setTimeout(() => (copied = false), 1500);
+	}
+	$effect(() => () => clearTimeout(copiedTimer));
+
 	let flash = $state(false);
 	$effect(() => {
 		// Re-run on each new version (not just the changed→true edge) so
@@ -88,6 +120,40 @@
 		return () => clearTimeout(t);
 	});
 </script>
+
+{#snippet actions()}
+	{@const empty = doc.content.length === 0}
+	<div class="flex shrink-0 items-center gap-0.5">
+		<button
+			type="button"
+			onclick={copy}
+			disabled={empty}
+			aria-label={copied ? 'Copied' : 'Copy markdown'}
+			title="Copy markdown"
+			class="rounded-md p-1.5 text-fg-muted transition hover:bg-surface-sunken hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent"
+		>
+			{#if copied}<Check size={18} />{:else}<Copy size={18} />{/if}
+		</button>
+		<button
+			type="button"
+			onclick={download}
+			disabled={empty}
+			aria-label="Download markdown"
+			title="Download markdown"
+			class="rounded-md p-1.5 text-fg-muted transition hover:bg-surface-sunken hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent"
+		>
+			<Download size={18} />
+		</button>
+		<button
+			type="button"
+			onclick={onClose}
+			aria-label="Close canvas"
+			class="rounded-md p-1.5 text-fg-muted transition hover:bg-surface-sunken hover:text-fg"
+		>
+			<X size={18} />
+		</button>
+	</div>
+{/snippet}
 
 <aside
 	class="fixed inset-0 z-sidebar flex h-full flex-col overflow-hidden border-border-strong bg-surface-panel md:relative md:inset-auto md:z-auto md:w-[45%] md:min-w-[22rem] md:max-w-2xl md:border-l"
@@ -118,14 +184,7 @@
 							</button>
 						{/each}
 					</div>
-					<button
-						type="button"
-						onclick={onClose}
-						aria-label="Close canvas"
-						class="shrink-0 rounded-md p-1.5 text-fg-muted transition hover:bg-surface-sunken hover:text-fg"
-					>
-						<X size={18} />
-					</button>
+					{@render actions()}
 				</div>
 				<p class="truncate px-4 pt-1.5 pb-2 text-xs text-fg-muted">Version {doc.versionNumber}</p>
 			{:else}
@@ -134,14 +193,7 @@
 						<h2 class="truncate text-sm font-semibold">{doc.title ?? 'Canvas'}</h2>
 						<p class="text-xs text-fg-muted">Version {doc.versionNumber}</p>
 					</div>
-					<button
-						type="button"
-						onclick={onClose}
-						aria-label="Close canvas"
-						class="shrink-0 rounded-md p-1.5 text-fg-muted transition hover:bg-surface-sunken hover:text-fg"
-					>
-						<X size={18} />
-					</button>
+					{@render actions()}
 				</div>
 			{/if}
 		</header>

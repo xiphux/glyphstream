@@ -50,6 +50,11 @@ Each time the assistant creates or edits the canvas, a small **canvas card**
 the ✕ in its header; click any canvas card to reopen it. The pane also reopens
 automatically whenever the assistant makes another edit.
 
+To take a canvas elsewhere, use the buttons beside the ✕ in the pane's header:
+**copy** puts the document's markdown on the clipboard, and **download** saves
+it as a `.md` file named after the canvas's title. Both export the version the
+pane is showing, which is always the latest.
+
 ## Turning it off
 
 Canvas is **on by default** in text chats. It's a per-conversation
