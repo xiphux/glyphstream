@@ -1,11 +1,12 @@
 /**
- * Every foreign key that references messages.id must be indexed.
+ * Every foreign key that references messages.id or media.id must be indexed.
  *
  * SQLite enforces a parent-side delete by looking the deleted key up in each
  * child column; without an index that is a full scan of the child table, paid
- * once per deleted message. Messages are deleted in bulk (conversation delete,
+ * once per deleted row. Messages are deleted in bulk (conversation delete,
  * branch delete on every fan-out discard), so an un-indexed child turns a
- * 1,500-message delete into seconds of synchronous work at 20k conversations.
+ * 1,500-message delete into seconds of synchronous work at 20k conversations;
+ * a user delete takes every media row with it the same way.
  */
 import { DatabaseSync } from 'node:sqlite';
 import { resolve } from 'node:path';
@@ -13,7 +14,10 @@ import { drizzle } from 'drizzle-orm/node-sqlite';
 import { migrate } from 'drizzle-orm/node-sqlite/migrator';
 import { describe, expect, it } from 'vitest';
 
-describe('foreign keys referencing messages', () => {
+/** Parents whose rows are deleted many at a time. */
+const BULK_DELETED = new Set(['messages', 'media']);
+
+describe('foreign keys referencing bulk-deleted tables', () => {
 	it('each has an index leading with the referencing column', () => {
 		const sqlite = new DatabaseSync(':memory:');
 		migrate(drizzle({ client: sqlite }), { migrationsFolder: resolve('./drizzle') });
@@ -35,7 +39,7 @@ describe('foreign keys referencing messages', () => {
 				),
 			);
 			for (const fk of fks) {
-				if (fk.table === 'messages' && !leading.has(fk.from)) missing.push(`${name}.${fk.from}`);
+				if (BULK_DELETED.has(fk.table) && !leading.has(fk.from)) missing.push(`${name}.${fk.from}`);
 			}
 		}
 		sqlite.close();

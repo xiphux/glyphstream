@@ -1,0 +1,3 @@
+CREATE INDEX `idx_conversations_avatar_media` ON `conversations` (`avatar_media_id`) WHERE "conversations"."avatar_media_id" is not null;--> statement-breakpoint
+CREATE INDEX `idx_custom_models_avatar_media` ON `custom_models` (`avatar_media_id`) WHERE "custom_models"."avatar_media_id" is not null;--> statement-breakpoint
+CREATE INDEX `idx_media_source_media` ON `media` (`source_media_id`) WHERE "media"."source_media_id" is not null;

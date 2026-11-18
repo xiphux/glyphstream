@@ -435,6 +435,10 @@ export const conversations = sqliteTable(
 		// fan-out discard) pay the same per-row scan.
 		index('idx_conversations_active_leaf').on(t.activeLeafMessageId),
 		index('idx_conversations_fanout_parent').on(t.fanoutParentMessageId),
+		// References media.id; see media's idx_media_source_media.
+		index('idx_conversations_avatar_media')
+			.on(t.avatarMediaId)
+			.where(sql`${t.avatarMediaId} is not null`),
 	],
 );
 
@@ -641,6 +645,11 @@ export const customModels = sqliteTable(
 		// same name, and a UNIQUE index would abort the migration on startup. The
 		// ordering win doesn't need uniqueness.
 		index('idx_custom_models_user_name').on(t.userId, t.name),
+		// Deleting a media row looks it up here (ON DELETE SET NULL); see media's
+		// idx_media_source_media.
+		index('idx_custom_models_avatar_media')
+			.on(t.avatarMediaId)
+			.where(sql`${t.avatarMediaId} is not null`),
 	],
 );
 
@@ -995,6 +1004,14 @@ export const media = sqliteTable(
 		// range column last lets SQLite use index-only equality probes on
 		// origin + deletedAt before walking unreferenced_since rows.
 		index('idx_media_unreferenced').on(t.origin, t.deletedAt, t.unreferencedSince),
+		// Every foreign key to media.id needs an index on its referencing column:
+		// deleting a media row (only deleteUser hard-deletes them) looks the key up
+		// in each, and without one that is a full scan per deleted row. Deleting a
+		// user with 10k media took 6.7 s on the server's only thread without
+		// these three; partial, since nearly every value is NULL.
+		index('idx_media_source_media')
+			.on(t.sourceMediaId)
+			.where(sql`${t.sourceMediaId} is not null`),
 		// The trash: rows deleted from the library whose bytes haven't been purged
 		// yet. Partial, so it holds only what is currently restorable — every
 		// historical tombstone (the overwhelming majority of deleted rows) stays

@@ -39,6 +39,7 @@ arrived.
 - A retry or edit the server turned away (too busy, unreachable) no longer leaves the reply, or the messages after the edit, missing from the thread until a reload.
 - A comparison the server refused before it started (or one over the variation limit) no longer clears your prompt, attachments and picked models.
 - A conversation left while its reply was still generating now moves up the sidebar and gets its title when the reply finishes, instead of staying "Untitled" in its old place until a reload.
+- Deleting a user with a large media library could stall the server for many seconds; it now takes a fraction of the time.
 
 ## v0.54.0
 
