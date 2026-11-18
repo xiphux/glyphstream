@@ -2,7 +2,8 @@
  * A fan-out the server refuses at /prepare must leave the composer as it was:
  * the prompt, its attachments and the compare cart. Nothing was persisted, so
  * clearing them up front lost the text with nothing on the thread to show
- * for it.
+ * for it. And a prepared one clears only what it sent, not a next message
+ * typed while /prepare was out.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
@@ -97,5 +98,45 @@ describe('chat page — a fan-out refused at /prepare', () => {
 		expect(box().value).toBe('compare these');
 		expect(screen.getByText('2 models')).toBeInTheDocument();
 		expect(document.body.textContent).toContain('Too many generations');
+	});
+
+	it('a message typed while /prepare is out survives the prepared fan-out clearing the box', async () => {
+		let releasePrepare!: () => void;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = fetchUrl(input);
+				if (url.includes('/messages/prepare')) {
+					await new Promise<void>((r) => (releasePrepare = r));
+					return Response.json({ userMessage: row('u1', 'user', 'compare these') });
+				}
+				return new Response('{}', { status: 500 });
+			}),
+		);
+		const user = userEvent.setup();
+		const base = [row('u0', 'user', 'first question'), row('a0', 'assistant', 'first answer')];
+		render(Harness, { props: { data: pageData(conversation('conv-A', false, base)) } });
+		stub().enter();
+		flushSync();
+
+		await user.click(screen.getByLabelText('Select model'));
+		await user.click(screen.getByText('Multiple'));
+		await user.click(screen.getByRole('option', { name: /alpha/ }));
+		await tick();
+		await user.keyboard('{Escape}');
+		await tick();
+
+		await fireEvent.input(box(), { target: { value: 'compare these' } });
+		flushSync();
+		await fireEvent.keyDown(box(), { key: 'Enter' });
+		await vi.waitFor(() => expect(releasePrepare).toBeDefined());
+
+		await fireEvent.input(box(), { target: { value: 'and a follow-up' } });
+		flushSync();
+		releasePrepare();
+		await new Promise((r) => setTimeout(r, 20));
+		flushSync();
+
+		expect(box().value).toBe('and a follow-up');
 	});
 });

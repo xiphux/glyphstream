@@ -2011,8 +2011,18 @@
 		if (willFanOut) {
 			// Cleared only once /prepare has the prompt: a fan-out refused before
 			// that (the branch cap, a 4xx/5xx) keeps the text, attachments and cart.
+			// The box stays editable meanwhile, so only what was sent is cleared: a
+			// next message typed or attached during /prepare stays.
+			const sentText = composerText;
+			const sentItems = attachments.items.map((it) => it.clientId);
 			await fanout.send(text, attachedMediaIds, branches, baseModels, aspectRatio, () => {
-				clearComposer();
+				sceneSwitch = null;
+				for (const id of sentItems) attachments.remove(id);
+				if (composerText === sentText) {
+					composerText = '';
+					draftWriter.cancel();
+					clearDraft(data.conversation.id);
+				}
 				resetCompare();
 				splitAttachments = false;
 			});
