@@ -1036,3 +1036,29 @@ describe('ChatTurnController — a retry or edit the server refuses outright', (
 		vi.unstubAllGlobals();
 	});
 });
+
+describe('ChatTurnController — a retry or edit whose connection fails before start', () => {
+	// No HTTP answer, so the server may already have saved the new branch (a
+	// drop while the turn waited in the endpoint queue). The rows go back so
+	// the thread isn't left short, and the thread is re-read from the server.
+	const thread = () => [userMsg('u1'), assistantMsg('a1'), userMsg('u2'), assistantMsg('a2')];
+
+	it('retry: puts the reply back and re-reads the thread', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => {
+				throw new TypeError('Failed to fetch');
+			}),
+		);
+		const { deps, state } = makeDeps();
+		state.messages = thread();
+		const turn = new ChatTurnController(deps);
+
+		await turn.send('', [], { retryFromMessageId: 'a2' });
+
+		expect(state.error).toBeTruthy();
+		expect(state.messages.map((m) => m.id)).toEqual(['u1', 'a1', 'u2', 'a2']);
+		expect(refreshAll).toHaveBeenCalledTimes(1);
+		vi.unstubAllGlobals();
+	});
+});

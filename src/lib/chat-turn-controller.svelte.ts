@@ -506,15 +506,27 @@ export class ChatTurnController {
 	 * `turnConvId`'s thread — skip it if the user has since navigated away.
 	 *
 	 * `untrimmed` is the thread as it was before a retry / edit trimmed it, when
-	 * the server refused the turn before `start`: nothing changed server-side,
-	 * so the trimmed rows go back rather than staying gone until a reload.
+	 * the turn failed before `start`; the trimmed rows go back rather than
+	 * staying gone until a reload. `refused` says the server answered with an
+	 * HTTP error, so nothing changed server-side. Any other failure (a dropped
+	 * connection while the turn was queued) may come after the server saved
+	 * the new message, so the thread is also re-read; if the server can't be
+	 * reached, the restored rows are what stays.
 	 */
-	#handleSendError(e: unknown, turnConvId: string, untrimmed: ChatMessage[] | null): void {
+	#handleSendError(
+		e: unknown,
+		turnConvId: string,
+		untrimmed: ChatMessage[] | null,
+		refused: boolean,
+	): void {
 		if (this.#deps.convId() !== turnConvId) return;
 		if (isAbortError(e) || this.interrupted) {
 			void refreshAll();
 		} else {
-			if (untrimmed) this.#deps.setMessages(untrimmed);
+			if (untrimmed) {
+				this.#deps.setMessages(untrimmed);
+				if (!refused) void refreshAll();
+			}
 			this.#deps.setError(e instanceof Error ? e.message : String(e));
 		}
 		this.inFlightOpen = false;
@@ -559,6 +571,8 @@ export class ChatTurnController {
 		let sawToolCalls: boolean;
 		const untrimmed = isRetry || options.editedMessageId ? this.#deps.getMessages() : null;
 		let started = false;
+		/** The server answered with an HTTP error status. */
+		let refused = false;
 		if (isRetry) {
 			// Trim the retry target AND everything in its multi-iteration tool chain
 			// — walk back from the target through preceding assistant/tool rows until
@@ -624,6 +638,7 @@ export class ChatTurnController {
 				signal: abort.signal,
 			});
 			if (!res.ok) {
+				refused = true;
 				throw new Error(await errorMessageFromResponse(res));
 			}
 			if (!res.body) throw new Error('Server returned no body');
@@ -681,7 +696,7 @@ export class ChatTurnController {
 				}
 			}
 		} catch (e) {
-			this.#handleSendError(e, turnConvId, started ? null : untrimmed);
+			this.#handleSendError(e, turnConvId, started ? null : untrimmed, refused);
 		} finally {
 			// The stream has closed — the title task (if any) has delivered or timed
 			// out. Drop the sidebar spinner. Gated on isFirstExchange so a fast
