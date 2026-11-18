@@ -9,6 +9,8 @@ arrived.
 
 ## Unreleased
 
+## v0.54.1
+
 ### Security
 
 - Python run by the code interpreter could open SQLite files outside its sandbox, the app's own database included. It no longer can.
