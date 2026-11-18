@@ -157,6 +157,20 @@ jobs:
           # ffmpeg compile is its own stage and stays cached.
           no-cache-filters: runtime-base
 
+      # Boot the image that was just pushed, on its own architecture, before
+      # `merge` puts a tag on it. ci.yml's smoke job boots an amd64 image it
+      # built itself, from the layer cache; this build re-runs runtime-base
+      # (fresh `apk upgrade`), and on a release tag ci.yml inherits an earlier
+      # pass and smokes nothing at all. A cached ffmpeg stage against a newer
+      # libdav1d would fail here — thumbnails and HEIC, silently in production.
+      # A failure leaves an untagged blob, which ghcr-cleanup.yml reaps.
+      - name: Smoke the pushed image
+        env:
+          IMAGE: ${{ env.REGISTRY_IMAGE }}@${{ steps.build.outputs.digest }}
+        run: |
+          docker pull "$IMAGE"
+          tests/image-smoke/run.sh "$IMAGE"
+
       # Step outputs go through `env:`, not `${{ }}` inside the script:
       # an expression is pasted into the shell source before bash parses it.
       - name: Export digest

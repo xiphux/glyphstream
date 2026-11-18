@@ -476,8 +476,8 @@ jobs:
   # and has smoke.mjs import every server chunk and do real work with each
   # package still in the image's own node_modules. Runnable locally the same way.
   #
-  # amd64 only: the arm64 image is the same Dockerfile and lockfile, and an
-  # arm64 runner would double the cost for the rare arm-only packaging break.
+  # amd64 only: this is the fast pre-merge check. docker.yml boots the image it
+  # actually publishes, on both architectures, before tagging it.
   #
   # Cache: reads docker.yml's main-branch layer cache (build-linux-amd64) so a
   # warm build is quick, but writes only to its own scope, so a PR run can
