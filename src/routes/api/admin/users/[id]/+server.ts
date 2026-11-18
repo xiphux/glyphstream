@@ -3,7 +3,7 @@
  *   PATCH  /api/admin/users/[id]  { disabled: boolean }  — enable/disable (disabling stops in-flight and queued generations)
  *   PATCH  /api/admin/users/[id]  { appLock: false }      — turn off app lock (recovery for a
  *                                                           user who has lost every passkey)
- *   DELETE /api/admin/users/[id]                          — delete + cascade, stop in-flight generations, unlink media files
+ *   DELETE /api/admin/users/[id]                          — delete + cascade, stop in-flight generations, unlink media files and skill bundles
  *
  * Two invariants the API enforces (not just the UI):
  *   - You can't disable or delete your OWN account here (footgun; an admin
@@ -17,6 +17,7 @@ import { error } from '@sveltejs/kit';
 import { requireAdmin } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import { unlinkMediaFiles } from '#lib/server/media/disk-store.js';
+import { getSkillStore } from '#lib/server/skills/disk-store.js';
 import { cancelInFlightGenerations } from '#lib/server/streaming/cancel.js';
 import { activeConversationIds } from '#lib/server/streaming/in-flight.js';
 import { getConversationMeta } from '#lib/server/db/queries/conversations.js';
@@ -125,5 +126,8 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 	// The cascade removed the media rows; the bytes (and their thumbnails and
 	// vision variants) are only reachable from here.
 	await unlinkMediaFiles(deleted.files, 'admin.users.delete');
+	const skillStore = getSkillStore();
+	for (const path of deleted.skillPaths) await skillStore.deleteBundle(path);
+	await skillStore.deleteOwnerDir(params.id);
 	return Response.json({ ok: true });
 };

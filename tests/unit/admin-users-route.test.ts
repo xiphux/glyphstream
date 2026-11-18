@@ -9,7 +9,8 @@
  * Deleting must remove what the confirmation dialog says it removes — "all of
  * its conversations, media, and settings". The FK cascade takes the rows but
  * not the media BYTES, and once the rows are gone nothing can find those again
- * (the purger walks rows).
+ * (the purger walks rows). Skill bundles live only on disk, so the same goes
+ * for them.
  */
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -25,6 +26,7 @@ vi.mock('#lib/server/env.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/server/env.js')>()),
 	mediaDir: () => mocks.root,
 	derivedDir: () => mocks.root,
+	skillsDir: () => join(mocks.root, 'skills'),
 }));
 
 import { DELETE, PATCH } from '../../src/routes/api/admin/users/[id]/+server';
@@ -35,6 +37,7 @@ import { conversations, media, sessions, users } from '#lib/server/db/schema.js'
 import { getMediaStore } from '#lib/server/media/disk-store.js';
 import { thumbStoragePath } from '#lib/server/media/thumbnail.js';
 import { registerInFlight, resetInFlight } from '#lib/server/streaming/in-flight.js';
+import { importSkillBundle } from '#lib/server/skills/import-skill.js';
 import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 
 type Handler = (event: RequestEvent) => Promise<Response> | Response;
@@ -211,6 +214,28 @@ describe('DELETE', () => {
 		expect(existsSync(theirs.original)).toBe(true);
 		expect(existsSync(theirs.thumb)).toBe(true);
 		expect(validateSessionToken(bystander.token)).not.toBeNull();
+	});
+
+	it('removes the user’s skill bundles from disk, and no one else’s', async () => {
+		const admin = makeUser('admin');
+		const target = makeUser();
+		const bystander = makeUser();
+		const skill = (name: string) => [
+			{
+				relPath: 'SKILL.md',
+				bytes: Buffer.from(`---\nname: ${name}\ndescription: a skill\n---\n\nNotes.\n`),
+			},
+		];
+		expect(await importSkillBundle(target.id, skill('one'))).toMatchObject({ ok: true });
+		expect(await importSkillBundle(target.id, skill('two'))).toMatchObject({ ok: true });
+		expect(await importSkillBundle(bystander.id, skill('one'))).toMatchObject({ ok: true });
+		const skills = join(mocks.root, 'skills');
+		expect(existsSync(join(skills, target.id, 'one', 'SKILL.md'))).toBe(true);
+
+		expect(await invoke(DELETE as Handler, admin.locals, target.id)).toBe(200);
+
+		expect(existsSync(join(skills, target.id))).toBe(false);
+		expect(existsSync(join(skills, bystander.id, 'one', 'SKILL.md'))).toBe(true);
 	});
 
 	it('stops generations still streaming into the user’s conversations, and no one else’s', async () => {

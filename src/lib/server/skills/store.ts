@@ -42,6 +42,9 @@ export interface SkillStore {
 	moveBundle(oldStoragePath: string, newStoragePath: string): Promise<void>;
 	/** Recursively remove a bundle. Best-effort; never throws on ENOENT. */
 	deleteBundle(storagePath: string): Promise<void>;
+	/** Remove a deleted user's bundle directory once its bundles are gone.
+	 *  Best-effort; never throws. */
+	deleteOwnerDir(userId: string): Promise<void>;
 }
 
 // Structural bounds — defend against pathological uploads (the spec recommends

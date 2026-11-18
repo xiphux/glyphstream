@@ -53,6 +53,7 @@ arrived.
 - A tool call you approved was cancelled if the page lost its connection while the tool ran (the phone locked, a reload); it now finishes, and Stop still cancels it.
 - Stopping a scheduled run while its model was still loading recorded it as failed, sent a "Didn't finish" notification and counted toward turning the schedule off. It is now recorded as stopped.
 - An image used as a preset's or conversation's avatar could be moved to Recently deleted by "also delete media" on another chat, once it had been deleted and restored. Restoring it now keeps it protected while it is an avatar.
+- Deleting a user now also removes their skills' files from disk; before, only the database rows went.
 
 ## v0.54.0
 

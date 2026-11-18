@@ -8,7 +8,7 @@
 import { and, asc, count, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import { getDb, type Tx } from '../client';
-import { conversations, media, users } from '../schema';
+import { conversations, media, skills, users } from '../schema';
 import type { UserRole, UserSummary } from '#lib/types/api.js';
 import { createLogger } from '../../log';
 
@@ -317,13 +317,16 @@ export function setUserDisabled(userId: string, disabled: boolean): boolean {
  * media rows outright rather than tombstoning them, so nothing else can find
  * those bytes again — the purger only walks rows. That includes trashed rows,
  * whose bytes are still on disk until the trash expires.
+ * Likewise the skill bundles' storage paths: the bundles live on disk, where
+ * the cascade can't reach them.
  * Also returns every conversation id the user had (archived included), so the
- * caller can stop generations still streaming into them. Both are read in the
+ * caller can stop generations still streaming into them. All are read in the
  * same transaction as the delete so a row written between the two can't slip
  * through.
  */
 export function deleteUser(userId: string): {
 	files: Array<{ id: string; storagePath: string }>;
+	skillPaths: string[];
 	conversationIds: string[];
 } | null {
 	return getDb().transaction((tx) => {
@@ -340,8 +343,14 @@ export function deleteUser(userId: string): {
 			.where(eq(conversations.userId, userId))
 			.all()
 			.map((r) => r.id);
+		const skillPaths = tx
+			.select({ storagePath: skills.storagePath })
+			.from(skills)
+			.where(eq(skills.userId, userId))
+			.all()
+			.map((r) => r.storagePath);
 		const res = tx.delete(users).where(eq(users.id, userId)).run();
-		return res.changes > 0 ? { files, conversationIds } : null;
+		return res.changes > 0 ? { files, skillPaths, conversationIds } : null;
 	});
 }
 

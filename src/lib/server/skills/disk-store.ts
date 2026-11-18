@@ -14,7 +14,17 @@
  */
 
 import { existsSync, mkdirSync } from 'node:fs';
-import { mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import {
+	mkdir,
+	readFile,
+	readdir,
+	realpath,
+	rename,
+	rm,
+	rmdir,
+	stat,
+	writeFile,
+} from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { skillsDir } from '../env';
@@ -181,6 +191,16 @@ export class DiskSkillStore implements SkillStore {
 			if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
 				log.warn(`deleteBundle(${storagePath}) failed:`, e);
 			}
+		}
+	}
+
+	/** Non-recursive: anything still in it isn't a bundle this store knows of. */
+	async deleteOwnerDir(userId: string): Promise<void> {
+		try {
+			await rmdir(this.absRoot(userId));
+		} catch (e) {
+			const code = (e as NodeJS.ErrnoException).code;
+			if (code !== 'ENOENT') log.warn(`deleteOwnerDir(${userId}) failed:`, e);
 		}
 	}
 }
