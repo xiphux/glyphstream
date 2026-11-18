@@ -31,17 +31,14 @@
  * provider rather than one adapter, and the permanent copy lives here.
  */
 
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { open, rename, stat, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import process from 'node:process';
 import { Buffer } from 'node:buffer';
 import { createLogger } from '../log.ts';
+import { FfmpegDeadline, runFfmpeg } from './ffmpeg.ts';
 
 const log = createLogger('faststart');
-
-const execFileAsync = promisify(execFile);
 
 /**
  * The remux budget is DERIVED FROM FILE SIZE, not a single number.
@@ -75,11 +72,6 @@ const REMUX_MS_PER_MB = 300;
  */
 const REMUX_MAX_MS = 90_000;
 
-/** How long past the derived budget to wait before giving up on the child
- *  settling at all. Non-zero so the ordinary case — SIGKILL lands, execFile
- *  rejects — still surfaces ffmpeg's own error rather than ours. */
-const REMUX_REAP_GRACE_MS = 2_000;
-
 const BYTES_PER_MB = 1_048_576;
 
 /** Milliseconds to allow for remuxing `byteSize`, or null to decline. */
@@ -89,130 +81,55 @@ function remuxBudgetMs(byteSize: number): number | null {
 }
 
 /**
- * Our own deadline expiring, as opposed to ffmpeg failing.
- *
- * `execFile`'s `timeout` bounds when the KILL SIGNAL IS SENT, not when the
- * promise settles — its callback runs off the child's `close` event, and the
- * only path from the timeout to that callback is `child.kill()` itself
- * throwing. A process blocked in uninterruptible I/O cannot be reaped, so the
- * promise never settles. That matters more here than at the sibling call in
- * `thumbnail.ts`: this runs inside `persistGeneratedVideo`, which runs inside
- * the endpoint slot held by `startMediaRelay` — so a child that never settles
- * holds a generation slot for the life of the process, and on a
- * `max_concurrent = 1` endpoint that is the whole endpoint.
- *
- * Racing an independent timer means the slot comes back whether or not the
- * child ever does. It does NOT reap the child; nothing in Node can.
- *
- * Bounds the CHILD, and only the child. The `open`/`stat`/`read` in
- * `isFaststart`, the `stat`/`rename` in `makeFaststart`, and `putStream` in
- * its caller are all un-deadlined libuv fs calls against the same volume — if
- * MEDIA_DIR stops answering, one of those hangs before ffmpeg is ever spawned.
- * This can't cover those (a deadline can't wrap a libuv fs call); it covers the
- * case where ffmpeg specifically wedges on one inode while Node's own metadata
- * ops still complete.
+ * ffmpeg arguments for the remux of `path` into `tmp`: every stream copied as
+ * it is, with the index moved to the front.
  */
-class RemuxDeadline extends Error {
-	constructor(seconds: number) {
-		super(`ffmpeg did not settle within ${seconds}s`);
-		this.name = 'RemuxDeadline';
-	}
-}
-
-/**
- * Run the remux, bounded by a deadline the child cannot outlive.
- *
- * Resolves when ffmpeg does; rejects with `RemuxDeadline` if it doesn't in
- * time. On the deadline path the temp file is reclaimed whenever the child
- * finally settles, if it ever does — see the caller for why that can't just be
- * awaited.
- */
-async function runRemux(path: string, tmp: string, budgetMs: number): Promise<void> {
-	const run = execFileAsync(
-		'ffmpeg',
-		[
-			'-hide_banner',
-			'-loglevel',
-			'error',
-			'-nostdin',
-			'-protocol_whitelist',
-			'file',
-			'-i',
-			path,
-			// Take EVERY stream, then drop the ones mp4 can't hold.
-			//
-			// Without `-map`, ffmpeg applies default stream selection: one "best"
-			// video and one "best" audio, and nothing else. That is silent — exit 0,
-			// a genuinely faststart output that passes the check below — and then the
-			// rename destroys the only copy of the original. Measured against this
-			// build: a two-audio mp4 came back 3 streams -> 2 and lost 36% of its
-			// bytes; a file with two subtitle tracks lost BOTH of them plus an audio
-			// track.
-			//
-			// `-map 0` alone is not the fix. A camera original carrying a timecode
-			// track exposes it as `data / codec none`, which the mp4 muxer refuses —
-			// exit 234, "Could not find tag for codec none". Stock ffmpeg 6.1.1 fails
-			// identically, so it is the container, not this build. That turns a lossy
-			// remux into no remux at all for exactly the files most likely to need
-			// one. Excluding data streams keeps the rest, and costs less than it
-			// looks: ffmpeg's mov/mp4 muxer rebuilds a tmcd track from the timecode
-			// metadata tag, which `-c copy` carries over — so a camera original
-			// goes in with three streams and comes out with three. Verified
-			// against this build under `-f mp4` (video/audio/tmcd in, same out),
-			// not inferred from the mov-mode default.
-			'-map',
-			'0',
-			'-map',
-			'-0:d',
-			// The whole point: copy the streams, move the index.
-			'-c',
-			'copy',
-			'-movflags',
-			'+faststart',
-			// Pinned rather than inferred: the temp name ends in `.tmp`.
-			'-f',
-			'mp4',
-			'-y',
-			tmp,
-		],
-		{
-			timeout: budgetMs,
-			killSignal: 'SIGKILL',
-			maxBuffer: 1024 * 1024,
-			env: { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin' },
-		},
-	);
-
-	// Attached before the race so a rejection arriving after we've given up is
-	// already handled and can't surface as an unhandled rejection.
-	run.catch(() => {});
-
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	const deadline = new Promise<never>((_, reject) => {
-		timer = setTimeout(
-			() => reject(new RemuxDeadline((budgetMs + REMUX_REAP_GRACE_MS) / 1000)),
-			budgetMs + REMUX_REAP_GRACE_MS,
-		);
-		// Don't hold the event loop open. The awaited promise is what keeps the
-		// work alive; without this, a shutdown during an in-flight remux waits out
-		// the full remaining timer.
-		timer.unref?.();
-	});
-
-	try {
-		await Promise.race([run, deadline]);
-	} catch (e) {
-		if (e instanceof RemuxDeadline) {
-			// We have given up on this child, but it may still be alive and may yet
-			// finish writing `tmp`. Nothing will ever reference that path again and
-			// nothing sweeps for it, so reclaim it whenever the child settles. Not
-			// awaited: the point of the deadline is that this may be never.
-			void run.finally(() => unlink(tmp).catch(() => {})).catch(() => {});
-		}
-		throw e;
-	} finally {
-		clearTimeout(timer);
-	}
+function remuxArgs(path: string, tmp: string): string[] {
+	return [
+		'-hide_banner',
+		'-loglevel',
+		'error',
+		'-nostdin',
+		'-protocol_whitelist',
+		'file',
+		'-i',
+		path,
+		// Take EVERY stream, then drop the ones mp4 can't hold.
+		//
+		// Without `-map`, ffmpeg applies default stream selection: one "best"
+		// video and one "best" audio, and nothing else. That is silent — exit 0,
+		// a genuinely faststart output that passes the check below — and then the
+		// rename destroys the only copy of the original. Measured against this
+		// build: a two-audio mp4 came back 3 streams -> 2 and lost 36% of its
+		// bytes; a file with two subtitle tracks lost BOTH of them plus an audio
+		// track.
+		//
+		// `-map 0` alone is not the fix. A camera original carrying a timecode
+		// track exposes it as `data / codec none`, which the mp4 muxer refuses —
+		// exit 234, "Could not find tag for codec none". Stock ffmpeg 6.1.1 fails
+		// identically, so it is the container, not this build. That turns a lossy
+		// remux into no remux at all for exactly the files most likely to need
+		// one. Excluding data streams keeps the rest, and costs less than it
+		// looks: ffmpeg's mov/mp4 muxer rebuilds a tmcd track from the timecode
+		// metadata tag, which `-c copy` carries over — so a camera original
+		// goes in with three streams and comes out with three. Verified
+		// against this build under `-f mp4` (video/audio/tmcd in, same out),
+		// not inferred from the mov-mode default.
+		'-map',
+		'0',
+		'-map',
+		'-0:d',
+		// The whole point: copy the streams, move the index.
+		'-c',
+		'copy',
+		'-movflags',
+		'+faststart',
+		// Pinned rather than inferred: the temp name ends in `.tmp`.
+		'-f',
+		'mp4',
+		'-y',
+		tmp,
+	];
 }
 
 /** Box headers are 8 bytes: a 32-bit size then a 4-char type. A size of 1 means
@@ -307,7 +224,7 @@ export async function isFaststart(path: string): Promise<boolean | null> {
  * gate: it walks top-level box headers, so it cannot see inside `moov` and
  * cannot tell whether the streams survived. Dropped tracks look identical to
  * it — which is why the stream selection is pinned explicitly at the argv
- * rather than left to ffmpeg's default. See `runRemux`.
+ * rather than left to ffmpeg's default. See `remuxArgs`.
  */
 export async function makeFaststart(path: string): Promise<number | null> {
 	if ((await isFaststart(path)) !== false) return null;
@@ -333,7 +250,16 @@ export async function makeFaststart(path: string): Promise<number | null> {
 
 	const tmp = `${path}.${process.pid}.${randomUUID()}.faststart.tmp`;
 	try {
-		await runRemux(path, tmp, budgetMs);
+		// Bounded by a deadline the child cannot outlive (see ffmpeg.ts), which
+		// matters more here than for a thumbnail: this runs inside
+		// `persistGeneratedVideo`, inside the endpoint slot `startMediaRelay`
+		// holds, so a child that never settles would hold a generation slot for
+		// the life of the process — on a `max_concurrent = 1` endpoint, the whole
+		// endpoint. It bounds the child only: the fs calls around it (`isFaststart`,
+		// `stat`, `rename`, the caller's `putStream`) can't be deadlined, so if
+		// MEDIA_DIR stops answering one of those may hang first. This covers
+		// ffmpeg wedging on one inode while Node's own metadata calls still return.
+		await runFfmpeg(remuxArgs(path, tmp), budgetMs, tmp);
 
 		// Verify before swapping. A remux that ran cleanly and produced something
 		// that isn't faststart means the assumption behind this whole module was
@@ -356,7 +282,7 @@ export async function makeFaststart(path: string): Promise<number | null> {
 		// A deadline means something on this volume stopped answering, so awaiting
 		// an unlink against it would hang exactly the way the child did — and take
 		// with it the slot release this whole mechanism exists to protect. Fire it
-		// and move on; `runRemux` has already arranged for the path to be
+		// and move on; `runFfmpeg` has already arranged for the path to be
 		// reclaimed if the child ever wakes up.
 		//
 		// Logged, not swallowed. The sibling module makes this argument directly
@@ -366,7 +292,7 @@ export async function makeFaststart(path: string): Promise<number | null> {
 		// yields ENOENT here and would otherwise mean every video keeps its index
 		// at the end with nothing anywhere to say so. This runs once per video,
 		// never in a loop, so there is no log-volume argument against it.
-		if (e instanceof RemuxDeadline) {
+		if (e instanceof FfmpegDeadline) {
 			log.warn(`${path}: ${e.message}; keeping original`);
 			void unlink(tmp).catch(() => {});
 		} else {

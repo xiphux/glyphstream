@@ -1,8 +1,9 @@
 /**
  * Running ffmpeg with a deadline that holds even when the child doesn't die.
- * Shared by the video thumbnail and the HEIC upload conversion, which both
- * decode untrusted uploads inside a slot that must come back (the thumbnail in
- * one of the three generation slots, HEIC in its own).
+ * Shared by the video thumbnail, the HEIC upload conversion and the faststart
+ * remux, which all run ffmpeg on untrusted media inside a slot that must come
+ * back (the thumbnail in one of the three generation slots, HEIC in its own,
+ * the remux in the endpoint slot of the generation that produced the video).
  */
 import process from 'node:process';
 import { execFile } from 'node:child_process';
