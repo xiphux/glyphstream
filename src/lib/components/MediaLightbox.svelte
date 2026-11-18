@@ -2,6 +2,7 @@
 	import { errorMessageFromResponse } from '#lib/fetch-error.js';
 	import { formatBytes } from '#lib/format.js';
 	import { goto } from '$app/navigation';
+	import { confirmDialog } from '#lib/confirm.svelte.js';
 	import { resolve } from '$app/paths';
 	import { untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
@@ -696,10 +697,13 @@
 	// (the "Set as avatar" picker, any open tooltip) close on Escape from a
 	// `document` listener and call preventDefault; this one is on `window`, so
 	// it sees the same event afterwards and would close the lightbox too.
+	// A confirmation open over the lightbox owns Escape outright: its window
+	// listener may run before or after this one depending on mount order, so
+	// defaultPrevented alone can't be relied on there.
 	function onKey(e: KeyboardEvent) {
 		if (!media) return;
 		if (e.key === 'Escape') {
-			if (!e.defaultPrevented) onClose();
+			if (!e.defaultPrevented && !confirmDialog.pending) onClose();
 			return;
 		}
 		// Arrow-key navigation, only meaningful in carousel mode. Guarded

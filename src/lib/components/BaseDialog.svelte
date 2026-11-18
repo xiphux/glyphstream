@@ -40,8 +40,14 @@
 		wide?: boolean;
 	} = $props();
 
+	// Bubble phase on window, so a popover inside the dialog (a model picker)
+	// that consumes Escape gets it first; preventDefault then tells any layer
+	// underneath (the media lightbox) that this Escape is spent.
 	function onWindowKey(e: KeyboardEvent): void {
-		if (e.key === 'Escape' && open) onCancel();
+		if (e.key === 'Escape' && open && !e.defaultPrevented) {
+			e.preventDefault();
+			onCancel();
+		}
 	}
 </script>
 

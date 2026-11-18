@@ -113,11 +113,12 @@
 	}
 
 	// Window-level keyboard handling: Escape closes the modal whenever
-	// it's open. Arrow keys + Enter only fire when the modal is open
+	// it's open, unless a layer above already consumed it. Arrow keys + Enter only fire when the modal is open
 	// AND we have results — they belong to the result-navigation flow.
 	function onKey(e: KeyboardEvent) {
 		if (!searchModal.open) return;
 		if (e.key === 'Escape') {
+			if (e.defaultPrevented) return;
 			e.preventDefault();
 			searchModal.hide();
 			return;
