@@ -18,7 +18,11 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createHash } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import process from 'node:process';
+import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -277,6 +281,33 @@ describe('code-interpreter worker (real pyodide)', () => {
 			expect(res.type === 'result' && String(res.result)).toMatch(
 				/^BLOCKED: .*(restricted|denied|ENOENT|not permitted)/is,
 			);
+		});
+
+		// SQLite opens files through its own VFS, which the permission model
+		// does not check, so this asserts the capability (the host's database
+		// is neither read nor changed) rather than how it is denied.
+		it('cannot open a host SQLite database through node:sqlite', async () => {
+			const dir = mkdtempSync(join(tmpdir(), 'gs-interp-sqlite-'));
+			const dbPath = join(dir, 'host.db');
+			try {
+				const host = new DatabaseSync(dbPath);
+				host.exec("CREATE TABLE sessions (id TEXT); INSERT INTO sessions VALUES ('secret')");
+				host.close();
+
+				const res = await run(
+					probe(
+						`[js.process.getBuiltinModule("node:sqlite").DatabaseSync.new(${JSON.stringify(dbPath)}).exec("INSERT INTO sessions VALUES ('forged')"), "wrote"]`,
+					),
+				);
+				expect(res.type === 'result' && String(res.result)).toMatch(/^BLOCKED: /);
+
+				const after = new DatabaseSync(dbPath, { readOnly: true });
+				const rows = after.prepare('SELECT id FROM sessions').all();
+				after.close();
+				expect(rows).toEqual([{ id: 'secret' }]);
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
 		});
 
 		it('cannot resolve or reach hosts without the proxy', async () => {

@@ -19,7 +19,11 @@
  *   - no `--allow-child-process`, `--allow-worker`, `--allow-addons`,
  *     `--allow-wasi` — none of those are available;
  *   - no `--allow-net` — the child cannot open a socket. Its `fetch` is
- *     proxied to the host, which applies the URL policy (net-proxy.ts).
+ *     proxied to the host, which applies the URL policy (net-proxy.ts);
+ *   - no `node:sqlite` (`--no-experimental-sqlite`). The permission model
+ *     does not gate it: SQLite opens files through its own VFS, so without
+ *     this the child could read and write the application database, and
+ *     forge a session in it.
  *
  * The pool only needs the small `ManagedWorker` surface, so a test can swap in
  * a fake via `setWorkerFactoryForTests`.
@@ -81,6 +85,7 @@ export function spawnInterpreterProcess(opts: SpawnInterpreterOptions): ManagedW
 	const child = fork(opts.workerPath, [], {
 		execArgv: [
 			'--permission',
+			'--no-experimental-sqlite',
 			...readPaths.map((p) => `--allow-fs-read=${p}`),
 			`--max-old-space-size=${opts.memoryMb}`,
 			// 64 KiB pages. Without this a worker's Python heap grows without
