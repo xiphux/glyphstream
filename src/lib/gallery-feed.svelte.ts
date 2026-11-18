@@ -34,18 +34,28 @@ export class GalleryFeed {
 	/** Bumped on every `seed()`; an in-flight fetch from a superseded filter/tz
 	 *  checks this before writing, so a stale page can't land in the fresh cache. */
 	#generation = 0;
+	/** The last server total `onStale` was raised for, so a server that keeps
+	 *  disagreeing with its own layout can't drive a reseed loop. */
+	#staleTotal: number | null = null;
 
 	/** Fetch one page of units — injected so the loader is transport-agnostic
 	 *  (and unit-testable). Returns the slice at `[offset, offset+limit)`. */
 	#fetchPage: (offset: number, limit: number) => Promise<GalleryUnitsPage>;
 	#onError?: (message: string) => void;
+	/** Raised when a demand-loaded page reports a different total than the seeded
+	 *  layout: the library changed underneath (a generation landed, a delete in
+	 *  another tab), so every later offset is shifted and the caller should
+	 *  reseed. Raised at most once per observed total. */
+	#onStale?: () => void;
 
 	constructor(deps: {
 		fetchPage: (offset: number, limit: number) => Promise<GalleryUnitsPage>;
 		onError?: (message: string) => void;
+		onStale?: () => void;
 	}) {
 		this.#fetchPage = deps.fetchPage;
 		this.#onError = deps.onError;
+		this.#onStale = deps.onStale;
 	}
 
 	get totalUnits(): number {
@@ -108,6 +118,10 @@ export class GalleryFeed {
 			if (gen !== this.#generation) return; // superseded by a reseed — discard
 			this.#absorb(offset, result.units);
 			this.#loadedPages.add(page);
+			if (result.total !== this.totalUnits && result.total !== this.#staleTotal) {
+				this.#staleTotal = result.total;
+				this.#onStale?.();
+			}
 		} catch (e) {
 			if (gen === this.#generation) {
 				this.#failedPages.add(page);
@@ -165,12 +179,24 @@ export class GalleryFeed {
 	}
 
 	/** Loaded units' leader {id, kind} in newest-first index order — the sibling
-	 *  set the top-level lightbox carousels over (spans only what's loaded). */
+	 *  set the top-level lightbox carousels over (spans only what's loaded).
+	 *  Unique by id: pages fetched after the library shifted can hold a unit
+	 *  twice until the reseed lands, and the lightbox keys its slides by id. */
 	loadedLeaders(): LightboxSlide[] {
 		const indices = [...this.#units.keys()].sort((a, b) => a - b);
-		return indices.map((i) => {
+		const seen = new Set<string>();
+		const slides: LightboxSlide[] = [];
+		for (const i of indices) {
 			const u = this.#units.get(i)!;
-			return { id: u.leaderId, kind: u.leaderKind, width: u.leaderWidth, height: u.leaderHeight };
-		});
+			if (seen.has(u.leaderId)) continue;
+			seen.add(u.leaderId);
+			slides.push({
+				id: u.leaderId,
+				kind: u.leaderKind,
+				width: u.leaderWidth,
+				height: u.leaderHeight,
+			});
+		}
+		return slides;
 	}
 }

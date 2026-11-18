@@ -130,7 +130,12 @@
 		return (await res.json()) as GalleryUnitsPage;
 	}
 
-	const feed = new GalleryFeed({ fetchPage: fetchUnitsPage, onError: (m) => (loadError = m) });
+	// A stale feed reseeds in place: the user is mid-scroll, so no jump to the top.
+	const feed = new GalleryFeed({
+		fetchPage: fetchUnitsPage,
+		onError: (m) => (loadError = m),
+		onStale: () => void reloadFeed(),
+	});
 
 	// True until the first browse layout lands (browse isn't SSR'd — see the load
 	// function), so the grid shows a skeleton rather than a false "empty" state.
