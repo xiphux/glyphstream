@@ -357,6 +357,30 @@ describe('ChatTurnController — stopping a live turn', () => {
 	});
 });
 
+describe('ChatTurnController — a send the server refuses', () => {
+	it('surfaces the JSON error message and closes the bubble', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify({ message: 'Too many generations' }), {
+						status: 429,
+						headers: { 'Content-Type': 'application/json' },
+					}),
+			),
+		);
+		const { deps, state } = makeDeps();
+		const turn = new ChatTurnController(deps);
+
+		await turn.send('hello', []);
+
+		expect(state.error).toBe('Too many generations');
+		expect(turn.busy).toBe(false);
+		expect(turn.inFlightOpen).toBe(false);
+		vi.unstubAllGlobals();
+	});
+});
+
 describe('ChatTurnController — slot acquisition', () => {
 	/** A stream the test feeds one event at a time, so mid-turn state is
 	 *  observable instead of only its settled remains. */
