@@ -479,6 +479,7 @@ describe('lockout protection', () => {
 describe('notifications', () => {
 	async function notifyPayload(userId: string) {
 		upsertPushSubscription({
+			sessionId: null,
 			userId,
 			endpoint: 'a',
 			p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtZ1hcSSnZ2bX5J7ZK_4Q',
@@ -510,6 +511,7 @@ describe('notifications', () => {
 		setUserPreferences(u.id, { notificationsEnabled: true, notificationsShowContent: true });
 		setAppLockTimeout(u.id, MIN);
 		upsertPushSubscription({
+			sessionId: null,
 			userId: u.id,
 			endpoint: 'a',
 			p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtZ1hcSSnZ2bX5J7ZK_4Q',

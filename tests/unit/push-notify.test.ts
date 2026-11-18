@@ -96,7 +96,7 @@ describe('notifyConversationComplete', () => {
 
 	it('bails when notificationsEnabled is false', async () => {
 		const u = seedUser();
-		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
+		upsertPushSubscription({ sessionId: null, userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
 		// Pref defaults notificationsEnabled = false.
 		await notifyConversationComplete(baseInput(u.id));
 		expect(mocks.sendCalls).toHaveLength(0);
@@ -112,7 +112,7 @@ describe('notifyConversationComplete', () => {
 	it('omits the preview and neutralizes the title when notificationsShowContent is false', async () => {
 		const u = seedUser();
 		setUserPreferences(u.id, { notificationsEnabled: true });
-		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
+		upsertPushSubscription({ sessionId: null, userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
 		await notifyConversationComplete(baseInput(u.id));
 		expect(mocks.sendCalls).toHaveLength(1);
 		const payload = JSON.parse(mocks.sendCalls[0].payload) as {
@@ -138,7 +138,7 @@ describe('notifyConversationComplete', () => {
 		// screen of every opted-out user until their worker updated.
 		const u = seedUser();
 		setUserPreferences(u.id, { notificationsEnabled: true });
-		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
+		upsertPushSubscription({ sessionId: null, userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
 		await notifyConversationComplete(baseInput(u.id));
 		const payload = JSON.parse(mocks.sendCalls[0].payload) as Record<string, unknown>;
 		expect(Object.keys(payload)).toContain('conversationTitle');
@@ -152,7 +152,7 @@ describe('notifyConversationComplete', () => {
 		// the whole prompt on the lock screen of a user who had opted out.
 		const u = seedUser();
 		setUserPreferences(u.id, { notificationsEnabled: true });
-		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
+		upsertPushSubscription({ sessionId: null, userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
 		await notifyConversationComplete({
 			...baseInput(u.id),
 			conversationTitle: 'a slow dolly through an abandoned greenhouse at dusk',
@@ -170,7 +170,7 @@ describe('notifyConversationComplete', () => {
 			notificationsEnabled: true,
 			notificationsShowContent: true,
 		});
-		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
+		upsertPushSubscription({ sessionId: null, userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
 		await notifyConversationComplete(baseInput(u.id));
 		const payload = JSON.parse(mocks.sendCalls[0].payload) as {
 			preview?: string;
@@ -183,7 +183,7 @@ describe('notifyConversationComplete', () => {
 	it('truncates a long conversation title', async () => {
 		const u = seedUser();
 		setUserPreferences(u.id, { notificationsEnabled: true, notificationsShowContent: true });
-		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
+		upsertPushSubscription({ sessionId: null, userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
 		const longTitle = 'x'.repeat(100);
 		await notifyConversationComplete({ ...baseInput(u.id), conversationTitle: longTitle });
 		const payload = JSON.parse(mocks.sendCalls[0].payload) as {
@@ -198,9 +198,9 @@ describe('notifyConversationComplete', () => {
 	it('fans out to every subscription in parallel', async () => {
 		const u = seedUser();
 		setUserPreferences(u.id, { notificationsEnabled: true });
-		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
-		upsertPushSubscription({ userId: u.id, endpoint: 'b', ...SAMPLE_KEYS });
-		upsertPushSubscription({ userId: u.id, endpoint: 'c', ...SAMPLE_KEYS });
+		upsertPushSubscription({ sessionId: null, userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
+		upsertPushSubscription({ sessionId: null, userId: u.id, endpoint: 'b', ...SAMPLE_KEYS });
+		upsertPushSubscription({ sessionId: null, userId: u.id, endpoint: 'c', ...SAMPLE_KEYS });
 		await notifyConversationComplete(baseInput(u.id));
 		expect(
 			new Set(mocks.sendCalls.map((c) => (c.subscription as { endpoint: string }).endpoint)),
@@ -210,8 +210,8 @@ describe('notifyConversationComplete', () => {
 	it('deletes subscriptions that return 410 Gone but keeps healthy ones', async () => {
 		const u = seedUser();
 		setUserPreferences(u.id, { notificationsEnabled: true });
-		upsertPushSubscription({ userId: u.id, endpoint: 'good', ...SAMPLE_KEYS });
-		upsertPushSubscription({ userId: u.id, endpoint: 'gone', ...SAMPLE_KEYS });
+		upsertPushSubscription({ sessionId: null, userId: u.id, endpoint: 'good', ...SAMPLE_KEYS });
+		upsertPushSubscription({ sessionId: null, userId: u.id, endpoint: 'gone', ...SAMPLE_KEYS });
 		mocks.sendResultsByEndpoint.set('gone', { ok: false, statusCode: 410 });
 		await notifyConversationComplete(baseInput(u.id));
 		const remaining = listPushSubscriptionsForUser(u.id).map((r) => r.endpoint);
@@ -221,7 +221,7 @@ describe('notifyConversationComplete', () => {
 	it('deletes on 404 (some push services use it instead of 410)', async () => {
 		const u = seedUser();
 		setUserPreferences(u.id, { notificationsEnabled: true });
-		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
+		upsertPushSubscription({ sessionId: null, userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
 		mocks.sendResultsByEndpoint.set('a', { ok: false, statusCode: 404 });
 		await notifyConversationComplete(baseInput(u.id));
 		expect(listPushSubscriptionsForUser(u.id)).toHaveLength(0);
@@ -230,7 +230,7 @@ describe('notifyConversationComplete', () => {
 	it('does NOT delete on transient failures (5xx, network)', async () => {
 		const u = seedUser();
 		setUserPreferences(u.id, { notificationsEnabled: true });
-		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
+		upsertPushSubscription({ sessionId: null, userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
 		mocks.sendResultsByEndpoint.set('a', { ok: false, statusCode: 503 });
 		await notifyConversationComplete(baseInput(u.id));
 		expect(listPushSubscriptionsForUser(u.id)).toHaveLength(1);
@@ -239,7 +239,7 @@ describe('notifyConversationComplete', () => {
 	it('suppresses all pushes when a device is actively viewing the conversation', async () => {
 		const u = seedUser();
 		setUserPreferences(u.id, { notificationsEnabled: true });
-		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
+		upsertPushSubscription({ sessionId: null, userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
 		// A window on another device is watching this thread (its live SSE
 		// stream already delivers the message) — no device should be pushed.
 		recordPresence(u.id, 'conv1', 'viewer-1', true);
@@ -250,7 +250,7 @@ describe('notifyConversationComplete', () => {
 	it('still pushes when the viewed conversation is a DIFFERENT one', async () => {
 		const u = seedUser();
 		setUserPreferences(u.id, { notificationsEnabled: true });
-		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
+		upsertPushSubscription({ sessionId: null, userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
 		recordPresence(u.id, 'other-conv', 'viewer-1', true);
 		await notifyConversationComplete(baseInput(u.id));
 		expect(mocks.sendCalls).toHaveLength(1);
@@ -262,7 +262,7 @@ describe('notifyConversationComplete', () => {
 			notificationsEnabled: true,
 			notificationsForegroundToast: false,
 		});
-		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
+		upsertPushSubscription({ sessionId: null, userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
 		await notifyConversationComplete(baseInput(u.id));
 		const payload = JSON.parse(mocks.sendCalls[0].payload) as {
 			preview?: string;

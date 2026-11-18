@@ -17,6 +17,8 @@ import { pushSubscriptions } from '../schema';
 export interface PushSubscriptionRow {
 	id: string;
 	userId: string;
+	/** The registering session; the row goes when it does. */
+	sessionId: string | null;
 	endpoint: string;
 	p256dh: string;
 	auth: string;
@@ -27,6 +29,8 @@ export interface PushSubscriptionRow {
 
 interface UpsertInput {
 	userId: string;
+	/** The caller's session, so ending it stops pushes to this device. */
+	sessionId: string | null;
 	endpoint: string;
 	p256dh: string;
 	auth: string;
@@ -76,6 +80,7 @@ function upsertOwnRow(tx: Tx, input: UpsertInput, newId: string, now: number): P
 		.values({
 			id: newId,
 			userId: input.userId,
+			sessionId: input.sessionId,
 			endpoint: input.endpoint,
 			p256dh: input.p256dh,
 			auth: input.auth,
@@ -86,6 +91,7 @@ function upsertOwnRow(tx: Tx, input: UpsertInput, newId: string, now: number): P
 		.onConflictDoUpdate({
 			target: pushSubscriptions.endpoint,
 			set: {
+				sessionId: input.sessionId,
 				p256dh: input.p256dh,
 				auth: input.auth,
 				userAgent: input.userAgent ?? null,

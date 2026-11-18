@@ -103,6 +103,15 @@ function fkOrder(sqlite: DatabaseSync, tables: string[]): string[] {
 	return done;
 }
 
+/**
+ * Steps that delete rows on purpose, by table, each with why. The rows are
+ * checked gone instead of kept.
+ */
+const DELIBERATE_DELETES: Record<string, string[]> = {
+	// A push subscription that can't be tied to a session would outlive sign-out.
+	'20261118134454_push_subscription_session': ['push_subscriptions'],
+};
+
 let seq = 0;
 
 function fill(sqlite: DatabaseSync): void {
@@ -179,6 +188,10 @@ describe('the migration chain on a populated database', () => {
 			const after = new Map(appTables(sqlite).map((t) => [t, count(sqlite, t)]));
 			for (const [table, n] of before) {
 				expect(after.has(table), `${dir} dropped table ${table}`).toBe(true);
+				if (DELIBERATE_DELETES[dir]?.includes(table)) {
+					expect(after.get(table), `${dir} kept rows in ${table}`).toBe(0);
+					continue;
+				}
 				expect(after.get(table), `${dir} lost rows from ${table}`).toBeGreaterThanOrEqual(n);
 			}
 			expect(sqlite.prepare('PRAGMA foreign_key_check').all(), `${dir} left dangling FKs`).toEqual(

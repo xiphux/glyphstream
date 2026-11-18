@@ -308,6 +308,11 @@ button, which does the subscribing without touching the account
 preference. Tapping it prompts for permission from inside the click
 handler, as iOS requires.
 
+A subscription is also tied to the sign-in that registered it. Signing out
+on a device, revoking its session from **Settings → Security** (or "Sign
+out everywhere else"), or letting the session expire stops pushes to that
+device. Signing back in re-registers it on the next load, as above.
+
 ### Cross-device suppression
 
 If you're **actively watching a conversation on one device** when the

@@ -31,7 +31,7 @@ const SAMPLE = {
 describe('upsertPushSubscription', () => {
 	it('inserts a new row for a fresh endpoint', () => {
 		const u = seedUser();
-		const row = upsertPushSubscription({ userId: u.id, ...SAMPLE });
+		const row = upsertPushSubscription({ sessionId: null, userId: u.id, ...SAMPLE });
 		expect(row).toMatchObject({
 			userId: u.id,
 			endpoint: SAMPLE.endpoint,
@@ -44,10 +44,11 @@ describe('upsertPushSubscription', () => {
 
 	it('updates last_seen_at + key material but preserves created_at on conflict', async () => {
 		const u = seedUser();
-		const first = upsertPushSubscription({ userId: u.id, ...SAMPLE });
+		const first = upsertPushSubscription({ sessionId: null, userId: u.id, ...SAMPLE });
 		// Force a measurable time gap.
 		await new Promise((r) => setTimeout(r, 5));
 		const second = upsertPushSubscription({
+			sessionId: null,
 			userId: u.id,
 			...SAMPLE,
 			p256dh: 'newKey',
@@ -68,8 +69,8 @@ describe('upsertPushSubscription', () => {
 		// device at their own notifications, titles and previews included.
 		const a = seedUser();
 		const b = seedUser();
-		const aRow = upsertPushSubscription({ userId: a.id, ...SAMPLE });
-		const bRow = upsertPushSubscription({ userId: b.id, ...SAMPLE });
+		const aRow = upsertPushSubscription({ sessionId: null, userId: a.id, ...SAMPLE });
+		const bRow = upsertPushSubscription({ sessionId: null, userId: b.id, ...SAMPLE });
 		expect(listPushSubscriptionsForUser(a.id)).toHaveLength(0);
 		expect(listPushSubscriptionsForUser(b.id)).toHaveLength(1);
 		// A fresh row, not a's with the owner swapped: b's "first subscribed"
@@ -82,8 +83,13 @@ describe('upsertPushSubscription', () => {
 		// The replace path must not fire for the owner — re-subscribing your
 		// own device shouldn't reset when you first subscribed.
 		const u = seedUser();
-		const first = upsertPushSubscription({ userId: u.id, ...SAMPLE });
-		const second = upsertPushSubscription({ userId: u.id, ...SAMPLE, p256dh: 'rotated' });
+		const first = upsertPushSubscription({ sessionId: null, userId: u.id, ...SAMPLE });
+		const second = upsertPushSubscription({
+			sessionId: null,
+			userId: u.id,
+			...SAMPLE,
+			p256dh: 'rotated',
+		});
 		expect(second.id).toBe(first.id);
 		expect(second.createdAt).toBe(first.createdAt);
 		expect(second.p256dh).toBe('rotated');
@@ -94,9 +100,24 @@ describe('listPushSubscriptionsForUser', () => {
 	it('returns only the requested user’s subscriptions', () => {
 		const a = seedUser();
 		const b = seedUser();
-		upsertPushSubscription({ userId: a.id, ...SAMPLE, endpoint: 'https://push.example/a1' });
-		upsertPushSubscription({ userId: a.id, ...SAMPLE, endpoint: 'https://push.example/a2' });
-		upsertPushSubscription({ userId: b.id, ...SAMPLE, endpoint: 'https://push.example/b1' });
+		upsertPushSubscription({
+			sessionId: null,
+			userId: a.id,
+			...SAMPLE,
+			endpoint: 'https://push.example/a1',
+		});
+		upsertPushSubscription({
+			sessionId: null,
+			userId: a.id,
+			...SAMPLE,
+			endpoint: 'https://push.example/a2',
+		});
+		upsertPushSubscription({
+			sessionId: null,
+			userId: b.id,
+			...SAMPLE,
+			endpoint: 'https://push.example/b1',
+		});
 		expect(
 			listPushSubscriptionsForUser(a.id)
 				.map((r) => r.endpoint)
@@ -114,7 +135,7 @@ describe('deletePushSubscriptionByEndpoint', () => {
 	it('deletes only when the endpoint is owned by the user', () => {
 		const a = seedUser();
 		const b = seedUser();
-		upsertPushSubscription({ userId: a.id, ...SAMPLE });
+		upsertPushSubscription({ sessionId: null, userId: a.id, ...SAMPLE });
 		// Wrong owner — must not delete, returns false.
 		expect(deletePushSubscriptionByEndpoint(SAMPLE.endpoint, b.id)).toBe(false);
 		expect(listPushSubscriptionsForUser(a.id)).toHaveLength(1);
@@ -132,16 +153,16 @@ describe('deletePushSubscriptionByEndpoint', () => {
 describe('deletePushSubscriptionsByEndpoints (stale cleanup)', () => {
 	it('removes only the listed endpoints', () => {
 		const u = seedUser();
-		upsertPushSubscription({ userId: u.id, ...SAMPLE, endpoint: 'a' });
-		upsertPushSubscription({ userId: u.id, ...SAMPLE, endpoint: 'b' });
-		upsertPushSubscription({ userId: u.id, ...SAMPLE, endpoint: 'c' });
+		upsertPushSubscription({ sessionId: null, userId: u.id, ...SAMPLE, endpoint: 'a' });
+		upsertPushSubscription({ sessionId: null, userId: u.id, ...SAMPLE, endpoint: 'b' });
+		upsertPushSubscription({ sessionId: null, userId: u.id, ...SAMPLE, endpoint: 'c' });
 		expect(deletePushSubscriptionsByEndpoints(['a', 'c'])).toBe(2);
 		expect(listPushSubscriptionsForUser(u.id).map((r) => r.endpoint)).toEqual(['b']);
 	});
 
 	it('is a no-op for an empty list', () => {
 		const u = seedUser();
-		upsertPushSubscription({ userId: u.id, ...SAMPLE });
+		upsertPushSubscription({ sessionId: null, userId: u.id, ...SAMPLE });
 		expect(deletePushSubscriptionsByEndpoints([])).toBe(0);
 		expect(listPushSubscriptionsForUser(u.id)).toHaveLength(1);
 	});
@@ -150,7 +171,7 @@ describe('deletePushSubscriptionsByEndpoints (stale cleanup)', () => {
 describe('FK cascade', () => {
 	it('deleting a user cascades to their push_subscriptions rows', () => {
 		const u = seedUser();
-		upsertPushSubscription({ userId: u.id, ...SAMPLE });
+		upsertPushSubscription({ sessionId: null, userId: u.id, ...SAMPLE });
 		expect(listPushSubscriptionsForUser(u.id)).toHaveLength(1);
 		mocks.testDb.delete(users).where(eq(users.id, u.id)).run();
 		expect(listPushSubscriptionsForUser(u.id)).toHaveLength(0);

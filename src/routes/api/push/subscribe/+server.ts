@@ -92,6 +92,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
 	const row = upsertPushSubscription({
 		userId: locals.user.id,
+		sessionId: locals.sessionId,
 		endpoint,
 		p256dh,
 		auth,

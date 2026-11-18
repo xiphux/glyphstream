@@ -235,6 +235,12 @@ export const pushSubscriptions = sqliteTable(
 		userId: text('user_id')
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade' }),
+		// The session that registered this device. Ending the session (sign out,
+		// revoke, expiry) deletes the row, so a signed-out device stops being
+		// pushed. Nullable only because SQLite can't add a NOT NULL reference;
+		// the migration that added it dropped the rows it couldn't link, and
+		// the app re-registers its subscription on every load.
+		sessionId: text('session_id').references(() => sessions.id, { onDelete: 'cascade' }),
 		endpoint: text('endpoint').notNull(),
 		p256dh: text('p256dh').notNull(),
 		auth: text('auth').notNull(),
@@ -253,6 +259,7 @@ export const pushSubscriptions = sqliteTable(
 		// auto-generated one.
 		uniqueIndex('push_subscriptions_endpoint_unique').on(t.endpoint),
 		index('idx_push_subscriptions_user_id').on(t.userId),
+		index('idx_push_subscriptions_session_id').on(t.sessionId),
 	],
 );
 
