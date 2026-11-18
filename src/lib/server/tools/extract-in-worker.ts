@@ -33,48 +33,94 @@ const EXTRACT_BUDGET_MS = 5_000;
  * below it; a page built to balloon the tree dies with the worker rather
  * than taking the server's heap with it.
  */
-const EXTRACT_HEAP_MB = 512;
+const EXTRACT_HEAP_MB = 256;
+
+/**
+ * Workers alive at once. A turn's tool calls run in parallel, so a model fed
+ * a page of links could otherwise start one worker per call, each entitled to
+ * EXTRACT_HEAP_MB — enough together to reach a container's memory limit.
+ * Calls past this wait for a slot inside their own budget.
+ */
+const MAX_EXTRACT_WORKERS = 3;
 
 export const EXTRACT_TIMEOUT_MESSAGE = 'The page took too long to process.';
 
 let budgetMs = EXTRACT_BUDGET_MS;
+let running = 0;
+/** Calls waiting for a slot, oldest first; each starts its worker when called. */
+const waiting: Array<() => void> = [];
 
 /** Test-only: shorten the budget (no argument restores the default). */
 export function setExtractBudgetForTests(ms?: number): void {
 	budgetMs = ms ?? EXTRACT_BUDGET_MS;
 }
 
+/** Test-only: workers currently running. */
+export function runningExtractWorkersForTests(): number {
+	return running;
+}
+
+function releaseSlot(): void {
+	const next = waiting.shift();
+	if (next) next();
+	else running--;
+}
+
 /**
- * Extract `req.html` in a fresh worker. Rejects with EXTRACT_TIMEOUT_MESSAGE
- * when the budget runs out or `signal` aborts first, terminating the worker
- * either way.
+ * Extract `req.html` in a worker. Rejects with EXTRACT_TIMEOUT_MESSAGE when
+ * the budget runs out or `signal` aborts first — whether the call was still
+ * waiting for a worker slot or its worker was running, which is then
+ * terminated.
  */
 export function extractInWorker(req: ExtractRequest, signal: AbortSignal): Promise<ExtractedPage> {
 	if (signal.aborted) return Promise.reject(new Error(EXTRACT_TIMEOUT_MESSAGE));
 	return new Promise((resolve, reject) => {
-		const worker = new Worker(workerUrl, {
-			workerData: req,
-			resourceLimits: { maxOldGenerationSizeMb: EXTRACT_HEAP_MB },
-		});
 		let settled = false;
+		let worker: Worker | undefined;
+		let queued: (() => void) | undefined;
 		const settle = (done: () => void) => {
 			if (settled) return;
 			settled = true;
 			clearTimeout(timer);
 			signal.removeEventListener('abort', tooSlow);
-			void worker.terminate();
+			if (queued) {
+				waiting.splice(waiting.indexOf(queued), 1);
+			} else {
+				void worker?.terminate();
+				releaseSlot();
+			}
 			done();
 		};
 		const tooSlow = () => settle(() => reject(new Error(EXTRACT_TIMEOUT_MESSAGE)));
 		const timer = setTimeout(tooSlow, budgetMs);
 		signal.addEventListener('abort', tooSlow, { once: true });
 
-		worker.once('message', (page: ExtractedPage) => settle(() => resolve(page)));
-		worker.once('error', (e: Error) =>
-			settle(() => reject(new Error(`Could not process the page: ${e.message}`))),
-		);
-		worker.once('exit', (code) =>
-			settle(() => reject(new Error(`Could not process the page (worker exited ${code}).`))),
-		);
+		const start = () => {
+			queued = undefined;
+			try {
+				worker = new Worker(workerUrl, {
+					workerData: req,
+					resourceLimits: { maxOldGenerationSizeMb: EXTRACT_HEAP_MB },
+				});
+			} catch (e) {
+				settle(() => reject(new Error(`Could not process the page: ${(e as Error).message}`)));
+				return;
+			}
+			worker.once('message', (page: ExtractedPage) => settle(() => resolve(page)));
+			worker.once('error', (e: Error) =>
+				settle(() => reject(new Error(`Could not process the page: ${e.message}`))),
+			);
+			worker.once('exit', (code) =>
+				settle(() => reject(new Error(`Could not process the page (worker exited ${code}).`))),
+			);
+		};
+
+		if (running < MAX_EXTRACT_WORKERS) {
+			running++;
+			start();
+		} else {
+			queued = start;
+			waiting.push(start);
+		}
 	});
 }

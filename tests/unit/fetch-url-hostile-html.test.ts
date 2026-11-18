@@ -28,6 +28,8 @@ import {
 } from '#lib/server/tools/fetch-url.js';
 import {
 	EXTRACT_TIMEOUT_MESSAGE,
+	extractInWorker,
+	runningExtractWorkersForTests,
 	setExtractBudgetForTests,
 } from '#lib/server/tools/extract-in-worker.js';
 
@@ -238,4 +240,64 @@ describe('fetch_url extraction cannot block the event loop', () => {
 		expect(p.mode).toBe('full');
 		expect(p.content).toContain('Readable article prose');
 	});
+});
+
+describe('fetch_url extraction workers are capped', () => {
+	const hostile = { html: page('<div>', 64), chunkOver: null };
+
+	it('runs at most three workers at once; the rest wait inside their budget', async () => {
+		setExtractBudgetForTests(600);
+		let peak = 0;
+		const sample = setInterval(() => (peak = Math.max(peak, runningExtractWorkersForTests())), 5);
+		const t0 = performance.now();
+		try {
+			const results = await Promise.allSettled(
+				Array.from({ length: 8 }, () => extractInWorker(hostile, new AbortController().signal)),
+			);
+			for (const r of results) {
+				expect(r.status).toBe('rejected');
+				expect((r as PromiseRejectedResult).reason).toEqual(new Error(EXTRACT_TIMEOUT_MESSAGE));
+			}
+		} finally {
+			clearInterval(sample);
+		}
+		expect(peak).toBe(3);
+		// Waiting counts against the budget: all eight end together, not in waves.
+		expect(performance.now() - t0).toBeLessThan(2500);
+		expect(runningExtractWorkersForTests()).toBe(0);
+	}, 30_000);
+
+	it('a waiting call that aborts gives up its place without taking a slot', async () => {
+		setExtractBudgetForTests(800);
+		const busy = Array.from({ length: 3 }, () =>
+			extractInWorker(hostile, new AbortController().signal).catch(() => {}),
+		);
+		const ac = new AbortController();
+		const waiter = extractInWorker(hostile, ac.signal);
+		ac.abort();
+		await expect(waiter).rejects.toThrow(EXTRACT_TIMEOUT_MESSAGE);
+		expect(runningExtractWorkersForTests()).toBe(3);
+		await Promise.all(busy);
+		expect(runningExtractWorkersForTests()).toBe(0);
+	}, 30_000);
+
+	it('a freed slot goes to the next waiter, which still extracts normally', async () => {
+		setExtractBudgetForTests(2000);
+		const para = '<p>Readable article prose, long enough that Readability keeps it.</p>';
+		const good = {
+			html: `<html><head><title>Doc</title></head><body><article>${para.repeat(8)}</article></body></html>`,
+			chunkOver: null,
+		};
+		const blockers = Array.from({ length: 3 }, () => {
+			const ac = new AbortController();
+			return { ac, p: extractInWorker(hostile, ac.signal).catch(() => {}) };
+		});
+		const queued = extractInWorker(good, new AbortController().signal);
+		blockers[0].ac.abort();
+		const out = await queued;
+		expect(out.text).toContain('Readable article prose');
+		for (const b of blockers) b.ac.abort();
+		await Promise.all(blockers.map((b) => b.p));
+		expect(runningExtractWorkersForTests()).toBe(0);
+	}, 30_000);
 });
