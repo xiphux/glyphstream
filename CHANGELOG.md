@@ -41,6 +41,7 @@ arrived.
 - A conversation left while its reply was still generating now moves up the sidebar and gets its title when the reply finishes, instead of staying "Untitled" in its old place until a reload.
 - Deleting a user with a large media library could stall the server for many seconds; it now takes a fraction of the time.
 - A custom model saves a temperature, top-p or max tokens typed into its form, instead of failing with "trim is not a function". Clearing a saved preset's system prompt, description or sampling parameters is now saved too.
+- Editing a scheduled task whose custom model had been deleted no longer erases the system prompt and sampling parameters it was copied from that preset.
 
 ## v0.54.0
 

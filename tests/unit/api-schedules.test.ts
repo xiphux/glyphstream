@@ -44,8 +44,8 @@ import * as list from '../../src/routes/api/user/schedules/+server';
 import * as one from '../../src/routes/api/user/schedules/[id]/+server';
 import * as runNow from '../../src/routes/api/user/schedules/[id]/run/+server';
 import * as runs from '../../src/routes/api/user/schedules/[id]/runs/+server';
-import { createCustomModel } from '#lib/server/db/queries/custom-models.js';
-import { insertScheduledRun } from '#lib/server/db/queries/scheduled-tasks.js';
+import { createCustomModel, deleteCustomModel } from '#lib/server/db/queries/custom-models.js';
+import { getScheduledTask, insertScheduledRun } from '#lib/server/db/queries/scheduled-tasks.js';
 import { processBootedAt } from '#lib/server/scheduled/boot.js';
 import type { ScheduledTask, ScheduledTasksResponse } from '#lib/types/api.js';
 
@@ -189,6 +189,61 @@ describe('one schedule', () => {
 		const s = await create();
 		const res = await one.PUT(event(user, { ...valid, enabled: false }, { id: s.id }));
 		expect(((await res.json()) as { schedule: ScheduledTask }).schedule.nextRunAt).toBeNull();
+	});
+
+	describe('after the custom model it was made from is deleted', () => {
+		async function orphaned(): Promise<ScheduledTask> {
+			const cm = createCustomModel({
+				userId: user.id,
+				name: 'Terse',
+				description: null,
+				baseEndpointId: 'mock',
+				baseModelId: 'chat',
+				systemPrompt: 'Be terse.',
+				parameters: { temperature: 0.1 },
+			});
+			const s = await create({ ...valid, modelId: undefined, customModelId: cm.id });
+			expect(deleteCustomModel(cm.id, user.id)).toBe(true);
+			expect(getScheduledTask(s.id, user.id)).toMatchObject({ customModelId: null });
+			return s;
+		}
+		const put = (id: string, body: unknown) => one.PUT(event(user, body, { id }));
+
+		it('keeps the copied system prompt and parameters through an unrelated edit', async () => {
+			const s = await orphaned();
+			// What the editor sends for a seed with no customModelId.
+			const res = await put(s.id, {
+				...valid,
+				modelId: 'mock::chat',
+				cadence: { kind: 'daily', time: '08:00', days: [1, 2, 3, 4, 5] },
+			});
+			expect(res.status).toBe(200);
+			expect(getScheduledTask(s.id, user.id)).toMatchObject({
+				systemPrompt: 'Be terse.',
+				parameters: { temperature: 0.1 },
+			});
+		});
+
+		it('drops them once the model changes, or the body sets its own prompt', async () => {
+			mocks.models = [
+				{ endpointId: 'mock', upstreamId: 'chat', kind: 'chat' },
+				{ endpointId: 'mock', upstreamId: 'other', kind: 'chat' },
+			];
+			const a = await orphaned();
+			await put(a.id, { ...valid, modelId: 'mock::other' });
+			expect(getScheduledTask(a.id, user.id)).toMatchObject({
+				systemPrompt: null,
+				parameters: null,
+			});
+
+			const b = await orphaned();
+			await put(b.id, { ...valid, modelId: 'mock::chat', systemPrompt: 'Be chatty.' });
+			expect(getScheduledTask(b.id, user.id)).toMatchObject({
+				systemPrompt: 'Be chatty.',
+				parameters: null,
+			});
+			mocks.models = [{ endpointId: 'mock', upstreamId: 'chat', kind: 'chat' }];
+		});
 	});
 
 	it('toggles on and off without touching the rest', async () => {
