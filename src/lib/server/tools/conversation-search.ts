@@ -84,37 +84,31 @@ export const searchConversationsTool: Tool = {
 		const { query, timeRange, maxResults } = parsed;
 
 		const since = timeRange ? timeRangeToCutoff(timeRange, Date.now()) : undefined;
-		// Over-fetch by one so excluding the current conversation can't shrink a full
-		// page below the cap when the current chat happens to match.
 		// `excludePrivate` is the content seal: a private chat's raw messages must
 		// never surface to the model here, even from a personalization-on chat.
 		const hits = searchConversations(ctx.userId, query, {
 			since,
-			limit: maxResults + 1,
+			limit: maxResults,
 			excludePrivate: true,
+			excludeConversationId: ctx.conversationId,
 		});
 
 		const tokens = query
 			.trim()
 			.split(/\s+/)
 			.filter((t) => t.length > 0);
-		const results = hits
-			.filter((h) => h.conversationId !== ctx.conversationId)
-			.slice(0, maxResults)
-			.map((h) => ({
-				conversationId: h.conversationId,
-				title: h.conversationTitle,
-				updatedAt: h.updatedAt,
-				// The background-generated gist of the whole conversation (may be null
-				// until the summary pass has run), so the model sees what it was about
-				// alongside the specific matched excerpt.
-				summary: h.summary,
-				// Title/summary-only hits carry no message body — the title/summary IS
-				// the content.
-				text: h.messageId
-					? excerptAround(messageText(h.conversationId, h.messageId), tokens)
-					: null,
-			}));
+		const results = hits.map((h) => ({
+			conversationId: h.conversationId,
+			title: h.conversationTitle,
+			updatedAt: h.updatedAt,
+			// The background-generated gist of the whole conversation (may be null
+			// until the summary pass has run), so the model sees what it was about
+			// alongside the specific matched excerpt.
+			summary: h.summary,
+			// Title/summary-only hits carry no message body — the title/summary IS
+			// the content.
+			text: h.messageId ? excerptAround(messageText(h.conversationId, h.messageId), tokens) : null,
+		}));
 
 		return { content: JSON.stringify({ query, results }) };
 	},

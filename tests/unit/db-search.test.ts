@@ -9,6 +9,8 @@ import {
 	renameConversation,
 } from '#lib/server/db/queries/conversations.js';
 import { appendMessage } from '#lib/server/db/queries/messages.js';
+import { searchConversationsTool } from '#lib/server/tools/conversation-search.js';
+import type { ToolExecution } from '#lib/server/tools/types.js';
 
 beforeEach(() => {
 	createTestDb();
@@ -228,5 +230,86 @@ describe('searchConversations', () => {
 		// An image-only message indexes the empty string — searching for
 		// anything content-bearing should yield no results from it.
 		expect(searchConversations(u.id, 'image')).toEqual([]);
+	});
+});
+
+/**
+ * One long thread that mentions a name in about half its messages, beside
+ * eight ordinary chats that mention it once. The limit is on conversations,
+ * so the long thread's many hits must not crowd the others out.
+ */
+describe('a long thread that holds most of the hits', () => {
+	const WORDS =
+		'the of and to a in is it you that he was for on are with as his they be at one have this from or had by hot but some what there we can out other were all your when up use word how said an each she which do their time'.split(
+			' ',
+		);
+	let seed = 12345;
+	function rnd(): number {
+		seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+		return seed / 0x7fffffff;
+	}
+	function prose(words: number, mention: boolean): string {
+		const out: string[] = [];
+		for (let i = 0; i < words; i++) out.push(WORDS[Math.floor(rnd() * WORDS.length)]);
+		if (mention) out.splice(Math.floor(rnd() * out.length), 0, 'Marisol');
+		return out.join(' ');
+	}
+	function thread(convId: string, length: number, words: (i: number) => [number, boolean]) {
+		let parent: string | null = null;
+		for (let i = 0; i < length; i++) {
+			const [n, mention] = words(i);
+			parent = appendMessage({
+				conversationId: convId,
+				parentMessageId: parent,
+				role: i % 2 ? 'assistant' : 'user',
+				parts: [{ type: 'text', text: prose(n, mention) }],
+			}).id;
+		}
+	}
+	function build() {
+		seed = 12345;
+		const u = seedUser();
+		const big = newConv(u.id);
+		thread(big.id, 400, (i) => [
+			i % 2 ? 40 + Math.floor(rnd() * 360) : 5 + Math.floor(rnd() * 35),
+			rnd() < 0.5,
+		]);
+		const others: string[] = [];
+		for (let c = 0; c < 8; c++) {
+			const conv = newConv(u.id);
+			thread(conv.id, 10, (j) => [j % 2 ? 150 + c * 30 : 20, j === 5]);
+			others.push(conv.id);
+		}
+		return { u, big, others };
+	}
+
+	it('returns every matching conversation at the sidebar limit', () => {
+		const { u, big, others } = build();
+		const ids = searchConversations(u.id, 'marisol').map((h) => h.conversationId);
+		expect(new Set(ids)).toEqual(new Set([big.id, ...others]));
+	});
+
+	it('returns every other matching conversation to the tool called from inside it', () => {
+		const { u, big, others } = build();
+		const r = searchConversationsTool.execute(
+			{ query: 'marisol' },
+			{
+				userId: u.id,
+				conversationId: big.id,
+				signal: new AbortController().signal,
+				disabledFeatures: [],
+			},
+		) as ToolExecution;
+		const ids = (
+			JSON.parse(r.content) as { results: Array<{ conversationId: string }> }
+		).results.map((h) => h.conversationId);
+		expect(new Set(ids)).toEqual(new Set(others));
+	});
+
+	it('keeps each conversation on its best-ranked snippet', () => {
+		const { u, others } = build();
+		const hit = searchConversations(u.id, 'marisol').find((h) => h.conversationId === others[0]);
+		expect(hit?.snippet).toContain('<mark>Marisol</mark>');
+		expect(hit?.kind).toBe('message');
 	});
 });

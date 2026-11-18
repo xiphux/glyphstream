@@ -3,7 +3,7 @@
  * FTS5 virtual table (see migration 0010) maintained by triggers on
  * `messages.content_json` and `conversations.title`.
  *
- * Results are deduplicated to one row per conversation (a chat with many
+ * Results are one row per conversation (a chat with many
  * matching messages surfaces once with its best-ranked snippet), ranked
  * by FTS5 `bm25`, and capped at the per-call `limit` — 30 by default.
  * No pagination for v1: refine the query if the top 30 isn't enough.
@@ -27,6 +27,9 @@ interface SearchOptions {
 	 *  Left false (default) by the sidebar — the user still finds private chats in
 	 *  their own history search. */
 	excludePrivate?: boolean;
+	/** Leave this conversation out before the limit is applied: the tool's
+	 *  own conversation, which the model already has. */
+	excludeConversationId?: string;
 }
 
 const DEFAULT_LIMIT = 30;
@@ -97,25 +100,42 @@ export function searchConversations(
 	if (!match) return [];
 
 	const limit = Math.min(Math.max(1, opts.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
-	// Both filter the JOINed conversation row, not the FTS MATCH, and are appended
+	// Each filters the JOINed conversation row, not the FTS MATCH, and is appended
 	// only when set, so the sidebar's unfiltered search is byte-for-byte unchanged.
 	const sinceClause = opts.since != null ? sql`AND c.updated_at >= ${opts.since}` : sql``;
 	const privateClause = opts.excludePrivate ? sql`AND c.private = 0` : sql``;
+	const excludeClause =
+		opts.excludeConversationId != null
+			? sql`AND s.conversation_id != ${opts.excludeConversationId}`
+			: sql``;
 
-	// One pass through the FTS table; snippet() and bm25() must be
-	// invoked in the same SELECT as the MATCH (FTS5's auxiliary functions
-	// don't survive being wrapped in a window function or CTE that
-	// disrupts the aux context — `unable to use function snippet in the
-	// requested context`). So we over-fetch — limit*3 rows ranked by
-	// bm25 — and dedupe to one row per conversation on the application
-	// side. At the v1 cap (30 × 3 = 90) and solo-user scale this is
-	// cheaper than a second query.
+	// Two steps, because the limit is on conversations, not rows: ranking rows
+	// and then collapsing them let one long thread that mentions the term in
+	// every message fill the whole budget and hide every other match.
 	//
-	// Drizzle doesn't model FTS5 virtual tables, so the whole statement
-	// is one raw SQL call. Parameters are bound — userId, match, and
-	// limit can't be SQL-injected.
+	// Step 1 picks each conversation's best row: with MIN() as the only
+	// aggregate, SQLite takes the bare `s.rowid` from the row that achieved it.
+	// `rank` rather than `bm25(search_index)`, which can't be aggregated. Step 2
+	// asks for snippet() on just those rows — the auxiliary functions only work
+	// in the SELECT that runs the MATCH, so they can't be grouped either.
+	//
+	// Drizzle doesn't model FTS5 virtual tables, so both are raw SQL. Every value
+	// is bound.
 	const db = getDb();
+	const best = db.all<{ rid: number; conversation_id: string; updated_at: number }>(sql`
+		SELECT s.rowid AS rid, s.conversation_id, MIN(s.rank) AS best, c.updated_at
+		FROM search_index s
+		JOIN conversations c ON c.id = s.conversation_id
+		WHERE s.user_id = ${userId} AND search_index MATCH ${match}
+			${sinceClause} ${privateClause} ${excludeClause}
+		GROUP BY s.conversation_id
+		ORDER BY best ASC, c.updated_at DESC
+		LIMIT ${limit}
+	`);
+	if (best.length === 0) return [];
+
 	const rows = db.all<{
+		rid: number;
 		conversation_id: string;
 		conversation_title: string | null;
 		conversation_summary: string | null;
@@ -125,6 +145,7 @@ export function searchConversations(
 		snippet: string;
 	}>(sql`
 		SELECT
+			s.rowid AS rid,
 			s.conversation_id,
 			s.message_id,
 			s.kind,
@@ -134,16 +155,17 @@ export function searchConversations(
 			c.updated_at
 		FROM search_index s
 		JOIN conversations c ON c.id = s.conversation_id
-		WHERE s.user_id = ${userId} AND search_index MATCH ${match} ${sinceClause} ${privateClause}
-		ORDER BY bm25(search_index) ASC, c.updated_at DESC
-		LIMIT ${limit * 3}
+		WHERE search_index MATCH ${match} AND s.rowid IN (${sql.join(
+			best.map((b) => sql`${b.rid}`),
+			sql`, `,
+		)})
 	`);
+	const byRowid = new Map(rows.map((r) => [r.rid, r]));
 
-	const seen = new Set<string>();
 	const out: SearchResult[] = [];
-	for (const r of rows) {
-		if (seen.has(r.conversation_id)) continue;
-		seen.add(r.conversation_id);
+	for (const { rid } of best) {
+		const r = byRowid.get(rid);
+		if (!r) continue;
 		out.push({
 			conversationId: r.conversation_id,
 			conversationTitle: r.conversation_title,
@@ -153,7 +175,6 @@ export function searchConversations(
 			snippet: safeSnippet(r.snippet),
 			summary: r.conversation_summary,
 		});
-		if (out.length >= limit) break;
 	}
 	return out;
 }

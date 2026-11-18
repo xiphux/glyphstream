@@ -31,6 +31,7 @@ arrived.
 - Escape now closes only the topmost layer: cancelling "Delete this media?" no longer also closes the gallery lightbox, and closing the model picker in the avatar draw dialog no longer discards the dialog.
 - Deleting media from gallery search results now removes its tile and updates the result count.
 - The gallery's timeline rail can jump back to a month you've already scrolled past, and its highlight now follows the month you're looking at.
+- Conversation search could list only one chat when a long thread mentioned the term many times; every matching conversation now shows. The model's conversation search, used from inside that long thread, no longer comes back empty.
 
 ## v0.54.0
 
