@@ -134,9 +134,10 @@ export function searchConversations(
 		sql`SELECT ord FROM search_index_owner WHERE user_id = ${userId}`,
 	);
 	if (!owner) return [];
-	// BigInt, because node:sqlite binds every JS number as REAL, and FTS5 only
-	// applies an INTEGER rowid bound: a REAL one is left to SQLite to filter
-	// after FTS5 has produced every user's rows.
+	// BigInt here and in the second step's `rowid IN (…)`, because node:sqlite
+	// binds every JS number as REAL, and FTS5 only applies an INTEGER rowid
+	// bound: a REAL one is left to SQLite to filter after FTS5 has produced
+	// every user's rows.
 	const lo = BigInt(owner.ord) * USER_RANGE;
 	const hi = lo + USER_RANGE - 1n;
 	const best = db.all<{ rid: number; conversation_id: string; updated_at: number }>(sql`
@@ -175,7 +176,7 @@ export function searchConversations(
 		FROM search_index s
 		JOIN conversations c ON c.id = s.conversation_id
 		WHERE search_index MATCH ${match} AND s.rowid IN (${sql.join(
-			best.map((b) => sql`${b.rid}`),
+			best.map((b) => sql`${BigInt(b.rid)}`),
 			sql`, `,
 		)})
 	`);
