@@ -46,6 +46,14 @@ vi.mock('$app/state', async () => {
 	return { page: holder.current.page, navigating: holder.current.navigating };
 });
 vi.mock('#lib/sw/badge.js', () => ({ syncAppBadgeFromWindow: vi.fn(async () => {}) }));
+const sw = vi.hoisted(() => ({ registered: 0, update: vi.fn(async () => {}) }));
+vi.mock('#lib/sw/register.js', () => ({
+	registerServiceWorker: (opts: { onRegistered: (r: unknown) => void }) => {
+		sw.registered++;
+		opts.onRegistered({ update: sw.update });
+		return () => {};
+	},
+}));
 
 import RootLayout from '../../src/routes/+layout.svelte';
 import { syncAppBadgeFromWindow } from '#lib/sw/badge.js';
@@ -99,5 +107,51 @@ describe('app-resume badge backstop', () => {
 		synced.mockClear();
 		document.dispatchEvent(new Event('visibilitychange'));
 		expect(synced).toHaveBeenCalledTimes(1);
+	});
+});
+
+/**
+ * The service-worker update check rides the same two resume events. Its
+ * listeners outlive an unmount (the root layout never unmounts in the app), so
+ * an earlier test's mount answers too: these assert a call, not a count.
+ */
+describe('app-resume update check', () => {
+	const update = sw.update;
+
+	beforeEach(() => {
+		stub().reset();
+		update.mockClear();
+		sw.registered = 0;
+		vi.stubEnv('PROD', true);
+		Object.defineProperty(navigator, 'serviceWorker', {
+			configurable: true,
+			value: {
+				addEventListener: () => {},
+				removeEventListener: () => {},
+				getRegistration: async () => undefined,
+			},
+		});
+		return () => {
+			vi.unstubAllEnvs();
+			Reflect.deleteProperty(navigator, 'serviceWorker');
+		};
+	});
+
+	/** Mount, and wait out onMount's dynamic import of the registration module. */
+	async function mountRegistered() {
+		mountLayout();
+		await vi.waitFor(() => expect(sw.registered).toBe(1));
+	}
+
+	it('checks on a bfcache restore, which fires no visibilitychange', async () => {
+		await mountRegistered();
+		window.dispatchEvent(pageShow(true));
+		expect(update).toHaveBeenCalled();
+	});
+
+	it('checks on the ordinary visibilitychange resume', async () => {
+		await mountRegistered();
+		document.dispatchEvent(new Event('visibilitychange'));
+		expect(update).toHaveBeenCalled();
 	});
 });

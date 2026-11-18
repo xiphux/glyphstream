@@ -107,8 +107,12 @@
 	 * far more than the duplicate it saves.
 	 */
 	function onAppResumePageShow(e: PageTransitionEvent) {
-		if (e.persisted) onAppResume();
+		if (!e.persisted) return;
+		onAppResume();
+		checkForUpdate?.();
 	}
+	/** Asks the service worker registration for a new version; set once it registers. */
+	let checkForUpdate: (() => void) | null = null;
 	function onPresencePageHide() {
 		if (reportedConv) postPresence(reportedConv, false);
 	}
@@ -232,23 +236,25 @@
 					// We add our own.
 					if (!registration) return;
 
-					const checkForUpdate = () => {
-						// The load-bearing trigger on iOS: visibilitychange
-						// fires the instant the user swipes back into the PWA,
-						// which is exactly when a waiting version should be
-						// detected. update() rejects when offline — swallow it
-						// and we'll retry on the next visibility or interval tick.
+					const check = () => {
+						// Checked on both halves of an app resume — the moment a
+						// waiting version should be detected. A short background
+						// fires visibilitychange; a long iOS suspend restores from
+						// the bfcache with a persisted pageshow only, which
+						// onAppResumePageShow forwards here. update() rejects when
+						// offline — swallow it and retry on the next resume or tick.
 						if (document.visibilityState === 'visible') {
 							registration.update().catch(() => {});
 						}
 					};
-					document.addEventListener('visibilitychange', checkForUpdate);
+					checkForUpdate = check;
+					document.addEventListener('visibilitychange', check);
 
 					// Belt-and-suspenders for long-lived foreground sessions
-					// (a desktop tab left open all day) where visibilitychange
-					// never fires. Suspended on iOS, so it can't be the only
-					// mechanism — the visibilitychange listener above carries that case.
-					setInterval(checkForUpdate, 60 * 60 * 1000);
+					// (a desktop tab left open all day) where no resume event
+					// fires. Suspended on iOS, so it can't be the only
+					// mechanism — the resume events above carry that case.
+					setInterval(check, 60 * 60 * 1000);
 				},
 			});
 			// activate() hands control to the waiting SW, and the page reloads
