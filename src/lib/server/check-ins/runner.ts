@@ -54,6 +54,7 @@ import {
 	findUserMessageAncestor,
 	getActiveLeafMessageId,
 	getMessage,
+	listSubtreeIds,
 	restoreActiveLeafIfUnchanged,
 	walkActiveBranch,
 } from '../db/queries/messages';
@@ -322,7 +323,7 @@ function settleCheckIn(
 		) {
 			bare++;
 		}
-		if (bare > 0) {
+		if (bare > 0 && holdsOnly(conversationId, rows[bare - 1].id, rows)) {
 			restoreActiveLeafIfUnchanged(conversationId, leaf, rows[bare].id);
 			deleteBranch(conversationId, rows[bare - 1].id, userId, { recordRejection: false });
 		}
@@ -331,6 +332,7 @@ function settleCheckIn(
 		if (outcome.kind === 'done') notifyTurn(row, rows);
 		return;
 	}
+	if (!holdsOnly(conversationId, reminderId, rows)) return;
 	restoreActiveLeafIfUnchanged(conversationId, leaf, previousLeafId);
 	deleteBranch(conversationId, reminderId, userId, { recordRejection: false });
 	if (previousUpdatedAt !== null) {
@@ -408,6 +410,17 @@ function turnRows(conversationId: string, leaf: string, reminderId: string): Cha
 		cursor = cursor.parentMessageId ? getMessage(conversationId, cursor.parentMessageId) : null;
 	}
 	return rows;
+}
+
+/**
+ * Whether the subtree at `rootId` holds nothing but `rootId` and the turn's
+ * `rows`. Settling deletes that subtree, and anything else in it — a message
+ * the user sent under the reminder, or the turn that answered it — was never
+ * this check-in's to take back.
+ */
+function holdsOnly(conversationId: string, rootId: string, rows: ChatMessage[]): boolean {
+	const own = new Set(rows.map((m) => m.id));
+	return listSubtreeIds(conversationId, rootId).every((id) => id === rootId || own.has(id));
 }
 
 /** Whether a row says nothing: a `[no text]` pass or no text at all (a tool

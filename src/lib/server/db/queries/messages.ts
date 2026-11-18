@@ -650,6 +650,21 @@ export function buildChildrenByParent<T extends { id: string; parentId: string |
 	return byParent;
 }
 
+/** Ids of `rootId` and every message below it, in any order. */
+export function listSubtreeIds(conversationId: string, rootId: string): string[] {
+	const all = getDb()
+		.select({ id: messages.id, parentId: messages.parentMessageId })
+		.from(messages)
+		.where(eq(messages.conversationId, conversationId))
+		.all();
+	const childrenByParent = buildChildrenByParent(all);
+	const ids = [rootId];
+	for (let i = 0; i < ids.length; i++) {
+		for (const child of childrenByParent.get(ids[i]) ?? []) ids.push(child.id);
+	}
+	return ids;
+}
+
 /**
  * Walk down from `startId` to the deepest descendant, choosing the most
  * recently created child at each step (ties broken lexically by id,

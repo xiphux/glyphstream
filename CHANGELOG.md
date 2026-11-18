@@ -15,6 +15,10 @@ arrived.
 - Python run by the code interpreter can no longer signal or renice other processes, or lift its own memory ceiling. The Docker image also starts the server with `--disable-sigusr1`, so a stray SIGUSR1 can't open its inspector.
 - `[code_interpreter] enabled = false` now turns the interpreter off completely. Before, it only stopped offering the tool, and a model that called `run_python` anyway still ran Python.
 
+### Fixed
+
+- A message sent while a check-in's reply was still thinking could be deleted, taking the reachable history of the thread with it. A second message stopped before its reply started no longer drops off the thread either.
+
 ## v0.54.0
 
 ### Added

@@ -1031,6 +1031,10 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 		tokensOut,
 		genMs,
 		advanceActiveLeaf: params.advanceActiveLeaf ?? true,
+		// A stopped turn may have been superseded by a send that already moved
+		// the leaf onto its own message; advancing past it would hide that
+		// message. A Stop with nothing newer still finds its parent the leaf.
+		...(stopped ? { advanceActiveLeafIfCurrent: parentMessageId } : {}),
 		fanoutIndex: params.fanoutIndex,
 	});
 	// Per row, tool-loop steps included: each is its own decode, and only a row
