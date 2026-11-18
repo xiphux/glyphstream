@@ -84,9 +84,14 @@ export async function collectConversationFiles(
 			createdAt: media.createdAt,
 		})
 		.from(messageMedia)
-		.innerJoin(media, eq(media.id, messageMedia.mediaId))
+		// CROSS JOIN pins the order: message_media by message id first, then media
+		// by primary key. Left to the planner, it can drive from media instead
+		// (all of the user's rows, times the id list) whenever sqlite_stat1 is
+		// missing or stale, which costs seconds on a long conversation.
+		.crossJoin(media)
 		.where(
 			and(
+				eq(media.id, messageMedia.mediaId),
 				inArray(messageMedia.messageId, messageIds),
 				eq(media.userId, userId),
 				// No `deletedAt` filter, deliberately: a deleted (trashed)

@@ -33,6 +33,7 @@ arrived.
 - Deleting media from gallery search results now removes its tile and updates the result count.
 - The gallery's timeline rail can jump back to a month you've already scrolled past, and its highlight now follows the month you're looking at.
 - Conversation search could list only one chat when a long thread mentioned the term many times; every matching conversation now shows. The model's conversation search, used from inside that long thread, no longer comes back empty.
+- In a long conversation, each Python run and each delete that also removes media could stall the whole server for up to seconds on a large media library. Both now cost a few milliseconds.
 
 ## v0.54.0
 

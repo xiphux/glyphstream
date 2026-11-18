@@ -84,10 +84,18 @@ export function countOrphanMediaInConversation(
 			origin: media.origin,
 			deletedAt: media.deletedAt,
 		})
-		.from(messageMedia)
-		.innerJoin(messages, eq(messages.id, messageMedia.messageId))
-		.innerJoin(media, eq(media.id, messageMedia.mediaId))
-		.where(and(eq(messages.conversationId, conversationId), eq(media.userId, userId)))
+		.from(messages)
+		// Pinned order, as in trashOrphanGeneratedMediaForMessages.
+		.crossJoin(messageMedia)
+		.crossJoin(media)
+		.where(
+			and(
+				eq(messages.conversationId, conversationId),
+				eq(messageMedia.messageId, messages.id),
+				eq(media.id, messageMedia.mediaId),
+				eq(media.userId, userId),
+			),
+		)
 		.all();
 
 	// A conversation's own avatar holds a reference that deleting the
@@ -175,8 +183,18 @@ export function trashOrphanGeneratedMediaForMessages(
 			deletedAt: media.deletedAt,
 		})
 		.from(messageMedia)
-		.innerJoin(media, eq(media.id, messageMedia.mediaId))
-		.where(and(inArray(messageMedia.messageId, messageIds), eq(media.userId, userId)))
+		// CROSS JOIN pins the order: message_media by message id first, then media
+		// by primary key. Left to the planner, it can drive from media instead
+		// (all of the user's rows, times the id list) whenever sqlite_stat1 is
+		// missing or stale, which costs seconds on a long conversation.
+		.crossJoin(media)
+		.where(
+			and(
+				eq(media.id, messageMedia.mediaId),
+				inArray(messageMedia.messageId, messageIds),
+				eq(media.userId, userId),
+			),
+		)
 		.all();
 
 	const orphans = [...collectOrphanGeneratedMediaIds(rows)];
