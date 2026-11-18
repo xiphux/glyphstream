@@ -17,7 +17,13 @@ describe('signed-cookies', () => {
 
 	it('rejects a payload whose signature was tampered with', () => {
 		const signed = sign({ a: 1 }, 60_000);
-		const tampered = signed.slice(0, -2) + 'XX';
+		// Flip a character in the middle of the tag: the last one carries
+		// padding bits a decoder ignores, so overwriting the tail can leave the
+		// decoded signature unchanged.
+		const [body, tag] = signed.split('.');
+		const mid = Math.floor(tag.length / 2);
+		const flipped = tag[mid] === 'A' ? 'B' : 'A';
+		const tampered = `${body}.${tag.slice(0, mid)}${flipped}${tag.slice(mid + 1)}`;
 		expect(verify(tampered)).toBeNull();
 	});
 
