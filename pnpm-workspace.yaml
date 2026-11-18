@@ -45,14 +45,17 @@ allowBuilds:
 # auth and registry settings and ignores everything else, so it had to move
 # here or it would have quietly stopped applying.
 #
-# The project's own Node floor (>=26) is NOT in package.json's `engines`, on
-# purpose. It lives in `devEngines.runtime` with `onFail: warn`: Dependabot
-# reads `engines.node`, compares it with the Node its updater runs (24.x as of
-# 2026-09), and refuses every npm update when they disagree. It does not read
-# `devEngines`, and a warning lets its pnpm run proceed. Nothing in the app
-# needs 26 (the suite, build and server all pass on 24); 26 is the floor
-# because it is what Docker ships and CI tests. Once Dependabot runs Node 26,
-# this can move back to `engines` for a hard local error.
+# The project's own Node floor (>=26) is NOT in package.json's `engines`. It
+# lives in `devEngines.runtime` with `onFail: warn`, where it went while
+# Dependabot ran the updates: Dependabot compared `engines.node` with the Node
+# its updater ran (24.x) and refused every npm update when they disagreed.
+# Renovate has replaced it, and Renovate treats `engines.node` as a constraint
+# on the Node it installs for the lockfile update rather than as a reason to
+# stop, so that reason is gone. Moving the floor back to `engines` for a hard
+# local error is untried; do it on a branch and confirm a Renovate PR still
+# updates the lockfile. Nothing in the app needs 26 (the suite, build and
+# server all pass on 24); 26 is the floor because it is what Docker ships and
+# CI tests.
 engineStrict: true
 
 # Supply-chain cooldown for everything pnpm resolves, transitive dependencies
@@ -64,8 +67,9 @@ engineStrict: true
 #
 # Keep it at or below the shortest age Renovate asks for (3 days, for
 # patches, set in the shared preset .github/renovate.json5 extends), or
-# Renovate's own PRs fail to install. A security fix
-# younger than this can't be installed either, though Renovate raises those
-# immediately: for an urgent one, add the package to minimumReleaseAgeExclude
-# with a note, and take it back out once that version is three days old.
+# Renovate's own PRs fail to install. A security fix younger than this can't
+# be installed either, though Renovate raises those immediately: its PR fails
+# install until the version is three days old, and then passes on a re-run.
+# Let it wait rather than adding a minimumReleaseAgeExclude (CLAUDE.md says
+# why).
 minimumReleaseAge: 4320

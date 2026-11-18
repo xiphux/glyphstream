@@ -8,8 +8,8 @@
  *  - the concurrency gate — what each resource group is actually doing right now.
  *
  * The gate is the authority on occupancy rather than the conversation in-flight
- * registry, because only three of the nine slot-acquiring paths register there
- * (the chat relay, the media relay, and the sync send path).
+ * registry, because only the chat and media relays register there; every other
+ * slot-acquiring path is invisible to it.
  * Reading the registry instead would render a title generation or a dreaming
  * sweep on a `max_concurrent = 1` box as an occupied endpoint with nothing named
  * against it — the exact confusion this page exists to remove.
@@ -87,7 +87,7 @@ function toSlotInfo(s: SlotSnapshot): EndpointSlotInfo {
  * hold the bare upstream id. Passed through unchanged, one endpoint's card
  * showed the same model two ways in the same list — `dirac::gemma-4-26b` on a
  * chat slot and `gemma-4-26b` on a compaction slot directly below it. Normalizing at the call
- * sites instead would mean nine places agreeing forever; doing it here is one.
+ * sites instead would mean every one of them agreeing forever; doing it here is one.
  *
  * The prefix is dropped rather than added because `endpointId` is already its
  * own field and these lists are rendered per endpoint, so it is redundant — and

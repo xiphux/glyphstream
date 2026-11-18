@@ -252,7 +252,7 @@ export async function makeFaststart(path: string): Promise<number | null> {
 	try {
 		// Bounded by a deadline the child cannot outlive (see ffmpeg.ts), which
 		// matters more here than for a thumbnail: this runs inside
-		// `persistGeneratedVideo`, inside the endpoint slot `startMediaRelay`
+		// `persistGeneratedVideo`, inside the endpoint slot `runMediaRelay`
 		// holds, so a child that never settles would hold a generation slot for
 		// the life of the process — on a `max_concurrent = 1` endpoint, the whole
 		// endpoint. It bounds the child only: the fs calls around it (`isFaststart`,

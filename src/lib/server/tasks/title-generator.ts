@@ -165,8 +165,8 @@ async function callTaskModel(
 	// this is the immediate fast path (zero overhead). Safe from the title race
 	// because EVERY caller that races the title on the same endpoint releases its
 	// own generation slot before awaiting the race — the chat relay
-	// (startStreamingRelay), the media relay (startMediaRelay), and the sync send
-	// path — so this acquire can't deadlock behind a slot the racer still holds.
+	// (startStreamingRelay) and the media relay (runMediaRelay) — so this acquire
+	// can't deadlock behind a slot the racer still holds.
 	//
 	// Bound the wait so a saturated gate can't leave a title waiter queued
 	// indefinitely, jumping ahead of later real user turns (FIFO). The title is

@@ -6,7 +6,7 @@
  * variant.
  *
  * The full relay lifecycle (slot/queued, start, title, persist as a sibling,
- * notify, done) lives in the shared `startMediaRelay`
+ * notify, done) lives in the shared `runMediaRelay`
  * scaffold — see media-relay.ts for why streaming a one-shot generate matters
  * (the per-endpoint concurrency slot makes queued-vs-generating observable).
  * This module supplies only the image-specific `generate` step: i2i when input

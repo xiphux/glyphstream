@@ -439,7 +439,8 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		if (isRetry) setActiveLeafMessageId(params.id, userMessage.id);
 
 		// The prompt, tools and request are assembled by startChatTurn, shared with
-		// the approval resume and the scheduled-task runner so the three can't drift.
+		// the approval resume and the scheduled-task and check-in runners so the
+		// four can't drift.
 		const stream = await startChatTurn({
 			conversationId: params.id,
 			userId: locals.user.id,

@@ -20,8 +20,8 @@
 		/** Right-aligned header content (buttons, counts). */
 		actions?: Snippet;
 		/**
-		 * Overrides the scroll region's classes. The default fits eight of the
-		 * nine pages; admin opts into its own vertical rhythm.
+		 * Overrides the scroll region's classes. The default fits every page
+		 * but users, which opts into its own vertical rhythm.
 		 */
 		contentClass?: string;
 		children: Snippet;

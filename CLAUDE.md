@@ -87,8 +87,9 @@ tests/e2e/            # playwright (production-build webServer)
 - Media is ref-counted via the `message_media` join table. Generated media
   is kept indefinitely; the background purger only reaps abandoned uploads,
   on a hardcoded cadence (see `src/lib/server/media/purger.ts`).
-- Background sweepers (purger, embedding + topic backfill, dreaming,
-  conversation summaries, expired sessions) mount through `createSweeper`
+- Background sweepers (purger, embedding / topic / dimensions backfill,
+  dreaming, conversation summaries, scheduled tasks, check-ins, expired
+  sessions) mount through `createSweeper`
   (`server/util/sweeper.ts`) — don't hand-roll another recursive
   `setTimeout`. Five copies had drifted and two lacked the generation
   token, so a `stop()` landing during an in-flight sweep re-armed the
@@ -97,8 +98,9 @@ tests/e2e/            # playwright (production-build webServer)
   `running` re-entrancy guard — those are exported and called directly by
   tests, so the guard is part of their contract, not the lifecycle's.
 - **The gate — not the conversation in-flight registry — is the source of
-  truth for endpoint occupancy** on `/settings/endpoints`: only 3 of the 10
-  `acquireEndpointSlot` paths register in that registry, so the rest would show
+  truth for endpoint occupancy** on `/settings/endpoints`: only the chat and
+  media relays register in that registry, so every other `acquireEndpointSlot`
+  path (titles, dreaming, summaries, compaction, enhancement…) would show
   as an occupied endpoint with nothing accounted against it. `work` (purpose +
   model id) is therefore REQUIRED on `AcquireOptions`; the queue-semantics tests
   name it once via a local `acquire` helper rather than at every call site.
@@ -222,7 +224,7 @@ tests/e2e/            # playwright (production-build webServer)
   safety they already have. Same for optional callback props
   (`onPick?: (c: FanoutColumn) => void`): ESLint's Svelte parser doesn't
   resolve those, so annotate the parameter at the call site.
-- **Throw-less `error()` / `redirect()`.** SvelteKit 2 types both as
+- **Throw-less `error()` / `redirect()`.** SvelteKit types both as
   `never` and throws internally — write `error(404, '…')`, not
   `throw error(404, '…')`. Control flow still narrows after the call.
 - **Docs track user-facing features + config, not fixes.** `README.md` is a
@@ -306,24 +308,29 @@ exact-match `apple-touch-startup-image` media query.
   `drizzle-orm/node-sqlite` (requires drizzle-orm v1, currently an RC).
   Pragmas are set via `db.exec('PRAGMA …')` (node:sqlite has no `.pragma()`
   helper). better-sqlite3 used to tag along as an unbuilt _optional peer_ of
-  drizzle-orm; pnpm 11 no longer pulls it in, so it's absent from the tree
+  drizzle-orm; pnpm 11+ no longer pulls it in, so it's absent from the tree
   and the lockfile entirely.
-- **pnpm 11 + native modules**: install runs with `--ignore-scripts`, then
+- **pnpm + native modules**: install runs with `--ignore-scripts`, then
   the only package needing its build script run is esbuild (prebuilt Go
   binary, fetched not compiled): `pnpm install --frozen-lockfile
 --ignore-scripts` then `pnpm rebuild esbuild`. sharp ships prebuilt musl
   binaries, so it needs no rebuild. Same in Docker; same in CI.
+- **A git worktree needs its own install**: `pnpm install --frozen-lockfile
+--ignore-scripts && pnpm rebuild esbuild && pnpm exec svelte-kit sync`.
+  Never symlink the main checkout's `node_modules` into one and run pnpm
+  there — pnpm reinstalls through the symlink and rewrites the main
+  checkout's `node_modules`.
 - **pnpm settings live in `pnpm-workspace.yaml`** (`overrides`,
   `allowBuilds`), not package.json's `pnpm` field — pnpm stopped reading
   that field and _silently ignores_ it, which is how the security
   overrides got disabled once already. It's not a monorepo; the file
   exists only to hold settings. Docker must `COPY` it alongside
   package.json/pnpm-lock.yaml or `--frozen-lockfile` fails on the
-  overrides mismatch. `.npmrc` is auth/registry-only under pnpm 11 and
+  overrides mismatch. `.npmrc` is auth/registry-only since pnpm 11 and
   everything else in it is ignored, so settings go here, not there.
-- **pnpm 11 refuses packages published in the last 24h**
-  (`minimumReleaseAge`, on by default — it's the "malicious version
-  published twenty minutes ago" guard). So `pnpm update --latest` can
+- **pnpm refuses packages younger than `minimumReleaseAge`** — 3 days here
+  (`pnpm-workspace.yaml`; pnpm's own default is 24h). It's the "malicious
+  version published twenty minutes ago" guard. So `pnpm update --latest` can
   resolve a version that then fails verification, and the error appears on
   every subsequent install because the check runs against the _lockfile_
   before resolution — which also means you can't fix it with another
@@ -433,9 +440,10 @@ exact-match `apple-touch-startup-image` media query.
   worth notifying about (a multi-model avatar comparison: minutes on a shared
   GPU) are the ones that get suspended rather than merely hidden. It stranded a
   notification and its icon badge with the user staring at the thread they
-  pointed at. Three sites pair the events now — the `(app)` layout's
-  conversation refresh, the root layout's badge backstop, and `chat/[id]`'s
-  notification acknowledgment. A cold launch fires NEITHER, so state that only
+  pointed at. The sites that pair the events: the `(app)` layout's app-lock
+  check and conversation refresh, the root layout's badge backstop and
+  service-worker update check, `chat/[id]`'s notification acknowledgment, and
+  `photo-develop-watch.ts`. A cold launch fires NEITHER, so state that only
   a resume re-derives also needs a mount call (the badge has one).
   `tests/component/AppResumeBadgeBackstop.test.ts` holds the line for the badge
   and `AppLockResumeCheck.test.ts` for the `(app)` layout's half.

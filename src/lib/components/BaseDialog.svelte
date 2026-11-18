@@ -1,15 +1,15 @@
 <!--
 	Shared shell for app-wide dialogs (ConfirmDialog,
-	DeleteConversationDialog, DebugPanel). Owns the role + aria-modal,
+	DeleteConversationDialog, DebugPanel, AvatarDrawDialog). Owns the role + aria-modal,
 	the backdrop, the Escape-key handler, and the panel chrome. Callers
 	supply the title and body content (including action buttons) via
 	props + a snippet.
 
 	role defaults to alertdialog, which is right for a destructive-action
 	confirmation — assistive tech then requires explicit user input before
-	dismissal. A dialog that only PRESENTS something (DebugPanel) must pass
-	role="dialog" instead: alertdialog on a panel with nothing to confirm
-	interrupts a screen-reader user for no reason. Backdrop click and
+	dismissal. Any other dialog (DebugPanel, AvatarDrawDialog) must pass
+	role="dialog" instead: alertdialog there interrupts a screen-reader user
+	for no reason. Backdrop click and
 	Escape both cancel either way.
 
 	aria-modal tells assistive tech the page behind is inert, so focus is
