@@ -1,10 +1,10 @@
 /**
  * The sidebar's generating-dot flag set. Small module, but its
- * clear-only reconcile is the load-bearing rule: the server registry
- * lingers past `done` for the auto-title task and knows nothing about
- * generations this client started a moment ago, so letting a poll
- * response *add* ids would re-light the dot on a conversation the user
- * just watched finish. Pin the asymmetry.
+ * clear-only reconcile is the load-bearing rule: a poll response can be
+ * read before the server settled a generation and land after the client
+ * saw its `done`, and it knows nothing about generations this client
+ * started a moment ago, so letting it *add* ids would re-light the dot on
+ * a conversation the user just watched finish. Pin the asymmetry.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -82,8 +82,8 @@ describe('reconcileGenerating', () => {
 	it('does NOT add ids the client never marked', () => {
 		// Clear-only. A generation the server knows about but this client
 		// didn't start belongs to the deferred cross-client sync, not here —
-		// and adding would also resurrect a just-finished conversation whose
-		// registry entry is still held open by the auto-title task.
+		// and adding would also resurrect a just-finished conversation from a
+		// poll response read before the server settled it.
 		reconcileGenerating(['started-on-another-device']);
 		expect(isGenerating('started-on-another-device')).toBe(false);
 		expect(anyGenerating()).toBe(false);
