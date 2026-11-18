@@ -34,6 +34,8 @@ interface SearchOptions {
 
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 100;
+/** Rowids per user in `search_index`: user `ord` owns `[ord * USER_RANGE, (ord + 1) * USER_RANGE)`. */
+const USER_RANGE = 2n ** 32n;
 
 /**
  * Pure: convert a user-typed query string into FTS5 MATCH syntax that
@@ -119,14 +121,31 @@ export function searchConversations(
 	// asks for snippet() on just those rows — the auxiliary functions only work
 	// in the SELECT that runs the MATCH, so they can't be grouped either.
 	//
+	// The rowid range is what scopes the MATCH to the user: each user's rows
+	// live in their own range (see migration *_search_index_user_ranges), which
+	// FTS5 seeks to instead of producing every user's matches. `c.user_id` is
+	// the ownership check proper; it costs nothing, as the join reads that row
+	// anyway.
+	//
 	// Drizzle doesn't model FTS5 virtual tables, so both are raw SQL. Every value
 	// is bound.
 	const db = getDb();
+	const owner = db.get<{ ord: number }>(
+		sql`SELECT ord FROM search_index_owner WHERE user_id = ${userId}`,
+	);
+	if (!owner) return [];
+	// BigInt, because node:sqlite binds every JS number as REAL, and FTS5 only
+	// applies an INTEGER rowid bound: a REAL one is left to SQLite to filter
+	// after FTS5 has produced every user's rows.
+	const lo = BigInt(owner.ord) * USER_RANGE;
+	const hi = lo + USER_RANGE - 1n;
 	const best = db.all<{ rid: number; conversation_id: string; updated_at: number }>(sql`
 		SELECT s.rowid AS rid, s.conversation_id, MIN(s.rank) AS best, c.updated_at
 		FROM search_index s
 		JOIN conversations c ON c.id = s.conversation_id
-		WHERE s.user_id = ${userId} AND search_index MATCH ${match}
+		WHERE search_index MATCH ${match}
+			AND s.rowid BETWEEN ${lo} AND ${hi}
+			AND c.user_id = ${userId}
 			${sinceClause} ${privateClause} ${excludeClause}
 		GROUP BY s.conversation_id
 		ORDER BY best ASC, c.updated_at DESC
