@@ -120,6 +120,58 @@ describe('Default features — saving', () => {
 	});
 });
 
+describe('Preferences — a save that never reaches the server', () => {
+	const settle = () => new Promise((r) => setTimeout(r, 20));
+
+	it('puts a default-feature checkbox back and says the save failed', async () => {
+		const seen: Array<Partial<UserPreferences>> = [];
+		let offline = true;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (_url: string, init: { body: string }) => {
+				const patch = JSON.parse(init.body) as Partial<UserPreferences>;
+				seen.push(patch);
+				if (offline) throw new TypeError('Failed to fetch');
+				return { ok: true, json: async () => prefs(patch) } as unknown as Response;
+			}),
+		);
+		render(PreferencesPage, {
+			props: { data: { prefs: prefs(), featureCategories: CATEGORIES } },
+		});
+
+		await userEvent.click(reactionsBox());
+		await settle();
+
+		expect(reactionsBox()).toBeChecked();
+		expect(screen.queryByText(/Couldn't save/)).not.toBeNull();
+
+		offline = false;
+		await userEvent.click(screen.getByRole('checkbox', { name: /Web access/ }));
+		await settle();
+		expect(seen[1].defaultDisabledFeatures).toEqual(['web']);
+	});
+
+	it('reverts the theme', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => {
+				throw new TypeError('Failed to fetch');
+			}),
+		);
+		render(PreferencesPage, {
+			props: { data: { prefs: prefs(), featureCategories: CATEGORIES } },
+		});
+		await userEvent.click(screen.getByRole('button', { name: /Claude/ }));
+		await settle();
+
+		expect(screen.getByRole('button', { name: /GlyphStream/ })).toHaveAttribute(
+			'aria-pressed',
+			'true',
+		);
+		expect(screen.queryByText(/reverted/)).not.toBeNull();
+	});
+});
+
 describe('Default features — layout invalidation', () => {
 	it('re-runs the layout load, so a new chat sees the new default', async () => {
 		// The (app) layout hands `prefs` to the new-chat page, which seeds the

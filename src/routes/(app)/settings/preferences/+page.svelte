@@ -379,14 +379,19 @@
 					: 'Could not register the subscription with the server.';
 	}
 
+	/** The saved prefs, or null when the save failed for any reason, network included. */
 	async function patchPrefs(patch: Partial<UserPreferences>): Promise<UserPreferences | null> {
-		const res = await fetch('/api/user/preferences', {
-			method: 'PATCH',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(patch),
-		});
-		if (!res.ok) return null;
-		return (await res.json()) as UserPreferences;
+		try {
+			const res = await fetch('/api/user/preferences', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(patch),
+			});
+			if (!res.ok) return null;
+			return (await res.json()) as UserPreferences;
+		} catch {
+			return null;
+		}
 	}
 
 	async function toggleMaster(next: boolean) {
