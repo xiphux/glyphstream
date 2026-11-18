@@ -401,10 +401,12 @@ exact-match `apple-touch-startup-image` media query.
   reassigning there would re-trigger its own effect at 60Hz. Before converting
   a field, grep its _consumers_ (not just its declaring module) for
   element-level writes — the pump lives in the page, not the controller, which
-  is how this got shipped once. Nothing catches it: not `pnpm lint`, not
-  `pnpm check`, and not a node-env test, since Svelte resolves to the SSR
-  runtime there and effects never run. `tests/component/InFlightSegmentsReactivity.test.ts`
-  is the regression guard, and shows the shape such a test needs (happy-dom +
+  is how this got shipped once. `FanoutController.columns` is the same case:
+  `#runBranch` streams each branch by writing its column in place. Nothing
+  catches it: not `pnpm lint`, not `pnpm check`, and not a node-env test, since
+  Svelte resolves to the SSR runtime there and effects never run.
+  `tests/component/{InFlightSegments,FanoutColumns}Reactivity.test.ts` are the
+  regression guards, and show the shape such a test needs (happy-dom +
   a real `$effect` subscriber; reading a `$derived` outside an effect owner
   recomputes eagerly and hides the bug).
 - **Closing on navigation is `afterNavigate`, never an `$effect` on `page.url`.**
