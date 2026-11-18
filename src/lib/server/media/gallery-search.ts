@@ -37,11 +37,11 @@ const DENSE_TOPK = 100;
  *
  * Search runs per keystroke, and uncached each run would re-read and decode up
  * to DENSE_CORPUS_CAP blobs (~11 ms at 5,000 x 768 dims) to get the same
- * vectors as last time. An entry is reused while a blob-free signature over the same
- * filter (`count(*)` and a rowid sum, ~1 ms) is unchanged: any row entering or
- * leaving the corpus (a backfill write, a delete, a star under Favorites)
- * moves it, and a row's vector only changes by being cleared and re-embedded,
- * which moves it twice. Few entries, because each holds the decoded vectors
+ * vectors as last time. An entry is reused while a blob-free signature over
+ * the same filter (`count(*)` and a rowid sum, a few ms; see
+ * denseCorpusSignature) is unchanged: any row entering or leaving the corpus
+ * (a backfill write, a delete, a star under Favorites) moves it, and a row's
+ * vector only changes by being cleared and re-embedded, which moves it twice. Few entries, because each holds the decoded vectors
  * (~15 MB at that size).
  */
 const DENSE_CORPUS_CACHE_MAX = 4;

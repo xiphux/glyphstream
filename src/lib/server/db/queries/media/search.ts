@@ -142,10 +142,14 @@ export type DenseCorpusOpts = {
 };
 
 /**
- * A cheap, blob-free fingerprint of a user's dense-search corpus under these
- * filters: `count(*)` and a rowid sum (~1 ms). Any row entering or leaving the
- * corpus moves it, and a row's vector only changes by being cleared and
- * re-embedded, which moves it twice. `gallery-search.ts` reuses its decoded
+ * A blob-free fingerprint of a user's dense-search corpus under these filters:
+ * `count(*)` and a rowid sum. Cheaper than decoding the corpus, not free: the
+ * `embedding_model` test reads past the mid-row embedding blob, an overflow
+ * page per row at 1024+ dimensions — measured 3.4 ms at 8k rows with the
+ * database in the mmap, ~15 ms without (2.2 ms with no blob at all). A
+ * covering partial index would bring it under 1 ms if it ever matters. Any row
+ * entering or leaving the corpus moves it, and a row's vector only changes by
+ * being cleared and re-embedded, which moves it twice. `gallery-search.ts` reuses its decoded
  * vectors while this is unchanged.
  */
 export function denseCorpusSignature(userId: string, opts: DenseCorpusOpts): string {
