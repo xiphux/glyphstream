@@ -40,10 +40,23 @@ const EXTRACT_HEAP_MB = 256;
  * a page of links could otherwise start one worker per call, each entitled to
  * EXTRACT_HEAP_MB — enough together to reach a container's memory limit.
  * Calls past this wait for a slot inside their own budget.
+ *
+ * The cap is process-wide, not per user: three hostile pages hold every slot
+ * for a full budget, and a benign page queued behind them gives up with
+ * EXTRACT_BUSY_MESSAGE. That is the trade for a memory bound that holds
+ * however the calls are spread across users.
  */
 const MAX_EXTRACT_WORKERS = 3;
 
+/** Starting a worker with less budget than this left is wasted: it would be
+ *  terminated before it could finish even a small page. */
+const MIN_RUN_MS = 250;
+
 export const EXTRACT_TIMEOUT_MESSAGE = 'The page took too long to process.';
+/** A call that ran out of budget waiting for a worker slot: the page itself
+ *  was never tried, so the model shouldn't conclude it is slow. */
+export const EXTRACT_BUSY_MESSAGE =
+	'The server was busy processing other pages; try this one again shortly.';
 
 let budgetMs = EXTRACT_BUDGET_MS;
 let running = 0;
@@ -67,10 +80,10 @@ function releaseSlot(): void {
 }
 
 /**
- * Extract `req.html` in a worker. Rejects with EXTRACT_TIMEOUT_MESSAGE when
- * the budget runs out or `signal` aborts first — whether the call was still
- * waiting for a worker slot or its worker was running, which is then
- * terminated.
+ * Extract `req.html` in a worker. Rejects when the budget runs out or
+ * `signal` aborts first: with EXTRACT_TIMEOUT_MESSAGE once its worker was
+ * running (which is then terminated), or EXTRACT_BUSY_MESSAGE if the call was
+ * still waiting for a slot.
  */
 export function extractInWorker(req: ExtractRequest, signal: AbortSignal): Promise<ExtractedPage> {
 	if (signal.aborted) return Promise.reject(new Error(EXTRACT_TIMEOUT_MESSAGE));
@@ -91,12 +104,20 @@ export function extractInWorker(req: ExtractRequest, signal: AbortSignal): Promi
 			}
 			done();
 		};
-		const tooSlow = () => settle(() => reject(new Error(EXTRACT_TIMEOUT_MESSAGE)));
+		const tooSlow = () => {
+			const message = queued || !worker ? EXTRACT_BUSY_MESSAGE : EXTRACT_TIMEOUT_MESSAGE;
+			settle(() => reject(new Error(message)));
+		};
+		const deadline = Date.now() + budgetMs;
 		const timer = setTimeout(tooSlow, budgetMs);
 		signal.addEventListener('abort', tooSlow, { once: true });
 
 		const start = () => {
 			queued = undefined;
+			if (deadline - Date.now() < MIN_RUN_MS) {
+				tooSlow();
+				return;
+			}
 			try {
 				worker = new Worker(workerUrl, {
 					workerData: req,

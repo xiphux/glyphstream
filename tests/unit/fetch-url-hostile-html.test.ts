@@ -27,6 +27,7 @@ import {
 	fetchUrlTool,
 } from '#lib/server/tools/fetch-url.js';
 import {
+	EXTRACT_BUSY_MESSAGE,
 	EXTRACT_TIMEOUT_MESSAGE,
 	extractInWorker,
 	runningExtractWorkersForTests,
@@ -254,10 +255,14 @@ describe('fetch_url extraction workers are capped', () => {
 			const results = await Promise.allSettled(
 				Array.from({ length: 8 }, () => extractInWorker(hostile, new AbortController().signal)),
 			);
-			for (const r of results) {
+			const messages = results.map((r) => {
 				expect(r.status).toBe('rejected');
-				expect((r as PromiseRejectedResult).reason).toEqual(new Error(EXTRACT_TIMEOUT_MESSAGE));
-			}
+				return ((r as PromiseRejectedResult).reason as Error).message;
+			});
+			// The first three ran and timed out; the five behind them never got a
+			// worker, and say so rather than blaming the page.
+			expect(messages.slice(0, 3)).toEqual(Array(3).fill(EXTRACT_TIMEOUT_MESSAGE));
+			expect(messages.slice(3)).toEqual(Array(5).fill(EXTRACT_BUSY_MESSAGE));
 		} finally {
 			clearInterval(sample);
 		}
@@ -275,7 +280,7 @@ describe('fetch_url extraction workers are capped', () => {
 		const ac = new AbortController();
 		const waiter = extractInWorker(hostile, ac.signal);
 		ac.abort();
-		await expect(waiter).rejects.toThrow(EXTRACT_TIMEOUT_MESSAGE);
+		await expect(waiter).rejects.toThrow(EXTRACT_BUSY_MESSAGE);
 		expect(runningExtractWorkersForTests()).toBe(3);
 		await Promise.all(busy);
 		expect(runningExtractWorkersForTests()).toBe(0);
