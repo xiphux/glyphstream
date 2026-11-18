@@ -24,6 +24,7 @@ arrived.
 - Disabling an account now stops the generations it had running or queued, as deleting it does, and pauses its background memory consolidation and conversation summaries.
 - An older version started against a database a newer version has migrated now refuses to start, naming the migrations it doesn't have, instead of running on a schema it doesn't understand. Downgrading isn't supported; restore the backup taken before the upgrade.
 - The server now warns at startup about any `config.toml` section or key it doesn't recognise (suggesting the likely intended key), instead of silently running on the default. A misspelt key in `[scheduled_tasks]` or `[check_ins]` now warns too, rather than refusing to start.
+- When a background refresh can't reach the server (a restart, or the app resumed before the network was back) and the app falls back to its error page, that page now reconnects by itself as soon as the server answers, instead of waiting for a Reload tap.
 
 ### Fixed
 
