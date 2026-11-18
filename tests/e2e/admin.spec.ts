@@ -1,5 +1,5 @@
-import { test, expect } from './fixtures/test';
-import { resetData, sendChatFromHome } from './helpers';
+import { test, expect, type Page } from './fixtures/test';
+import { deleteUsersNamed, resetData, sendChatFromHome } from './helpers';
 import { STORAGE_STATE_USER2_PATH } from './global-setup';
 
 /**
@@ -9,41 +9,46 @@ import { STORAGE_STATE_USER2_PATH } from './global-setup';
  * 'user' used to prove isolation + gating through real route handlers — the
  * layer the query-level unit tests can't reach.
  *
- * The OAuth/passkey ceremonies are intentionally out of scope here (the
- * harness cookie-injects sessions; see global-setup), so this exercises the
- * /join page's invalid-token state rather than a full redemption.
+ * Sessions are otherwise cookie-injected (see global-setup); the one full
+ * redemption below joins through a passkey on Chromium's virtual authenticator,
+ * as passkey.spec.ts does.
  */
+
+/**
+ * Click "Create invite" until the request actually leaves, and return the
+ * one-time join URL. `goto` resolves at `load`, but SvelteKit boots from a
+ * dynamic import that `load` doesn't wait for, so a click can land on the
+ * server-rendered button before hydration attaches its handler and do nothing —
+ * CI caught that: no POST, and the page's chunks still arriving after the click
+ * (see flows.spec.ts' theme switcher). Unlike a theme pick, creating an invite
+ * isn't idempotent, so the gate is the request leaving, not the result
+ * appearing: a click that did send one is never repeated, however slow the
+ * response.
+ */
+async function createInvite(page: Page): Promise<string> {
+	await page.goto('/settings/users');
+	await expect(page.getByRole('heading', { name: 'Users', level: 1 })).toBeVisible();
+	const createButton = page.getByRole('button', { name: 'Create invite' });
+	await expect(async () => {
+		const sent = page.waitForRequest(
+			(r) => r.method() === 'POST' && new URL(r.url()).pathname === '/api/admin/invites',
+			{ timeout: 1_000 },
+		);
+		await createButton.click();
+		await sent;
+	}).toPass({ timeout: 10_000 });
+	const urlInput = page.locator('input[readonly]');
+	await expect(urlInput).toHaveValue(/\/join\//);
+	return urlInput.inputValue();
+}
 
 test.describe('admin: invites', () => {
 	test.beforeEach(() => resetData());
 
 	test('admin can create an invite (one-time link) and revoke it', async ({ page }) => {
-		await page.goto('/settings/users');
-		await expect(page.getByRole('heading', { name: 'Users', level: 1 })).toBeVisible();
-
 		// Create → the one-time join URL is revealed and the invite lands in
 		// the pending list as 'active'.
-		//
-		// The click retries until it actually sends the request. `goto` resolves at
-		// `load`, but SvelteKit boots from a dynamic import that `load` doesn't wait
-		// for, so a click can land on the server-rendered button before hydration
-		// attaches its handler and do nothing — CI caught that: no POST, and the
-		// page's chunks still arriving after the click (see flows.spec.ts' theme
-		// switcher). Unlike a theme pick, creating an invite isn't idempotent, so the
-		// gate is the request leaving, not the result appearing: a click that did
-		// send one is never repeated, however slow the response.
-		const createButton = page.getByRole('button', { name: 'Create invite' });
-		await expect(async () => {
-			const sent = page.waitForRequest(
-				(r) => r.method() === 'POST' && new URL(r.url()).pathname === '/api/admin/invites',
-				{ timeout: 1_000 },
-			);
-			await createButton.click();
-			await sent;
-		}).toPass({ timeout: 10_000 });
-		const urlInput = page.locator('input[readonly]');
-		await expect(urlInput).toBeVisible();
-		await expect(urlInput).toHaveValue(/\/join\//);
+		await createInvite(page);
 		await expect(page.getByText('active')).toBeVisible();
 
 		// Revoke (confirm dialog) → the pending list empties. The trash's
@@ -52,6 +57,62 @@ test.describe('admin: invites', () => {
 		await page.getByRole('button', { name: 'Revoke invite' }).click();
 		await page.getByRole('button', { name: 'Revoke', exact: true }).click();
 		await expect(page.getByText('No pending invites.')).toBeVisible();
+	});
+
+	test.describe('redemption', () => {
+		test.skip(({ browserName }) => browserName !== 'chromium', 'virtual authenticator is CDP-only');
+
+		const JOINER = 'Invited Tester';
+		test.afterEach(() => deleteUsersNamed(JOINER));
+
+		test('a new user joins with a passkey, lands as a non-admin, and the admin can delete them', async ({
+			page,
+			browser,
+		}) => {
+			const joinUrl = await createInvite(page);
+
+			const anon = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+			try {
+				const joinPage = await anon.newPage();
+				const cdp = await anon.newCDPSession(joinPage);
+				await cdp.send('WebAuthn.enable');
+				await cdp.send('WebAuthn.addVirtualAuthenticator', {
+					options: {
+						protocol: 'ctap2',
+						transport: 'internal',
+						hasResidentKey: true,
+						hasUserVerification: true,
+						isUserVerified: true,
+						automaticPresenceSimulation: true,
+					},
+				});
+
+				await joinPage.goto(joinUrl);
+				await joinPage.getByLabel('Display name').fill(JOINER);
+				await joinPage.getByRole('button', { name: 'Set up a passkey' }).click();
+				await joinPage.waitForURL((url) => url.pathname === '/');
+				await expect(joinPage.getByRole('button', { name: 'Select model' })).toBeVisible();
+
+				const usersResp = await joinPage.goto('/settings/users');
+				expect(usersResp?.status()).toBe(403);
+			} finally {
+				await anon.close();
+			}
+
+			// The invite is spent, and the admin sees the new account.
+			await page.goto('/settings/users');
+			await expect(page.getByText('No pending invites.')).toBeVisible();
+			const row = page.locator('li').filter({ hasText: JOINER });
+			await expect(row).toContainText('user');
+
+			// Delete asks first; cancelling keeps the account.
+			await row.getByRole('button', { name: 'Delete user' }).click();
+			await page.getByRole('button', { name: 'Cancel' }).click();
+			await expect(row).toBeVisible();
+			await row.getByRole('button', { name: 'Delete user' }).click();
+			await page.getByRole('button', { name: 'Delete', exact: true }).click();
+			await expect(row).toHaveCount(0);
+		});
 	});
 });
 

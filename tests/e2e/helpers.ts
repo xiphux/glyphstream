@@ -245,6 +245,23 @@ export function seedConversation(title: string, modelId = 'mock::mock-chat'): st
 }
 
 /**
+ * Delete every account with this display name, and everything it owns (each
+ * user-owned table cascades). For a spec that creates an account through the
+ * app: resetData keeps the users table, so one left behind would show up in
+ * every later spec's user list.
+ */
+export function deleteUsersNamed(displayName: string): void {
+	const db = new DatabaseSync(DB_PATH);
+	db.exec('PRAGMA busy_timeout = 5000');
+	db.exec('PRAGMA foreign_keys = ON');
+	try {
+		db.prepare('DELETE FROM users WHERE display_name = ?').run(displayName);
+	} finally {
+		db.close();
+	}
+}
+
+/**
  * Set the test user's favorited model ids.
  *
  * Preferences are a schemaless JSON blob on `users.preferences_json`, so this
