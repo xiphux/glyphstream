@@ -15,6 +15,9 @@
 import type { PhotoStateResponse } from './types/api.js';
 
 const POLL_MS = 5_000;
+/** A request left half-open (the dead socket of an iOS resume) would hold
+ *  `checking` and silence every later tick; give up on it well before then. */
+const CHECK_TIMEOUT_MS = 10_000;
 
 export interface DevelopWatch {
 	conversationId: string;
@@ -36,7 +39,7 @@ export function watchDevelopingPhotos(watch: DevelopWatch): () => void {
 		if (stopped || checking || document.visibilityState !== 'visible') return;
 		checking = true;
 		try {
-			const res = await fetch(url);
+			const res = await fetch(url, { signal: AbortSignal.timeout(CHECK_TIMEOUT_MS) });
 			if (!res.ok || stopped) return;
 			const state = (await res.json()) as PhotoStateResponse;
 			// Fewer means one landed; more means another started elsewhere. Either

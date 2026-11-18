@@ -32,6 +32,7 @@ beforeEach(() => refreshAll.mockClear());
 afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.useRealTimers();
+	vi.restoreAllMocks();
 });
 
 describe('noteReply', () => {
@@ -122,7 +123,9 @@ describe('wakeWhenDue', () => {
 		await vi.advanceTimersByTimeAsync(10_000);
 		expect(fetchMock).not.toHaveBeenCalled();
 		await vi.advanceTimersByTimeAsync(5_000);
-		expect(fetchMock).toHaveBeenCalledWith('/api/conversations/c1/check-in');
+		expect(fetchMock).toHaveBeenCalledWith('/api/conversations/c1/check-in', {
+			signal: expect.any(AbortSignal) as unknown,
+		});
 		expect(refreshAll).not.toHaveBeenCalled();
 		await vi.advanceTimersByTimeAsync(30_000);
 		expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -131,6 +134,33 @@ describe('wakeWhenDue', () => {
 		status = { checkIn: null };
 		await vi.advanceTimersByTimeAsync(30_000);
 		expect(refreshAll).toHaveBeenCalledOnce();
+		stop();
+	});
+
+	it('gives up on a probe that never answers, and probes again', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(0);
+		const timeouts: AbortController[] = [];
+		vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => {
+			const c = new AbortController();
+			timeouts.push(c);
+			return c.signal;
+		});
+		const fetchMock = vi.fn(
+			(_url: string, init?: RequestInit) =>
+				new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener('abort', () => reject(new Error('timed out')));
+				}),
+		);
+		vi.stubGlobal('fetch', fetchMock);
+		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
+		const stop = c.wakeWhenDue(PENDING, 0);
+		await vi.advanceTimersByTimeAsync(15_000);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+
+		timeouts[0].abort();
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
 		stop();
 	});
 

@@ -30,13 +30,16 @@ beforeEach(() => {
 afterEach(() => {
 	vi.useRealTimers();
 	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
 });
 
 describe('watchDevelopingPhotos', () => {
 	it('asks after the replies on screen, and leaves the page be while they draw', async () => {
 		const stop = watch();
 		await vi.advanceTimersByTimeAsync(5_000);
-		expect(fetchMock).toHaveBeenCalledWith('/api/conversations/c1/photos?messages=r1,r2');
+		expect(fetchMock).toHaveBeenCalledWith('/api/conversations/c1/photos?messages=r1,r2', {
+			signal: expect.any(AbortSignal) as unknown,
+		});
 		expect(apply).not.toHaveBeenCalled();
 		stop();
 	});
@@ -59,6 +62,32 @@ describe('watchDevelopingPhotos', () => {
 		window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
 		await vi.advanceTimersByTimeAsync(0);
 		expect(apply).toHaveBeenCalledOnce();
+		stop();
+	});
+
+	it('gives up on a request that never answers, so the next tick asks again', async () => {
+		const timeouts: AbortController[] = [];
+		vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => {
+			const c = new AbortController();
+			timeouts.push(c);
+			return c.signal;
+		});
+		const hanging = vi.fn(
+			(_url: string, init?: RequestInit) =>
+				new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener('abort', () => reject(new Error('timed out')));
+				}),
+		);
+		vi.stubGlobal('fetch', hanging);
+		const stop = watch();
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(hanging).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(hanging).toHaveBeenCalledTimes(1);
+
+		timeouts[0].abort();
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(hanging).toHaveBeenCalledTimes(2);
 		stop();
 	});
 

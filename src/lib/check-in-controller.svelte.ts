@@ -23,6 +23,9 @@ import type { ChatMessage, CheckInStatus, PendingCheckIn } from './types/api';
  *  runner's tick lands right on it. The retries cover the rest. */
 const FIRST_WAKE_DELAY_MS = 5_000;
 const RETRY_WAKE_MS = 30_000;
+/** A probe left half-open (the dead socket of an iOS resume) would hold the
+ *  wake-up and never re-arm it. */
+const PROBE_TIMEOUT_MS = 10_000;
 
 export class CheckInController {
 	// `.raw` — only ever assigned whole.
@@ -132,7 +135,9 @@ export class CheckInController {
 	 *  a flaky one it would reload every 30s for the whole grace period. */
 	async #moved(checkIn: PendingCheckIn): Promise<boolean> {
 		try {
-			const res = await fetch(`/api/conversations/${this.#convId()}/check-in`);
+			const res = await fetch(`/api/conversations/${this.#convId()}/check-in`, {
+				signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+			});
 			if (!res.ok) return false;
 			const status = (await res.json()) as CheckInStatus;
 			return status.checkIn?.sourceMessageId !== checkIn.sourceMessageId;
