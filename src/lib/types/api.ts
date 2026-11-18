@@ -1177,7 +1177,10 @@ export interface CreateCustomModelRequest {
 	photos?: boolean;
 }
 
-export type UpdateCustomModelRequest = Partial<CreateCustomModelRequest>;
+/** `''` (description, systemPrompt) and `null` (parameters) clear the stored value. */
+export type UpdateCustomModelRequest = Omit<Partial<CreateCustomModelRequest>, 'parameters'> & {
+	parameters?: CustomModelParameters | null;
+};
 
 /**
  * POST /api/conversations/:id/messages request body.

@@ -9,7 +9,7 @@
  * testing-library queries don't filter on visibility, so no need to open it.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import type { CustomModel, FeatureCategoryEntry, ModelEntry } from '#lib/types/api.js';
@@ -17,6 +17,7 @@ import type { CustomModel, FeatureCategoryEntry, ModelEntry } from '#lib/types/a
 vi.mock('$app/navigation', () => ({ refreshAll: vi.fn(), goto: vi.fn() }));
 
 import CustomModelsPage from '../../src/routes/(app)/settings/models/+page.svelte';
+import { confirmDialog } from '#lib/confirm.svelte.js';
 
 function makeModel(overrides: Partial<ModelEntry> = {}): ModelEntry {
 	const endpointId = overrides.endpointId ?? 'bridge';
@@ -413,5 +414,148 @@ describe('custom models — photos', () => {
 		expect(checkbox()).toBeChecked();
 		expect(screen.queryByText(/No image model is configured/)).toBeNull();
 		expect(screen.getByText(/Couldn't check for an image model/)).toBeInTheDocument();
+	});
+});
+
+/**
+ * The fields that define a preset: what the form loads from the row, and what
+ * Save and Delete send for it.
+ */
+describe('custom models — prompt, parameters and delete', () => {
+	interface Call {
+		url: string;
+		method: string;
+		body: Record<string, unknown>;
+	}
+
+	function stubFetch(): Call[] {
+		const calls: Call[] = [];
+		globalThis.fetch = vi.fn((url: string, init?: RequestInit) => {
+			calls.push({
+				url,
+				method: init?.method ?? 'GET',
+				body:
+					typeof init?.body === 'string' ? (JSON.parse(init.body) as Record<string, unknown>) : {},
+			});
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				json: () => Promise.resolve({ customModel: { id: 'cm-1' } }),
+			});
+		}) as unknown as typeof fetch;
+		return calls;
+	}
+
+	const terse = (over: Partial<CustomModel> = {}): CustomModel => ({
+		...makeCustom({ name: 'Terse' }),
+		...over,
+	});
+	const terseWithSettings = () =>
+		terse({
+			description: 'Short answers',
+			systemPrompt: 'You are terse.',
+			parameters: { temperature: 0.4, max_tokens: 512 },
+		});
+
+	async function edit(m: CustomModel) {
+		const user = userEvent.setup();
+		const calls = stubFetch();
+		renderPage([m]);
+		await user.click(screen.getByText(m.name));
+		return { user, calls };
+	}
+
+	afterEach(() => {
+		if (confirmDialog.pending) confirmDialog.cancel();
+	});
+
+	it('loads the prompt and parameters, and saves them back unchanged', async () => {
+		const { user, calls } = await edit(terseWithSettings());
+
+		expect(screen.getByLabelText(/System prompt/)).toHaveValue('You are terse.');
+		expect(screen.getByLabelText('Temperature')).toHaveValue(0.4);
+		expect(screen.getByLabelText('Max tokens')).toHaveValue(512);
+
+		await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+		expect(calls).toHaveLength(1);
+		expect(calls[0]).toMatchObject({ url: '/api/custom-models/cm-1', method: 'PATCH' });
+		expect(calls[0].body).toMatchObject({
+			description: 'Short answers',
+			systemPrompt: 'You are terse.',
+			parameters: { temperature: 0.4, max_tokens: 512 },
+		});
+	});
+
+	it('saves a temperature the user typed', async () => {
+		const { user, calls } = await edit(terse());
+
+		const temp = screen.getByLabelText('Temperature');
+		await user.type(temp, '1');
+		// Submit the form directly: happy-dom's `step` validation uses a naive
+		// float modulo and would block the click for values a browser accepts.
+		await fireEvent.submit(temp.closest('form')!);
+		await new Promise((r) => setTimeout(r, 20));
+
+		expect(document.querySelector('.alert-danger')).toBeNull();
+		expect(calls).toHaveLength(1);
+		expect(calls[0].body.parameters).toEqual({ temperature: 1 });
+	});
+
+	it('saves after a typed value is emptied again', async () => {
+		const { user, calls } = await edit(terse());
+
+		const temp = screen.getByLabelText('Temperature');
+		await user.type(temp, '1');
+		await user.clear(temp);
+		await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+		expect(screen.queryByText(/is not a function|Cannot read/)).toBeNull();
+		expect(calls).toHaveLength(1);
+	});
+
+	it('refuses an out-of-range temperature without sending anything', async () => {
+		const { user, calls } = await edit(terse());
+
+		const temp = screen.getByLabelText('Temperature');
+		await user.type(temp, '3');
+		await fireEvent.submit(temp.closest('form')!);
+		await new Promise((r) => setTimeout(r, 20));
+
+		expect(screen.getByText('Temperature must be a number between 0 and 2')).toBeInTheDocument();
+		expect(calls).toHaveLength(0);
+	});
+
+	it('tells the server the system prompt and description were emptied', async () => {
+		const { user, calls } = await edit(terseWithSettings());
+
+		await user.clear(screen.getByLabelText(/System prompt/));
+		await user.clear(screen.getByLabelText(/Description/));
+		await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+		expect(calls).toHaveLength(1);
+		// The PATCH handler leaves an absent key untouched and clears on ''.
+		expect(calls[0].body).toMatchObject({ systemPrompt: '', description: '' });
+	});
+
+	it('tells the server the sampling parameters were removed', async () => {
+		const { user, calls } = await edit(terse({ parameters: { temperature: 0.7 } }));
+
+		await user.clear(screen.getByLabelText('Temperature'));
+		await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+		expect(calls).toHaveLength(1);
+		expect(calls[0].body).toHaveProperty('parameters', null);
+	});
+
+	it('deletes the preset once confirmed', async () => {
+		const { user, calls } = await edit(terse());
+
+		await user.click(screen.getByRole('button', { name: 'Delete preset Terse' }));
+		expect(confirmDialog.pending?.title).toBe('Delete preset "Terse"?');
+		confirmDialog.confirm();
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(calls).toEqual([{ url: '/api/custom-models/cm-1', method: 'DELETE', body: {} }]);
 	});
 });

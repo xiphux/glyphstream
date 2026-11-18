@@ -16,6 +16,7 @@
 		type ModelEntry,
 		type ReplyStyle,
 		type Scene,
+		type UpdateCustomModelRequest,
 	} from '#lib/types/api.js';
 
 	let {
@@ -39,9 +40,10 @@
 	let presetDescription = $state('');
 	let baseModelComposite = $state('');
 	let systemPrompt = $state('');
-	let temperatureStr = $state('');
-	let topPStr = $state('');
-	let maxTokensStr = $state('');
+	// `bind:value` on a number input yields a number, or null once emptied.
+	let temperature = $state<number | null>(null);
+	let topP = $state<number | null>(null);
+	let maxTokens = $state<number | null>(null);
 	let defaultDisabledFeatures = $state<FeatureCategory[]>([]);
 	let replyStyle = $state<ReplyStyle>('standard');
 	let startingScene = $state<Scene>('texting');
@@ -103,9 +105,9 @@
 		presetDescription = '';
 		baseModelComposite = '';
 		systemPrompt = '';
-		temperatureStr = '';
-		topPStr = '';
-		maxTokensStr = '';
+		temperature = null;
+		topP = null;
+		maxTokens = null;
 		defaultDisabledFeatures = [];
 		replyStyle = 'standard';
 		startingScene = 'texting';
@@ -125,10 +127,9 @@
 		presetDescription = m.description ?? '';
 		baseModelComposite = `${m.baseEndpointId}::${m.baseModelId}`;
 		systemPrompt = m.systemPrompt ?? '';
-		temperatureStr =
-			m.parameters?.temperature !== undefined ? String(m.parameters.temperature) : '';
-		topPStr = m.parameters?.top_p !== undefined ? String(m.parameters.top_p) : '';
-		maxTokensStr = m.parameters?.max_tokens !== undefined ? String(m.parameters.max_tokens) : '';
+		temperature = m.parameters?.temperature ?? null;
+		topP = m.parameters?.top_p ?? null;
+		maxTokens = m.parameters?.max_tokens ?? null;
 		defaultDisabledFeatures = [...m.defaultDisabledFeatures];
 		replyStyle = m.replyStyle;
 		startingScene = m.startingScene;
@@ -217,26 +218,23 @@
 
 	function buildParameters(): CustomModelParameters | undefined {
 		const params: CustomModelParameters = {};
-		if (temperatureStr.trim()) {
-			const v = Number(temperatureStr);
-			if (!Number.isFinite(v) || v < 0 || v > 2) {
+		if (temperature != null) {
+			if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) {
 				throw new Error('Temperature must be a number between 0 and 2');
 			}
-			params.temperature = v;
+			params.temperature = temperature;
 		}
-		if (topPStr.trim()) {
-			const v = Number(topPStr);
-			if (!Number.isFinite(v) || v < 0 || v > 1) {
+		if (topP != null) {
+			if (!Number.isFinite(topP) || topP < 0 || topP > 1) {
 				throw new Error('Top-p must be a number between 0 and 1');
 			}
-			params.top_p = v;
+			params.top_p = topP;
 		}
-		if (maxTokensStr.trim()) {
-			const v = Number(maxTokensStr);
-			if (!Number.isInteger(v) || v < 1) {
+		if (maxTokens != null) {
+			if (!Number.isInteger(maxTokens) || maxTokens < 1) {
 				throw new Error('Max tokens must be a positive integer');
 			}
-			params.max_tokens = v;
+			params.max_tokens = maxTokens;
 		}
 		return Object.keys(params).length > 0 ? params : undefined;
 	}
@@ -275,13 +273,16 @@
 				const baseEndpointId = baseModelComposite.slice(0, sep);
 				const baseModelId = baseModelComposite.slice(sep + 2);
 
-				const body: CreateCustomModelRequest = {
+				// PATCH leaves an absent key alone, so an edit sends an emptied field
+				// as '' / null (which clear it) rather than dropping it.
+				const cleared = editingId ? '' : undefined;
+				const body: CreateCustomModelRequest | UpdateCustomModelRequest = {
 					name: name.trim(),
-					description: presetDescription.trim() || undefined,
+					description: presetDescription.trim() || cleared,
 					baseEndpointId,
 					baseModelId,
-					systemPrompt: systemPrompt.trim() || undefined,
-					parameters: buildParameters(),
+					systemPrompt: systemPrompt.trim() || cleared,
+					parameters: buildParameters() ?? (editingId ? null : undefined),
 					defaultDisabledFeatures: [...defaultDisabledFeatures],
 					// The selector is hidden for non-chat bases; don't keep a style the
 					// user can no longer see (or that means nothing for an image model).
@@ -665,7 +666,7 @@
 							</label>
 							<input
 								id="temp"
-								bind:value={temperatureStr}
+								bind:value={temperature}
 								type="number"
 								min="0"
 								max="2"
@@ -684,7 +685,7 @@
 							</label>
 							<input
 								id="topp"
-								bind:value={topPStr}
+								bind:value={topP}
 								type="number"
 								min="0"
 								max="1"
@@ -703,7 +704,7 @@
 							</label>
 							<input
 								id="maxtok"
-								bind:value={maxTokensStr}
+								bind:value={maxTokens}
 								type="number"
 								min="1"
 								step="1"
