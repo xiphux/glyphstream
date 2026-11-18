@@ -11,7 +11,7 @@ import type {
 	Scene,
 } from '#lib/types/api.js';
 import { getDb } from '../client';
-import { conversations, media, messages } from '../schema';
+import { conversations, media, messages, users } from '../schema';
 import { reconcileOverviewAfterConversationDelete } from './users';
 import { parseDisabledFeatures, parseMessageParts, parseModelParameters } from './json-columns';
 import { walkActiveBranch, walkActiveBranchWindow } from './messages';
@@ -544,6 +544,9 @@ export function setConversationTitle(
  * private chat never gets summarized, so it produces no `summary` (no topic-overview
  * contribution, no kind='summary' FTS row). The paired seal on the read side is
  * `searchConversations({excludePrivate:true})` on the tool path (search.ts).
+ *
+ * A disabled account's conversations wait, like its schedules and check-ins:
+ * nobody can read the result, and the upstream time is someone else's.
  */
 export function listConversationsNeedingSummary(
 	now: number,
@@ -554,9 +557,11 @@ export function listConversationsNeedingSummary(
 	return db
 		.select({ id: conversations.id })
 		.from(conversations)
+		.innerJoin(users, eq(users.id, conversations.userId))
 		.where(
 			and(
 				eq(conversations.private, false),
+				isNull(users.disabledAt),
 				or(
 					isNull(conversations.summarizedAt),
 					gt(conversations.updatedAt, conversations.summarizedAt),

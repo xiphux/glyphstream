@@ -73,8 +73,11 @@ created, and who invited it. Per row:
 - **Disable / Enable** — disabling sets `users.disabled_at`, which invalidates
   every active session, refuses every login method on that user's next
   request, and (for an admin) makes any invite they issued unredeemable.
-  Re-enabling restores all three. Nothing is deleted; this is the reversible
-  "revoke access" lever.
+  Re-enabling restores all three. It also stops what the account had
+  generating or waiting in line (those queued requests are dropped, not
+  resumed on re-enable), and its background memory consolidation and
+  conversation summaries wait until it is re-enabled. No conversation or
+  media is deleted; this is the reversible "revoke access" lever.
 - **Delete** — removes the account and cascades its data (conversations, media
   references, credentials). Irreversible.
 

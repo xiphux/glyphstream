@@ -46,6 +46,7 @@ import { videoCancel } from '../endpoints/client';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { getConversationMeta, setConversationAvatar } from '../db/queries/conversations';
 import { getMessage } from '../db/queries/messages';
+import { getDisabledAt } from '../db/queries/users';
 import {
 	consumeGenerationJob,
 	deleteGenerationJob,
@@ -288,6 +289,12 @@ export function resumeGenerationJobs(): void {
 	for (const found of ordered) {
 		let row = found;
 		try {
+			// Disabling an account drops its queue; a row left over from before
+			// a restart is dropped here instead.
+			if (getDisabledAt(row.userId) !== null) {
+				deleteGenerationJob(row.id);
+				continue;
+			}
 			const endpoint = endpointFor(row);
 			if (!endpoint) {
 				failures.push({ row, message: `Model "${row.modelId}" is no longer configured` });

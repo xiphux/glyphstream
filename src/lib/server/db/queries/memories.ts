@@ -699,7 +699,8 @@ export function renameMemoryTopic(
  * Users the dreaming worker should process this pass: those with at least one
  * live memory whose store has changed since the last pass (`last_dreamed_at` is
  * null, or a live memory's `updated_at` is newer). A settled store returns
- * nothing, so the worker skips it. Cross-user (background job).
+ * nothing, so the worker skips it, as does a disabled account. Cross-user
+ * (background job).
  */
 export function listUsersNeedingDreaming(): string[] {
 	const db = getDb();
@@ -707,7 +708,7 @@ export function listUsersNeedingDreaming(): string[] {
 		.select({ userId: memories.userId })
 		.from(memories)
 		.innerJoin(users, eq(users.id, memories.userId))
-		.where(isNull(memories.deletedAt))
+		.where(and(isNull(memories.deletedAt), isNull(users.disabledAt)))
 		.groupBy(memories.userId)
 		.having(
 			sql`${users.lastDreamedAt} is null or max(${memories.updatedAt}) > ${users.lastDreamedAt}`,

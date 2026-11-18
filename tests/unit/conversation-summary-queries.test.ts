@@ -17,6 +17,7 @@ import {
 	getConversationOverviewMeta,
 	listUsersNeedingOverview,
 	setConversationOverview,
+	setUserDisabled,
 } from '#lib/server/db/queries/users.js';
 import { appendMessage } from '#lib/server/db/queries/messages.js';
 import { searchConversations } from '#lib/server/db/queries/search.js';
@@ -93,6 +94,17 @@ describe('listConversationsNeedingSummary', () => {
 		const ids = dueIds();
 		expect(ids).not.toContain(priv);
 		expect(ids).toContain(normal);
+	});
+
+	it("excludes a disabled account's conversations", () => {
+		const off = seedUser();
+		const on = seedUser();
+		const theirs = seedConv(off.id, { messages: 2, updatedAt: NOW - 2 * SETTLE });
+		const mine = seedConv(on.id, { messages: 2, updatedAt: NOW - 2 * SETTLE });
+		setUserDisabled(off.id, true);
+		const ids = dueIds();
+		expect(ids).not.toContain(theirs);
+		expect(ids).toContain(mine);
 	});
 
 	it('excludes a summarized + unchanged conversation, re-includes it after a change', () => {

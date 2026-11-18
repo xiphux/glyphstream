@@ -108,6 +108,7 @@ import {
 } from '#lib/server/db/schema.js';
 import { insertMedia } from '#lib/server/db/queries/media.js';
 import { insertGenerationJob } from '#lib/server/db/queries/generation-jobs.js';
+import { setUserDisabled } from '#lib/server/db/queries/users.js';
 import {
 	listImagesForMessages,
 	resolveComparison,
@@ -399,6 +400,18 @@ describe('after a restart', () => {
 		const [result] = getSiblingAssistants(s.conv.id, s.userMessage.id);
 		expect(result.parts).toEqual([{ type: 'image', mediaId: 'media-out' }]);
 		expect(mocks.imageGeneration).toHaveBeenCalledOnce();
+	});
+
+	it("drops a disabled account's job instead of running it", () => {
+		const s = seed();
+		leftover(s);
+		setUserDisabled(s.user.id, true);
+
+		resumeGenerationJobs();
+		expect(getInFlightSince(s.conv.id)).toBeNull();
+		expect(jobRows()).toEqual([]);
+		expect(getSiblingAssistants(s.conv.id, s.userMessage.id)).toEqual([]);
+		expect(mocks.imageGeneration).not.toHaveBeenCalled();
 	});
 
 	it('resumes jobs in the order they were submitted', async () => {

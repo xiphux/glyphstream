@@ -1,6 +1,6 @@
 /**
  * Admin user-management mutations (admin only):
- *   PATCH  /api/admin/users/[id]  { disabled: boolean }  — enable/disable
+ *   PATCH  /api/admin/users/[id]  { disabled: boolean }  — enable/disable (disabling stops in-flight and queued generations)
  *   PATCH  /api/admin/users/[id]  { appLock: false }      — turn off app lock (recovery for a
  *                                                           user who has lost every passkey)
  *   DELETE /api/admin/users/[id]                          — delete + cascade, stop in-flight generations, unlink media files
@@ -18,6 +18,8 @@ import { requireAdmin } from '#lib/server/auth/guard.js';
 import { parseJsonBody } from '#lib/server/http.js';
 import { unlinkMediaFiles } from '#lib/server/media/disk-store.js';
 import { cancelInFlightGenerations } from '#lib/server/streaming/cancel.js';
+import { activeConversationIds } from '#lib/server/streaming/in-flight.js';
+import { getConversationMeta } from '#lib/server/db/queries/conversations.js';
 import { clearAppLock } from '#lib/server/auth/app-lock.js';
 import {
 	countActiveAdmins,
@@ -84,8 +86,25 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 		strandMessage: 'Cannot disable the last active administrator',
 	});
 	if (!setUserDisabled(params.id, body.disabled)) error(404, 'User not found');
+	// Nobody can sign in to read what a disabled account's turns produce, so
+	// stop them, queued generations included (an aborted job drops its row).
+	if (body.disabled) {
+		const userId = params.id;
+		stopGenerations(
+			activeConversationIds().filter((id) => getConversationMeta(id, userId) !== null),
+		);
+	}
 	return Response.json({ ok: true });
 };
+
+/** Abort everything generating in these conversations; local aborts are synchronous. */
+function stopGenerations(conversationIds: string[]): void {
+	for (const conversationId of conversationIds) {
+		void cancelInFlightGenerations(conversationId).catch((e: unknown) => {
+			log.warn('cancelling in-flight generation failed:', e);
+		});
+	}
+}
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
 	requireAdmin(locals);
@@ -100,13 +119,9 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 	// conversation delete does: otherwise the upstream keeps working (holding an
 	// endpoint slot) for a reply with nowhere to go, and a media generation that
 	// hasn't reached its persist step won't write a file after the unlink below.
-	// (One already past its abort check can still land a file with no row.) Local
-	// aborts are synchronous; the video bridge cancels aren't awaited.
-	for (const conversationId of deleted.conversationIds) {
-		void cancelInFlightGenerations(conversationId).catch((e: unknown) => {
-			log.warn('cancelling in-flight generation failed:', e);
-		});
-	}
+	// (One already past its abort check can still land a file with no row.) The
+	// video bridge cancels aren't awaited.
+	stopGenerations(deleted.conversationIds);
 	// The cascade removed the media rows; the bytes (and their thumbnails and
 	// vision variants) are only reachable from here.
 	await unlinkMediaFiles(deleted.files, 'admin.users.delete');

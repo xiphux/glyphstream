@@ -1,3 +1,4 @@
+import { setUserDisabled } from '#lib/server/db/queries/users.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
@@ -767,6 +768,17 @@ describe('recover UI: listDeletedMemoriesForUser + restoreMemory', () => {
 		// And the change-watermark stays satisfied: a settled user isn't re-due.
 		setUserDreamedAt(u.id, before + 1);
 		expect(listUsersNeedingDreaming()).not.toContain(u.id);
+	});
+
+	it('listUsersNeedingDreaming skips a disabled account', () => {
+		const off = seedUser();
+		const on = seedUser();
+		createMemory(off.id, 'likes tea', 'Drinks');
+		createMemory(on.id, 'likes coffee', 'Drinks');
+		setUserDisabled(off.id, true);
+		const due = listUsersNeedingDreaming();
+		expect(due).not.toContain(off.id);
+		expect(due).toContain(on.id);
 	});
 
 	it('restoreMemory no-ops on a live row and on a foreign/unknown id', () => {
