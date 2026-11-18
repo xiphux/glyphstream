@@ -198,6 +198,7 @@ describe('app-lock resume check', () => {
 			from: { url: new URL('http://localhost/chat/abc') },
 			to: { url: new URL('http://localhost/chat/tapped') },
 			type: 'goto',
+			shallow: false,
 			willUnload: false,
 			complete: new Promise(() => {}),
 		};
@@ -217,6 +218,7 @@ describe('app-lock resume check', () => {
 			from: { url: new URL('http://localhost/chat/abc') },
 			to: { url: new URL('http://localhost/unlock?from=%2Fchat%2Ftapped') },
 			type: 'goto',
+			shallow: false,
 			willUnload: false,
 			complete: new Promise(() => {}),
 		};

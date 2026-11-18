@@ -181,6 +181,19 @@ describe('mobile drawer', () => {
 		expect(drawer.isOpen()).toBe(true);
 	});
 
+	it('stays open across a shallow goto', async () => {
+		const user = userEvent.setup();
+		const drawer = renderLayout();
+
+		await user.click(screen.getByLabelText('Open menu'));
+		expect(drawer.isOpen()).toBe(true);
+
+		// A page stripping its own fragment: history changes, nothing navigated.
+		stub().shallowGoto('http://localhost/chat/abc');
+		flushSync();
+		expect(drawer.isOpen()).toBe(true);
+	});
+
 	it('still closes on a search-only navigation after a refresh', async () => {
 		const user = userEvent.setup();
 		const drawer = renderLayout();

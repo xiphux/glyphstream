@@ -133,6 +133,21 @@ describe('new-chat page — ?model= from the URL', () => {
 		expect(selected()).toContain('beta');
 	});
 
+	it('leaves a manual pick alone across a shallow goto', async () => {
+		const user = userEvent.setup();
+		renderPage();
+		await vi.waitFor(() => expect(selected()).toContain('alpha'));
+
+		await user.click(screen.getByLabelText('Select model'));
+		await user.click(screen.getByRole('option', { name: /beta/ }));
+		expect(selected()).toContain('beta');
+
+		// The hash-prefill strip: `page.url` still carries `?model=bridge::alpha`.
+		stub().shallowGoto('http://localhost:3000/?model=bridge::alpha');
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(selected()).toContain('beta');
+	});
+
 	it('applies the param when a favourite navigates to a new one', async () => {
 		renderPage();
 		await vi.waitFor(() => expect(selected()).toContain('alpha'));

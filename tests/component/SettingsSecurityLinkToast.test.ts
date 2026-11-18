@@ -100,6 +100,19 @@ describe('security page — ?link= result toast', () => {
 		expect(success).toHaveBeenCalledTimes(1);
 	});
 
+	it('does not announce it again on a shallow goto', () => {
+		const success = vi.spyOn(toast, 'success');
+		render(SecurityPage, { props: { data: data as never } });
+		stub().enter();
+		flushSync();
+		expect(success).toHaveBeenCalledTimes(1);
+
+		// The strip is mocked out, so `page.url` still says `link=success`.
+		stub().shallowGoto('http://localhost:3000/settings/security#x');
+		flushSync();
+		expect(success).toHaveBeenCalledTimes(1);
+	});
+
 	it('strips the param with a replacing navigation, not a shallow one', async () => {
 		render(SecurityPage, { props: { data: data as never } });
 		stub().enter();

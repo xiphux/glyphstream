@@ -49,6 +49,8 @@ export interface StubNavigation {
 	to: StubNavigationTarget | null;
 	/** The real union — a callback branching on `popstate` must be expressible. */
 	type: 'enter' | 'link' | 'goto' | 'form' | 'popstate';
+	/** A shallow `goto` (`{ shallow: true }`): history changed, the page did not. */
+	shallow: boolean;
 	willUnload: boolean;
 	complete: Promise<void>;
 }
@@ -141,6 +143,7 @@ export function createKitStub(href: string, data: Record<string, unknown> = {}) 
 				from: null,
 				to: target(),
 				type: 'enter',
+				shallow: false,
 				willUnload: false,
 				complete: Promise.resolve(),
 			});
@@ -161,12 +164,29 @@ export function createKitStub(href: string, data: Record<string, unknown> = {}) 
 				from,
 				to: target(),
 				type,
+				shallow: false,
 				willUnload: false,
 				complete: Promise.resolve(),
 			};
 			navigating.current = navigation;
 			dispatch(navigation);
 			navigating.current = null;
+		},
+		/**
+		 * A shallow `goto(href, { shallow: true })` — what a page stripping its own
+		 * fragment issues. Since SvelteKit 3 it dispatches `afterNavigate`, but
+		 * nothing loads or commits: `page.url` keeps the page's real URL, so a
+		 * handler that doesn't skip it re-reads the same query string.
+		 */
+		shallowGoto(nextHref: string) {
+			dispatch({
+				from: target(),
+				to: { url: new URL(nextHref, page.url) },
+				type: 'goto',
+				shallow: true,
+				willUnload: false,
+				complete: Promise.resolve(),
+			});
 		},
 		/**
 		 * The half of `invalidate()` this stub models: republish `page.*`. No
