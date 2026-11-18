@@ -31,7 +31,8 @@ interface RouteCase {
 	path: () => string;
 	/** Roles expected to render the page (status < 400). */
 	renders: Who[];
-	/** Roles expected to be turned away without a server error (status < 500). */
+	/** Roles expected to be turned away, with a client error (400–499) rather
+	 *  than a render or a server error. */
 	refused?: Who[];
 }
 
@@ -163,6 +164,7 @@ for (const [routeId, route] of Object.entries(ROUTES)) {
 				await asRole(browser, page, who, async (p) => {
 					const path = route.path();
 					const raw = await p.request.get(path, { maxRedirects: 0 });
+					expect(raw.status(), `status for ${who} on ${path}`).toBeGreaterThanOrEqual(400);
 					expect(raw.status(), `status for ${who} on ${path}`).toBeLessThan(500);
 				});
 			});

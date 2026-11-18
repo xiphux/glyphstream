@@ -11,7 +11,7 @@
  *     `!locals.user` check is not enough: it answers a locked session 401,
  *     sending it to /login instead of /unlock); /api/admin/** calls
  *     requireAdmin; each (app) server load awaits parent() or calls
- *     requireUserPage (CLAUDE.md).
+ *     requireUserPage (CLAUDE.md), and the admin-only ones call requireAdmin.
  *   - Dynamic: each guarded handler, invoked with no user, empty params and an
  *     empty body, answers 401 — proving the guard runs BEFORE the handler reads
  *     params, the body, or the database — and answers an app-locked session 423.
@@ -65,6 +65,14 @@ const NO_PARENT: Record<string, string> = {
 const APP_LOAD_EXEMPT: Record<string, string> = {
 	'/(app)/settings/admin': 'unconditional redirect; the target does the auth check',
 };
+
+/** (app) page loads only an admin may run. Each must call requireAdmin: a
+ *  requireUser there type-checks and renders the page to anyone signed in. */
+const ADMIN_LOADS = [
+	'/(app)/settings/endpoints',
+	'/(app)/settings/model-stats',
+	'/(app)/settings/users',
+];
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'fallback'];
 const GUARD = /\brequire(User|Admin)\s*\(/;
@@ -147,6 +155,19 @@ describe('static: (app) server loads', () => {
 			expect(src).toMatch(/await\s+parent\(\)|requireUserPage\(/);
 		},
 	);
+
+	it.each(ADMIN_LOADS)('%s requires an ADMIN, not just a user', (route) => {
+		const src = readFileSync(join(ROUTES, route.slice(1), '+page.server.ts'), 'utf8');
+		expect(src).toMatch(/\brequireAdmin\s*\(/);
+	});
+
+	it('every (app) load importing requireAdmin is listed as admin-only', () => {
+		const admin = loads
+			.filter((f) => /\brequireAdmin\b/.test(readFileSync(f, 'utf8')))
+			.map(routeDir)
+			.sort();
+		expect(admin).toEqual([...ADMIN_LOADS].sort());
+	});
 
 	it.each(Object.keys(NO_PARENT))('%s guards without awaiting parent()', (route) => {
 		const file = join(ROUTES, route.slice(1), '+page.server.ts');
