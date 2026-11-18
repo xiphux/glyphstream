@@ -303,6 +303,60 @@ describe('ChatTurnController — send', () => {
 	});
 });
 
+describe('ChatTurnController — stopping a live turn', () => {
+	// The send's SSE body stays open until its signal aborts, then errors the
+	// way a real fetch body does.
+	function openStreamFetch() {
+		let sendSignal: AbortSignal | null = null;
+		const fetchMock = vi.fn(async (url: string, init?: RequestInit): Promise<Response> => {
+			if (url.endsWith('/cancel')) return new Response(null, { status: 204 });
+			const signal = init!.signal!;
+			sendSignal = signal;
+			const enc = new TextEncoder();
+			const body = new ReadableStream<Uint8Array>({
+				start(ctl) {
+					ctl.enqueue(
+						enc.encode(
+							`data: ${JSON.stringify({ type: 'start', userMessage: userMsg('u1') })}\n\n`,
+						),
+					);
+					ctl.enqueue(
+						enc.encode(`data: ${JSON.stringify({ type: 'text', chunk: 'partial' })}\n\n`),
+					);
+					signal.addEventListener('abort', () => ctl.error(signal.reason));
+				},
+			});
+			return new Response(body, { status: 200 });
+		});
+		return { fetchMock, signal: () => sendSignal };
+	}
+
+	it('cancels server-side, aborts the local stream, and ends without an error', async () => {
+		const { fetchMock, signal } = openStreamFetch();
+		vi.stubGlobal('fetch', fetchMock);
+		const { deps, state } = makeDeps();
+		const turn = new ChatTurnController(deps);
+
+		const sent = turn.send('hello', []);
+		await vi.waitFor(() => expect(turn.inFlightSegments.length).toBeGreaterThan(0));
+		expect(turn.inFlightOpen).toBe(true);
+
+		await turn.stop();
+		expect(signal()?.aborted).toBe(true);
+		await sent;
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/api/conversations/c1/cancel',
+			expect.objectContaining({ method: 'POST' }),
+		);
+		expect(state.error).toBeNull();
+		expect(turn.busy).toBe(false);
+		expect(turn.inFlightOpen).toBe(false);
+		expect(refreshAll).toHaveBeenCalled();
+		vi.unstubAllGlobals();
+	});
+});
+
 describe('ChatTurnController — slot acquisition', () => {
 	/** A stream the test feeds one event at a time, so mid-turn state is
 	 *  observable instead of only its settled remains. */
