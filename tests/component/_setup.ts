@@ -97,6 +97,20 @@ if (typeof window !== 'undefined') {
 }
 
 /**
+ * Refuse any request a test didn't stub. happy-dom's fetch is real: it resolves
+ * a relative URL against `http://localhost:3000` — the e2e app's default port —
+ * and sends it, so an unstubbed call from a component either fails noisily or,
+ * with an e2e server up, reaches it. A test that wants a response stubs `fetch`
+ * itself; `vi.unstubAllGlobals()` restores this one.
+ */
+if (typeof window !== 'undefined') {
+	globalThis.fetch = (input: RequestInfo | URL) => {
+		const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+		return Promise.reject(new Error(`unmocked fetch in a component test: ${url}`));
+	};
+}
+
+/**
  * Report every image as still loading. happy-dom never loads an image, yet
  * reports each one `complete` with no width — which is what a BROKEN image
  * looks like in a browser, so code that checks for one (AssistantAvatar's)

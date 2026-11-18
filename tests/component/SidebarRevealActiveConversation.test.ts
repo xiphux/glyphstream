@@ -56,6 +56,7 @@ vi.mock('$app/navigation', () => ({
 // Both fire network work from the layout's onMount and neither is under test.
 vi.mock('#lib/push-subscribe.js', () => ({ reconcileSubscription: vi.fn(async () => {}) }));
 vi.mock('#lib/timezone-sync.js', () => ({ syncTimeZone: vi.fn(async () => {}) }));
+vi.mock('#lib/stream-probe.js', () => ({ checkStreamCompression: vi.fn(async () => {}) }));
 
 // Vite `define`s the version at build time; the sidebar footer renders it.
 vi.stubGlobal('__APP_VERSION__', '9.9.9');
