@@ -25,6 +25,7 @@
 		dragHasFiles,
 		extractFiles,
 		extractImageFiles,
+		pasteCarriesText,
 		replaceRange,
 	} from '#lib/composer.js';
 	import { composerEnterHandler } from '#lib/composer-keys.js';
@@ -227,8 +228,10 @@
 
 	function onPaste(e: ClipboardEvent) {
 		if (!allowAttachments) return;
-		// Only swallow the paste when we consumed an image — plain-text
-		// pastes fall through to the textarea so typing-flow isn't disrupted.
+		// Only swallow the paste when we consumed an image — text pastes,
+		// including ones that also carry a picture of that text, fall through
+		// to the textarea.
+		if (pasteCarriesText(e.clipboardData)) return;
 		const files = extractImageFiles(e.clipboardData);
 		if (files.length > 0) {
 			e.preventDefault();

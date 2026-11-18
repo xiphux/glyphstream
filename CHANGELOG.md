@@ -56,6 +56,7 @@ arrived.
 - Deleting a user now also removes their skills' files from disk; before, only the database rows went.
 - An attached image that can't be downscaled for the model (corrupt, or too large to decode) is no longer re-read and re-decoded on every turn, logging a warning each time.
 - Opening the home page with a `#q=` prompt (a share-sheet Shortcut) no longer does nothing when an unsent draft was in the box: the shared text replaces it, with an Undo that brings the draft back.
+- Pasting spreadsheet cells or text from Word and other Office apps into the composer pastes the text, instead of attaching a picture of it and dropping the text. A copied web image still attaches as an image.
 
 ## v0.54.0
 

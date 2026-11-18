@@ -81,6 +81,24 @@ export function extractImageFiles(source: DataTransfer | null | undefined): File
 }
 
 /**
+ * Whether a paste carries real text alongside any image it holds, so the text
+ * should land and the image rendition be ignored. Spreadsheet cells and Office
+ * text copy as text plus a rendered picture of it; a copied web image carries
+ * text too (its URL as text/plain, a lone `<img>` as text/html), so text/plain
+ * alone can't decide. Rich text or HTML with visible text can.
+ */
+export function pasteCarriesText(source: DataTransfer | null | undefined): boolean {
+	if (!source) return false;
+	const types = Array.from(source.types ?? []);
+	if (types.includes('text/rtf')) return true;
+	if (!types.includes('text/html')) return false;
+	const html = source.getData('text/html');
+	if (!html) return false;
+	const doc = new DOMParser().parseFromString(html, 'text/html');
+	return (doc.body?.textContent ?? '').trim() !== '';
+}
+
+/**
  * Pull every file out of a drop: images, documents, data files, the same set
  * the file picker accepts. The upload route classifies each one, so a type it
  * can't take comes back as a failed chip with the reason, rather than being

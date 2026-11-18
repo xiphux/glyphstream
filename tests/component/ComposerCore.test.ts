@@ -11,7 +11,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { createRawSnippet } from 'svelte';
-import { render, screen, fireEvent } from '@testing-library/svelte';
+import { render, screen, fireEvent, createEvent } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import ComposerCore from '#lib/components/chat/ComposerCore.svelte';
 import type { AttachmentStore } from '#lib/attachments.svelte.js';
@@ -182,6 +182,79 @@ describe('ComposerCore — paste', () => {
 		const ta = screen.getByPlaceholderText('Write a message…');
 		await fireEvent.paste(ta, { clipboardData: { types: ['text/plain'], files: [], items: [] } });
 		expect(store.addFiles).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * Clipboard shapes for a paste that holds an image AND text. The shapes are
+ * what browsers are known to expose, not captures from real clipboards.
+ * Text with a picture of itself must land as text; a copied web image, which
+ * carries its URL as text, must still attach.
+ */
+describe('ComposerCore — paste with both text and an image', () => {
+	function clipboard(data: Record<string, string>) {
+		return {
+			types: [...Object.keys(data), 'Files'],
+			files: [imageFile('image.png')],
+			items: [],
+			getData: (type: string) => data[type] ?? '',
+		};
+	}
+
+	async function paste(clipboardData: ReturnType<typeof clipboard>) {
+		const store = makeStore();
+		render(ComposerCore, { props: baseProps({ attachments: store }) });
+		const ta = screen.getByPlaceholderText('Write a message…');
+		const event = createEvent.paste(ta, { clipboardData });
+		await fireEvent(ta, event);
+		return { attached: vi.mocked(store.addFiles).mock.calls.length > 0, event };
+	}
+
+	it.each([
+		[
+			'spreadsheet cells',
+			{
+				'text/plain': 'Q1\t100\nQ2\t140',
+				'text/html':
+					'<meta charset="utf-8"><table><tr><td>Q1</td><td>100</td></tr><tr><td>Q2</td><td>140</td></tr></table>',
+			},
+		],
+		[
+			'Office text with rich text',
+			{
+				'text/plain': 'Quarterly summary',
+				'text/rtf': '{\\rtf1\\ansi Quarterly summary}',
+				'text/html': '<p>Quarterly summary</p>',
+			},
+		],
+		['rich text with no HTML', { 'text/plain': 'Quarterly summary', 'text/rtf': '{\\rtf1 x}' }],
+	])('a paste of %s lands as text, nothing attached', async (_name, data) => {
+		const { attached, event } = await paste(clipboard(data));
+		expect(attached).toBe(false);
+		expect(event.defaultPrevented).toBe(false);
+	});
+
+	it.each([
+		[
+			'a web image copied in Safari/iOS (URL as text, a lone <img>)',
+			{
+				'text/plain': 'https://example.com/cat.png',
+				'text/html': '<meta charset="utf-8"><img src="https://example.com/cat.png" alt="a cat">',
+			},
+		],
+		[
+			'a web image copied in Chrome (a lone <img> only)',
+			{
+				'text/html':
+					'<html><body><!--StartFragment--><img src="https://example.com/cat.png"><!--EndFragment--></body></html>',
+			},
+		],
+		['an image with only its URL as text', { 'text/plain': 'https://example.com/cat.png' }],
+		['an image with an empty HTML flavour', { 'text/plain': 'cat.png', 'text/html': '' }],
+	])('a paste of %s attaches the image', async (_name, data) => {
+		const { attached, event } = await paste(clipboard(data));
+		expect(attached).toBe(true);
+		expect(event.defaultPrevented).toBe(true);
 	});
 });
 
