@@ -66,7 +66,8 @@ describe('reconcileGenerating', () => {
 	it('drops flags the server no longer reports as in flight', () => {
 		markGenerating('done');
 		markGenerating('still-running');
-		reconcileGenerating(['still-running']);
+		// The dropped ids come back: the layout refreshes their sidebar rows.
+		expect(reconcileGenerating(['still-running'])).toEqual(['done']);
 		expect(isGenerating('done')).toBe(false);
 		expect(isGenerating('still-running')).toBe(true);
 	});

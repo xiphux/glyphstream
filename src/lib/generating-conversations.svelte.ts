@@ -142,6 +142,8 @@ export function anyGenerating(): boolean {
  * a different matter — `queuedIds` fully replaces what we believed about the
  * surviving ids, because a queued conversation reaching the front of the line
  * is a transition no client can observe any other way.
+ *
+ * Returns the ids it dropped: generations that finished since the last answer.
  */
 export function reconcileGenerating(
 	activeIds: readonly string[],
@@ -149,7 +151,7 @@ export function reconcileGenerating(
 	// repaint every waiting thread as running — and it's exactly the explicit
 	// `undefined` a caller passes when the server didn't send the field.
 	queuedIds?: readonly string[],
-): void {
+): string[] {
 	// A malformed answer is NO information, not "everything finished". Without
 	// this, `new Set(undefined)` — which the spec makes an empty set rather than
 	// a throw — would clear every flag at once, and since the layout's poll is
@@ -157,7 +159,7 @@ export function reconcileGenerating(
 	// running generations unmarked until a reload. The rest of the codebase can
 	// cast a response body and let a bad shape throw into a retry; here the
 	// nonsense value is silently *valid*, so it has to be rejected explicitly.
-	if (!Array.isArray(activeIds)) return;
+	if (!Array.isArray(activeIds)) return [];
 	// The same trap, one notch quieter: a missing/garbled `queuedIds` would read
 	// as "nothing is queued" and repaint every waiting thread as active. Treat it
 	// as no information about activity too, and leave what we already believed —
@@ -167,15 +169,18 @@ export function reconcileGenerating(
 	const activityKnown = Array.isArray(queuedIds);
 	const active = new Set(activeIds);
 	const nowQueued = activityKnown ? new Set(queuedIds) : null;
+	const finished: string[] = [];
 	for (const id of generating) {
 		if (!active.has(id)) {
 			generating.delete(id);
 			queued.delete(id);
+			finished.push(id);
 		} else if (nowQueued) {
 			if (nowQueued.has(id)) queued.add(id);
 			else queued.delete(id);
 		}
 	}
+	return finished;
 }
 
 /** Test-only. */

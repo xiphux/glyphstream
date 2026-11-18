@@ -268,7 +268,8 @@
 				const res = await fetch('/api/conversations?generating=1');
 				if (stopped || !res.ok) return;
 				const body = (await res.json()) as GeneratingConversationsResponse;
-				reconcileGenerating(body.ids, body.queuedIds);
+				const finished = reconcileGenerating(body.ids, body.queuedIds);
+				if (finished.length > 0) onGenerationsFinished(finished);
 			} catch {
 				// Transient — the next tick retries.
 			}
@@ -278,6 +279,40 @@
 			clearInterval(interval);
 		};
 	});
+
+	// A generation finishing away from its thread changes its sidebar row (the
+	// re-sort, and on a first exchange the title), and nothing else re-pulls the
+	// list. The title comes later than the poll can see: the server frees the
+	// in-flight slot before the auto-title task runs, so a row still untitled
+	// after the first refresh is re-checked a bounded number of times — bounded
+	// because a title task can fail and leave it untitled for good.
+	const TITLE_RECHECK_MS = 4000;
+	const TITLE_RECHECKS = 5;
+	// Plain, not $state: nothing renders them.
+	const untitledFinished = new Set<string>();
+	let titleRechecksLeft = 0;
+	let titleRecheckTimer: ReturnType<typeof setTimeout> | undefined;
+	function onGenerationsFinished(ids: string[]) {
+		refreshConversations();
+		for (const id of ids) untitledFinished.add(id);
+		titleRechecksLeft = TITLE_RECHECKS;
+		titleRecheckTimer ??= setTimeout(recheckTitles, TITLE_RECHECK_MS);
+	}
+	function recheckTitles() {
+		titleRecheckTimer = undefined;
+		for (const id of untitledFinished) {
+			const row = data.conversations.find((c) => c.id === id);
+			if (!row || row.title !== null) untitledFinished.delete(id);
+		}
+		if (untitledFinished.size === 0 || titleRechecksLeft <= 0) {
+			untitledFinished.clear();
+			return;
+		}
+		titleRechecksLeft--;
+		refreshConversations();
+		titleRecheckTimer = setTimeout(recheckTitles, TITLE_RECHECK_MS);
+	}
+	$effect(() => () => clearTimeout(titleRecheckTimer));
 
 	// Shared FLIP config for the sidebar lists. When a conversation gets new
 	// activity it jumps to the top of Recents, and a favorites drag reorders

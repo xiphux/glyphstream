@@ -16,12 +16,13 @@
  * `fetch` on a 5s timer would test vitest's clock, not the sidebar.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import { createRawSnippet, flushSync } from 'svelte';
 import type { createKitStub } from './_helpers/kit-runtime-stub.svelte';
 
 const holder = vi.hoisted(() => ({ current: null as ReturnType<typeof createKitStub> | null }));
+const invalidate = vi.hoisted(() => vi.fn(async (_key: string) => {}));
 
 function stub() {
 	if (!holder.current) throw new Error('the SvelteKit runtime stub was never built');
@@ -48,7 +49,7 @@ vi.mock('$app/state', async () => {
 });
 vi.mock('$app/navigation', () => ({
 	goto: vi.fn(async () => {}),
-	invalidate: vi.fn(async () => {}),
+	invalidate,
 	refreshAll: vi.fn(async () => {}),
 	afterNavigate: (callback: Parameters<ReturnType<typeof createKitStub>['afterNavigate']>[0]) =>
 		stub().afterNavigate(callback),
@@ -76,7 +77,11 @@ vi.stubGlobal(
 );
 
 import AppLayout from '../../src/routes/(app)/+layout.svelte';
-import { reconcileGenerating, resetGenerating } from '#lib/generating-conversations.svelte.js';
+import {
+	markGenerating,
+	reconcileGenerating,
+	resetGenerating,
+} from '#lib/generating-conversations.svelte.js';
 
 function conversation(id: string) {
 	return { id, title: `Conversation ${id}`, updatedAt: 1, private: false };
@@ -119,6 +124,7 @@ function marksFor(convId: string): string[] {
 beforeEach(() => {
 	stub().reset();
 	resetGenerating();
+	invalidate.mockClear();
 });
 
 describe('sidebar generating mark', () => {
@@ -167,5 +173,68 @@ describe('sidebar generating mark', () => {
 		flushSync();
 		expect(marksFor('running')).toEqual([]);
 		expect(marksFor('waiting')).toEqual([]);
+	});
+});
+
+// These go through the layout's real interval (the poll's outcome is the
+// subject here, not the marks), so they drive vitest's clock.
+describe('sidebar row of a generation the user walked away from', () => {
+	beforeEach(() => vi.useFakeTimers());
+	afterEach(() => vi.useRealTimers());
+
+	/** The row as the new-chat page loaded it: before the first message
+	 *  existed, so untitled. Nothing is generating at load; the chat page
+	 *  marked it before the user left. */
+	function renderLeftBehind() {
+		const data = {
+			...layoutData,
+			conversations: [{ id: 'left', title: null as string | null, updatedAt: 1, private: false }],
+			generatingIds: [],
+			queuedGeneratingIds: [],
+		};
+		const children = createRawSnippet(() => ({ render: () => '<main>another page</main>' }));
+		const { rerender } = render(AppLayout, { props: { data: data as never, children } });
+		stub().enter();
+		markGenerating('left');
+		flushSync();
+		return {
+			titled: () =>
+				rerender({
+					data: { ...data, conversations: [{ ...data.conversations[0], title: 'Named' }] } as never,
+					children,
+				}),
+		};
+	}
+	const refreshes = () => invalidate.mock.calls.filter(([k]) => k === 'app:conversations').length;
+
+	it('re-pulls the list when the poll sees it finish', async () => {
+		renderLeftBehind();
+		await vi.advanceTimersByTimeAsync(5100);
+		expect(marksFor('left')).toEqual([]);
+		expect(refreshes()).toBe(1);
+	});
+
+	it('re-pulls again while the title is still missing, and stops once it lands', async () => {
+		const { titled } = renderLeftBehind();
+		await vi.advanceTimersByTimeAsync(5100);
+		expect(refreshes()).toBe(1);
+
+		// The server frees the in-flight slot before the auto-title task runs.
+		await vi.advanceTimersByTimeAsync(4000);
+		expect(refreshes()).toBe(2);
+
+		await titled();
+		await vi.advanceTimersByTimeAsync(20_000);
+		expect(refreshes()).toBe(2);
+	});
+
+	it('gives up on a title that never comes', async () => {
+		renderLeftBehind();
+		await vi.advanceTimersByTimeAsync(5100);
+		await vi.advanceTimersByTimeAsync(120_000);
+		const settled = refreshes();
+		expect(settled).toBeGreaterThan(2);
+		await vi.advanceTimersByTimeAsync(120_000);
+		expect(refreshes()).toBe(settled);
 	});
 });
