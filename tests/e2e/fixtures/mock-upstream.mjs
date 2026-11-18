@@ -70,6 +70,22 @@ function wantsGlacialStream(body) {
 	);
 }
 
+/** Sentinels a spec can plant in its PROMPT to make the upstream fail the turn:
+ *  FORCE_UPSTREAM_500 answers with a 500 before any SSE, DROP_MID_STREAM sends
+ *  the first few chunks and then cuts the connection. Only the LATEST user
+ *  message counts, so a follow-up in the same conversation streams normally. */
+const FORCE_500_MARKER = 'FORCE_UPSTREAM_500';
+const DROP_MID_STREAM_MARKER = 'DROP_MID_STREAM';
+/** Chunks DROP_MID_STREAM sends before cutting: the role chunk and two words. */
+const DROP_AFTER_CHUNKS = 3;
+function latestUserText(body) {
+	const users = Array.isArray(body?.messages) ? body.messages.filter((m) => m.role === 'user') : [];
+	const last = users.at(-1)?.content;
+	if (typeof last === 'string') return last;
+	if (Array.isArray(last)) return last.map((p) => p?.text ?? '').join(' ');
+	return '';
+}
+
 /** A real, decodable 1x1 PNG — the media persister hands bytes to sharp
  *  for thumbnailing, so the b64 must be a valid image, not arbitrary
  *  bytes. A corrupt one fails silently: every thumbnail errors (`vipspng:
@@ -316,6 +332,7 @@ function streamChatCompletion(
 	glacial = false,
 	react = false,
 	suppressText = false,
+	dropMidStream = false,
 ) {
 	res.writeHead(200, {
 		'Content-Type': 'text/event-stream',
@@ -385,6 +402,10 @@ function streamChatCompletion(
 
 	let i = 0;
 	const tick = () => {
+		if (dropMidStream && i === DROP_AFTER_CHUNKS) {
+			res.destroy();
+			return;
+		}
 		if (i < chunks.length) {
 			res.write(`data: ${JSON.stringify(chunks[i])}\n\n`);
 			i++;
@@ -432,6 +453,7 @@ const server = createServer(async (req, res) => {
 		let glacial = false;
 		let react = false;
 		let suppressText = false;
+		let dropMidStream = false;
 		try {
 			const body = JSON.parse(raw || '{}');
 			wantsStream = body.stream === true;
@@ -449,11 +471,16 @@ const server = createServer(async (req, res) => {
 			// else gets the normal reply. The empty-summary sentinel (planted in a
 			// folded turn) forces a blank summary to exercise the failure path.
 			if (isSummarizationRequest(body)) text = wantsEmptySummary(body) ? '' : SUMMARY_TEXT;
+			const latest = latestUserText(body);
+			if (latest.includes(FORCE_500_MARKER)) {
+				return sendJson(res, 500, { error: { message: 'mock upstream: forced failure' } });
+			}
+			dropMidStream = latest.includes(DROP_MID_STREAM_MARKER);
 		} catch {
 			/* default to sync, default model, normal reply */
 		}
 		return wantsStream
-			? streamChatCompletion(res, model, text, glacial, react, suppressText)
+			? streamChatCompletion(res, model, text, glacial, react, suppressText, dropMidStream)
 			: syncChatCompletion(res, text);
 	}
 

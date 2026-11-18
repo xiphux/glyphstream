@@ -199,6 +199,8 @@ describe('ChatTurnController — send', () => {
 
 		// No optimistic user row added; the whole assistant chain regenerates.
 		expect(state.messages.map((m) => m.id)).toEqual(['u1', 'a-retry']);
+		// A retry branches the tree: only the server knows the new sibling count.
+		expect(refreshAll).toHaveBeenCalledTimes(1);
 		vi.unstubAllGlobals();
 	});
 
