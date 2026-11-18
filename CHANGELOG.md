@@ -22,6 +22,7 @@ arrived.
 ### Changed
 
 - Disabling an account now stops the generations it had running or queued, as deleting it does, and pauses its background memory consolidation and conversation summaries.
+- An older version started against a database a newer version has migrated now refuses to start, naming the migrations it doesn't have, instead of running on a schema it doesn't understand. Downgrading isn't supported; restore the backup taken before the upgrade.
 
 ### Fixed
 

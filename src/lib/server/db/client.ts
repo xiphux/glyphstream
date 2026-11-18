@@ -2,7 +2,7 @@ import process from 'node:process';
 import { DatabaseSync } from 'node:sqlite';
 import { drizzle, type NodeSQLiteDatabase } from 'drizzle-orm/node-sqlite';
 import { migrate } from 'drizzle-orm/node-sqlite/migrator';
-import { existsSync, mkdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { dbPath } from '../env';
 export type DB = NodeSQLiteDatabase;
@@ -98,6 +98,7 @@ export function getDb(): DB {
 
 	if (existsSync(resolve('./drizzle'))) {
 		migrate(db, { migrationsFolder: resolve('./drizzle') });
+		assertNoNewerMigrations(sqlite, resolve('./drizzle'));
 	}
 
 	// Collect planner statistics. Without `sqlite_stat1` every index is costed
@@ -203,5 +204,32 @@ function explainUnwritableDb(e: unknown, path: string): unknown {
 			`uid ${uid ?? '?'}; make its data directory writable by that user, e.g. ` +
 			`\`sudo chown -R ${owner} ./data\` for the Docker image.`,
 		{ cause: e },
+	);
+}
+
+/**
+ * Refuse a database that a newer build has migrated past this one. Drizzle
+ * applies only the migrations it has and ignores rows it doesn't know, so an
+ * older image started against an upgraded `data/` would otherwise run on a
+ * schema and data it was never written for, and what it writes in the old
+ * shape stays that way after rolling forward. Downgrades are not supported:
+ * the remedy is the newer build, or the backup taken before upgrading.
+ */
+export function assertNoNewerMigrations(sqlite: DatabaseSync, migrationsFolder: string): void {
+	const known = new Set(
+		readdirSync(migrationsFolder, { withFileTypes: true })
+			.filter((d) => d.isDirectory())
+			.map((d) => d.name),
+	);
+	// `name` is null on rows recorded before drizzle-kit v1 stored it.
+	const applied = sqlite
+		.prepare('SELECT name FROM __drizzle_migrations WHERE name IS NOT NULL')
+		.all() as Array<{ name: string }>;
+	const unknown = applied.map((r) => r.name).filter((name) => !known.has(name));
+	if (unknown.length === 0) return;
+	throw new Error(
+		`The database at ${dbPath()} was upgraded by a newer version of GlyphStream ` +
+			`(migrations this build doesn't have: ${unknown.join(', ')}). Downgrading is not ` +
+			'supported: run the newer version, or restore the backup taken before the upgrade.',
 	);
 }

@@ -128,6 +128,20 @@ The image pins `HOME=/home/node` (group-writable), so an `npx`-launched
 override that changes the **gid** too is not supported: the code interpreter's
 package directory and that home are writable only by uid 1000 and gid 1000.
 
+## Upgrading
+
+Pull or rebuild the image and restart it. Database migrations run when the
+new version first opens the database, before it serves anything; some of
+them rewrite rows in place, so take a backup first (see
+[Backup and restore](#backup-and-restore)).
+
+**Downgrading is not supported.** An older version started against a
+database that a newer one migrated refuses to start, and its log names the
+migrations it doesn't have. Running it anyway would read and write data in a
+shape it was never built for. To go back, restore the backup you took
+before upgrading (anything written since is lost), or run the newer version
+again.
+
 ## Faststart backfill (one-shot)
 
 Videos are stored with their index at the front so a player can start before
