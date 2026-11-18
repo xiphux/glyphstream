@@ -12,6 +12,12 @@ See [`config.toml.example`](../config.toml.example) and
 [`.env.example`](../.env.example) for the full annotated surface. This page
 covers the concepts and the gotchas.
 
+A section or key in `config.toml` that GlyphStream doesn't read — usually a
+typo, like `max_concurent` — is logged as a warning at startup, naming the
+section and key and, when one is close, the key you probably meant. It is a
+warning, not an error: the server still starts, and the misspelt setting stays
+at its default until you fix it.
+
 ## The `*_env` secrets convention
 
 Any `config.toml` field whose name ends in `_env` stores the **name** of an
@@ -424,9 +430,9 @@ llama.cpp). It's a property of the task model, not the chat.
 > cannot: TOML binds every bare key to the _most recently opened_ table header,
 > with no syntax to return to the root table once a header appears, so a bare
 > `task_model` must sit above **every** `[[endpoints]]` and `[table]` header.
-> Placed below an `[[endpoints]]` block it is parsed as a field of that endpoint,
-> ignored as an unknown key, and titling silently stays in fallback mode with no
-> error at boot. Using the `[task_model]` table form avoids this entirely.
+> Placed below an `[[endpoints]]` block it is parsed as a field of that endpoint:
+> the server logs an unknown-key warning for that endpoint at boot, and titling
+> stays in fallback mode. Using the `[task_model]` table form avoids this entirely.
 
 ## Prompt enhancement (`[image_enhancement]`)
 

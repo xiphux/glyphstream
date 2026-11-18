@@ -1223,15 +1223,6 @@ export const DEFAULT_SCHEDULED_TASKS_CONFIG: LoadedScheduledTasksConfig = {
 	disableAfterFailures: 3,
 };
 
-const SCHEDULED_TASKS_KEYS = new Set([
-	'enabled',
-	'max_per_user',
-	'min_interval_hours',
-	'default_deadline_minutes',
-	'keep_runs',
-	'disable_after_failures',
-]);
-
 export function loadScheduledTasksConfig(path = configPath()): LoadedScheduledTasksConfig {
 	const { parsed, absolutePath } = readConfigToml(path);
 	const raw = parsed.scheduled_tasks;
@@ -1241,9 +1232,6 @@ export function loadScheduledTasksConfig(path = configPath()): LoadedScheduledTa
 	}
 	const block = raw as Record<string, unknown>;
 	const at = `[scheduled_tasks] in ${absolutePath}`;
-	for (const key of Object.keys(block)) {
-		if (!SCHEDULED_TASKS_KEYS.has(key)) throw new ConfigError(`${at}: unknown key '${key}'`);
-	}
 	const d = DEFAULT_SCHEDULED_TASKS_CONFIG;
 	const int = (key: string, fallback: number, min: number, max?: number) =>
 		block[key] === undefined
@@ -1283,9 +1271,6 @@ export function loadCheckInsConfig(path = configPath()): LoadedCheckInsConfig {
 	}
 	const block = raw as Record<string, unknown>;
 	const at = `[check_ins] in ${absolutePath}`;
-	for (const key of Object.keys(block)) {
-		if (key !== 'enabled') throw new ConfigError(`${at}: unknown key '${key}'`);
-	}
 	return {
 		enabled: block.enabled === undefined ? true : requireBoolean(block.enabled, 'enabled', at),
 	};

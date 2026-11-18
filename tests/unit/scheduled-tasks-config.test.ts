@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -50,7 +50,6 @@ disable_after_failures = 2
 		['min_interval_hours = 1.5', /integer/],
 		['default_deadline_minutes = 1', />= 5/],
 		['keep_runs = 0', />= 1/],
-		['keep_run = 3', /unknown key 'keep_run'/],
 	])('rejects %s', (line, message) => {
 		expect(() => loadScheduledTasksConfig(writeConfig(`[scheduled_tasks]\n${line}\n`))).toThrow(
 			message,
@@ -66,10 +65,25 @@ describe('loadCheckInsConfig', () => {
 		});
 	});
 
-	it.each([
-		['enabled = 1', /boolean/],
-		['enable = true', /unknown key 'enable'/],
-	])('rejects %s', (line, message) => {
+	it.each([['enabled = 1', /boolean/]])('rejects %s', (line, message) => {
 		expect(() => loadCheckInsConfig(writeConfig(`[check_ins]\n${line}\n`))).toThrow(message);
+	});
+});
+
+describe('an unknown key warns without refusing to load', () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	it('[scheduled_tasks]', () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const path = writeConfig('[scheduled_tasks]\nkeep_run = 3\n');
+		expect(loadScheduledTasksConfig(path)).toEqual(DEFAULT_SCHEDULED_TASKS_CONFIG);
+		expect(warn).toHaveBeenCalledWith(expect.stringMatching(/unknown key 'keep_run'/));
+	});
+
+	it('[check_ins]', () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const path = writeConfig('[check_ins]\nenable = false\n');
+		expect(loadCheckInsConfig(path)).toEqual({ enabled: true });
+		expect(warn).toHaveBeenCalledWith(expect.stringMatching(/unknown key 'enable'/));
 	});
 });
