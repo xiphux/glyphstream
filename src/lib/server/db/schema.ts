@@ -379,7 +379,7 @@ export const conversations = sqliteTable(
 		createdAt: integer('created_at').notNull(),
 		updatedAt: integer('updated_at').notNull(),
 		archivedAt: integer('archived_at'),
-		// Per-conversation opt-outs (see FEATURE_CATEGORIES in #lib/types/api).
+		// Per-conversation opt-outs (see BUILTIN_FEATURE_CATEGORIES in #lib/types/api).
 		// JSON-serialized array of category keys, e.g. `["web"]`. Null/empty
 		// means all features ON. Stored as a JSON array (not a column per
 		// feature) so adding categories doesn't require a migration each time.
@@ -818,7 +818,7 @@ export const media = sqliteTable(
 		// input for the code interpreter (or for a text model to reason
 		// about the filename). Gallery queries default-filter to
 		// ('image', 'video') so file kinds never leak into the visual
-		// library UI; see `listMediaForUser`.
+		// library UI; see `galleryKind`.
 		kind: text('kind', { enum: ['image', 'video', 'file'] }).notNull(),
 		// Original filename from the upload (e.g. "Q4-budget.xlsx"). Null
 		// for legacy rows and for AI-generated images/videos where the
@@ -978,8 +978,8 @@ export const media = sqliteTable(
 		// (user_id, origin) seek, and the extra index-entry rewrite per star measured
 		// 0.14ms on a write a human performs by hand. It also made every
 		// favorites-FILTERED read 4-5x faster, since `favorited_at` became a residual
-		// testable from the index rather than from the table: the month rail and the
-		// model facets each went 7.1ms -> 1.4ms at 30k media.
+		// testable from the index rather than from the table: the model facets went
+		// 7.1ms -> 1.4ms at 30k media.
 		index('idx_media_user_gallery').on(t.userId, t.origin, t.deletedAt, t.createdAt, t.favoritedAt),
 		// No *partial* index for `favorited_at is not null`, deliberately — separate
 		// question from the projection above. The favorites filter narrows the same

@@ -9,7 +9,7 @@ import { resetData, seedMediaPrompts } from './helpers';
  *
  * Worth an e2e rather than leaving this to the unit + component layers, because
  * the interesting part is exactly the seam they each miss: the gallery is assembled
- * from several independent reads (layout, units, unit-members, periods, and the
+ * from several independent reads (layout, units, unit-members, and the
  * page load's search + facets) which must all agree on the filter, served through
  * two server-side memos whose keys and fingerprint must account for a star. A
  * real browser against a real server is the only place a disagreement between them

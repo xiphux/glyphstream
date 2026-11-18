@@ -1,7 +1,8 @@
 <!--
 	Per-conversation feature opt-out menu. Sits next to the composer's
 	+ (attach) button as a small popover trigger; clicking opens a list
-	of switches, one per FEATURE_CATEGORIES entry.
+	of switches, one per feature category (the built-ins plus each
+	connected MCP server's).
 
 	Pure presentation: owner supplies `disabledFeatures` + an `onChange`
 	handler. The handler decides what "change" means — for the new-chat

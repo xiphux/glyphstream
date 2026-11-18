@@ -12,6 +12,7 @@ import {
 	claimExpiredTrash,
 	findPurgeCandidates,
 	getMediaForUser,
+	getMediaListItemForUser,
 	listTrashForUser,
 	purgeTrashForUser,
 	restoreMediaForUser,
@@ -20,12 +21,10 @@ import {
 	linkMessageMedia,
 	listConversationMediaRefs,
 	listDistinctSourceModelsForUser,
-	listMediaMonthPeriodsForUser,
 	listMediaNeedingEmbedding,
 	setMediaFavorite,
 	listConversationsForMedia,
 	listMediaForConversation,
-	listMediaForUser,
 	listMessageIdsForConversation,
 	stampOrphanedZeroRefRows,
 } from '#lib/server/db/queries/media.js';
@@ -280,234 +279,19 @@ describe('deleteConversation cascade decrements media refs', () => {
 	});
 });
 
-describe('listMediaForUser', () => {
-	it('returns user-owned, non-deleted media newest-first', async () => {
-		const u = seedUser();
-		const m1 = makeMedia(u.id);
-		await new Promise((r) => setTimeout(r, 5));
-		const m2 = makeMedia(u.id);
-		const page = listMediaForUser(u.id);
-		expect(page.items.map((i) => i.id)).toEqual([m2.id, m1.id]);
-	});
-
-	it('filters out hard-deleted rows', () => {
-		const u = seedUser();
-		const m1 = makeMedia(u.id);
-		makeMedia(u.id);
-		trashMediaForUser(m1.id, u.id);
-		const page = listMediaForUser(u.id);
-		expect(page.items.map((i) => i.id)).not.toContain(m1.id);
-	});
-
-	it('filters by kind when provided', () => {
-		const u = seedUser();
-		const img = makeMedia(u.id, { kind: 'image' });
-		const vid = makeMedia(u.id, { kind: 'video', contentType: 'video/mp4' });
-		expect(listMediaForUser(u.id, { kind: 'image' }).items.map((i) => i.id)).toEqual([img.id]);
-		expect(listMediaForUser(u.id, { kind: 'video' }).items.map((i) => i.id)).toEqual([vid.id]);
-	});
-
-	it('returns nextCursor when there are more pages', () => {
-		const u = seedUser();
-		for (let i = 0; i < 5; i++) makeMedia(u.id);
-		const page = listMediaForUser(u.id, { limit: 3 });
-		expect(page.items).toHaveLength(3);
-		expect(page.nextCursor).not.toBeNull();
-	});
-
-	it('cursor pagination yields the rest', () => {
-		const u = seedUser();
-		for (let i = 0; i < 5; i++) makeMedia(u.id);
-		const p1 = listMediaForUser(u.id, { limit: 3 });
-		const p2 = listMediaForUser(u.id, { limit: 3, cursor: p1.nextCursor });
-		expect(p2.items).toHaveLength(2);
-		expect(p2.nextCursor).toBeNull();
-		// No overlap between pages.
-		const ids1 = new Set(p1.items.map((i) => i.id));
-		for (const item of p2.items) expect(ids1.has(item.id)).toBe(false);
-	});
-
-	it('pages through rows sharing a createdAt without skipping or repeating', () => {
-		// The cursor is (createdAt, id); with rows tied on createdAt the id alone
-		// carries the paging, across several page boundaries.
-		const u = seedUser();
-		const ids: string[] = [];
-		for (let i = 0; i < 7; i++) {
-			const m = makeMedia(u.id);
-			setCreatedAt(m.id, 1_000);
-			ids.push(m.id);
-		}
-		const older = makeMedia(u.id);
-		setCreatedAt(older.id, 500);
-
-		const seen: string[] = [];
-		let cursor: string | null = null;
-		for (let guard = 0; guard < 10; guard++) {
-			const page = listMediaForUser(u.id, { limit: 3, cursor });
-			seen.push(...page.items.map((i) => i.id));
-			cursor = page.nextCursor;
-			if (!cursor) break;
-		}
-		expect(seen).toHaveLength(8);
-		expect(new Set(seen).size).toBe(8);
-		expect(seen.at(-1)).toBe(older.id);
-		expect(seen.slice(0, 7)).toEqual([...ids].sort().reverse());
-	});
-
-	it('does not leak across users', () => {
-		const u1 = seedUser();
-		const u2 = seedUser();
-		makeMedia(u1.id);
-		expect(listMediaForUser(u2.id).items).toEqual([]);
-	});
-
-	it('hides uploaded media — gallery is "what the AI made"', () => {
-		const u = seedUser();
-		makeMedia(u.id, { origin: 'generated' });
-		makeMedia(u.id, { origin: 'uploaded' });
-		const list = listMediaForUser(u.id);
-		expect(list.items).toHaveLength(1);
-	});
-
-	// File-kind rows are AI-generated artifacts (e.g. code interpreter
-	// outputs) or user uploads (xlsx/pdf/...). Neither belongs in the
-	// gallery UI — that's for visual library content. The default
-	// kind filter on listMediaForUser is the load-bearing piece that
-	// keeps them out across every gallery caller.
-	it('default kinds filter excludes kind: "file" — never leaks into gallery', () => {
-		const u = seedUser();
-		const img = makeMedia(u.id, { kind: 'image' });
-		const vid = makeMedia(u.id, { kind: 'video', contentType: 'video/mp4' });
-		makeMedia(u.id, {
-			kind: 'file',
-			contentType: 'text/csv',
-			sourceModel: 'run_python',
-		});
-		const list = listMediaForUser(u.id);
-		const ids = list.items.map((i) => i.id).sort();
-		expect(ids).toEqual([img.id, vid.id].sort());
-	});
-
-	it('opts.kinds opt-in surfaces file rows for callers that want the full set', () => {
-		const u = seedUser();
-		const img = makeMedia(u.id, { kind: 'image' });
-		const file = makeMedia(u.id, {
-			kind: 'file',
-			contentType: 'text/csv',
-			sourceModel: 'run_python',
-		});
-		const list = listMediaForUser(u.id, { kinds: ['image', 'video', 'file'] });
-		const ids = list.items.map((i) => i.id).sort();
-		expect(ids).toEqual([img.id, file.id].sort());
-	});
-
-	it('opts.kinds with a single kind narrows correctly', () => {
-		const u = seedUser();
-		makeMedia(u.id, { kind: 'image' });
-		const file = makeMedia(u.id, {
-			kind: 'file',
-			contentType: 'application/pdf',
-			sourceModel: 'run_python',
-		});
-		const list = listMediaForUser(u.id, { kinds: ['file'] });
-		expect(list.items.map((i) => i.id)).toEqual([file.id]);
-	});
-
-	it('filters by model (source_model) when provided', () => {
-		const u = seedUser();
-		const a = makeMedia(u.id, { sourceModel: 'comfyui/sdxl' });
-		makeMedia(u.id, { sourceModel: 'comfyui/flux' });
-		const list = listMediaForUser(u.id, { model: 'comfyui/sdxl' });
-		expect(list.items.map((i) => i.id)).toEqual([a.id]);
-	});
-
-	it('model + kind AND together', () => {
-		const u = seedUser();
-		const sdxlImg = makeMedia(u.id, { kind: 'image', sourceModel: 'comfyui/sdxl' });
-		makeMedia(u.id, { kind: 'video', contentType: 'video/mp4', sourceModel: 'comfyui/sdxl' });
-		makeMedia(u.id, { kind: 'image', sourceModel: 'comfyui/flux' });
-		const list = listMediaForUser(u.id, { kind: 'image', model: 'comfyui/sdxl' });
-		expect(list.items.map((i) => i.id)).toEqual([sdxlImg.id]);
-	});
-
-	it('absent model is unchanged (returns all)', () => {
-		const u = seedUser();
-		makeMedia(u.id, { sourceModel: 'comfyui/sdxl' });
-		makeMedia(u.id, { sourceModel: 'comfyui/flux' });
-		expect(listMediaForUser(u.id).items).toHaveLength(2);
-	});
-
-	it('before seeks to rows strictly older than the anchor', () => {
-		const u = seedUser();
-		const older = makeMedia(u.id);
-		const newer = makeMedia(u.id);
-		setCreatedAt(older.id, 1000);
-		setCreatedAt(newer.id, 2000);
-		expect(listMediaForUser(u.id, { before: 2000 }).items.map((i) => i.id)).toEqual([older.id]);
-		expect(listMediaForUser(u.id, { before: 3000 }).items.map((i) => i.id)).toEqual([
-			newer.id,
-			older.id,
-		]);
-	});
-
-	it('before composes with model', () => {
-		const u = seedUser();
-		const a = makeMedia(u.id, { sourceModel: 'comfyui/sdxl' });
-		const b = makeMedia(u.id, { sourceModel: 'comfyui/flux' });
-		setCreatedAt(a.id, 1000);
-		setCreatedAt(b.id, 1500);
-		expect(
-			listMediaForUser(u.id, { before: 2000, model: 'comfyui/sdxl' }).items.map((i) => i.id),
-		).toEqual([a.id]);
-	});
-});
-
 describe('favorites', () => {
 	it('starring is reflected on the wire as a boolean, not the timestamp', () => {
 		const u = seedUser();
 		const m = makeMedia(u.id);
-		expect(listMediaForUser(u.id).items[0].favorite).toBe(false);
+		expect(getMediaListItemForUser(m.id, u.id)!.favorite).toBe(false);
 		expect(setMediaFavorite(m.id, u.id, true)).toBe(true);
-		const item = listMediaForUser(u.id).items[0];
+		const item = getMediaListItemForUser(m.id, u.id)!;
 		// Not `toBeTruthy`: SQLite stores a timestamp here and has no boolean type,
 		// so a projection that forwarded the column would ship a number under a
 		// type claiming boolean and still satisfy a truthiness check.
 		expect(item.favorite).toBe(true);
 		expect(typeof item.favorite).toBe('boolean');
 		expect('favoritedAt' in item).toBe(false);
-	});
-
-	it('filters to starred rows, and unstarring restores them', () => {
-		const u = seedUser();
-		const keep = makeMedia(u.id);
-		const other = makeMedia(u.id);
-		setMediaFavorite(keep.id, u.id, true);
-		expect(listMediaForUser(u.id, { favorite: true }).items.map((i) => i.id)).toEqual([keep.id]);
-		setMediaFavorite(keep.id, u.id, false);
-		expect(listMediaForUser(u.id, { favorite: true }).items).toEqual([]);
-		// The unfiltered library never changed.
-		expect(
-			listMediaForUser(u.id)
-				.items.map((i) => i.id)
-				.sort(),
-		).toEqual([keep.id, other.id].sort());
-	});
-
-	it('ANDs with the other facets rather than replacing them', () => {
-		const u = seedUser();
-		const favImg = makeMedia(u.id, { kind: 'image' });
-		const favVid = makeMedia(u.id, { kind: 'video', contentType: 'video/mp4' });
-		const plainImg = makeMedia(u.id, { kind: 'image' });
-		setMediaFavorite(favImg.id, u.id, true);
-		setMediaFavorite(favVid.id, u.id, true);
-		expect(
-			listMediaForUser(u.id, { favorite: true, kind: 'image' }).items.map((i) => i.id),
-		).toEqual([favImg.id]);
-		expect(
-			listMediaForUser(u.id, { kind: 'image' })
-				.items.map((i) => i.id)
-				.sort(),
-		).toEqual([favImg.id, plainImg.id].sort());
 	});
 
 	it("won't star another user's media, or a hard-deleted row", () => {
@@ -574,81 +358,6 @@ describe('favorites', () => {
 		expect(findPurgeCandidates(500_000).map((c) => c.id)).not.toContain(m.id);
 		mocks.testDb.update(media).set({ favoritedAt: null }).where(eq(media.id, m.id)).run();
 		expect(findPurgeCandidates(500_000).map((c) => c.id)).toContain(m.id);
-	});
-});
-
-describe('listMediaMonthPeriodsForUser (quick-jump timeline)', () => {
-	// June 1 2026 00:30 UTC — straddles the May/June boundary under a negative
-	// (west-of-UTC) offset, so we can prove local-time bucketing.
-	const juneBoundaryUtc = Date.UTC(2026, 5, 1, 0, 30);
-	const midJuneUtc = Date.UTC(2026, 5, 15, 12);
-	const midMayUtc = Date.UTC(2026, 4, 15, 12);
-
-	it('returns months with counts, newest-first (UTC buckets at offset 0)', () => {
-		const u = seedUser();
-		const a = makeMedia(u.id);
-		const b = makeMedia(u.id);
-		const c = makeMedia(u.id);
-		setCreatedAt(a.id, midJuneUtc);
-		setCreatedAt(b.id, midJuneUtc + 1000);
-		setCreatedAt(c.id, midMayUtc);
-		expect(listMediaMonthPeriodsForUser(u.id, { tzOffsetMinutes: 0 })).toEqual([
-			{ key: '2026-06', count: 2 },
-			{ key: '2026-05', count: 1 },
-		]);
-	});
-
-	it('buckets in local time per tzOffsetMinutes', () => {
-		const u = seedUser();
-		const m = makeMedia(u.id);
-		setCreatedAt(m.id, juneBoundaryUtc);
-		// UTC → June; shifted back 2h → May 31 22:30 local → May.
-		expect(listMediaMonthPeriodsForUser(u.id, { tzOffsetMinutes: 0 })).toEqual([
-			{ key: '2026-06', count: 1 },
-		]);
-		expect(listMediaMonthPeriodsForUser(u.id, { tzOffsetMinutes: -120 })).toEqual([
-			{ key: '2026-05', count: 1 },
-		]);
-	});
-
-	it('excludes uploaded, file-kind, and hard-deleted rows', () => {
-		const u = seedUser();
-		const keep = makeMedia(u.id);
-		setCreatedAt(keep.id, midJuneUtc);
-		makeMedia(u.id, { origin: 'uploaded' });
-		makeMedia(u.id, { kind: 'file', contentType: 'text/csv', sourceModel: 'run_python' });
-		const del = makeMedia(u.id);
-		setCreatedAt(del.id, midMayUtc);
-		trashMediaForUser(del.id, u.id);
-		expect(listMediaMonthPeriodsForUser(u.id, { tzOffsetMinutes: 0 })).toEqual([
-			{ key: '2026-06', count: 1 },
-		]);
-	});
-
-	it('respects kind and model filters', () => {
-		const u = seedUser();
-		const img = makeMedia(u.id, { kind: 'image', sourceModel: 'comfyui/sdxl' });
-		const vid = makeMedia(u.id, {
-			kind: 'video',
-			contentType: 'video/mp4',
-			sourceModel: 'comfyui/svd',
-		});
-		setCreatedAt(img.id, midJuneUtc);
-		setCreatedAt(vid.id, midJuneUtc);
-		expect(listMediaMonthPeriodsForUser(u.id, { tzOffsetMinutes: 0, kind: 'video' })).toEqual([
-			{ key: '2026-06', count: 1 },
-		]);
-		expect(
-			listMediaMonthPeriodsForUser(u.id, { tzOffsetMinutes: 0, model: 'comfyui/sdxl' }),
-		).toEqual([{ key: '2026-06', count: 1 }]);
-	});
-
-	it('does not leak across users', () => {
-		const u1 = seedUser();
-		const u2 = seedUser();
-		const m = makeMedia(u1.id);
-		setCreatedAt(m.id, midJuneUtc);
-		expect(listMediaMonthPeriodsForUser(u2.id, { tzOffsetMinutes: 0 })).toEqual([]);
 	});
 });
 
@@ -837,7 +546,7 @@ describe('listDistinctSourceModelsForUser (model facet)', () => {
 	});
 });
 
-describe('listMediaForUser conversation assignment (gallery stacking)', () => {
+describe('gallery item conversation assignment (gallery stacking)', () => {
 	function makeConv(userId: string, title: string | null = null) {
 		const conv = createConversation({
 			userId,
@@ -867,7 +576,7 @@ describe('listMediaForUser conversation assignment (gallery stacking)', () => {
 		const { id } = makeMedia(u.id);
 		linkMessageMedia(msg.id, id);
 
-		const item = listMediaForUser(u.id).items.find((i) => i.id === id)!;
+		const item = getMediaListItemForUser(id, u.id)!;
 		expect(item.conversationId).toBe(conv.id);
 		expect(item.conversationTitle).toBe('Logo ideas');
 	});
@@ -875,7 +584,7 @@ describe('listMediaForUser conversation assignment (gallery stacking)', () => {
 	it('leaves conversationId + title null for orphan media (no join rows)', () => {
 		const u = seedUser();
 		const { id } = makeMedia(u.id);
-		const item = listMediaForUser(u.id).items.find((i) => i.id === id)!;
+		const item = getMediaListItemForUser(id, u.id)!;
 		expect(item.conversationId).toBeNull();
 		expect(item.conversationTitle).toBeNull();
 	});
@@ -886,7 +595,7 @@ describe('listMediaForUser conversation assignment (gallery stacking)', () => {
 		const msg = makeMsg(conv.id);
 		const { id } = makeMedia(u.id);
 		linkMessageMedia(msg.id, id);
-		const item = listMediaForUser(u.id).items.find((i) => i.id === id)!;
+		const item = getMediaListItemForUser(id, u.id)!;
 		expect(item.conversationId).toBe(conv.id);
 		expect(item.conversationTitle).toBeNull();
 	});
@@ -903,7 +612,7 @@ describe('listMediaForUser conversation assignment (gallery stacking)', () => {
 		linkMessageMedia(msgB.id, id);
 		linkMessageMedia(msgA.id, id);
 
-		const item = listMediaForUser(u.id).items.find((i) => i.id === id)!;
+		const item = getMediaListItemForUser(id, u.id)!;
 		expect(item.conversationId).toBe(convA.id);
 		expect(item.conversationTitle).toBe('first');
 	});
@@ -1005,6 +714,26 @@ describe('listMediaForConversation (drill-in stack contents)', () => {
 		trashMediaForUser(gone.id, u.id);
 
 		expect(listMediaForConversation(conv.id, u.id).map((i) => i.id)).toEqual([live.id]);
+	});
+
+	it('excludes file-kind media — the gallery is visual library content', () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const msg = makeMsg(conv.id);
+		const img = makeMedia(u.id, { kind: 'image' });
+		const vid = makeMedia(u.id, { kind: 'video', contentType: 'video/mp4' });
+		const file = makeMedia(u.id, {
+			kind: 'file',
+			contentType: 'text/csv',
+			sourceModel: 'run_python',
+		});
+		for (const m of [img, vid, file]) linkMessageMedia(msg.id, m.id);
+
+		expect(
+			listMediaForConversation(conv.id, u.id)
+				.map((i) => i.id)
+				.sort(),
+		).toEqual([img.id, vid.id].sort());
 	});
 
 	it('returns [] for a foreign user', () => {
@@ -1172,7 +901,8 @@ describe('trash: list / restore / purge / expiry', () => {
 		expect(restoreMediaForUser([a.id, theirs.id], u.id)).toEqual([a.id]);
 		expect(getRow(a.id)?.deletedAt).toBeNull();
 		expect(getRow(theirs.id)?.deletedAt).not.toBeNull();
-		expect(listMediaForUser(u.id).items.map((m) => m.id)).toEqual([a.id]);
+		expect(getMediaListItemForUser(a.id, u.id)).not.toBeNull();
+		expect(getMediaListItemForUser(b.id, u.id)).toBeNull();
 		expect(listTrashForUser(u.id).map((r) => r.id)).toEqual([b.id]);
 	});
 

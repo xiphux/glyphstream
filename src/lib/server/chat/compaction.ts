@@ -8,9 +8,9 @@
  *
  * Both manual and auto-compaction go through `POST /compact` (auto-compaction
  * is client-driven — see `maybeAutoCompact` in the chat page); there is no
- * server-side auto path in the send handler. `prepareCompaction` +
- * `persistCompactionSummary` are shared by the sync engine here and the
- * streaming relay (`streamCompaction`).
+ * server-side auto path in the send handler. This module plans and persists
+ * (`prepareCompaction` + `persistCompactionSummary`); the streaming relay
+ * (`streamCompaction`) makes the model call between the two.
  */
 
 import { getConversationMeta } from '../db/queries/conversations';
@@ -20,8 +20,7 @@ import {
 	truncateAtMessage,
 	walkActiveBranch,
 } from '../db/queries/messages';
-import { chatCompletionSync, type ChatCompletionRequest } from '../endpoints/client';
-import { acquireEndpointSlot } from '../endpoints/concurrency';
+import type { ChatCompletionRequest } from '../endpoints/client';
 import type { LoadedEndpoint, ProviderQuirk } from '../endpoints/config';
 import { getEndpoint } from '../endpoints/registry';
 import { parseModelId } from '../endpoints/model-id';
@@ -65,9 +64,8 @@ const SUMMARY_TEMPERATURE = 0.3;
 
 /**
  * Everything needed to run a compaction's summarization call and persist the
- * result, computed without contacting the model. Lets the sync engine
- * (`runCompaction`) and the streaming relay (`streamCompaction`) share the same
- * preparation and persistence while differing only in how they call the model.
+ * result, computed without contacting the model, so "nothing to compact" can be
+ * refused before the streaming relay (`streamCompaction`) opens a response.
  */
 export interface CompactionPlan {
 	endpoint: LoadedEndpoint;
@@ -211,55 +209,6 @@ export async function persistCompactionSummary(
 		compactionResumeFromMessageId: plan.resumeMessageId,
 		advanceActiveLeaf: true,
 	});
-}
-
-export type CompactionResult =
-	{ status: 'compacted'; summaryMessageId: string } | { status: 'noop' } | { status: 'stale' };
-
-/**
- * Synchronous compaction — plan, call the model once (blocking), persist.
- * Used by the non-streaming branch of `POST /api/conversations/[id]/compact`
- * (the streaming branch uses `streamCompaction` instead). Returns
- * `{status:'noop'}` when there's nothing to compact, `{status:'stale'}` when
- * the branch moved on before the summary could be saved; throws `UpstreamError` if
- * the summarization call fails (callers decide fatal vs. swallowed).
- */
-export async function runCompaction(
-	conversationId: string,
-	userId: string,
-	opts: { keepTurns?: number; signal?: AbortSignal } = {},
-): Promise<CompactionResult> {
-	const plan = await prepareCompaction(conversationId, userId, { keepTurns: opts.keepTurns });
-	if (!plan) return { status: 'noop' };
-
-	// Hold a per-endpoint slot so compaction doesn't preempt a live
-	// generation on a single-GPU backend. The caller's signal bounds the WAIT
-	// as well as the call, so a request whose client went away doesn't stay
-	// queued behind a paused endpoint group indefinitely.
-	const slot = await acquireEndpointSlot(plan.endpoint, {
-		work: { purpose: 'compaction', modelId: plan.upstreamId },
-		signal: opts.signal,
-	});
-	try {
-		const resp = await chatCompletionSync(
-			plan.endpoint,
-			{
-				model: plan.upstreamId,
-				messages: plan.messages,
-				temperature: plan.temperature,
-				max_tokens: plan.maxTokens,
-			},
-			opts.signal,
-		);
-		const summaryText = (resp.choices?.[0]?.message?.content ?? '').trim();
-		if (!summaryText) return { status: 'noop' };
-
-		const summaryMsg = await persistCompactionSummary(conversationId, plan, summaryText);
-		if (!summaryMsg) return { status: 'stale' };
-		return { status: 'compacted', summaryMessageId: summaryMsg.id };
-	} finally {
-		slot.release();
-	}
 }
 
 export type UncompactionResult = { status: 'reverted' } | { status: 'noop' };

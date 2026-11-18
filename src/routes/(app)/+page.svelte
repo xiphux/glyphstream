@@ -133,7 +133,7 @@
 		}),
 	);
 
-	// Per-conversation feature opt-outs (see FEATURE_CATEGORIES). Transient
+	// Per-conversation feature opt-outs (see BUILTIN_FEATURE_CATEGORIES). Transient
 	// per page load — never persisted client-side, never restored across
 	// visits. An off-flip made HERE never becomes sticky: one accidental tap
 	// shouldn't quietly follow the user into future sessions.

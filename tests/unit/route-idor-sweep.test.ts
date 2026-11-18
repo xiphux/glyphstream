@@ -64,7 +64,6 @@ const SCOPED_EMPTY: Record<string, string> = {
 	'/api/conversations/[id]/media GET': "lists media in the caller's conversation; none match",
 	'/api/conversations/[id]/orphan-media GET': 'pre-delete count; zero for a conversation not yours',
 	'/api/media/[id]/conversations GET': "lists the caller's conversations that use a media id",
-	'/api/media/by-conversation/[id] GET': "lists media in the caller's conversation; none match",
 	'/api/user/prompt-snippets/[id]/use POST': 'fire-and-forget usage bump, scoped by user',
 };
 
@@ -147,7 +146,6 @@ let intruderConversationId: string;
 function paramsFor(route: string, crossConversation: boolean): Record<string, string> {
 	const idFor: Array<[RegExp, keyof Victim]> = [
 		[/^\/api\/conversations\/\[id\]/, 'conversationId'],
-		[/^\/api\/media\/by-conversation\/\[id\]/, 'conversationId'],
 		[/^\/api\/media\/\[id\]/, 'mediaId'],
 		[/^\/api\/custom-models\/\[id\]/, 'customModelId'],
 		[/^\/api\/user\/memories\/\[id\]/, 'memoryId'],

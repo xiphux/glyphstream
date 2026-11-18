@@ -69,9 +69,8 @@ export async function collectConversationFiles(
 	const messageIds = branch.map((m) => m.id);
 
 	// JOIN message_media × media, filter on ownership + the include rule.
-	// We can't use the includes-everything `listMediaForUser` because it
-	// scans by user; here the natural scoping is "this conversation",
-	// which the join expresses directly.
+	// The natural scoping is "this conversation's branch", which the join
+	// expresses directly.
 	const rows = db
 		.select({
 			mediaId: media.id,

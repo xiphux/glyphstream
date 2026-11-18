@@ -14,7 +14,7 @@ export type DB = NodeSQLiteDatabase;
  *  `db.transaction()` to a SAVEPOINT, so nesting must go through the `tx`. */
 export type Tx = Parameters<Parameters<DB['transaction']>[0]>[0];
 
-let cached: { db: DB; sqlite: DatabaseSync } | null = null;
+let cached: DB | null = null;
 
 /** Effective `mmap_size` after the PRAGMA, read back at open. See mmapBytes(). */
 let effectiveMmapBytes: number | null = null;
@@ -42,7 +42,7 @@ export function setDbForTests(db: DB | null): void {
  */
 export function getDb(): DB {
 	if (injected) return injected;
-	if (cached) return cached.db;
+	if (cached) return cached;
 	if (process.env.VITEST) {
 		throw new Error('getDb() reached the on-disk database from a test. Call createTestDb() first.');
 	}
@@ -141,7 +141,7 @@ export function getDb(): DB {
 	const row = sqlite.prepare('PRAGMA mmap_size').all()[0] as { mmap_size?: number } | undefined;
 	effectiveMmapBytes = typeof row?.mmap_size === 'number' ? row.mmap_size : null;
 
-	cached = { db, sqlite };
+	cached = db;
 	return db;
 }
 
@@ -177,14 +177,6 @@ export function dbFileBytes(): { main: number | null; wal: number | null } {
 		}
 	};
 	return { main: size(path), wal: size(`${path}-wal`) };
-}
-
-/** Close the SQLite connection (test/teardown only). */
-export function closeDb(): void {
-	if (cached) {
-		cached.sqlite.close();
-		cached = null;
-	}
 }
 
 /**

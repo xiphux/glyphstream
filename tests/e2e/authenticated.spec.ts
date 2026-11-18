@@ -70,9 +70,9 @@ test.describe('authenticated app shell', () => {
 		await expect(page.getByRole('heading', { name: 'Gallery' })).toBeVisible();
 		await expect(page.getByText(/no media yet/i)).toBeVisible();
 		// The kind pills live inline on desktop but collapse into the View
-		// options popover on mobile — open it there first. (Clickable behavior is
-		// exercised via the unit tests on listMediaForUser; here we just want the
-		// UI surface.)
+		// options popover on mobile — open it there first. (The kind filter itself
+		// is exercised by the gallery-units unit tests; here we just want the UI
+		// surface.)
 		if (isMobile) {
 			await page.getByRole('button', { name: 'View options' }).click();
 		}

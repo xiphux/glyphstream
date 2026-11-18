@@ -1,28 +1,23 @@
 import { error } from '@sveltejs/kit';
 import { requireFound, requireUser } from '#lib/server/auth/guard.js';
 import { getConversationMeta, getFanoutParent } from '#lib/server/db/queries/conversations.js';
-import {
-	COMPACTION_STALE_MESSAGE,
-	prepareCompaction,
-	runCompaction,
-	undoCompaction,
-} from '#lib/server/chat/compaction.js';
+import { prepareCompaction, undoCompaction } from '#lib/server/chat/compaction.js';
 import { streamCompaction } from '#lib/server/streaming/compaction-relay.js';
 import { sseResponse } from '#lib/server/streaming/sse-transport.js';
-import { formatUpstreamError, UpstreamError } from '#lib/server/endpoints/client.js';
 import type { RequestHandler } from './$types';
 
 /**
  * Compact a conversation: summarize the older history through the
  * conversation's own model and append the summary.
  *
- * `?stream=1` streams the summary token-by-token (SSE) so the user gets live
- * feedback, settling into the persisted collapsed divider on `compaction_done`.
- * Without it, a blocking call returns JSON. Both the manual "Compact" button and
- * client-driven auto-compaction (`maybeAutoCompact`, before a send) call this
- * same endpoint — there is no server-side auto path in the send handler.
+ * The summary streams token-by-token (SSE) so the user gets live feedback,
+ * settling into the persisted collapsed divider on `compaction_done`. The
+ * client sends `?stream=1`; the response streams with or without it. Both the
+ * manual "Compact" button and client-driven auto-compaction (`maybeAutoCompact`,
+ * before a send) call this same endpoint — there is no server-side auto path in
+ * the send handler.
  */
-export const POST: RequestHandler = async ({ locals, params, request, url }) => {
+export const POST: RequestHandler = async ({ locals, params, request }) => {
 	requireUser(locals);
 	// Ownership scope (the multi-user isolation invariant) before any work.
 	requireFound(getConversationMeta(params.id, locals.user.id), 'Conversation not found');
@@ -34,29 +29,13 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		error(409, 'Finish or dismiss the model comparison before compacting.');
 	}
 
-	if (url.searchParams.get('stream') === '1') {
-		// Plan first (cheap, no model call) so "nothing to compact" is a clean
-		// 409 rather than an SSE error frame after the stream has opened.
-		const plan = await prepareCompaction(params.id, locals.user.id);
-		if (!plan) error(409, 'Not enough conversation history to compact yet.');
-		return sseResponse(
-			streamCompaction({ conversationId: params.id, plan, abortSignal: request.signal }),
-		);
-	}
-
-	try {
-		const result = await runCompaction(params.id, locals.user.id, { signal: request.signal });
-		if (result.status === 'noop') {
-			error(409, 'Not enough conversation history to compact yet.');
-		}
-		if (result.status === 'stale') error(409, COMPACTION_STALE_MESSAGE);
-		return Response.json({ ok: true, summaryMessageId: result.summaryMessageId });
-	} catch (e) {
-		if (e instanceof UpstreamError) {
-			error(502, formatUpstreamError(e));
-		}
-		throw e;
-	}
+	// Plan first (cheap, no model call) so "nothing to compact" is a clean 409
+	// rather than an SSE error frame after the stream has opened.
+	const plan = await prepareCompaction(params.id, locals.user.id);
+	if (!plan) error(409, 'Not enough conversation history to compact yet.');
+	return sseResponse(
+		streamCompaction({ conversationId: params.id, plan, abortSignal: request.signal }),
+	);
 };
 
 /**

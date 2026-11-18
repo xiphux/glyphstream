@@ -40,7 +40,7 @@ export function list(): Tool[] {
  *  - `isAvailable()` drops tools whose backing config (SearxNG URL, MCP
  *    connection, ...) isn't present in this deployment.
  *  - `excludeCategories` drops tools whose `metadata.category` is in the
- *    list — the per-conversation opt-out path. See FEATURE_CATEGORIES
+ *    list — the per-conversation opt-out path. See BUILTIN_FEATURE_CATEGORIES
  *    in `#lib/types/api.js`.
  *
  *  Tools that omit either signal default to always-on. Returns an empty

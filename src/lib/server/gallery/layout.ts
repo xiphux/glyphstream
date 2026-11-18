@@ -20,9 +20,7 @@ import {
 	getMediaListItemsByIds,
 	listDistinctSourceModelsForUser,
 	listMediaForConversation,
-	listMediaMonthPeriodsForUser,
 	type ModelFacet,
-	type MonthPeriod,
 } from '../db/queries/media';
 import { groupGalleryItems, type StackableMedia } from '../../gallery-stacks';
 import type {
@@ -67,20 +65,20 @@ function pad2(n: number): string {
 	return n < 10 ? `0${n}` : String(n);
 }
 
-/** Local-time `YYYY-MM-DD` for an instant, shifting UTC by the viewer's offset
- *  (same single-offset approach as the periods query; the DST-boundary caveat is
- *  cosmetic and — because each unit carries this exact key and the client
- *  sections by it — never desyncs a section's reserved height from the units
- *  rendered into it). */
+/** Local-time `YYYY-MM-DD` for an instant, shifting UTC by the viewer's offset.
+ *  One current offset applies to every row, so a row near midnight in the other
+ *  DST phase can land in the adjacent day. That is cosmetic: each unit carries
+ *  this exact key and the client sections by it, so a section's reserved height
+ *  never desyncs from the units rendered into it. */
 function localDayKey(ms: number, tzOffsetMin: number): string {
 	const d = new Date(ms + tzOffsetMin * 60_000);
 	return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
 }
 
 /** Load the whole filtered gallery library as lightweight rows, newest-first —
- *  the input to the server-side stacking pass. Mirrors listMediaForUser's
- *  gallery filter (generated, non-deleted, image/video, kind/model/favorite),
- *  minus pagination. */
+ *  the input to the server-side stacking pass. Same filter as the drill-in's
+ *  `listMediaForConversation` (generated, non-deleted, image/video,
+ *  kind/model/favorite). */
 function loadGalleryUnitSource(userId: string, opts: GalleryUnitOpts): UnitSourceRow[] {
 	const db = getDb();
 	const conditions = [
@@ -620,13 +618,13 @@ export function listGalleryUnitMembers(
 	return orderedIds.map((id) => byId.get(id)).filter((m): m is MediaListItem => m != null);
 }
 
-// --- Facet + month-rail memo -------------------------------------------------
-// The Model dropdown's facets and the month rail are each a GROUP BY over the
-// user's whole gallery (~10 ms apiece at 30k media), and the gallery page load
-// awaits the layout, so they re-ran on every focus refresh too. Both read only
-// media rows, so they are validated against the media half of the fingerprint:
-// chatting, which moves the conversation half, leaves them cached. Results are
-// a few dozen rows, so an entry cap alone bounds the memory.
+// --- Facet memo ---------------------------------------------------------------
+// The Model dropdown's facets are a GROUP BY over the user's whole gallery
+// (~10 ms at 30k media), and the gallery page load awaits the layout, so it
+// re-ran on every focus refresh too. It reads only media rows, so it is
+// validated against the media half of the fingerprint: chatting, which moves
+// the conversation half, leaves it cached. Results are a few dozen rows, so an
+// entry cap alone bounds the memory.
 const MEDIA_MEMO_MAX = 256;
 const mediaMemo = new Map<string, { fingerprint: string; value: unknown }>();
 
@@ -662,12 +660,4 @@ export function cachedModelFacets(
 	opts: Parameters<typeof listDistinctSourceModelsForUser>[1] = {},
 ): ModelFacet[] {
 	return memoOnMedia(userId, 'facets', opts, () => listDistinctSourceModelsForUser(userId, opts));
-}
-
-/** `listMediaMonthPeriodsForUser`, memoized on the user's media fingerprint. */
-export function cachedMonthPeriods(
-	userId: string,
-	opts: Parameters<typeof listMediaMonthPeriodsForUser>[1] = {},
-): MonthPeriod[] {
-	return memoOnMedia(userId, 'months', opts, () => listMediaMonthPeriodsForUser(userId, opts));
 }

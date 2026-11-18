@@ -2,7 +2,7 @@
  * Media queries, by concern. Everything is re-exported from here, so callers
  * (and the many tests that import `insertMedia`) keep one import path.
  */
-export type { ConversationOrphanCounts, ModelFacet, MonthPeriod } from '#lib/types/api.js';
+export type { ConversationOrphanCounts, ModelFacet } from '#lib/types/api.js';
 export {
 	assignedConversationId,
 	attachConversationTitles,

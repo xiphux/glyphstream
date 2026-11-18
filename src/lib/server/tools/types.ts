@@ -112,7 +112,7 @@ export interface ToolExecution {
  * tools by it.
  *
  * `category` groups tools for per-conversation opt-out (see
- * FEATURE_CATEGORIES in `#lib/types/api.js`). Tools sharing a category are
+ * BUILTIN_FEATURE_CATEGORIES in `#lib/types/api.js`). Tools sharing a category are
  * gated together by a single switch — e.g. `web_search` and `fetch_url`
  * both declare 'web' so disabling "Web access" closes the entire egress
  * path, not just one tool. Tools that omit a category are always on

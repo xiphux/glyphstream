@@ -22,7 +22,7 @@ describe('applySecurityHeaders', () => {
 		for (const pathname of [
 			'/api/media/abc/content',
 			'/api/media/abc/thumbnail',
-			'/api/media/by-conversation/abc',
+			'/api/media/units',
 		]) {
 			expect(apply(pathname).get('Content-Security-Policy'), pathname).toBe(MEDIA_CSP);
 		}

@@ -14,7 +14,6 @@ import {
 } from '#lib/server/db/queries/media.js';
 import {
 	cachedModelFacets,
-	cachedMonthPeriods,
 	computeGalleryLayout,
 	listGalleryUnits,
 	listGalleryUnitMembers,
@@ -759,7 +758,7 @@ describe('gallery units: cache follows changes the media rows do not show', () =
 	});
 });
 
-describe('facet + month-rail memo stays current', () => {
+describe('facet memo stays current', () => {
 	it('picks up a new model as soon as it generates something', () => {
 		const u = seedUser();
 		makeGen(u.id, at(2024, 6, 15), { sourceModel: 'a' });
@@ -780,14 +779,18 @@ describe('facet + month-rail memo stays current', () => {
 		expect(cachedModelFacets(u.id, { favorite: true })).toEqual([{ value: 'a', count: 1 }]);
 	});
 
-	it('drops a month whose only item was trashed, and brings it back on restore', () => {
+	it('drops a model whose only item was trashed, and brings it back on restore', () => {
 		const u = seedUser();
-		makeGen(u.id, at(2024, 6, 15));
-		const may = makeGen(u.id, at(2024, 5, 15));
-		expect(cachedMonthPeriods(u.id, TZ).map((p) => p.key)).toEqual(['2024-06', '2024-05']);
-		trashMediaForUser(may, u.id);
-		expect(cachedMonthPeriods(u.id, TZ).map((p) => p.key)).toEqual(['2024-06']);
-		restoreMediaForUser([may], u.id);
-		expect(cachedMonthPeriods(u.id, TZ).map((p) => p.key)).toEqual(['2024-06', '2024-05']);
+		makeGen(u.id, at(2024, 6, 15), { sourceModel: 'a' });
+		const b = makeGen(u.id, at(2024, 5, 15), { sourceModel: 'b' });
+		const models = () =>
+			cachedModelFacets(u.id)
+				.map((f) => f.value)
+				.sort();
+		expect(models()).toEqual(['a', 'b']);
+		trashMediaForUser(b, u.id);
+		expect(models()).toEqual(['a']);
+		restoreMediaForUser([b], u.id);
+		expect(models()).toEqual(['a', 'b']);
 	});
 });

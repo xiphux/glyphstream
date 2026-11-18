@@ -148,7 +148,7 @@ describe('tool registry', () => {
 		};
 		// 'memory' is a stand-in for a future category that isn't 'web' —
 		// the filter should treat it as distinct regardless of whether it's
-		// in FEATURE_CATEGORIES yet.
+		// in BUILTIN_FEATURE_CATEGORIES yet.
 		const otherCat: Tool = {
 			...mkTool('other'),
 			metadata: { category: 'memory' as never },
