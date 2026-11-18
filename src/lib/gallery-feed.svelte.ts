@@ -34,9 +34,11 @@ export class GalleryFeed {
 	/** Bumped on every `seed()`; an in-flight fetch from a superseded filter/tz
 	 *  checks this before writing, so a stale page can't land in the fresh cache. */
 	#generation = 0;
-	/** The last server total `onStale` was raised for, so a server that keeps
-	 *  disagreeing with its own layout can't drive a reseed loop. */
-	#staleTotal: number | null = null;
+	/** The last disagreement `onStale` was raised for — the seeded layout's
+	 *  total and the page's — so a server that keeps giving the same two can't
+	 *  drive a reseed loop, while a different one (another filter, a later
+	 *  change) is still reported. */
+	#staleSeen: { layout: number; page: number } | null = null;
 
 	/** Fetch one page of units — injected so the loader is transport-agnostic
 	 *  (and unit-testable). Returns the slice at `[offset, offset+limit)`. */
@@ -45,7 +47,7 @@ export class GalleryFeed {
 	/** Raised when a demand-loaded page reports a different total than the seeded
 	 *  layout: the library changed underneath (a generation landed, a delete in
 	 *  another tab), so every later offset is shifted and the caller should
-	 *  reseed. Raised at most once per observed total. */
+	 *  reseed. Raised at most once per (layout total, page total) pair. */
 	#onStale?: () => void;
 
 	constructor(deps: {
@@ -118,8 +120,8 @@ export class GalleryFeed {
 			if (gen !== this.#generation) return; // superseded by a reseed — discard
 			this.#absorb(offset, result.units);
 			this.#loadedPages.add(page);
-			if (result.total !== this.totalUnits && result.total !== this.#staleTotal) {
-				this.#staleTotal = result.total;
+			if (result.total !== this.totalUnits && !this.#sameStale(result.total)) {
+				this.#staleSeen = { layout: this.totalUnits, page: result.total };
 				this.#onStale?.();
 			}
 		} catch (e) {
@@ -130,6 +132,10 @@ export class GalleryFeed {
 		} finally {
 			if (gen === this.#generation) this.#loadingPages.delete(page);
 		}
+	}
+
+	#sameStale(pageTotal: number): boolean {
+		return this.#staleSeen?.layout === this.totalUnits && this.#staleSeen.page === pageTotal;
 	}
 
 	#absorb(offset: number, units: GalleryUnit[]): void {

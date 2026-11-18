@@ -77,4 +77,40 @@ describe('GalleryFeed after the library changes mid-session', () => {
 		await flush();
 		expect(state.stale).toBe(0);
 	});
+
+	it('a server whose pages keep disagreeing with its layout asks once, across reseeds', async () => {
+		const { feed, state } = setup(400);
+		state.library = [unit(-1), ...state.library];
+		const lagging: GalleryLayout = {
+			days: [{ key: '2026-06-15', units: 400 }],
+			totalUnits: 400,
+		};
+
+		feed.ensureRange(120, 140);
+		await flush();
+		feed.seed(lagging, state.library.slice(0, GalleryFeed.PAGE));
+		feed.ensureRange(120, 140);
+		await flush();
+
+		expect(state.stale).toBe(1);
+	});
+
+	it('after a reseed, a page reporting the earlier stale total is still noticed', async () => {
+		const { feed, state } = setup(400);
+		state.library = [unit(-1), ...state.library];
+		feed.ensureRange(120, 140);
+		await flush();
+		expect(state.stale).toBe(1);
+
+		// Another row landed before the reseed's layout was read (402), then one
+		// went, back to the 401 the first page had already reported.
+		const at402: GalleryLayout = { days: [{ key: '2026-06-15', units: 402 }], totalUnits: 402 };
+		state.library = [unit(-2), ...state.library];
+		feed.seed(at402, state.library.slice(0, GalleryFeed.PAGE));
+		state.library = state.library.slice(1);
+		feed.ensureRange(120, 140);
+		await flush();
+
+		expect(state.stale).toBe(2);
+	});
 });
