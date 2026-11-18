@@ -13,11 +13,13 @@ vi.mock('node:dns', () => ({
 // SSRF guard's loadEndpoints / url-policy keep working). Default: no embeddings
 // configured → relevance selection runs BM25-only and never hits the network.
 const loadEmbeddingsConfigMock = vi.hoisted(() => vi.fn());
+const loadEndpointsMock = vi.hoisted(() => vi.fn());
 const getEndpointMock = vi.hoisted(() => vi.fn());
 const embeddingsMock = vi.hoisted(() => vi.fn<typeof embeddings>());
 vi.mock('#lib/server/endpoints/config.js', async (orig) => ({
 	...(await orig<typeof import('#lib/server/endpoints/config.js')>()),
 	loadEmbeddingsConfig: loadEmbeddingsConfigMock,
+	loadEndpoints: loadEndpointsMock,
 }));
 vi.mock('#lib/server/endpoints/registry.js', async (orig) => ({
 	...(await orig<typeof import('#lib/server/endpoints/registry.js')>()),
@@ -55,6 +57,7 @@ const realFetch = globalThis.fetch;
 beforeEach(() => {
 	lookupMock.mockReset();
 	loadEmbeddingsConfigMock.mockReset().mockReturnValue(null);
+	loadEndpointsMock.mockReset().mockReturnValue([]);
 	getEndpointMock.mockReset();
 	embeddingsMock.mockReset();
 	resetConfigCachesForTests();
@@ -165,6 +168,53 @@ describe('fetch_url SSRF guard', () => {
 		const r = await fetchUrlTool.execute({ url: 'http://public.example/' }, ctx());
 		expect(r.isError).toBe(true);
 		expect(payload(r.content).error).toMatch(/10\.0\.0\.1/);
+	});
+
+	it('follows redirects itself, so every hop is checked', async () => {
+		// The DNS hook the fetch dispatcher filters on is skipped for an IP
+		// literal, so a redirect the fetch followed on its own could land on
+		// http://127.0.0.1/ unchecked. Only the hand-written hop loop sees it.
+		publicResolves();
+		const fetchMock = vi.fn(
+			async (_input: RequestInfo | URL, _init?: RequestInit) =>
+				new Response('ok', { status: 200, headers: { 'content-type': 'text/plain' } }),
+		);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await fetchUrlTool.execute({ url: 'http://public.example/' }, ctx());
+		expect(fetchMock).toHaveBeenCalled();
+		for (const [, init] of fetchMock.mock.calls) expect(init?.redirect).toBe('manual');
+	});
+
+	describe('a configured backend', () => {
+		beforeEach(() => {
+			loadEndpointsMock.mockReturnValue([{ id: 'llm', baseUrl: 'https://llm.example/v1' }]);
+			publicResolves();
+		});
+
+		it('is refused', async () => {
+			const fetchMock = vi.fn(async () => new Response('secret'));
+			globalThis.fetch = fetchMock as unknown as typeof fetch;
+			const r = await fetchUrlTool.execute({ url: 'https://llm.example/v1/models' }, ctx());
+			expect(r.isError).toBe(true);
+			expect(payload(r.content).error).toMatch(/configured backend/);
+			expect(fetchMock).not.toHaveBeenCalled();
+		});
+
+		it('is refused when a redirect lands on it', async () => {
+			globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+				const u = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+				if (u.startsWith('http://public.example')) {
+					return new Response(null, {
+						status: 302,
+						headers: { location: 'https://llm.example/v1/models' },
+					});
+				}
+				throw new Error('should not fetch the backend');
+			}) as unknown as typeof fetch;
+			const r = await fetchUrlTool.execute({ url: 'http://public.example/' }, ctx());
+			expect(r.isError).toBe(true);
+			expect(payload(r.content).error).toMatch(/configured backend/);
+		});
 	});
 });
 

@@ -11,6 +11,7 @@ vi.mock('../../src/lib/server/tools/url-policy-base', async (orig) => ({
 }));
 
 import { proxyInterpreterFetch } from '../../src/lib/server/code-interpreter/net-proxy';
+import { fetchRoutable } from '../../src/lib/server/tools/url-policy-base';
 
 afterEach(() => vi.clearAllMocks());
 
@@ -32,5 +33,17 @@ describe('proxyInterpreterFetch byte budget', () => {
 		await expect(proxyInterpreterFetch(request, { ...policy, budget })).rejects.toThrow(
 			/downloaded its limit of/,
 		);
+	});
+});
+
+describe('proxyInterpreterFetch redirects', () => {
+	it('follows them itself, so the policy re-runs on every hop', async () => {
+		// The dispatcher's DNS filter never sees an IP literal; a fetch that
+		// followed a redirect to http://127.0.0.1/ on its own would get there.
+		const budget = { remainingBytes: 5000, limitBytes: 5000 };
+		await proxyInterpreterFetch(request, { ...policy, budget });
+		const calls = vi.mocked(fetchRoutable).mock.calls;
+		expect(calls).toHaveLength(1);
+		expect(calls[0][1]?.redirect).toBe('manual');
 	});
 });
