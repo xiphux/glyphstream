@@ -28,6 +28,8 @@ import {
 	findPurgeCandidates,
 	insertMedia,
 	linkMessageMedia,
+	restoreMediaForUser,
+	trashMediaForUser,
 } from '#lib/server/db/queries/media.js';
 import {
 	createConversation,
@@ -251,6 +253,82 @@ describe('custom-model avatars — interaction with the orphan analysis', () => 
 		// …and it goes back to being offered once the preset lets go of it.
 		setCustomModelAvatar(cm.id, u.id, null);
 		expect(countOrphanMediaInConversation(conv.id, u.id)).toEqual({ images: 1, videos: 0 });
+	});
+});
+
+describe('avatars — a trash + restore round trip', () => {
+	function generated(userId: string) {
+		return insertMedia({
+			userId,
+			storagePath: `ab/cd/${Math.random().toString(36).slice(2)}.png`,
+			contentType: 'image/png',
+			byteSize: 2048,
+			kind: 'image',
+			origin: 'generated',
+			sourceEndpointId: 'bridge',
+			sourceModel: 'comfyui/sdxl',
+			promptExcerpt: 'a portrait',
+		}).id;
+	}
+
+	/** Reuse the image in a new chat, then delete that chat with "also delete
+	 *  media": the avatar's reference must keep the image out of the trash. */
+	function reuseAndDeleteWithMedia(userId: string, mediaId: string) {
+		const conv = createConversation({
+			userId,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'image',
+		});
+		const msg = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'x' }],
+		});
+		linkMessageMedia(msg.id, mediaId);
+		return deleteConversation(conv.id, userId, { deleteMedia: true });
+	}
+
+	it("keeps a preset's avatar reference", () => {
+		const u = seedUser();
+		const cm = makePreset(u.id);
+		const m = generated(u.id);
+		setCustomModelAvatar(cm.id, u.id, m);
+
+		expect(trashMediaForUser(m, u.id)).toBe(true);
+		expect(mediaRow(m)).toMatchObject({ refCount: 1, unreferencedSince: null });
+		expect(restoreMediaForUser([m], u.id)).toEqual([m]);
+		expect(getCustomModelForUser(cm.id, u.id)?.avatarMediaId).toBe(m);
+
+		expect(reuseAndDeleteWithMedia(u.id, m).trashedMediaIds).toEqual([]);
+		expect(mediaRow(m)?.deletedAt).toBeNull();
+	});
+
+	it("keeps a conversation's avatar reference", () => {
+		const u = seedUser();
+		const faced = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat',
+		});
+		const m = generated(u.id);
+		setConversationAvatar(faced.id, u.id, m);
+
+		expect(trashMediaForUser(m, u.id)).toBe(true);
+		expect(restoreMediaForUser([m], u.id)).toEqual([m]);
+
+		expect(reuseAndDeleteWithMedia(u.id, m).trashedMediaIds).toEqual([]);
+		expect(mediaRow(m)?.deletedAt).toBeNull();
+	});
+
+	it('zeroes the count and starts the unreferenced clock on an image nothing wears', () => {
+		const u = seedUser();
+		const m = generated(u.id);
+		expect(trashMediaForUser(m, u.id)).toBe(true);
+		expect(mediaRow(m)?.refCount).toBe(0);
+		expect(mediaRow(m)?.unreferencedSince).not.toBeNull();
 	});
 });
 

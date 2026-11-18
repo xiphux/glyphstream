@@ -11,14 +11,14 @@
  * row back.
  *
  * What a restore does NOT bring back is the row's message links. The delete
- * drops its `message_media` join rows and zeroes `ref_count`, and the branch or
- * conversation that held it may be gone or have moved on, so a restored asset
- * returns to the library as an orphan — listed in the gallery with no
- * conversation. Generated orphans are never reaped, so that is a stable state.
+ * drops its `message_media` join rows and their share of `ref_count` (an
+ * avatar's reference stays), and the branch or conversation that held it may
+ * be gone or have moved on, so a restored asset returns to the library as an
+ * orphan — listed in the gallery with no conversation. Generated orphans are never reaped, so that is a stable state.
  */
-import { and, desc, eq, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { getDb } from '../../client';
-import { media, messageMedia } from '../../schema';
+import { conversations, customModels, media, messageMedia } from '../../schema';
 import type { TrashedMediaItem } from '#lib/types/api.js';
 import { MEDIA_DIMENSIONS_SELECT, withFavoriteFlag } from './shape';
 import { recordMediaEvent } from '#lib/server/stats/model-stats.js';
@@ -61,7 +61,11 @@ export function bulkTrashMediaForUser(ids: readonly string[], userId: string): s
 		if (liveIds.length === 0) return [];
 		const now = Date.now();
 		tx.update(media)
-			.set({ deletedAt: now, refCount: 0, unreferencedSince: now })
+			.set({
+				deletedAt: now,
+				refCount: avatarRefs,
+				unreferencedSince: sql`CASE WHEN ${avatarRefs} = 0 THEN ${now} ELSE NULL END`,
+			})
 			.where(inArray(media.id, liveIds))
 			.run();
 		// Drop join rows so the messages no longer carry a stale link in their
@@ -72,6 +76,17 @@ export function bulkTrashMediaForUser(ids: readonly string[], userId: string): s
 		return liveIds;
 	});
 }
+
+/**
+ * A media row's avatar references: the presets and conversations whose face it
+ * is. A trash drops the row's message links but not these, so its `ref_count`
+ * keeps them — a restored avatar must still be out of reach of the
+ * conversation-delete orphan analysis.
+ */
+const avatarRefs = sql<number>`(
+	(SELECT COUNT(*) FROM ${conversations} WHERE ${conversations.avatarMediaId} = ${media.id})
+	+ (SELECT COUNT(*) FROM ${customModels} WHERE ${customModels.avatarMediaId} = ${media.id})
+)`;
 
 /**
  * The user's "Recently deleted": generated images and videos in the trash,
@@ -138,9 +153,9 @@ export type TrashedMediaRow = Omit<TrashedMediaItem, 'expiresAt'>;
  * that are deleted-but-not-purged qualify; anything else in `ids` is silently
  * dropped. Returns the ids restored.
  *
- * `unreferenced_since` and the zeroed `ref_count` are left as the delete set
- * them: a generated row is never reaped for being unreferenced, so they are
- * inert, and they're accurate — nothing links to it any more.
+ * `ref_count` and `unreferenced_since` are left as the delete set them, and
+ * they're accurate: no message links to the row any more, and the count is
+ * what its avatar references hold.
  */
 export function restoreMediaForUser(ids: readonly string[], userId: string): string[] {
 	if (ids.length === 0) return [];
