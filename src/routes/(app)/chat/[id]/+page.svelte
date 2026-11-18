@@ -2127,22 +2127,29 @@
 			if (!proceed || data.conversation.id !== typedIn) return;
 		}
 
-		composerText = '';
-		sceneSwitch = null;
 		// The message is committed — drop the saved draft so it isn't restored
 		// after a reload. cancel() drops the pending write; clearDraft() removes
-		// the stored key now (load-bearing: setting composerText='' above re-fires
-		// the autosave $effect, but that only re-clears on the next debounced
-		// commit, so the explicit clear is what removes it immediately).
-		draftWriter.cancel();
-		clearDraft(data.conversation.id);
-		attachments.clear();
+		// the stored key now (load-bearing: setting composerText='' re-fires the
+		// autosave $effect, but that only re-clears on the next debounced commit,
+		// so the explicit clear is what removes it immediately).
+		const clearComposer = () => {
+			composerText = '';
+			sceneSwitch = null;
+			draftWriter.cancel();
+			clearDraft(data.conversation.id);
+			attachments.clear();
+		};
 		if (willFanOut) {
-			resetCompare();
-			splitAttachments = false;
-			await fanout.send(text, attachedMediaIds, branches, baseModels, aspectRatio);
+			// Cleared only once /prepare has the prompt: a fan-out refused before
+			// that (the branch cap, a 4xx/5xx) keeps the text, attachments and cart.
+			await fanout.send(text, attachedMediaIds, branches, baseModels, aspectRatio, () => {
+				clearComposer();
+				resetCompare();
+				splitAttachments = false;
+			});
 			return;
 		}
+		clearComposer();
 		// Single effective branch — collapse to a normal send with that model.
 		if (fanoutModels.length >= 1) {
 			modelId = baseModels[0].modelId;

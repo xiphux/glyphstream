@@ -779,11 +779,14 @@ describe('FanoutController — actions', () => {
 			displayName: 'SDXL',
 			inputMediaId: null,
 		}));
-		await fc.send('x', [], branches, branches);
+		const onPrepared = vi.fn();
+		await fc.send('x', [], branches, branches, null, onPrepared);
 		// Bailed before even creating the shared user message — no network at all.
 		expect(fetchMock).not.toHaveBeenCalled();
 		expect(state.error).toContain('Too many variations');
 		expect(fc.live).toBe(false);
+		// The page clears its composer here; a refused fan-out keeps the prompt.
+		expect(onPrepared).not.toHaveBeenCalled();
 		vi.unstubAllGlobals();
 	});
 

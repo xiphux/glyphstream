@@ -37,6 +37,7 @@ arrived.
 - A message sent while the conversation was being compacted no longer ends up in whichever conversation you switched to before the compaction finished, wiping that conversation's draft.
 - Returning to the tab while a reply was still queued could freeze the thread, so the reply never appeared until a reload.
 - A retry or edit the server turned away (too busy, unreachable) no longer leaves the reply, or the messages after the edit, missing from the thread until a reload.
+- A comparison the server refused before it started (or one over the variation limit) no longer clears your prompt, attachments and picked models.
 
 ## v0.54.0
 

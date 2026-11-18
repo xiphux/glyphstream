@@ -278,6 +278,11 @@ export class FanoutController {
 	 * separately because it can't be recovered from `branches` (splitting repeats
 	 * each model once per input image). /prepare records it on the user message as
 	 * the durable provenance the reuse-prompt action reads.
+	 *
+	 * `onPrepared` runs once the shared user message exists, before anything
+	 * renders: the point past which the prompt is the server's, so the page clears
+	 * its composer there and not earlier. A fan-out refused before it (the branch
+	 * cap, a failed /prepare) leaves the prompt where the user typed it.
 	 */
 	async send(
 		text: string,
@@ -287,6 +292,7 @@ export class FanoutController {
 		/** Aspect ratio for every branch of this fan-out. One value serves menus
 		 *  that don't line up: each model snaps it against its own list upstream. */
 		aspectRatio: string | null = null,
+		onPrepared?: () => void,
 	): Promise<void> {
 		// Mirror the server's per-conversation cap so a legitimate user who builds
 		// an oversized cross-product (models × split images) gets a friendly message
@@ -331,6 +337,7 @@ export class FanoutController {
 			this.#deps.setBusy(false);
 			return;
 		}
+		onPrepared?.();
 
 		// 2. Render the user message and spin up the columns.
 		this.#deps.appendUserMessage(userMessage);
