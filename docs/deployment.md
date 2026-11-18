@@ -128,6 +128,48 @@ The image pins `HOME=/home/node` (group-writable), so an `npx`-launched
 override that changes the **gid** too is not supported: the code interpreter's
 package directory and that home are writable only by uid 1000 and gid 1000.
 
+## Backup and restore
+
+A backup is three things: a snapshot of the database, the media directory,
+and your `.env` and `config.toml`. Keep `.env` with the rest: the stored
+per-user MCP credentials are encrypted with `MCP_SECRET_KEY` (by default
+derived from `AUTH_SECRET`), so a restored database without it can't read
+them.
+
+**Don't copy the live `glyphstream.db`.** The database runs in WAL mode,
+so its newest commits sit in `glyphstream.db-wal` until a checkpoint folds
+them in. A copy of the `.db` file alone loses them, and a copy taken while
+the server writes can tear. Snapshot it through SQLite instead; the
+`sqlite3` CLI is in the image, and this is safe while the server runs:
+
+```sh
+mkdir -p data/backups
+docker compose exec glyphstream sqlite3 /app/data/glyphstream.db \
+  "VACUUM INTO '/app/data/backups/glyphstream-$(date +%Y%m%d-%H%M%S).db'"
+```
+
+`VACUUM INTO` writes a complete, consistent single-file copy. It won't create
+the directory, and it refuses to overwrite an existing file, hence the
+`mkdir` and the timestamp. Then copy that snapshot off the host, together
+with `data/media` (or wherever `MEDIA_DIR` points), `SKILLS_DIR` if you use
+skills, `.env` and `config.toml`. `DERIVED_DIR` holds only thumbnails and
+other variants regenerated on demand, so it can be skipped.
+
+Take one before every upgrade: migrations run unprompted the first time a
+new version opens the database, and some rewrite rows in place.
+
+To restore:
+
+1. Stop the server (`docker compose down`).
+2. Put the snapshot at `DB_PATH` (`data/glyphstream.db` by default), and
+   delete any `glyphstream.db-wal` and `glyphstream.db-shm` left beside it.
+   They belong to the database you are replacing, and SQLite would replay
+   them onto the snapshot.
+3. Restore the media directory (and skills) from the same backup.
+4. `chown -R 1000:1000 data` (or your `user:` override; see above).
+5. Start it again. Image and video generations that were queued when the
+   snapshot was taken are in it, and will run again.
+
 ## Upgrading
 
 Pull or rebuild the image and restart it. Database migrations run when the

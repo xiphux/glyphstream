@@ -5,7 +5,9 @@
 #
 # Volumes:
 #   ./data           SQLite DB + generated media. Survives `up/down`.
-#                    Migrate to a different host by copying this dir.
+#                    Copy it to another host only with the container
+#                    stopped; to back it up while running, see "Backup
+#                    and restore" in docs/deployment.md.
 #   ./config.toml    Endpoint registry. Mounted read-only since the
 #                    container shouldn't be editing it.
 #   ./imports        Drop OWUI export files here for one-shot imports
