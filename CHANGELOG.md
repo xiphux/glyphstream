@@ -17,12 +17,12 @@ arrived.
 - A captured passkey sign-in or app-lock unlock request could be replayed to start a new session, indefinitely for synced passkeys. Each passkey challenge is now signed, expires after five minutes, works only for the ceremony it was issued for, and is accepted once.
 - Python run by the code interpreter could make the server hold arbitrarily large messages in memory, even after its run had returned. An interpreter that sends a package-cache message outside a run, or one that is malformed or oversized, is now stopped.
 - A hostile page read by `fetch_url` can no longer freeze the server for every user: page extraction runs in a worker that is stopped after a few seconds, and the model is told the page took too long to process.
-- Signing out of a device, revoking its session or letting it expire now stops push notifications to that device. Before, it kept receiving them, with conversation titles and previews if previews were on.
+- Signing out of a device, revoking its session or letting it expire now stops push notifications to that device. Before, it kept receiving them, with conversation titles and previews if previews were on. After upgrading, each device picks notifications back up the next time the app is opened on it.
 
 ### Changed
 
 - Disabling an account now stops the generations it had running or queued, as deleting it does, and pauses its background memory consolidation and conversation summaries.
-- An older version started against a database a newer version has migrated now refuses to start, naming the migrations it doesn't have, instead of running on a schema it doesn't understand. Downgrading isn't supported; restore the backup taken before the upgrade.
+- An older version started against a database a newer version has migrated now refuses to start, naming the migrations it doesn't have, instead of running on a schema it doesn't understand. Versions before this one don't check, so rolling back to one of them still starts and runs on the newer schema. Downgrading isn't supported either way; restore the backup taken before the upgrade.
 - The server now warns at startup about any `config.toml` section or key it doesn't recognise (suggesting the likely intended key), instead of silently running on the default. A misspelt key in `[scheduled_tasks]` or `[check_ins]` now warns too, rather than refusing to start.
 - When a background refresh can't reach the server (a restart, or the app resumed before the network was back) and the app falls back to its error page, that page now reconnects by itself as soon as the server answers, instead of waiting for a Reload tap.
 - Conversation search on a shared instance is faster: it reads only the searcher's own messages instead of every user's matches. Upgrading rebuilds the search index once, roughly 2 seconds per 100,000 messages.

@@ -117,8 +117,10 @@ INSERT INTO search_index (search_index) VALUES ('optimize');
 -- --- the single insert path ------------------------------------------------
 --
 -- A full range (2^32 - 1 rows, counting every re-index of an edited message)
--- would make the next rowid collide with the following owner's first row and
--- fail the write; it does not leak, since the search also checks the owner.
+-- is not handled. The next row takes the following owner's base rowid, which
+-- none of their rows uses, so it lands in their range without leaking (the
+-- search also checks the owner); the row after it computes that same rowid
+-- again and its write fails.
 
 CREATE VIEW search_index_insert AS
 SELECT text, user_id, conversation_id, message_id, kind FROM search_index WHERE 0;

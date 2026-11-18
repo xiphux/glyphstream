@@ -175,14 +175,17 @@ To restore:
 Pull or rebuild the image and restart it. Database migrations run when the
 new version first opens the database, before it serves anything; some of
 them rewrite rows in place, so take a backup first (see
-[Backup and restore](#backup-and-restore)).
+[Backup and restore](#backup-and-restore)). A migration that rebuilds an index
+can make that first start take a few seconds on a large database; the search
+index rebuild, for example, runs at roughly 2 seconds per 100,000 messages.
 
 **Downgrading is not supported.** An older version started against a
 database that a newer one migrated refuses to start, and its log names the
 migrations it doesn't have. Running it anyway would read and write data in a
-shape it was never built for. To go back, restore the backup you took
-before upgrading (anything written since is lost), or run the newer version
-again.
+shape it was never built for. v0.54 and earlier don't make that check: they
+start silently and do exactly that. To go back, restore the
+backup you took before upgrading (anything written since is lost), or run the
+newer version again.
 
 ## Faststart backfill (one-shot)
 

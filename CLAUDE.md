@@ -387,6 +387,11 @@ exact-match `apple-touch-startup-image` media query.
   table lookup per row. `migrations-populated.test.ts` compares
   `PRAGMA index_info` against every declared plain-column index for that reason —
   it is the only thing holding the line, and it fails naming the index.
+- **Never rename a migration directory once it has been released.** The
+  migrator records each applied migration by its directory name, and startup
+  (`assertNoNewerMigrations` in `db/client.ts`) refuses a database holding a name
+  this build doesn't ship, so a rename makes every upgraded database refuse to
+  start as "migrated by a newer version".
 - **Hand-authored migrations (FTS5 virtual tables, triggers, data backfills)
   are SQL-only — a `<ts>_<name>/migration.sql` with NO `snapshot.json`.** The
   runtime migrator (`drizzle-orm/node-sqlite/migrator`) reads only `migration.sql`,
