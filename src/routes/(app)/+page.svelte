@@ -334,6 +334,9 @@
 	// PWA that was frozen in the background and reloaded). The new-chat box uses
 	// the `null` draft slot. SSR returns '' so there's no hydration mismatch.
 	let text = $state(browser ? loadDraft(null) : '');
+	// The prompt a gallery "Regenerate" put in the box, so a `#q=` prefill
+	// arriving on the same entry leaves it alone. Null when none landed.
+	let galleryPrompt: string | null = null;
 	let busy = $state(false);
 	let errorMsg = $state<string | null>(null);
 
@@ -448,6 +451,7 @@
 				// `text` change and runs post-DOM-flush, so it sizes to the
 				// prompt without a manual tick()+resize dance here.
 				text = intent.prompt;
+				galleryPrompt = intent.prompt;
 				// Null for an upload, a pre-feature row, or an upstream that reports
 				// no ratio. The selector then falls to its next-strongest source,
 				// which is a ratio named in the prompt just restored above, and only
@@ -580,8 +584,11 @@
 	// never reaches the server, so it sidesteps the reverse-proxy / Node
 	// request-line size limits a long image prompt would otherwise blow past,
 	// and it keeps the prompt out of server logs. Runs from afterNavigate (so
-	// it also catches client-side navs back to this page) and only fills an
-	// empty box, so it never clobbers a gallery-launch regenerate prompt.
+	// it also catches client-side navs back to this page).
+	//
+	// The shared text is an explicit request, so it replaces a restored draft —
+	// with an Undo, since the draft may be the only copy of what was typed. It
+	// never clobbers a gallery-launch regenerate prompt still in the box.
 	afterNavigate(({ shallow, type }) => {
 		// Skip shallow updates — see the note at the (app) layout's afterNavigate.
 		if (shallow && type === 'goto') return;
@@ -590,7 +597,20 @@
 		if (!hash) return;
 		const q = new URLSearchParams(hash.slice(1)).get('q');
 		if (!q) return;
-		if (!text) text = q;
+		if (text !== galleryPrompt) {
+			const previous = text;
+			text = q;
+			if (previous.trim() && previous !== q) {
+				toast.info('Shared text loaded — your draft was replaced', {
+					action: {
+						label: 'Undo',
+						handler: () => {
+							text = previous;
+						},
+					},
+				});
+			}
+		}
 		// Drop the fragment so a manual refresh won't re-prefill an
 		// already-sent message. Deferred a microtask because on the initial
 		// load afterNavigate fires just *before* SvelteKit flags the router

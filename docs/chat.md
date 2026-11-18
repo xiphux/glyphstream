@@ -116,6 +116,8 @@ payload honest and visible.
   (`https://your-host/#q=write%20a%20haiku`) to prefill the composer — handy for
   an iOS share-sheet Shortcut, since iOS won't let an installed web app receive
   shares directly. The fragment keeps even long prompts off the request line.
+  The shared text replaces an unsent draft in the box, and the toast that says
+  so has an Undo that puts the draft back.
 - **Installable app** with iOS-aware safe areas, push notifications when a long
   generation finishes, and an icon badge for threads waiting on you
   ([guide](notifications.md)).
