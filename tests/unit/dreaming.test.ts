@@ -65,6 +65,24 @@ beforeEach(() => {
 afterEach(() => closeTestDb());
 
 describe('runDreamSweep', () => {
+	it("sends the model only the dreaming user's own memories", async () => {
+		const a = seedUser();
+		const b = seedUser();
+		createMemory(a.id, 'alice fact one', 'A');
+		createMemory(a.id, 'alice fact two', 'A');
+		createMemory(b.id, 'bob fact one', 'B');
+		createMemory(b.id, 'bob fact two', 'B');
+		chatReply({ operations: [] });
+
+		await runDreamSweep();
+
+		const prompts = chatMock.mock.calls.map((c) => JSON.stringify(c));
+		expect(prompts).toHaveLength(2);
+		for (const p of prompts) {
+			expect(p.includes('alice') && p.includes('bob')).toBe(false);
+		}
+	});
+
 	it('is a no-op when no memory model is configured', async () => {
 		memModelMock.mockReturnValue(null);
 		const u = seedUser();

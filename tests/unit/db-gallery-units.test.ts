@@ -550,6 +550,16 @@ describe('gallery drill-in shares the cached unit source', () => {
 		// Same unit key, different owner — must not resolve to A's media.
 		expect(listGalleryUnitMembers(b.id, aKey)).toEqual([]);
 	});
+
+	it("never lists another user's generations in the grid", () => {
+		const a = seedUser();
+		const b = seedUser();
+		makeGen(a.id, at(2024, 6, 15), { promptFull: 'secret', originalPrompt: null });
+
+		expect(allUnits(b.id)).toEqual([]);
+		expect(computeGalleryLayout(b.id, TZ)).toMatchObject({ totalUnits: 0, days: [] });
+		expect(allUnits(a.id)).toHaveLength(1);
+	});
 });
 
 describe('gallery drill-in under the favorites filter', () => {

@@ -292,6 +292,18 @@ describe('turning the lock off', () => {
 		clearAppLock(u.id);
 		expect(unlockedUntilOf(againId)).toBeNull();
 	});
+
+	it("leaves another user's born-locked sessions locked", () => {
+		const u = seedUser();
+		const other = seedUser();
+		setAppLockTimeout(u.id, MIN);
+		setAppLockTimeout(other.id, MIN);
+		const theirs = validateSessionToken(createSession(other.id, null, 0).token)!.sessionId;
+
+		setAppLockTimeout(u.id, null);
+		clearAppLock(u.id);
+		expect(unlockedUntilOf(theirs)).toBe(0);
+	});
 });
 
 describe('guards', () => {

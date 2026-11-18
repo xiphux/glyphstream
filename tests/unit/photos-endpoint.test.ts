@@ -106,14 +106,14 @@ function develop(body: Record<string, unknown>, conversationId = convId, asUser 
 	} as unknown as Parameters<typeof POST>[0]);
 }
 
-function pick(photoId: string, body: Record<string, unknown> = { shown: true }) {
+function pick(photoId: string, body: Record<string, unknown> = { shown: true }, asUser = userId) {
 	const request = new Request(`http://x/api/conversations/${convId}/photos/${photoId}`, {
 		method: 'PATCH',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(body),
 	});
 	return PATCH({
-		locals: { user: { id: userId } },
+		locals: { user: { id: asUser } },
 		params: { id: convId, photoId },
 		request,
 	} as unknown as Parameters<typeof PATCH>[0]);
@@ -330,6 +330,14 @@ describe('PATCH /photos/:id', () => {
 		const a = version();
 		version();
 		await pick(a);
+		expect(shown()).toEqual([a]);
+	});
+
+	it('refuses someone else’s version, leaving what is on show alone', async () => {
+		const a = version();
+		await pick(a);
+		const b = version();
+		await expect(pick(b, { shown: true }, seedUser().id)).rejects.toMatchObject({ status: 404 });
 		expect(shown()).toEqual([a]);
 	});
 

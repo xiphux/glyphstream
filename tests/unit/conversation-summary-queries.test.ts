@@ -188,6 +188,14 @@ describe('overview queries', () => {
 		expect(b).toBeTruthy();
 	});
 
+	it("listConversationSummariesForOverview leaves out other users' summaries", () => {
+		const owner = seedUser();
+		const other = seedUser();
+		setConversationSummary(seedConv(owner.id, { messages: 2, updatedAt: NOW }), 'mine', NOW);
+		setConversationSummary(seedConv(other.id, { messages: 2, updatedAt: NOW }), 'theirs', NOW);
+		expect(listConversationSummariesForOverview(owner.id)).toEqual(['mine']);
+	});
+
 	it('re-flags the overview when a summarized conversation is deleted but others remain', () => {
 		const u = seedUser();
 		const a = seedConv(u.id, { messages: 2, updatedAt: NOW });

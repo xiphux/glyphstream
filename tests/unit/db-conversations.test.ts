@@ -12,6 +12,7 @@ import {
 	getConversationMeta,
 	getFanoutParent,
 	listArchivedConversations,
+	listConversationIds,
 	listConversations,
 	clearFanoutParent,
 	setDisabledFeatures,
@@ -282,6 +283,19 @@ describe('per-conversation feature opt-outs', () => {
 		await new Promise((r) => setTimeout(r, 3));
 		setDisabledFeatures(conv.id, u.id, ['web']);
 		expect(getConversationDetail(conv.id, u.id)!.updatedAt).toBe(beforeTs);
+	});
+});
+
+describe('listConversationIds', () => {
+	it("returns only the caller's conversations", () => {
+		const owner = seedUser();
+		const other = seedUser();
+		const conv = (userId: string) =>
+			createConversation({ userId, endpointId: 'bridge', modelId: 'bridge::x', modelKind: 'chat' })
+				.id;
+		const mine = conv(owner.id);
+		conv(other.id);
+		expect(listConversationIds(owner.id)).toEqual([mine]);
 	});
 });
 

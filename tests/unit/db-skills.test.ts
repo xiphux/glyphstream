@@ -103,6 +103,14 @@ describe('listEnabledSkillsForUser + getEnabledSkillByName', () => {
 		makeSkill(u1.id, 'secret');
 		expect(getEnabledSkillByName(u2.id, 'secret')).toBeNull();
 	});
+
+	it('does not list a foreign user’s enabled skills', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		makeSkill(u1.id, 'secret');
+		makeSkill(u2.id, 'own');
+		expect(listEnabledSkillsForUser(u2.id).map((s) => s.name)).toEqual(['own']);
+	});
 });
 
 describe('setSkillEnabled', () => {
