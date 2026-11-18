@@ -25,6 +25,7 @@ vi.mock('#lib/server/env.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/server/env.js')>()),
 	publicBaseUrl: () => 'https://chat.example.test',
 	passkeyLoginEnabled: () => mocks.passkeysOn,
+	authSecret: () => 'test-secret-do-not-use-in-prod',
 }));
 
 import { POST as loginOptions } from '../../src/routes/api/auth/passkey/login/options/+server';
@@ -292,9 +293,8 @@ describe('login', () => {
 	it('clears the challenge cookie: replaying from the same browser fails', async () => {
 		// Counter 0 (iCloud-style), so the clone guard can't be what stops the
 		// replay. What this proves is that verify clears the challenge cookie, so a
-		// browser resending the same request has no challenge left. The challenge
-		// is not tracked server-side: a replay that also resends the captured
-		// cookie within its TTL is not covered here.
+		// browser resending the same request has no challenge left. A replay that
+		// also resends the captured cookie is passkey-challenge-replay.test.ts.
 		storeCredential(auth, userId, 0);
 		let assertion: unknown;
 		const first = await login((c) => (assertion = auth.assert(c, userId, { counter: 0 })));

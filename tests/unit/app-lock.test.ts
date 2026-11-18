@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Cookies } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('#lib/server/env.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/server/env.js')>()),
 	passkeyLoginEnabled: () => mocks.passkeysEnabled,
+	authSecret: () => 'test-secret-do-not-use-in-prod',
 }));
 vi.mock('#lib/server/push/web-push.js', () => ({
 	sendPushNotification: vi.fn(async (_sub: unknown, payload: string) => {
@@ -46,6 +48,7 @@ import {
 	initialUnlockedUntil,
 	setAppLockTimeout,
 } from '#lib/server/auth/app-lock.js';
+import { setUnlockChallengeCookie } from '#lib/server/auth/passkey.js';
 import { redirectUnauthenticatedPage, requireUser } from '#lib/server/auth/guard.js';
 import { createSession, validateSessionToken } from '#lib/server/auth/session.js';
 import { insertCredential } from '#lib/server/db/queries/passkey.js';
@@ -80,6 +83,13 @@ function fakeCookies(initial: Record<string, string> = {}): Cookies {
 		delete: (n: string) => void jar.delete(n),
 		serialize: () => '',
 	} as unknown as Cookies;
+}
+
+/** A jar holding a fresh unlock challenge, as `unlock/options` would leave it. */
+function unlockChallengeCookies(): Cookies {
+	const cookies = fakeCookies();
+	setUnlockChallengeCookie(cookies, randomUUID());
+	return cookies;
 }
 
 function addPasskey(userId: string, id: string) {
@@ -367,7 +377,7 @@ describe('PUT /api/auth/app-lock', () => {
 		expect(await statusOf(() => put(u.id, sid, { timeoutMs: MIN }))).toBe(400);
 		expect(getAppLockTimeout(u.id)).toBeNull();
 
-		const cookies = fakeCookies({ glyphstream_passkey_unlock_challenge: 'c' });
+		const cookies = unlockChallengeCookies();
 		expect(
 			await statusOf(() => put(u.id, sid, { timeoutMs: MIN, response: { id: 'mine' } }, cookies)),
 		).toBe(200);
@@ -398,7 +408,7 @@ describe('POST /api/auth/unlock/verify', () => {
 	function verify(locals: unknown, credentialId: string) {
 		return (unlockVerify as unknown as (e: unknown) => Promise<Response>)({
 			locals,
-			cookies: fakeCookies({ glyphstream_passkey_unlock_challenge: 'c' }),
+			cookies: unlockChallengeCookies(),
 			request: jsonRequest({ response: { id: credentialId } }),
 		});
 	}

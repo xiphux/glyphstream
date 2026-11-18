@@ -9,6 +9,7 @@ vi.mock('#lib/server/env.js', () => ({
 	// here keeps the challenge-cookie assertions honest about when `Secure`
 	// is set.
 	cookiesSecure: () => mocks.baseUrl.startsWith('https://'),
+	authSecret: () => 'test-secret-do-not-use-in-prod',
 }));
 
 // Stub @simplewebauthn/server so we can assert on the pass-through
@@ -290,7 +291,7 @@ describe('verifyRegistrationCeremony', () => {
 
 	it('throws 400 on a malformed JSON body', async () => {
 		const { cookies } = fakeCookies();
-		setRegistrationChallengeCookie(cookies, 'c');
+		setRegistrationChallengeCookie(cookies, 'c1');
 		const req = {
 			json: async () => {
 				throw new Error('bad json');
@@ -301,7 +302,7 @@ describe('verifyRegistrationCeremony', () => {
 
 	it('throws 400 when the registration response is missing', async () => {
 		const { cookies } = fakeCookies();
-		setRegistrationChallengeCookie(cookies, 'c');
+		setRegistrationChallengeCookie(cookies, 'c2');
 		await expect(
 			verifyRegistrationCeremony(cookies, fakeRequest({ name: 'x' })),
 		).rejects.toMatchObject({ status: 400 });
@@ -310,7 +311,7 @@ describe('verifyRegistrationCeremony', () => {
 	it('throws 400 when SimpleWebAuthn reports unverified', async () => {
 		verifyRegistrationResponseMock.mockResolvedValue({ verified: false });
 		const { cookies } = fakeCookies();
-		setRegistrationChallengeCookie(cookies, 'c');
+		setRegistrationChallengeCookie(cookies, 'c3');
 		await expect(
 			verifyRegistrationCeremony(cookies, fakeRequest({ response: {} })),
 		).rejects.toMatchObject({ status: 400 });

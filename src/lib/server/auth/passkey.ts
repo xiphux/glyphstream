@@ -27,9 +27,9 @@ import type {
 	WebAuthnCredential,
 } from '@simplewebauthn/server';
 import { type Cookies, error } from '@sveltejs/kit';
-import { cookiesSecure, publicBaseUrl } from '../env';
+import { publicBaseUrl } from '../env';
 import type { SessionUser } from './session';
-import { clearAuthCookie } from './signed-cookies';
+import { clearAuthCookie, setCarryCookie, sign, verify } from './signed-cookies';
 import {
 	pickKnownTransports,
 	updateCredentialCounterAndLastUsed,
@@ -347,22 +347,55 @@ export function decodeUserHandle(userHandle: string | undefined | null): string 
 
 // --- challenge cookies ---------------------------------------------------
 
-function writeChallengeCookie(cookies: Cookies, name: string, challenge: string): void {
-	cookies.set(name, challenge, {
-		path: '/',
-		httpOnly: true,
-		sameSite: 'lax',
-		secure: cookiesSecure(),
-		maxAge: CHALLENGE_TTL_SECONDS,
-	});
+/** Which ceremony a challenge was issued for: an assertion made for one is
+ *  refused by the others (an app-lock unlock is not a sign-in). */
+type ChallengePurpose = 'registration' | 'login' | 'unlock';
+
+/**
+ * Challenges a verify step has already read, each with the expiry of the
+ * cookie that carried it. The signed cookie bounds a challenge to its TTL;
+ * this makes it single-use within that TTL, so a captured verify request
+ * can't be sent a second time. In-process only: a restart forgets it, which
+ * reopens at most the few minutes of TTL left on a challenge issued before.
+ */
+const consumedChallenges = new Map<string, number>();
+
+function writeChallengeCookie(
+	cookies: Cookies,
+	name: string,
+	challenge: string,
+	purpose: ChallengePurpose,
+): void {
+	const value = sign({ challenge, purpose }, CHALLENGE_TTL_SECONDS * 1000);
+	setCarryCookie(cookies, name, value, CHALLENGE_TTL_SECONDS);
+}
+
+/** The cookie's challenge, if it is genuine, unexpired, issued for `purpose`
+ *  and not read before. Reading it consumes it. */
+function takeChallengeCookie(
+	cookies: Cookies,
+	name: string,
+	purpose: ChallengePurpose,
+): string | undefined {
+	const payload = verify<{ challenge?: unknown; purpose?: unknown }>(cookies.get(name));
+	if (!payload || payload.purpose !== purpose || typeof payload.challenge !== 'string') {
+		return undefined;
+	}
+	const now = Date.now();
+	for (const [challenge, exp] of consumedChallenges) {
+		if (exp < now) consumedChallenges.delete(challenge);
+	}
+	if (consumedChallenges.has(payload.challenge)) return undefined;
+	consumedChallenges.set(payload.challenge, payload.exp);
+	return payload.challenge;
 }
 
 export function setRegistrationChallengeCookie(cookies: Cookies, challenge: string): void {
-	writeChallengeCookie(cookies, REGISTRATION_COOKIE, challenge);
+	writeChallengeCookie(cookies, REGISTRATION_COOKIE, challenge, 'registration');
 }
 
 export function readRegistrationChallengeCookie(cookies: Cookies): string | undefined {
-	return cookies.get(REGISTRATION_COOKIE);
+	return takeChallengeCookie(cookies, REGISTRATION_COOKIE, 'registration');
 }
 
 export function clearRegistrationChallengeCookie(cookies: Cookies): void {
@@ -370,11 +403,11 @@ export function clearRegistrationChallengeCookie(cookies: Cookies): void {
 }
 
 export function setLoginChallengeCookie(cookies: Cookies, challenge: string): void {
-	writeChallengeCookie(cookies, LOGIN_COOKIE, challenge);
+	writeChallengeCookie(cookies, LOGIN_COOKIE, challenge, 'login');
 }
 
 export function readLoginChallengeCookie(cookies: Cookies): string | undefined {
-	return cookies.get(LOGIN_COOKIE);
+	return takeChallengeCookie(cookies, LOGIN_COOKIE, 'login');
 }
 
 export function clearLoginChallengeCookie(cookies: Cookies): void {
@@ -382,11 +415,11 @@ export function clearLoginChallengeCookie(cookies: Cookies): void {
 }
 
 export function setUnlockChallengeCookie(cookies: Cookies, challenge: string): void {
-	writeChallengeCookie(cookies, UNLOCK_COOKIE, challenge);
+	writeChallengeCookie(cookies, UNLOCK_COOKIE, challenge, 'unlock');
 }
 
 export function readUnlockChallengeCookie(cookies: Cookies): string | undefined {
-	return cookies.get(UNLOCK_COOKIE);
+	return takeChallengeCookie(cookies, UNLOCK_COOKIE, 'unlock');
 }
 
 export function clearUnlockChallengeCookie(cookies: Cookies): void {
