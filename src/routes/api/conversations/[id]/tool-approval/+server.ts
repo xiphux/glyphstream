@@ -35,7 +35,11 @@ import { toolPermitter } from '#lib/server/scheduled/tool-policy.js';
 import type { TurnOutcome } from '#lib/server/streaming/relay.js';
 import { getUserPreferences, setUserPreferences } from '#lib/server/db/queries/user-preferences.js';
 import { executeOneToolCall } from '#lib/server/streaming/tool-execution.js';
-import { clearInFlight, registerInFlight } from '#lib/server/streaming/in-flight.js';
+import {
+	clearInFlight,
+	registerInFlight,
+	type InFlightEntry,
+} from '#lib/server/streaming/in-flight.js';
 import { sseResponse } from '#lib/server/streaming/sse-transport.js';
 import type { ChatMessage, MessagePart } from '#lib/types/api.js';
 import type { RequestHandler } from './$types';
@@ -139,126 +143,133 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const scheduleAllowed: string[] = [];
 	const scheduleDenied: string[] = [];
 	let updatedAny = false;
-
-	for (const decision of decisions) {
-		// Read the branch fresh for each decision, and claim the call in the
-		// same synchronous step: a snapshot taken once before the loop goes
-		// stale across the awaits below, and a concurrent request could finish
-		// and release a call this request would then see as still pending.
-		const branch = walkActiveBranch(params.id, { columns: 'serialization' });
-		const found = findPending(branch, decision.toolCallId);
-		if (!found) continue;
-		const claim = `${params.id}:${decision.toolCallId}`;
-		if (executingToolCalls.has(claim)) continue;
-		executingToolCalls.add(claim);
-		try {
-			const { toolMsg, resultPart, toolCallPart } = found;
-			if (decision.action === 'reject' || decision.action === 'deny_schedule') {
-				if (decision.action === 'deny_schedule') scheduleDenied.push(toolCallPart.toolName);
-				updateMessageParts(toolMsg.id, params.id, [
-					{
-						type: 'tool_result',
-						toolCallId: resultPart.toolCallId,
-						result: JSON.stringify({ error: 'User declined this tool call.' }),
-						isError: true,
-					},
-				]);
-				updatedAny = true;
-				continue;
-			}
-			const execResult = await executeOneToolCall(
-				toolCallPart,
-				userId,
-				params.id,
-				request.signal,
-				disabledFeatures,
-				isToolPermitted,
-			);
-			const nextPart: Extract<MessagePart, { type: 'tool_result' }> = {
-				type: 'tool_result',
-				toolCallId: resultPart.toolCallId,
-				result: execResult.execution.content,
-				...(execResult.execution.isError ? { isError: true } : {}),
-			};
-			// executeOneToolCall builds the media parts; linking the media to the
-			// tool message row is left to the caller.
-			if (execResult.execution.attachedMediaIds?.length) {
-				for (const mediaId of execResult.execution.attachedMediaIds) {
-					linkMessageMedia(toolMsg.id, mediaId);
-				}
-			}
-			if (decision.action === 'allow_always') newlyTrusted.push(toolCallPart.toolName);
-			if (decision.action === 'allow_schedule') scheduleAllowed.push(toolCallPart.toolName);
-			updateMessageParts(toolMsg.id, params.id, [nextPart, ...execResult.mediaParts]);
-			updatedAny = true;
-		} finally {
-			executingToolCalls.delete(claim);
-		}
-	}
-
-	if (!updatedAny) {
-		error(409, 'No pending tool calls matched the decisions in this body.');
-	}
-
-	// Persist newly-trusted tools before continuing the relay so the
-	// needsApproval predicate sees them on the next iteration.
-	if (newlyTrusted.length > 0) {
-		const existing = getUserPreferences(userId)?.trustedMcpTools ?? [];
-		const merged = Array.from(new Set([...existing, ...newlyTrusted]));
-		setUserPreferences(userId, { trustedMcpTools: merged });
-	}
-	// Same for the schedule's own policy, and re-read it so the resumed turn
-	// runs under the policy as it now stands.
-	if (scheduled && scheduleTask && (scheduleAllowed.length > 0 || scheduleDenied.length > 0)) {
-		const p = scheduleTask.toolPolicy;
-		const denied = new Set(scheduleDenied);
-		const allowed = new Set(scheduleAllowed);
-		setScheduledTaskToolPolicy(scheduleTask.id, userId, {
-			...p,
-			allowed: [...new Set([...p.allowed, ...allowed])].filter((n) => !denied.has(n)),
-			ask: p.ask.filter((n) => !denied.has(n) && !allowed.has(n)),
-		});
-		scheduleTask = getScheduledTask(scheduleTask.id, userId);
-		scheduled = scheduledPolicyForResume(
-			params.id,
-			userId,
-			meta.scheduleId,
-			scheduleTask,
-			pausedBranch,
-		);
-	}
-
-	const parsed = parseModelId(meta.modelId);
-	if (!parsed) error(500, `Conversation modelId "${meta.modelId}" is malformed`);
-
-	// The relay's StreamStartEvent carries a user-message snapshot. The
-	// resume isn't producing a new user message — the chat page already
-	// rendered the prior turn — so we send the last user message in the
-	// branch as a no-op placeholder; the client ignores it on resume.
-	const updatedBranch = walkActiveBranch(params.id, { columns: 'serialization' });
-	const lastUserMessage = [...updatedBranch].reverse().find((m) => m.role === 'user');
-	if (!lastUserMessage) error(500, 'No user message anchor for resume');
-
-	// CRITICAL: parent the resumed assistant message to the current
-	// active_leaf (the just-completed tool result), not to the user
-	// message. Without this override, every resume creates a sibling of
-	// the prior assistant turn and the conversation forks once per
-	// approval cycle. Falls back to the last message on the branch if
-	// active_leaf somehow drifted.
-	const initialParentMessageId =
-		meta.activeLeafMessageId ?? updatedBranch[updatedBranch.length - 1]?.id ?? lastUserMessage.id;
-
-	// The same model fields the send path registers with: in-flight readers (the
-	// conversation list's generating marker, the endpoint view) describe a
-	// resumed turn by them, and an entry without them reads as an unknown model.
-	const inFlight = registerInFlight(params.id, endpoint, undefined, meta.modelKind, meta.modelId);
-
-	// Assembled exactly as the send path does (shared startChatTurn), seeded from
-	// the post-decision branch, so a turn that activated a skill / searched up a
-	// deferred tool / called a per-user MCP tool before pausing keeps all of them
-	// on resume — without this the resumed turn would silently lose them.
+	// Registered before the first approved tool runs, so the tool runs under
+	// the in-flight controller, which only Stop aborts, and not under
+	// `request.signal`, which aborts when the client disconnects. Every exit
+	// that does not hand the entry to `startChatTurn` clears it.
+	let inFlight: InFlightEntry | null = null;
 	let stream: ReadableStream<Uint8Array>;
 	try {
+		for (const decision of decisions) {
+			// Read the branch fresh for each decision, and claim the call in the
+			// same synchronous step: a snapshot taken once before the loop goes
+			// stale across the awaits below, and a concurrent request could finish
+			// and release a call this request would then see as still pending.
+			const branch = walkActiveBranch(params.id, { columns: 'serialization' });
+			const found = findPending(branch, decision.toolCallId);
+			if (!found) continue;
+			const claim = `${params.id}:${decision.toolCallId}`;
+			if (executingToolCalls.has(claim)) continue;
+			executingToolCalls.add(claim);
+			try {
+				const { toolMsg, resultPart, toolCallPart } = found;
+				if (decision.action === 'reject' || decision.action === 'deny_schedule') {
+					if (decision.action === 'deny_schedule') scheduleDenied.push(toolCallPart.toolName);
+					updateMessageParts(toolMsg.id, params.id, [
+						{
+							type: 'tool_result',
+							toolCallId: resultPart.toolCallId,
+							result: JSON.stringify({ error: 'User declined this tool call.' }),
+							isError: true,
+						},
+					]);
+					updatedAny = true;
+					continue;
+				}
+				inFlight ??= registerInFlight(params.id, endpoint, undefined, meta.modelKind, meta.modelId);
+				const execResult = await executeOneToolCall(
+					toolCallPart,
+					userId,
+					params.id,
+					inFlight.controller.signal,
+					disabledFeatures,
+					isToolPermitted,
+				);
+				const nextPart: Extract<MessagePart, { type: 'tool_result' }> = {
+					type: 'tool_result',
+					toolCallId: resultPart.toolCallId,
+					result: execResult.execution.content,
+					...(execResult.execution.isError ? { isError: true } : {}),
+				};
+				// executeOneToolCall builds the media parts; linking the media to the
+				// tool message row is left to the caller.
+				if (execResult.execution.attachedMediaIds?.length) {
+					for (const mediaId of execResult.execution.attachedMediaIds) {
+						linkMessageMedia(toolMsg.id, mediaId);
+					}
+				}
+				if (decision.action === 'allow_always') newlyTrusted.push(toolCallPart.toolName);
+				if (decision.action === 'allow_schedule') scheduleAllowed.push(toolCallPart.toolName);
+				updateMessageParts(toolMsg.id, params.id, [nextPart, ...execResult.mediaParts]);
+				updatedAny = true;
+			} finally {
+				executingToolCalls.delete(claim);
+			}
+		}
+
+		if (!updatedAny) {
+			error(409, 'No pending tool calls matched the decisions in this body.');
+		}
+
+		// Persist newly-trusted tools before continuing the relay so the
+		// needsApproval predicate sees them on the next iteration.
+		if (newlyTrusted.length > 0) {
+			const existing = getUserPreferences(userId)?.trustedMcpTools ?? [];
+			const merged = Array.from(new Set([...existing, ...newlyTrusted]));
+			setUserPreferences(userId, { trustedMcpTools: merged });
+		}
+		// Same for the schedule's own policy, and re-read it so the resumed turn
+		// runs under the policy as it now stands.
+		if (scheduled && scheduleTask && (scheduleAllowed.length > 0 || scheduleDenied.length > 0)) {
+			const p = scheduleTask.toolPolicy;
+			const denied = new Set(scheduleDenied);
+			const allowed = new Set(scheduleAllowed);
+			setScheduledTaskToolPolicy(scheduleTask.id, userId, {
+				...p,
+				allowed: [...new Set([...p.allowed, ...allowed])].filter((n) => !denied.has(n)),
+				ask: p.ask.filter((n) => !denied.has(n) && !allowed.has(n)),
+			});
+			scheduleTask = getScheduledTask(scheduleTask.id, userId);
+			scheduled = scheduledPolicyForResume(
+				params.id,
+				userId,
+				meta.scheduleId,
+				scheduleTask,
+				pausedBranch,
+			);
+		}
+
+		const parsed = parseModelId(meta.modelId);
+		if (!parsed) error(500, `Conversation modelId "${meta.modelId}" is malformed`);
+
+		// The relay's StreamStartEvent carries a user-message snapshot. The
+		// resume isn't producing a new user message — the chat page already
+		// rendered the prior turn — so we send the last user message in the
+		// branch as a no-op placeholder; the client ignores it on resume.
+		const updatedBranch = walkActiveBranch(params.id, { columns: 'serialization' });
+		const lastUserMessage = [...updatedBranch].reverse().find((m) => m.role === 'user');
+		if (!lastUserMessage) error(500, 'No user message anchor for resume');
+
+		// CRITICAL: parent the resumed assistant message to the current
+		// active_leaf (the just-completed tool result), not to the user
+		// message. Without this override, every resume creates a sibling of
+		// the prior assistant turn and the conversation forks once per
+		// approval cycle. Falls back to the last message on the branch if
+		// active_leaf somehow drifted.
+		const initialParentMessageId =
+			meta.activeLeafMessageId ?? updatedBranch[updatedBranch.length - 1]?.id ?? lastUserMessage.id;
+
+		// The same model fields the send path registers with: in-flight readers (the
+		// conversation list's generating marker, the endpoint view) describe a
+		// resumed turn by them, and an entry without them reads as an unknown model.
+		inFlight ??= registerInFlight(params.id, endpoint, undefined, meta.modelKind, meta.modelId);
+		const entry = inFlight;
+		const run = scheduled && scheduleTask ? { task: scheduleTask, runId: scheduled.runId } : null;
+
+		// Assembled exactly as the send path does (shared startChatTurn), seeded from
+		// the post-decision branch, so a turn that activated a skill / searched up a
+		// deferred tool / called a per-user MCP tool before pausing keeps all of them
+		// on resume — without this the resumed turn would silently lose them.
 		stream = await startChatTurn({
 			conversationId: params.id,
 			userId,
@@ -266,27 +277,27 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			endpoint,
 			model: parsed,
 			disabledFeatures,
-			inFlight,
+			inFlight: entry,
 			userMessage: lastUserMessage,
 			allowTools: true,
 			requireTools: true,
 			initialParentMessageId,
 			toolPolicy: scheduled?.policy,
-			...(scheduled && scheduleTask
+			...(run
 				? {
 						onOutcome: (outcome: TurnOutcome) =>
-							settleResumedRun(scheduleTask, userId, scheduled.runId, params.id, outcome),
+							settleResumedRun(run.task, userId, run.runId, params.id, outcome),
 					}
 				: {}),
 			// Free the registry entry when the generation settles, ahead of the
 			// relay's post-`done` title race — same reasoning as the send path, and
 			// the resumed turn is just as likely to be one the user walked away
 			// from. Identity-guarded, so onComplete's later call is a no-op.
-			onGenerationSettled: () => clearInFlight(params.id, inFlight),
-			onComplete: () => clearInFlight(params.id, inFlight),
+			onGenerationSettled: () => clearInFlight(params.id, entry),
+			onComplete: () => clearInFlight(params.id, entry),
 		});
 	} catch (e) {
-		clearInFlight(params.id, inFlight);
+		if (inFlight) clearInFlight(params.id, inFlight);
 		throw e;
 	}
 
