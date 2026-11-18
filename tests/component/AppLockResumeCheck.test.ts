@@ -20,7 +20,10 @@ import { createRawSnippet, flushSync } from 'svelte';
 import type { createKitStub } from './_helpers/kit-runtime-stub.svelte';
 
 const holder = vi.hoisted(() => ({ current: null as ReturnType<typeof createKitStub> | null }));
-const nav = vi.hoisted(() => ({ goto: null as unknown as ReturnType<typeof vi.fn> }));
+const nav = vi.hoisted(() => ({
+	goto: null as unknown as ReturnType<typeof vi.fn>,
+	invalidate: null as unknown as ReturnType<typeof vi.fn>,
+}));
 
 function stub() {
 	if (!holder.current) throw new Error('the SvelteKit runtime stub was never built');
@@ -45,9 +48,10 @@ vi.mock('$app/state', async () => {
 vi.mock('$app/navigation', async () => {
 	const { vi: v } = await import('vitest');
 	nav.goto = v.fn(async () => {});
+	nav.invalidate = v.fn(async () => {});
 	return {
 		goto: nav.goto,
-		invalidate: v.fn(async () => {}),
+		invalidate: nav.invalidate,
 		refreshAll: v.fn(async () => {}),
 		afterNavigate: (cb: Parameters<ReturnType<typeof createKitStub>['afterNavigate']>[0]) =>
 			stub().afterNavigate(cb),
@@ -146,6 +150,7 @@ beforeEach(async () => {
 	checks[0].respond(200);
 	await settle();
 	checks = [];
+	nav.invalidate.mockClear();
 });
 afterEach(() => {
 	vi.useRealTimers();
@@ -267,5 +272,39 @@ describe('app-lock resume check', () => {
 		// ...so the next tick still gets to ask.
 		vi.advanceTimersByTime(10_000);
 		expect(checks).toHaveLength(2);
+	});
+});
+
+/**
+ * iOS restores a suspended PWA from the bfcache with a persisted `pageshow` and
+ * no `visibilitychange`, so this path carries the resume on its own.
+ */
+describe('bfcache resume', () => {
+	function pageshow(persisted: boolean) {
+		window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted }));
+		flushSync();
+	}
+
+	it('covers before the check answers, then checks and refreshes the conversation list', async () => {
+		pageshow(true);
+		expect(covered()).toBe(true);
+		expect(checks).toHaveLength(1);
+		expect(nav.invalidate).toHaveBeenCalledWith('app:conversations');
+		checks[0].respond(200);
+		await settle();
+		expect(covered()).toBe(false);
+	});
+
+	it("a fresh load's pageshow does neither", () => {
+		pageshow(false);
+		expect(covered()).toBe(false);
+		expect(checks).toHaveLength(0);
+		expect(nav.invalidate).not.toHaveBeenCalled();
+	});
+
+	it('covers on pagehide', () => {
+		window.dispatchEvent(new Event('pagehide'));
+		flushSync();
+		expect(covered()).toBe(true);
 	});
 });

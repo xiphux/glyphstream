@@ -435,8 +435,8 @@ exact-match `apple-touch-startup-image` media query.
   conversation refresh, the root layout's badge backstop, and `chat/[id]`'s
   notification acknowledgment. A cold launch fires NEITHER, so state that only
   a resume re-derives also needs a mount call (the badge has one).
-  `tests/component/AppResumeBadgeBackstop.test.ts` holds the line for the two
-  reachable from a component test.
+  `tests/component/AppResumeBadgeBackstop.test.ts` holds the line for the badge
+  and `AppLockResumeCheck.test.ts` for the `(app)` layout's half.
 - **Shiki on the client is route-lazy + grammar-subsetted only.** The
   full shiki bundle is ~500 KB and must stay server-side — that's where
   the persisted post-stream HTML gets its full-coverage highlighting.
