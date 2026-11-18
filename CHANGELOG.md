@@ -45,6 +45,7 @@ arrived.
 - A scheduled task's "On" checkbox and an MCP tool's "Always allow" switch no longer show a state that wasn't saved, after a failed request or a click made while another row was saving.
 - A preference change that couldn't reach the server (offline, dropped connection) is now put back and reported, as a rejected one already was, instead of staying on screen and being saved by the next change.
 - Cancelling a check-in while offline keeps its note and Cancel button, since it is still scheduled, instead of hiding them until the next reload.
+- Deleting a scheduled task with its run history open no longer reports "Couldn't load the history" after the delete worked.
 
 ## v0.54.0
 

@@ -57,7 +57,8 @@
 			const res = await fetch(input, init);
 			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			await refresh();
-			if (history[id]) await loadHistory(id);
+			// A deleted schedule has no history left to load.
+			if (history[id] && init.method !== 'DELETE') await loadHistory(id);
 			return true;
 		} catch (e) {
 			toast.error(`Couldn't ${verb}: ${e instanceof Error ? e.message : String(e)}`);

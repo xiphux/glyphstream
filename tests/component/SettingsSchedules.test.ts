@@ -1,12 +1,18 @@
 /**
  * /settings/schedules' row controls: the "On" checkbox shows what the server
- * stored, even when its request failed or another row's was in flight.
+ * stored, even when its request failed or another row's was in flight; and a
+ * delete reports no error of its own.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import type { ScheduledTaskSummary } from '#lib/types/api.js';
 
+const mocks = vi.hoisted(() => ({ toastError: vi.fn() }));
+vi.mock('#lib/confirm.svelte.js', () => ({ confirmDialog: { ask: async () => true } }));
+vi.mock('#lib/toast.svelte.js', () => ({
+	toast: { error: mocks.toastError, success: vi.fn(), info: vi.fn() },
+}));
 vi.mock('$app/navigation', () => ({
 	invalidate: vi.fn(async () => {}),
 	refreshAll: vi.fn(async () => {}),
@@ -115,5 +121,42 @@ describe('/settings/schedules — On checkbox', () => {
 		await settle();
 
 		expect(boxes[0].checked).toBe(false);
+	});
+});
+
+describe('/settings/schedules — delete with the history open', () => {
+	it("doesn't report an error after a delete that worked", async () => {
+		mocks.toastError.mockClear();
+		const user = userEvent.setup();
+		let deleted = false;
+		const json = (status: number, body: unknown) =>
+			new Response(body === null ? null : JSON.stringify(body), {
+				status,
+				headers: { 'content-type': 'application/json' },
+			});
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (_url: string, init?: RequestInit) => {
+				if (init?.method === 'DELETE') {
+					deleted = true;
+					return json(204, null);
+				}
+				// The runs route as the server answers it: 404 once the schedule is gone.
+				return deleted
+					? json(404, { message: 'Scheduled task not found' })
+					: json(200, { runs: [] });
+			}),
+		);
+		render(SchedulesPage, {
+			props: { data: { ...data, schedules: [schedule('a', 'Brief')] } as never },
+		});
+
+		await user.click(screen.getByRole('button', { name: 'Run history for Brief' }));
+		await screen.findByText('No runs yet.');
+		await user.click(screen.getByRole('button', { name: 'Delete Brief' }));
+		await settle();
+
+		expect(deleted).toBe(true);
+		expect(mocks.toastError).not.toHaveBeenCalled();
 	});
 });
