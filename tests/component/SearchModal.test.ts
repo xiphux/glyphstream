@@ -240,3 +240,83 @@ describe('SearchModal — iOS keyboard focus stand-in', () => {
 		expect(proxy.isConnected).toBe(false);
 	});
 });
+
+describe('SearchModal — races, errors and keyboard selection', () => {
+	function result(id: string, title: string) {
+		return {
+			conversationId: id,
+			conversationTitle: title,
+			updatedAt: 1,
+			kind: 'title',
+			messageId: null,
+			snippet: `snippet ${id}`,
+		};
+	}
+	function json(body: unknown) {
+		return new Response(JSON.stringify(body), {
+			status: 200,
+			headers: { 'Content-Type': 'application/json' },
+		});
+	}
+	async function openInput() {
+		render(SearchModal);
+		searchModal.show();
+		await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+		return screen.getByPlaceholderText('Search your chats…');
+	}
+
+	it("keeps the newer query's results when an older response lands last", async () => {
+		const pending = new Map<string, (r: Response) => void>();
+		const fetchSpy = vi.spyOn(global, 'fetch').mockImplementation(
+			(input) =>
+				new Promise<Response>((resolve) => {
+					const q = new URL(String(input as string), 'http://x').searchParams.get('q')!;
+					pending.set(q, resolve);
+				}),
+		);
+		const input = await openInput();
+
+		await userEvent.type(input, 'fo');
+		vi.advanceTimersByTime(300);
+		await waitFor(() => expect(pending.has('fo')).toBe(true));
+		await userEvent.type(input, 'o');
+		vi.advanceTimersByTime(300);
+		await waitFor(() => expect(pending.has('foo')).toBe(true));
+
+		pending.get('foo')!(json({ results: [result('c2', 'Foo result')] }));
+		await screen.findByText('Foo result');
+		pending.get('fo')!(json({ results: [result('c1', 'Fo result')] }));
+		await new Promise((r) => setTimeout(r, 20));
+
+		expect(screen.getByText('Foo result')).toBeInTheDocument();
+		expect(screen.queryByText('Fo result')).toBeNull();
+		fetchSpy.mockRestore();
+	});
+
+	it('shows a failed search as an error, not as no matches', async () => {
+		const fetchSpy = vi.spyOn(global, 'fetch').mockRejectedValue(new Error('Search is down'));
+		const input = await openInput();
+
+		await userEvent.type(input, 'onions');
+		vi.advanceTimersByTime(300);
+
+		await screen.findByText('Search is down');
+		expect(screen.queryByText(/no matches/i)).toBeNull();
+		fetchSpy.mockRestore();
+	});
+
+	it('ArrowDown then Enter opens the second result', async () => {
+		const fetchSpy = vi
+			.spyOn(global, 'fetch')
+			.mockResolvedValue(json({ results: [result('c1', 'First'), result('c2', 'Second')] }));
+		const input = await openInput();
+
+		await userEvent.type(input, 'thing');
+		vi.advanceTimersByTime(300);
+		await screen.findByText('Second');
+
+		await userEvent.keyboard('{ArrowDown}{Enter}');
+		expect(mocks.goto).toHaveBeenCalledWith('/chat/c2');
+		fetchSpy.mockRestore();
+	});
+});
