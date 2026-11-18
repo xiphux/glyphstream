@@ -25,6 +25,14 @@ describe('GalleryTimelineRail', () => {
 		expect(screen.getByRole('button', { name: 'Jump to December 2025' })).toBeTruthy();
 	});
 
+	it('marks only the active tick as current', () => {
+		render(GalleryTimelineRail, { props: { periods, activeKey: '2026-05', onjump: vi.fn() } });
+		const current = screen
+			.getAllByRole('button')
+			.filter((b) => b.getAttribute('aria-current') === 'true');
+		expect(current.map((b) => b.getAttribute('aria-label'))).toEqual(['Jump to May 2026']);
+	});
+
 	it('renders nothing when there are no periods', () => {
 		render(GalleryTimelineRail, { props: { periods: [], onjump: vi.fn() } });
 		expect(screen.queryByRole('button')).toBeNull();

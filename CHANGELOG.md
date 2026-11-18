@@ -29,6 +29,7 @@ arrived.
 - Media generated while the gallery was open could break its lightbox once you scrolled past the first screenfuls; the gallery now refreshes itself in place when the library changes underneath it.
 - Escape now closes only the topmost layer: cancelling "Delete this media?" no longer also closes the gallery lightbox, and closing the model picker in the avatar draw dialog no longer discards the dialog.
 - Deleting media from gallery search results now removes its tile and updates the result count.
+- The gallery's timeline rail can jump back to a month you've already scrolled past, and its highlight now follows the month you're looking at.
 
 ## v0.54.0
 

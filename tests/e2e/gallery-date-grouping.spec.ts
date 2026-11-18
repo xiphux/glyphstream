@@ -85,4 +85,33 @@ test.describe('gallery: date grouping + timeline rail', () => {
 		await page.getByRole('button', { name: 'Jump to March 2024' }).click();
 		await expect(page.getByRole('heading', { name: 'March 2024' })).toBeInViewport();
 	});
+
+	// Every section header is sticky in the one scroll container, so every header
+	// already scrolled past pins at the same top: measuring them made a jump BACK
+	// to a passed month a no-op and kept the highlight on the newest month.
+	test('quick-jump back to an already-passed month scrolls up and moves the highlight', async ({
+		page,
+	}) => {
+		resetData();
+		seedMediaInBuckets([
+			{ createdAt: MAR_2024, count: 70 },
+			{ createdAt: FEB_2024, count: 70 },
+			{ createdAt: DEC_2023, count: 5 },
+		]);
+		await page.goto('/gallery');
+		await expect(page.locator('[data-loaded-count]')).toHaveAttribute('data-loaded-count', '145');
+		const scroller = page.locator('[data-loaded-count]');
+		const scrollTop = () => scroller.evaluate((el) => el.scrollTop);
+		const dec = page.getByRole('button', { name: 'Jump to December 2023' });
+		const feb = page.getByRole('button', { name: 'Jump to February 2024' });
+
+		await dec.click();
+		await expect(dec).toHaveAttribute('aria-current', 'true');
+		const atOldest = await scrollTop();
+
+		await feb.click();
+		await expect(feb).toHaveAttribute('aria-current', 'true');
+		expect(await scrollTop()).toBeLessThan(atOldest);
+		await expect(page.getByRole('heading', { name: 'February 2024' })).toBeInViewport();
+	});
 });

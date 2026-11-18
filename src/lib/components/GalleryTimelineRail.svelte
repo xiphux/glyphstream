@@ -108,6 +108,7 @@
 				type="button"
 				onclick={() => onTickClick(p.key)}
 				aria-label="Jump to {monthLabel(p.key)}"
+				aria-current={p.key === activeKey ? 'true' : undefined}
 				class="group flex items-center justify-end gap-1 outline-none"
 			>
 				{#if yearBoundary}

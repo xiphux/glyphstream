@@ -763,15 +763,19 @@
 	const months = $derived(feed.layout ? monthTicksFromLayout(feed.layout.days) : []);
 	let activeSectionKey = $state<string | null>(null);
 
-	// Every section header stays mounted (only tiles are windowed), so the rail
-	// can measure any of them.
-	const sectionHeaders = new Map<string, HTMLElement>();
+	// One zero-height anchor per section, sitting where its header would be if it
+	// weren't sticky; every one stays mounted (only tiles are windowed), so the
+	// rail can measure any of them. Not the headers themselves: they share one
+	// scroll container, so every header already scrolled past is pinned at the
+	// same top, and a jump back or the active-month highlight can't tell them
+	// apart.
+	const sectionAnchors = new Map<string, HTMLElement>();
 	// An attachment: a changed `key` re-runs it, and the returned teardown drops
 	// the old entry first, so re-keying the map falls out of the normal lifecycle.
-	function registerHeader(key: string) {
+	function registerSection(key: string) {
 		return (node: HTMLElement) => {
-			sectionHeaders.set(key, node);
-			return () => sectionHeaders.delete(key);
+			sectionAnchors.set(key, node);
+			return () => sectionAnchors.delete(key);
 		};
 	}
 
@@ -781,9 +785,9 @@
 			scrollContainer.scrollTop = 0;
 			return;
 		}
-		// Every month's header is mounted, so a jump is a pure scroll to it — no
+		// Every month's anchor is mounted, so a jump is a pure scroll to it — no
 		// data re-anchoring (the demand loader fills the range as it lands).
-		for (const [sectionKey, el] of sectionHeaders) {
+		for (const [sectionKey, el] of sectionAnchors) {
 			if (sectionKey.slice(0, 7) === key) {
 				scrollContainer.scrollTop +=
 					el.getBoundingClientRect().top - scrollContainer.getBoundingClientRect().top;
@@ -801,11 +805,19 @@
 			updateActiveSection();
 		});
 	}
+	// The active month is the last one whose anchor has reached the top — except
+	// at the very bottom, where a short oldest month can never get there, so a
+	// jump to it would otherwise light up the month above.
 	function updateActiveSection() {
 		if (!scrollContainer) return;
+		const { scrollTop: y, clientHeight, scrollHeight } = scrollContainer;
+		if (months.length > 0 && y > 0 && y + clientHeight >= scrollHeight - 1) {
+			activeSectionKey = months[months.length - 1].key;
+			return;
+		}
 		const top = scrollContainer.getBoundingClientRect().top;
 		let best: { key: string; delta: number } | null = null;
-		for (const [key, el] of sectionHeaders) {
+		for (const [key, el] of sectionAnchors) {
 			const delta = el.getBoundingClientRect().top - top;
 			if (delta <= 1 && (!best || delta > best.delta)) best = { key, delta };
 		}
@@ -1453,12 +1465,12 @@
 					</li>
 				{/snippet}
 
-				<!-- A sticky time header; `registerHeader` tracks its element for
+				<!-- A sticky time header, preceded by the anchor `registerSection` tracks for
 				     quick-jump scroll-to + active-month highlighting. `-top-4` cancels the
 				     scroll container's `pt-4` so it pins flush. -->
 				{#snippet sectionHeader(label: string, key: string)}
+					<div {@attach registerSection(key)} aria-hidden="true"></div>
 					<h2
-						{@attach registerHeader(key)}
 						data-section-header
 						class="sticky -top-4 z-10 -mx-4 mb-3 bg-surface px-4 py-2 text-sm font-semibold text-fg-secondary"
 					>
