@@ -46,7 +46,10 @@ import * as schema from '#lib/server/db/schema.js';
 import { createSession, validateSessionToken } from '#lib/server/auth/session.js';
 import { createConversation } from '#lib/server/db/queries/conversations.js';
 import { appendMessage } from '#lib/server/db/queries/messages.js';
-import { insertMedia, linkMessageMedia } from '#lib/server/db/queries/media.js';
+import { insertMedia, linkMessageMedia, trashMediaForUser } from '#lib/server/db/queries/media.js';
+import { insertMessageImage } from '#lib/server/db/queries/message-images.js';
+import { upsertPushSubscription } from '#lib/server/db/queries/push-subscriptions.js';
+import { getDb } from '#lib/server/db/client.js';
 import { createCustomModel } from '#lib/server/db/queries/custom-models.js';
 import { createMemory } from '#lib/server/db/queries/memories.js';
 import { createPromptSnippet } from '#lib/server/db/queries/prompt-snippets.js';
@@ -55,6 +58,14 @@ import { createScheduledTask } from '#lib/server/db/queries/scheduled-tasks.js';
 import { insertCredential } from '#lib/server/db/queries/passkey.js';
 import { getMediaStore } from '#lib/server/media/disk-store.js';
 import { createUserMessage } from '#lib/server/messages/create-user-message.js';
+import { POST as bulkDelete } from '../../src/routes/api/media/bulk-delete/+server';
+import { POST as trashRestore } from '../../src/routes/api/media/trash/restore/+server';
+import { POST as trashPurge } from '../../src/routes/api/media/trash/purge/+server';
+import { GET as unitMembers } from '../../src/routes/api/media/unit-members/+server';
+import { DELETE as pushUnsubscribe } from '../../src/routes/api/push/subscribe/+server';
+import { PUT as presetAvatar } from '../../src/routes/api/custom-models/[id]/avatar/+server';
+import { GET as earlierMessages } from '../../src/routes/api/conversations/[id]/messages/+server';
+import { GET as photoState } from '../../src/routes/api/conversations/[id]/photos/+server';
 
 const ROUTES = join(__dirname, '../../src/routes');
 
@@ -65,6 +76,24 @@ const SCOPED_EMPTY: Record<string, string> = {
 	'/api/conversations/[id]/orphan-media GET': 'pre-delete count; zero for a conversation not yours',
 	'/api/media/[id]/conversations GET': "lists the caller's conversations that use a media id",
 	'/api/user/prompt-snippets/[id]/use POST': 'fire-and-forget usage bump, scoped by user',
+};
+
+/** Routes that refuse EVERY caller with the same status, before looking at
+ *  any id: retired endpoints kept so a stale tab gets a reload hint. */
+const CONSTANT_REFUSAL: Record<string, number> = {
+	'/api/conversations/[id]/avatar/generate POST': 409,
+	'/api/conversations/[id]/avatar/pick POST': 409,
+	'/api/conversations/[id]/avatar/prepare POST': 409,
+};
+
+/** Routes that validate their body as exactly one of several shapes: one sweep
+ *  case per shape, so each branch's ownership check is reached. */
+const BODY_VARIANTS: Record<string, Array<Record<string, unknown>>> = {
+	'/api/conversations/[id] PATCH': [
+		{ archived: true },
+		{ title: 'pwned' },
+		{ disabledFeatures: ['web'] },
+	],
 };
 
 const OUT_OF_SCOPE = [
@@ -100,20 +129,23 @@ const targets = walk(ROUTES)
 			...src.matchAll(/export\s+(?:const|(?:async\s+)?function)\s+(GET|POST|PUT|PATCH|DELETE)\b/g),
 		].map((m) => ({ file, route, method: m[1] }));
 	})
+	.flatMap((t) =>
+		(BODY_VARIANTS[`${t.route} ${t.method}`] ?? [null]).map((variant) => ({ ...t, variant })),
+	)
 	.flatMap((t) => [
 		{ ...t, crossConversation: false, bodyField: null as string | null },
 		// The sharper IDOR: the intruder's OWN conversation, so the conversation
 		// ownership check passes, carrying a victim id — in the path, or in ONE
 		// body field at a time, so an earlier field's refusal can't mask a later
 		// field's missing check.
-		...(t.route.includes('[messageId]')
+		...(t.route.includes('[messageId]') || t.route.includes('[photoId]')
 			? [{ ...t, crossConversation: true, bodyField: null }]
 			: []),
 		...bodyIdFields(t).map((bodyField) => ({ ...t, crossConversation: true, bodyField })),
 	])
 	.sort((a, b) =>
-		`${a.route} ${a.method} ${a.bodyField ?? ''}`.localeCompare(
-			`${b.route} ${b.method} ${b.bodyField ?? ''}`,
+		`${a.route} ${a.method} ${a.bodyField ?? ''} ${JSON.stringify(a.variant)}`.localeCompare(
+			`${b.route} ${b.method} ${b.bodyField ?? ''} ${JSON.stringify(b.variant)}`,
 		),
 	);
 
@@ -135,12 +167,19 @@ interface Victim {
 	passkeyId: string;
 	sessionId: string;
 	scheduleId: string;
+	photoId: string;
+	trashedMediaId: string;
+	pushEndpoint: string;
 }
 
 let victim: Victim;
 let intruder: NonNullable<App.Locals['user']>;
 /** A conversation the intruder really owns, to pair with the victim's message id. */
 let intruderConversationId: string;
+/** A preset the intruder really owns, to pair with the victim's media id. */
+let intruderPresetId: string;
+/** The newest message of the intruder's conversation, a valid paging cursor. */
+let intruderReplyId: string;
 
 /** Which victim id a route's `[id]` refers to, by route prefix. */
 function paramsFor(route: string, crossConversation: boolean): Record<string, string> {
@@ -159,6 +198,7 @@ function paramsFor(route: string, crossConversation: boolean): Record<string, st
 	if (!hit) throw new Error(`no victim id mapped for ${route} — add it to paramsFor`);
 	const params: Record<string, string> = { id: victim[hit[1]] };
 	if (route.includes('[messageId]')) params.messageId = victim.messageId;
+	if (route.includes('[photoId]')) params.photoId = victim.photoId;
 	if (crossConversation) params.id = intruderConversationId;
 	return params;
 }
@@ -189,6 +229,8 @@ function bodyFor(route: string, method: string): unknown {
 		attachedMediaIds: [victim.mediaId],
 		inputMediaIds: [victim.mediaId],
 		toolCallId: 'call_1',
+		decisions: [{ toolCallId: 'call_1', action: 'allow' }],
+		shown: true,
 		// A texting photo's number, which its route validates first.
 		index: 0,
 		decision: 'deny',
@@ -301,6 +343,62 @@ beforeAll(async () => {
 	});
 	// Linked, so an unscoped media or conversation lookup would return something.
 	linkMessageMedia(assistant.id, m.id);
+	// A version of a photo on the reply, for the photo routes' [photoId].
+	getDb().transaction((tx) =>
+		insertMessageImage(tx, {
+			id: 'victim-photo',
+			userId: v.id,
+			conversationId: conv.id,
+			messageId: assistant.id,
+			kind: 'photo',
+			markerIndex: 0,
+			mediaId: m.id,
+			modelId: 'e::img',
+			error: null,
+			shownAt: null,
+			comparisonId: null,
+			createdAt: 1,
+		}),
+	);
+	// A tool call paused on approval, below the reply, for the approval route.
+	const call = appendMessage({
+		conversationId: conv.id,
+		parentMessageId: assistant.id,
+		role: 'assistant',
+		parts: [
+			{ type: 'tool_call', toolCallId: 'call_1', toolName: 'mcp__srv__lookup', arguments: '{}' },
+		],
+	} as Parameters<typeof appendMessage>[0]);
+	appendMessage({
+		conversationId: conv.id,
+		parentMessageId: call.id,
+		role: 'tool',
+		parts: [{ type: 'tool_result', toolCallId: 'call_1', result: '', status: 'pending_approval' }],
+	} as Parameters<typeof appendMessage>[0]);
+	const trashedRef = await getMediaStore().put({
+		bytes: Buffer.from('victim trashed image'),
+		contentType: 'image/png',
+		kind: 'image',
+	});
+	const trashed = insertMedia({
+		userId: v.id,
+		storagePath: trashedRef.storagePath,
+		contentType: 'image/png',
+		byteSize: 20,
+		kind: 'image',
+		sourceEndpointId: null,
+		sourceModel: null,
+		promptExcerpt: 'victim trashed prompt',
+	});
+	trashMediaForUser(trashed.id, v.id);
+	const pushEndpoint = 'https://push.example.test/victim-device';
+	upsertPushSubscription({
+		userId: v.id,
+		sessionId: null,
+		endpoint: pushEndpoint,
+		p256dh: 'victim-key',
+		auth: 'victim-auth',
+	});
 	insertCredential({
 		id: 'victim-passkey',
 		userId: v.id,
@@ -334,6 +432,9 @@ beforeAll(async () => {
 			storagePath: 'skills/victim',
 		}).id,
 		passkeyId: 'victim-passkey',
+		photoId: 'victim-photo',
+		trashedMediaId: trashed.id,
+		pushEndpoint,
 		sessionId: validateSessionToken(victimSession.token)!.sessionId,
 		scheduleId: createScheduledTask(
 			v.id,
@@ -363,12 +464,27 @@ beforeAll(async () => {
 		modelId: 'e::m',
 		modelKind: null,
 	}).id;
-	appendMessage({
+	const own = appendMessage({
 		conversationId: intruderConversationId,
 		parentMessageId: null,
 		role: 'user',
 		parts: [{ type: 'text', text: 'mine' }],
 	} as Parameters<typeof appendMessage>[0]);
+	intruderReplyId = appendMessage({
+		conversationId: intruderConversationId,
+		parentMessageId: own.id,
+		role: 'assistant',
+		parts: [{ type: 'text', text: 'my reply' }],
+	} as Parameters<typeof appendMessage>[0]).id;
+	intruderPresetId = createCustomModel({
+		userId: i.id,
+		name: 'my preset',
+		description: null,
+		baseEndpointId: 'e',
+		baseModelId: 'm',
+		systemPrompt: null,
+		parameters: null,
+	}).id;
 });
 
 afterAll(() => {
@@ -384,6 +500,8 @@ describe('an intruder addressing a victim’s resources by id', () => {
 		expect(targets.length).toBeGreaterThan(40);
 		const live = new Set(targets.map((t) => `${t.route} ${t.method}`));
 		expect(Object.keys(SCOPED_EMPTY).filter((k) => !live.has(k))).toEqual([]);
+		expect(Object.keys(CONSTANT_REFUSAL).filter((k) => !live.has(k))).toEqual([]);
+		expect(Object.keys(BODY_VARIANTS).filter((k) => !live.has(k))).toEqual([]);
 		const liveFields = new Set(targets.map((t) => `${t.route} ${t.method} ${t.bodyField}`));
 		expect(Object.keys(UNREACHED_BODY_FIELDS).filter((k) => !liveFields.has(k))).toEqual([]);
 	});
@@ -392,7 +510,7 @@ describe('an intruder addressing a victim’s resources by id', () => {
 		targets.map(
 			(t) =>
 				[
-					`${t.route} ${t.method}${t.crossConversation ? ` (own conversation, victim ${t.bodyField ?? 'path id'})` : ''}`,
+					`${t.route} ${t.method}${t.variant ? ` ${JSON.stringify(t.variant)}` : ''}${t.crossConversation ? ` (own conversation, victim ${t.bodyField ?? 'path id'})` : ''}`,
 					t,
 				] as const,
 		),
@@ -401,11 +519,14 @@ describe('an intruder addressing a victim’s resources by id', () => {
 		const key = '../../src/routes/' + relative(ROUTES, t.file).split(sep).join('/');
 		const fn = (await modules[key]())[t.method] as (e: RequestEvent) => unknown;
 		const params = paramsFor(t.route, t.crossConversation);
-		const path = t.route.replace(/\[(\w+)\]/g, (_m, p: string) => params[p]);
+		const path = t.route.replace(/\[(\w+)\]/g, (_m, p: string) => {
+			if (!params[p]) throw new Error(`no victim id mapped for [${p}] — add it to paramsFor`);
+			return params[p];
+		});
 		const url = new URL(path, 'https://chat.example.test');
 		const bodyKey = `${t.route} ${t.method} ${t.bodyField}`;
 		if (bodyKey in UNREACHED_BODY_FIELDS) return;
-		const body = t.bodyField ? crossBody(t.bodyField) : bodyFor(t.route, t.method);
+		const body = t.bodyField ? crossBody(t.bodyField) : (t.variant ?? bodyFor(t.route, t.method));
 		const event = {
 			url,
 			params,
@@ -454,8 +575,15 @@ describe('an intruder addressing a victim’s resources by id', () => {
 			expect(text).not.toMatch(/conversation not found/i);
 		} else {
 			expect(snapshot()).toBe(JSON.stringify([...before]));
-			if (`${t.route} ${t.method}` in SCOPED_EMPTY) expect(status).toBeLessThan(300);
-			else expect(status, text).toBeGreaterThanOrEqual(400);
+			const key = `${t.route} ${t.method}`;
+			if (key in SCOPED_EMPTY) expect(status).toBeLessThan(300);
+			else if (key in CONSTANT_REFUSAL) expect(status, text).toBe(CONSTANT_REFUSAL[key]);
+			else {
+				// The ownership refusal itself — not a validation 400 that fired
+				// before the handler ever looked the id up.
+				expect([400, 404], text).toContain(status);
+				expect(text).toMatch(/not found/i);
+			}
 		}
 	});
 });
@@ -481,5 +609,136 @@ describe('an intruder attaching a victim’s media to their own message', () => 
 		}
 		expect(status).toBe(400);
 		expect(snapshot()).toBe(before);
+	});
+});
+
+/**
+ * The id-addressed access the walk above can't see: routes with no path
+ * param that take ids in the body, a victim id in the body of a resource the
+ * intruder really owns outside the conversations subtree, and victim ids in
+ * the query string. Each must answer as if the id didn't exist and change
+ * nothing.
+ */
+describe('an intruder passing a victim’s ids outside the path', () => {
+	type Handler = (e: RequestEvent) => unknown;
+
+	async function call(
+		fn: Handler,
+		opts: { method: string; path: string; params?: Record<string, string>; body?: unknown },
+	): Promise<{ status: number; text: string }> {
+		const url = new URL(opts.path, 'https://chat.example.test');
+		const event = {
+			url,
+			params: opts.params ?? {},
+			locals: { user: intruder, sessionId: null },
+			request: new Request(url, {
+				method: opts.method,
+				headers: { 'content-type': 'application/json' },
+				body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+			}),
+			setHeaders: () => {},
+		} as unknown as RequestEvent;
+		try {
+			const res = (await fn(event)) as Response;
+			return { status: res.status, text: await res.text() };
+		} catch (e) {
+			if (!(e && typeof e === 'object' && 'status' in e)) throw e;
+			return { status: Number(e.status), text: JSON.stringify((e as { body?: unknown }).body) };
+		}
+	}
+
+	/** Calls the handler and asserts no row changed and nothing of the victim's leaked. */
+	async function refused(fn: Handler, opts: Parameters<typeof call>[1]) {
+		const before = snapshot();
+		const res = await call(fn, opts);
+		expect(res.text).not.toMatch(/victim/);
+		expect(snapshot()).toBe(before);
+		return res;
+	}
+
+	it('bulk-delete deletes none of a victim’s media', async () => {
+		const res = await refused(bulkDelete as Handler, {
+			method: 'POST',
+			path: '/api/media/bulk-delete',
+			body: { ids: [victim.mediaId] },
+		});
+		expect(JSON.parse(res.text)).toEqual({ deleted: 0 });
+	});
+
+	it('trash restore restores none of a victim’s trashed media', async () => {
+		const res = await refused(trashRestore as Handler, {
+			method: 'POST',
+			path: '/api/media/trash/restore',
+			body: { ids: [victim.trashedMediaId] },
+		});
+		expect(JSON.parse(res.text)).toEqual({ restored: 0 });
+	});
+
+	it.each([
+		['by id', () => ({ ids: [victim.trashedMediaId] })],
+		['by cutoff', () => ({ deletedUpTo: Date.now() + 60_000 })],
+	])('trash purge %s purges none of a victim’s trash', async (_label, body) => {
+		const res = await refused(trashPurge as Handler, {
+			method: 'POST',
+			path: '/api/media/trash/purge',
+			body: body(),
+		});
+		expect(JSON.parse(res.text)).toEqual({ purged: 0 });
+	});
+
+	it('unsubscribing a victim’s push endpoint is refused', async () => {
+		const res = await refused(pushUnsubscribe as Handler, {
+			method: 'DELETE',
+			path: '/api/push/subscribe',
+			body: { endpoint: victim.pushEndpoint },
+		});
+		expect(res.status).toBe(404);
+	});
+
+	it('the intruder’s own preset can’t take a victim’s image as its avatar', async () => {
+		const res = await refused(presetAvatar as Handler, {
+			method: 'PUT',
+			path: `/api/custom-models/${intruderPresetId}/avatar`,
+			params: { id: intruderPresetId },
+			body: { mediaId: victim.mediaId },
+		});
+		expect(res.status).toBe(400);
+		expect(res.text).toMatch(/media not found/i);
+	});
+
+	it('unit-members keyed by a victim’s conversation lists nothing', async () => {
+		const res = await refused(unitMembers as Handler, {
+			method: 'GET',
+			path: `/api/media/unit-members?key=${victim.conversationId}`,
+		});
+		expect(JSON.parse(res.text)).toEqual({ items: [] });
+	});
+
+	it.each(['before', 'through'])(
+		'paging the intruder’s own conversation with a victim message as %s is refused',
+		async (param) => {
+			const query =
+				param === 'before'
+					? `before=${victim.messageId}`
+					: `before=${intruderReplyId}&through=${victim.messageId}`;
+			const res = await refused(earlierMessages as Handler, {
+				method: 'GET',
+				path: `/api/conversations/${intruderConversationId}/messages?${query}`,
+				params: { id: intruderConversationId },
+			});
+			expect(res.status).toBe(409);
+		},
+	);
+
+	it('photo state for a victim’s reply, asked through the intruder’s conversation, is empty', async () => {
+		const res = await refused(photoState as Handler, {
+			method: 'GET',
+			path: `/api/conversations/${intruderConversationId}/photos?messages=${victim.messageId}`,
+			params: { id: intruderConversationId },
+		});
+		expect(res.status).toBe(200);
+		const body = JSON.parse(res.text) as { developing: number; replies: Record<string, unknown> };
+		expect(body.developing).toBe(0);
+		expect(body.replies[victim.messageId]).toEqual({ images: [], developing: [] });
 	});
 });
