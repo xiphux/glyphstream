@@ -359,6 +359,11 @@ type ChallengePurpose = 'registration' | 'login' | 'unlock';
  * reopens at most the few minutes of TTL left on a challenge issued before.
  */
 const consumedChallenges = new Map<string, number>();
+/** When `consumedChallenges` was last swept of expired entries (epoch ms). */
+let lastChallengeSweep = 0;
+/** Expired entries are harmless until swept, so a burst of sign-ins needn't
+ *  walk the whole map on every verify. */
+const CHALLENGE_SWEEP_INTERVAL_MS = 10_000;
 
 function writeChallengeCookie(
 	cookies: Cookies,
@@ -382,8 +387,11 @@ function takeChallengeCookie(
 		return undefined;
 	}
 	const now = Date.now();
-	for (const [challenge, exp] of consumedChallenges) {
-		if (exp < now) consumedChallenges.delete(challenge);
+	if (now - lastChallengeSweep >= CHALLENGE_SWEEP_INTERVAL_MS) {
+		lastChallengeSweep = now;
+		for (const [challenge, exp] of consumedChallenges) {
+			if (exp < now) consumedChallenges.delete(challenge);
+		}
 	}
 	if (consumedChallenges.has(payload.challenge)) return undefined;
 	consumedChallenges.set(payload.challenge, payload.exp);
