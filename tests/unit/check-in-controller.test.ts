@@ -93,6 +93,15 @@ describe('cancel', () => {
 		await expect(c.cancel()).rejects.toThrow('nope');
 		expect(c.pending).toBe(PENDING);
 	});
+
+	it('puts it back when the request never reaches the server', async () => {
+		vi.stubGlobal('fetch', async () => {
+			throw new TypeError('Failed to fetch');
+		});
+		const c = new CheckInController({ convId: () => 'c1' }, PENDING);
+		await expect(c.cancel()).rejects.toThrow('Failed to fetch');
+		expect(c.pending).toBe(PENDING);
+	});
 });
 
 describe('wakeWhenDue', () => {

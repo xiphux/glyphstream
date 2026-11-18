@@ -75,15 +75,18 @@ export class CheckInController {
 		);
 	}
 
+	/** Cancel optimistically; a failure, network included, puts it back and throws. */
 	async cancel(): Promise<void> {
 		const before = this.pending;
 		this.pending = null;
-		const res = await fetch(`/api/conversations/${this.#convId()}/check-in`, {
-			method: 'DELETE',
-		});
-		if (!res.ok) {
+		try {
+			const res = await fetch(`/api/conversations/${this.#convId()}/check-in`, {
+				method: 'DELETE',
+			});
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
+		} catch (e) {
 			this.pending = before;
-			throw new Error(await errorMessageFromResponse(res));
+			throw e;
 		}
 	}
 
