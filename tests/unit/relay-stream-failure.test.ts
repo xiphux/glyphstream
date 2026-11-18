@@ -16,12 +16,17 @@ import { inFlightEntryStub } from './_helpers/in-flight';
 
 const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
-	response: null as null | (() => Response),
+	response: null as null | ((signal?: AbortSignal) => Response | Promise<Response>),
 }));
 
 vi.mock('#lib/server/endpoints/client.js', async (orig) => {
 	const real = await orig<typeof import('#lib/server/endpoints/client.js')>();
-	return { ...real, chatCompletionStream: vi.fn(async () => mocks.response!()) };
+	return {
+		...real,
+		chatCompletionStream: vi.fn(async (_e: unknown, _b: unknown, signal?: AbortSignal) =>
+			mocks.response!(signal),
+		),
+	};
 });
 vi.mock('#lib/server/push/notify.js', () => ({
 	notifyConversationComplete: vi.fn(async () => {}),
@@ -39,6 +44,7 @@ import { resetEndpointGatesForTests } from '#lib/server/endpoints/concurrency.js
 import { notifyConversationComplete } from '#lib/server/push/notify.js';
 import type { LoadedEndpoint } from '#lib/server/endpoints/config.js';
 import type { ChatMessage } from '#lib/types/api.js';
+import type { TurnOutcome } from '#lib/server/streaming/relay.js';
 
 const endpoint: LoadedEndpoint = {
 	id: 'bridge',
@@ -217,5 +223,47 @@ describe('relay — upstream stream fails mid-reply', () => {
 		expect(reply.parts).toEqual([
 			{ type: 'error', message: expect.stringMatching(/stalled/) as unknown },
 		]);
+	});
+});
+
+describe('relay — stopped before the upstream answers', () => {
+	it('is a stop, not an error: no error frame, no error row', async () => {
+		const s = seed();
+		let requested!: () => void;
+		const waiting = new Promise<void>((r) => (requested = r));
+		// No headers yet (a model still loading); as `fetch` does, the request
+		// rejects with an AbortError when its signal aborts.
+		mocks.response = (signal) =>
+			new Promise<Response>((_resolve, reject) => {
+				requested();
+				signal?.addEventListener('abort', () =>
+					reject(new DOMException('This operation was aborted', 'AbortError')),
+				);
+			});
+		const stop = new AbortController();
+		let outcome: TurnOutcome | null = null;
+		const stream = await startStreamingRelay({
+			conversationId: s.conversationId,
+			userId: s.userId,
+			conversationTitle: 'test',
+			modelKind: 'chat',
+			endpoint,
+			providerQuirk: 'passthrough',
+			requestBody: { model: 'test', messages: [{ role: 'user', content: 'hello' }] },
+			userMessage: s.userMessage,
+			storedModelId: 'bridge::test',
+			inFlight: inFlightEntryStub(endpoint),
+			abortSignal: stop.signal,
+			onComplete: () => {},
+			onOutcome: (o) => (outcome = o),
+		});
+		const drained = drainEvents(stream);
+		await waiting;
+		stop.abort();
+		const events = await drained;
+
+		expect(events.filter((e) => e.type === 'error')).toEqual([]);
+		expect(outcome).toEqual({ kind: 'stopped' });
+		expect(walkActiveBranch(s.conversationId).map((m) => m.role)).toEqual(['user']);
 	});
 });

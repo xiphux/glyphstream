@@ -29,7 +29,7 @@ const ENDPOINT = {
 
 const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
-	upstream: [] as Array<() => Response>,
+	upstream: [] as Array<(signal?: AbortSignal) => Response | Promise<Response>>,
 	upstreamBodies: [] as Array<{ tools?: Array<{ function: { name: string } }> }>,
 	preflight: { ok: true } as
 		| { ok: true }
@@ -48,11 +48,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock('#lib/server/endpoints/client.js', async (orig) => ({
 	...(await orig<typeof import('#lib/server/endpoints/client.js')>()),
 	chatCompletionStream: vi.fn(
-		async (_endpoint: unknown, body: (typeof mocks.upstreamBodies)[0]) => {
+		async (_endpoint: unknown, body: (typeof mocks.upstreamBodies)[0], signal?: AbortSignal) => {
 			mocks.upstreamBodies.push(body);
 			const next = mocks.upstream.shift();
 			if (!next) throw new Error('no canned upstream response left');
-			return next();
+			return next(signal);
 		},
 	),
 }));
@@ -123,6 +123,7 @@ import {
 	startScheduledRun,
 } from '#lib/server/scheduled/runner.js';
 import { MAX_JITTER_MS } from '#lib/server/scheduled/cadence.js';
+import { cancelInFlightGenerations } from '#lib/server/streaming/cancel.js';
 import type { ScheduledRun, ScheduledTask } from '#lib/types/api.js';
 
 const notify = vi.mocked(notifyConversationComplete);
@@ -315,6 +316,38 @@ describe('how a run can end', () => {
 		expect(walkActiveBranch(run.conversationId!).at(-1)?.parts[0]).toMatchObject({ type: 'error' });
 		expect(notify.mock.calls[0][0].summary).toMatch(/^Didn't finish: /);
 		expect(getScheduledTask(task.id, userId)?.consecutiveFailures).toBe(1);
+	});
+
+	it('is recorded as stopped, not failed, when stopped before the upstream answers', async () => {
+		const { userId, task } = schedule();
+		let requested!: () => void;
+		const waiting = new Promise<void>((r) => (requested = r));
+		// The request is out and no headers have come back (a model still
+		// loading); as `fetch` does, it rejects with an AbortError on abort.
+		mocks.upstream.push(
+			(signal) =>
+				new Promise<Response>((_resolve, reject) => {
+					requested();
+					signal?.addEventListener('abort', () =>
+						reject(new DOMException('This operation was aborted', 'AbortError')),
+					);
+				}),
+		);
+
+		startScheduledRun({ ...task, userId }, NOW, 'manual');
+		await waiting;
+		const [running] = listScheduledRuns(task.id, userId, 1);
+		expect(await cancelInFlightGenerations(running.conversationId!, { sparePhotos: true })).toBe(
+			true,
+		);
+		const run = await settled(task, userId);
+
+		expect(run).toMatchObject({ state: 'skipped', failureKind: 'stopped' });
+		expect(
+			walkActiveBranch(run.conversationId!).flatMap((m) => m.parts.map((p) => p.type)),
+		).not.toContain('error');
+		expect(getScheduledTask(task.id, userId)?.consecutiveFailures).toBe(0);
+		expect(notify).not.toHaveBeenCalled();
 	});
 
 	it('turns the schedule off after too many failures in a row, and says so', async () => {

@@ -51,6 +51,7 @@ arrived.
 - On iOS, reopening the installed app after a long time in the background checks for an update at once, instead of up to an hour later.
 - A streaming reply no longer rebuilds its finished paragraphs and code blocks on every frame, so a long reply with code stutters less as it grows. Highlighting a Python block that is still being written is as costly as before.
 - A tool call you approved was cancelled if the page lost its connection while the tool ran (the phone locked, a reload); it now finishes, and Stop still cancels it.
+- Stopping a scheduled run while its model was still loading recorded it as failed, sent a "Didn't finish" notification and counted toward turning the schedule off. It is now recorded as stopped.
 
 ## v0.54.0
 

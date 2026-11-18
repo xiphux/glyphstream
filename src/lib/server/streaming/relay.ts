@@ -803,6 +803,9 @@ async function runOneIteration(args: {
 	try {
 		upstreamResponse = await chatCompletionStream(params.endpoint, requestBody, params.abortSignal);
 	} catch (e) {
+		// Stopped before the upstream sent its headers (a model still loading):
+		// a stop, not an error.
+		if (isAbortError(e) || params.abortSignal?.aborted) return null;
 		const message = errorMessage(e);
 		write({ type: 'error', message });
 		persistTurnErrorSibling(params, parentMessageId, message, e);
