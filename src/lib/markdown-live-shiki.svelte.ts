@@ -28,7 +28,7 @@
  * without any explicit re-render call.
  */
 
-import type { HighlighterCore } from '@shikijs/types';
+import type { GrammarState, GrammarStateMapKey, HighlighterCore } from '@shikijs/types';
 
 export type LiveLang = 'python' | 'markdown';
 
@@ -114,6 +114,122 @@ export function highlightLiveCode(code: string, lang: LiveLang): string | null {
 			themes: { light: LIGHT_THEME, dark: DARK_THEME },
 			defaultColor: false,
 		});
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * A code block part-way through streaming: the highlighted `<span class="line">`
+ * of every line it has finished, and the grammar state after the last of them,
+ * so the next finished line is tokenized from there instead of from line one.
+ */
+interface StreamedCode {
+	lang: LiveLang;
+	/** Source of the finished lines, each with its `\n`. Never empty. */
+	done: string;
+	lines: string[];
+	state: GrammarState | undefined;
+}
+
+/**
+ * Blocks being streamed at once: one per fan-out column is the realistic peak.
+ * Kept per highlighter, like markdown-live's fence memo, so a test's stub never
+ * reads another highlighter's lines.
+ */
+const STREAMS_MAX = 8;
+const streamsByHighlighter = new WeakMap<HighlighterCore, StreamedCode[]>();
+
+const CODE_OPEN = '<code>';
+const CODE_CLOSE = '</code></pre>';
+
+/**
+ * Highlights `code` continuing from `grammarState`, split into the `<pre><code>`
+ * opening and one HTML string per line. A line's content is escaped text, so
+ * the `\n` shiki puts between line spans is the only one in the code element.
+ */
+function highlightPiece(
+	h: HighlighterCore,
+	code: string,
+	lang: LiveLang,
+	grammarState: GrammarState | undefined,
+): { open: string; lines: string[]; state: GrammarState | undefined } {
+	let root: GrammarStateMapKey | undefined;
+	const html = h.codeToHtml(code, {
+		lang,
+		themes: { light: LIGHT_THEME, dark: DARK_THEME },
+		defaultColor: false,
+		grammarState,
+		// shiki binds the final grammar state to the hast root it renders, which
+		// codeToHtml otherwise never exposes; capturing it saves a second pass.
+		transformers: [
+			{
+				root(r) {
+					root = r;
+				},
+			},
+		],
+	});
+	const start = html.indexOf(CODE_OPEN) + CODE_OPEN.length;
+	if (start < CODE_OPEN.length || !html.endsWith(CODE_CLOSE)) {
+		throw new Error('unexpected shiki output shape');
+	}
+	return {
+		open: html.slice(0, start),
+		lines: html.slice(start, html.length - CODE_CLOSE.length).split('\n'),
+		state: root && h.getLastGrammarState(root),
+	};
+}
+
+/**
+ * The stream whose finished lines are exactly `done`, tokenizing only the lines
+ * past the longest one already highlighted. Extends that stream in place: a
+ * block only ever grows, and one that diverged instead starts a stream afresh.
+ */
+function resumeStream(h: HighlighterCore, lang: LiveLang, done: string): StreamedCode | null {
+	if (!done) return null;
+	let streams = streamsByHighlighter.get(h);
+	if (!streams) {
+		streams = [];
+		streamsByHighlighter.set(h, streams);
+	}
+	let best: StreamedCode | undefined;
+	for (const s of streams) {
+		if (s.lang !== lang || !done.startsWith(s.done)) continue;
+		if (!best || s.done.length > best.done.length) best = s;
+	}
+	if (best) streams.splice(streams.indexOf(best), 1);
+	if (best?.done !== done) {
+		const piece = highlightPiece(h, done.slice(best?.done.length ?? 0, -1), lang, best?.state);
+		best ??= { lang, done, lines: [], state: undefined };
+		best.done = done;
+		best.lines.push(...piece.lines);
+		best.state = piece.state;
+	}
+	streams.push(best);
+	if (streams.length > STREAMS_MAX) streams.shift();
+	return best;
+}
+
+/**
+ * `highlightLiveCode` for a block that is still being written, at a cost
+ * proportional to what was added since the last call rather than to the
+ * block's size: finished lines are tokenized once each and kept, and only the
+ * line still being written is tokenized per call. The output is identical to a
+ * full highlight of `code`, so the block doesn't re-color as it grows or when
+ * the persisted HTML replaces it.
+ */
+export function highlightLiveStream(code: string, lang: LiveLang): string | null {
+	const h = highlighter;
+	if (!h) return null;
+	// shiki also splits lines on \r\n, which the line bookkeeping doesn't model.
+	if (code.includes('\r')) return highlightLiveCode(code, lang);
+	try {
+		const cut = code.lastIndexOf('\n') + 1;
+		const stream = resumeStream(h, lang, code.slice(0, cut));
+		const tail = highlightPiece(h, code.slice(cut), lang, stream?.state);
+		const lines = stream ? [...stream.lines, ...tail.lines] : tail.lines;
+		return tail.open + lines.join('\n') + CODE_CLOSE;
 	} catch {
 		return null;
 	}

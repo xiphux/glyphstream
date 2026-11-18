@@ -68,34 +68,36 @@ describe('renderLiveMarkdown', () => {
 	});
 });
 
+/**
+ * A stand-in highlighter whose output has shiki's `<pre><code>` + per-line
+ * `<span class="line">` shape, which the streamed-fence path splits on.
+ */
+function shikiShapedFake(onCall?: (code: string) => void) {
+	return {
+		codeToHtml: (code: string, opts: { lang: string }) => {
+			onCall?.(code);
+			const lines = code.split('\n').map((l) => `<span class="line">${l}</span>`);
+			return `<pre class="shiki" data-lang="${opts.lang}"><code>${lines.join('\n')}</code></pre>`;
+		},
+	} as unknown as Parameters<typeof setLiveHighlighterForTests>[0];
+}
+
 describe('renderLiveMarkdown — shiki upgrade path', () => {
 	it('routes python/markdown fences through the highlighter once it lands', () => {
-		const fake = {
-			codeToHtml: (code: string, opts: { lang: string }) =>
-				`<pre class="shiki" data-lang="${opts.lang}">${code}</pre>`,
-		} as unknown as Parameters<typeof setLiveHighlighterForTests>[0];
-		setLiveHighlighterForTests(fake);
+		setLiveHighlighterForTests(shikiShapedFake());
 		const out = renderLiveMarkdown('```python\nprint(1)\n```');
 		expect(out).toContain('class="shiki"');
 		expect(out).toContain('data-lang="python"');
 	});
 
 	it('honors language aliases via resolveLiveLang (py → python)', () => {
-		const fake = {
-			codeToHtml: (code: string, opts: { lang: string }) =>
-				`<pre data-lang="${opts.lang}">${code}</pre>`,
-		} as unknown as Parameters<typeof setLiveHighlighterForTests>[0];
-		setLiveHighlighterForTests(fake);
+		setLiveHighlighterForTests(shikiShapedFake());
 		const out = renderLiveMarkdown('```py\nprint(1)\n```');
 		expect(out).toContain('data-lang="python"');
 	});
 
 	it('falls back to plain pre for languages outside the client subset', () => {
-		const fake = {
-			codeToHtml: (code: string, opts: { lang: string }) =>
-				`<pre data-lang="${opts.lang}">${code}</pre>`,
-		} as unknown as Parameters<typeof setLiveHighlighterForTests>[0];
-		setLiveHighlighterForTests(fake);
+		setLiveHighlighterForTests(shikiShapedFake());
 		const out = renderLiveMarkdown('```javascript\nconst x = 1;\n```');
 		expect(out).not.toContain('data-lang=');
 		expect(out).toContain('<pre>');
@@ -127,20 +129,18 @@ describe('renderLiveMarkdown — fence highlight memoization', () => {
 	 */
 	function countingHighlighter() {
 		const calls: string[] = [];
-		setLiveHighlighterForTests({
-			codeToHtml: (code: string) => {
-				calls.push(code);
-				return `<pre class="shiki">${code}</pre>`;
-			},
-		} as never);
+		setLiveHighlighterForTests(shikiShapedFake((code) => calls.push(code)));
 		return calls;
 	}
 
 	it('highlights a stable fence once no matter how often the document re-renders', () => {
 		const calls = countingHighlighter();
 		const doc = '```python\nprint(1)\n```\n\nsome prose';
+		renderLiveMarkdown(doc);
+		const first = calls.length;
+		expect(first).toBeGreaterThan(0);
 		for (let i = 0; i < 25; i++) renderLiveMarkdown(doc);
-		expect(calls).toHaveLength(1);
+		expect(calls).toHaveLength(first);
 	});
 
 	it('re-highlights only the fence that is still growing', () => {
@@ -153,7 +153,7 @@ describe('renderLiveMarkdown — fence highlight memoization', () => {
 		const closedCalls = calls.filter((c) => c.includes('closed_block'));
 		expect(closedCalls, 'the settled fence should be highlighted exactly once').toHaveLength(1);
 		// The growing one legitimately re-highlights: 10 distinct bodies.
-		expect(calls).toHaveLength(11);
+		expect(calls.filter((c) => c.includes('x'))).toHaveLength(10);
 	});
 
 	it('still reflects a fence whose content actually changes', () => {

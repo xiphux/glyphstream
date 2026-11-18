@@ -32,12 +32,10 @@ import type MarkdownItCtor from 'markdown-it';
 import type { MarkdownIt } from 'markdown-it';
 import {
 	getLiveHighlighter,
+	highlightLiveStream,
 	resolveLiveLang,
 	liveHighlighterReady,
 } from './markdown-live-shiki.svelte';
-
-const LIGHT_THEME = 'github-light';
-const DARK_THEME = 'github-dark';
 
 let markdownItCtor: typeof MarkdownItCtor | null = null;
 let cached: MarkdownIt | null = null;
@@ -79,6 +77,8 @@ export function ensureLiveMarkdown(): Promise<typeof MarkdownItCtor | null> {
  *
  * Only the last fence in a streaming message is still growing; every earlier
  * one has stable text and so hits this cache forever after its first render.
+ * The growing one misses every frame, which `highlightLiveStream` makes cheap
+ * by tokenizing only the lines it hasn't seen.
  *
  * Budgeted by total cached characters rather than entry count because
  * highlighted HTML runs 5-20x the source: a fixed entry cap would bound the
@@ -133,17 +133,7 @@ function build(Ctor: typeof MarkdownItCtor): MarkdownIt {
 			if (!lang) return '';
 			const h = getLiveHighlighter();
 			if (!h) return '';
-			return cachedHighlight(h, `${lang}:${code}`, () => {
-				try {
-					return h.codeToHtml(code, {
-						lang,
-						themes: { light: LIGHT_THEME, dark: DARK_THEME },
-						defaultColor: false,
-					});
-				} catch {
-					return '';
-				}
-			});
+			return cachedHighlight(h, `${lang}:${code}`, () => highlightLiveStream(code, lang) ?? '');
 		},
 	});
 	const defaultLinkOpen =

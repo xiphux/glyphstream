@@ -51,7 +51,7 @@ arrived.
 - A developing photo, or a check-in that has come due, is picked up even when one check went unanswered after the app was resumed. Before, that one request stopped the page from asking again.
 - Confirmation dialogs, the delete-conversation dialog, the debug panel and the avatar/photo dialog now take keyboard focus when they open, keep Tab inside, and hand focus back when they close.
 - On iOS, reopening the installed app after a long time in the background checks for an update at once, instead of up to an hour later.
-- A streaming reply no longer rebuilds its finished paragraphs and code blocks on every frame, so a long reply with code stutters less as it grows. Highlighting a Python block that is still being written is as costly as before.
+- A streaming reply that writes long Python code no longer stutters as it grows: finished paragraphs and code blocks stay put between frames, and the block still being written is highlighted a line at a time instead of from its first line on every frame.
 - A tool call you approved was cancelled if the page lost its connection while the tool ran (the phone locked, a reload); it now finishes, and Stop still cancels it.
 - Stopping a scheduled run while its model was still loading recorded it as failed, sent a "Didn't finish" notification and counted toward turning the schedule off. It is now recorded as stopped.
 - An image used as a preset's or conversation's avatar could be moved to Recently deleted by "also delete media" on another chat, once it had been deleted and restored. Restoring it now keeps it protected while it is an avatar.
