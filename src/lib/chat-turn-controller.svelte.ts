@@ -510,8 +510,9 @@ export class ChatTurnController {
 	 * staying gone until a reload. `refused` says the server answered with an
 	 * HTTP error, so nothing changed server-side. Any other failure (a dropped
 	 * connection while the turn was queued) may come after the server saved
-	 * the new message, so the thread is also re-read; if the server can't be
-	 * reached, the restored rows are what stays.
+	 * the new message, so the thread is also re-read. If the server can't be
+	 * reached, that re-read fails like any other and lands on the error page,
+	 * which reconnects by itself.
 	 */
 	#handleSendError(
 		e: unknown,
