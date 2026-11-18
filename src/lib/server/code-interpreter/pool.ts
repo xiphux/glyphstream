@@ -31,7 +31,16 @@ import { listForbiddenHosts } from '../tools/url-policy';
 import { acceptGeneratedFiles } from './generated-files';
 import { proxyInterpreterFetch, type FetchBudget, type ProxyFetchRequest } from './net-proxy';
 import { cachePyodideWheel } from './package-cache';
+import { createLogger } from '../log';
 import { pyodideModuleUrl, spawnInterpreterProcess, type ManagedWorker } from './spawn';
+
+const log = createLogger('code-interpreter');
+
+/**
+ * Largest wheel the host will cache for an interpreter. Pyodide's lockfile
+ * records no sizes; its biggest wheels are a few tens of MB.
+ */
+const MAX_CACHED_WHEEL_BYTES = 64 * 1024 * 1024;
 
 export type { ManagedWorker } from './spawn';
 
@@ -537,9 +546,20 @@ async function doStart(
 			}
 			if (msg.type === 'cache-package') {
 				const m = raw as { path?: unknown; bytes?: unknown };
-				if (typeof m.path === 'string' && m.bytes instanceof Uint8Array) {
-					void cachePyodideWheel(m.path, m.bytes);
+				// Pyodide caches a wheel only while a run imports it. Anything else
+				// is the process misbehaving, and it already cost a copy of the
+				// message in this process: stop it before it sends another.
+				if (
+					pendingResolvers.size === 0 ||
+					typeof m.path !== 'string' ||
+					!(m.bytes instanceof Uint8Array) ||
+					m.bytes.byteLength > MAX_CACHED_WHEEL_BYTES
+				) {
+					log.warn(`killing the interpreter for ${conversationId}: unexpected cache-package`);
+					void worker.terminate().catch(() => {});
+					return;
 				}
+				void cachePyodideWheel(m.path, m.bytes);
 				return;
 			}
 			if (msg.type === 'result' && typeof msg.callId === 'number') {
