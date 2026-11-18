@@ -20,6 +20,7 @@ vi.mock('#lib/title-pending.svelte.js', () => ({
 }));
 
 import { ChatTurnController, type ChatTurnDeps } from '#lib/chat-turn-controller.svelte.js';
+import { mergeRefreshedWindow } from '#lib/message-window.js';
 import type { ChatMessage, ModelKind } from '#lib/types/api.js';
 
 function makeDeps(overrides: Partial<ChatTurnDeps> = {}) {
@@ -842,5 +843,74 @@ describe('ChatTurnController — stop / recovery / teardown', () => {
 		turn.markOffline();
 		expect(turn.wasOfflineDuringFetch).toBe(true);
 		expect(turn.interrupted).toBe(true);
+	});
+});
+
+describe('ChatTurnController — a reload while the turn is queued', () => {
+	// The server persists the user row before `start`, which waits on the
+	// endpoint gate; a refreshAll() in that gap swaps the optimistic bubble for
+	// it. Modelled the way the chat page re-seeds `messages`.
+	it('does not append the user message a second time on `start`', async () => {
+		const { deps, state } = makeDeps();
+		state.messages = [userMsg('u0'), assistantMsg('a0')];
+		const turn = new ChatTurnController(deps);
+		const enc = new TextEncoder();
+		let ctl!: ReadableStreamDefaultController<Uint8Array>;
+		const body = new ReadableStream<Uint8Array>({ start: (c) => void (ctl = c) });
+		const emit = (e: unknown) => ctl.enqueue(enc.encode(`data: ${JSON.stringify(e)}\n\n`));
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => ({ ok: true, body }) as unknown as Response),
+		);
+
+		const sent = turn.send('hello', []);
+		emit({ type: 'queued', ahead: 1, paused: false });
+		await vi.waitFor(() => expect(turn.inFlightQueued).not.toBeNull());
+		expect(state.messages.map((m) => m.id)).toEqual([
+			'u0',
+			'a0',
+			expect.stringMatching(/^optimistic-/),
+		]);
+
+		const u1 = userMsg('u1');
+		state.messages = mergeRefreshedWindow(state.messages, [
+			userMsg('u0'),
+			assistantMsg('a0'),
+			u1,
+		]).messages;
+		expect(state.messages.map((m) => m.id)).toEqual(['u0', 'a0', 'u1']);
+
+		emit({ type: 'start', userMessage: u1 });
+		emit({ type: 'done', assistantMessage: assistantMsg('a1') });
+		ctl.close();
+		await sent;
+
+		expect(state.messages.map((m) => m.id)).toEqual(['u0', 'a0', 'u1', 'a1']);
+		vi.unstubAllGlobals();
+	});
+
+	it("leaves a newer turn's bubble open when a tool turn's reload lands after it", async () => {
+		const fetchMock = vi.fn(async (): Promise<Response> => new Promise<Response>(() => {}));
+		fetchMock.mockImplementationOnce(async () =>
+			sseResponse([
+				{ type: 'start', userMessage: userMsg('u1') },
+				{ type: 'tool_call_start', toolCallId: 't1', toolName: 'search' },
+				{ type: 'done', assistantMessage: assistantMsg('a1') },
+			]),
+		);
+		vi.stubGlobal('fetch', fetchMock);
+		const { deps } = makeDeps();
+		const turn = new ChatTurnController(deps);
+		// `busy` released on `done`, so a follow-up can be sent during the reload.
+		refreshAll.mockImplementationOnce(async () => {
+			void turn.send('follow-up', []);
+			await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+		});
+
+		await turn.send('use a tool', []);
+
+		expect(turn.inFlightOpen).toBe(true);
+		turn.teardown();
+		vi.unstubAllGlobals();
 	});
 });

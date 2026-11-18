@@ -368,14 +368,17 @@ export class ChatTurnController {
 				// Send / edit: replace the optimistic placeholder with the canonical
 				// persisted user message. Retry + resume: no optimistic id (their
 				// start event carries the prior user message we already render), so
-				// this branch is a no-op.
+				// this branch is a no-op. The user row is persisted before `start`,
+				// which waits on the endpoint gate, so a page reload while queued may
+				// already have swapped the placeholder for it: appending it again
+				// would duplicate a keyed row and wedge the message list.
 				if (ctx.optimisticId) {
 					const cur = this.#deps.getMessages();
-					this.#deps.setMessages(
-						cur.some((m) => m.id === ctx.optimisticId)
-							? cur.map((m) => (m.id === ctx.optimisticId ? userMessage : m))
-							: [...cur, userMessage],
-					);
+					if (cur.some((m) => m.id === ctx.optimisticId)) {
+						this.#deps.setMessages(cur.map((m) => (m.id === ctx.optimisticId ? userMessage : m)));
+					} else if (!cur.some((m) => m.id === userMessage.id)) {
+						this.#deps.setMessages([...cur, userMessage]);
+					}
 					await tick();
 					this.#deps.scrollToBottom();
 				}
@@ -655,7 +658,9 @@ export class ChatTurnController {
 					// which still needs the generated title and the updated_at re-sort.
 					await invalidate('app:conversations');
 				}
-				if (sawToolCalls) {
+				// A newer turn may have started during the reload; its bubble is not
+				// ours to close.
+				if (sawToolCalls && this.activeAbort === abort) {
 					this.inFlightOpen = false;
 					this.#resetInFlightSegments();
 					this.inFlightProgress = null;

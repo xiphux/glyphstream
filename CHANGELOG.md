@@ -35,6 +35,7 @@ arrived.
 - Conversation search could list only one chat when a long thread mentioned the term many times; every matching conversation now shows. The model's conversation search, used from inside that long thread, no longer comes back empty.
 - In a long conversation, each Python run and each delete that also removes media could stall the whole server for up to seconds on a large media library. Both now cost a few milliseconds.
 - A message sent while the conversation was being compacted no longer ends up in whichever conversation you switched to before the compaction finished, wiping that conversation's draft.
+- Returning to the tab while a reply was still queued could freeze the thread, so the reply never appeared until a reload.
 
 ## v0.54.0
 
