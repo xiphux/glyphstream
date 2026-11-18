@@ -28,6 +28,8 @@
 
 	let { data }: { data: { servers: ServerInfo[]; isAdmin: boolean } } = $props();
 
+	/** The tool whose trust request is in flight; every switch is disabled
+	 *  meanwhile, as `toggleTrust()` drops a second one. */
 	let busyName = $state<string | null>(null);
 	let retryingId = $state<string | null>(null);
 	// Per-server token input + in-flight flag for the per-user credential form.
@@ -278,10 +280,11 @@
 											{/if}
 										</div>
 										<label class="flex shrink-0 cursor-pointer items-center gap-1.5 pt-0.5">
+											<!-- Controlled: shows what the server stored, so a failed
+											     request leaves nothing flipped. -->
 											<Switch.Root
-												checked={tool.trusted}
-												onCheckedChange={() => void toggleTrust(tool)}
-												disabled={busyName === tool.registeredName}
+												bind:checked={() => tool.trusted, () => void toggleTrust(tool)}
+												disabled={busyName !== null}
 												aria-label="Always allow {tool.name}"
 												title={tool.trusted
 													? 'Currently always allowed. Toggle off to require approval again.'

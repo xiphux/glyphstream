@@ -19,6 +19,8 @@
 
 	/** null: editor closed; '': creating; otherwise the id being edited. */
 	let editing = $state<string | null>(null);
+	/** The row whose request is in flight. One at a time: every row's request
+	 *  controls are disabled meanwhile, as `call()` drops a second one. */
 	let busyId = $state<string | null>(null);
 	/** Schedule id → its loaded history, for the rows whose history is open. */
 	let history = $state<Record<string, ScheduledRun[]>>({});
@@ -76,6 +78,11 @@
 			},
 			enabled ? 'turn it on' : 'turn it off',
 		);
+	}
+
+	/** A failed save leaves the box showing what the server still has. */
+	async function toggleEnabled(s: ScheduledTaskSummary, box: HTMLInputElement) {
+		if (!(await setEnabled(s, box.checked))) box.checked = s.enabled;
 	}
 
 	async function runNow(s: ScheduledTaskSummary) {
@@ -234,14 +241,14 @@
 										<input
 											type="checkbox"
 											checked={s.enabled}
-											disabled={busyId === s.id}
-											onchange={(e) => setEnabled(s, e.currentTarget.checked)}
+											disabled={busyId !== null}
+											onchange={(e) => toggleEnabled(s, e.currentTarget)}
 										/>
 										On
 									</label>
 									<button
 										type="button"
-										disabled={busyId === s.id}
+										disabled={busyId !== null}
 										onclick={() => runNow(s)}
 										title="Run now"
 										aria-label="Run {s.name} now"
@@ -271,7 +278,7 @@
 									</button>
 									<button
 										type="button"
-										disabled={busyId === s.id}
+										disabled={busyId !== null}
 										onclick={() => remove(s)}
 										title="Delete"
 										aria-label="Delete {s.name}"
