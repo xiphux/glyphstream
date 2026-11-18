@@ -86,7 +86,8 @@ vi.mock('#lib/server/streaming/relay.js', () => ({
 
 import { POST } from '../../src/routes/api/conversations/[id]/tool-approval/+server';
 import { createConversation } from '#lib/server/db/queries/conversations.js';
-import { appendMessage } from '#lib/server/db/queries/messages.js';
+import { appendMessage, walkActiveBranch } from '#lib/server/db/queries/messages.js';
+import { getUserPreferences, setUserPreferences } from '#lib/server/db/queries/user-preferences.js';
 import { getInFlightEntries, resetInFlight } from '#lib/server/streaming/in-flight.js';
 
 function toolDef(name: string, description = name): OpenAIToolDefinition {
@@ -249,6 +250,73 @@ describe('POST /tool-approval — a pending call runs at most once', () => {
 		await first;
 		expect(await second).toBe(409);
 		expect(mocks.executions).toBe(1);
+	});
+});
+
+describe('POST /tool-approval — what each decision does', () => {
+	/** The resolved result part of the paused call, read back from the branch. */
+	function resultOf(conversationId: string) {
+		const tool = walkActiveBranch(conversationId).find((m) => m.role === 'tool')!;
+		return tool.parts.find((p) => p.type === 'tool_result')!;
+	}
+	const trusted = (userId: string) => getUserPreferences(userId)?.trustedMcpTools ?? [];
+
+	it('Reject records a declined error and never runs the tool', async () => {
+		const s = seedPendingApproval();
+
+		await approve(s.conversationId, s.userId, [{ toolCallId: 'call_1', action: 'reject' }]);
+
+		expect(mocks.executions).toBe(0);
+		const part = resultOf(s.conversationId);
+		expect(part).toMatchObject({ isError: true });
+		expect(part).not.toHaveProperty('status');
+		expect(part.type === 'tool_result' && part.result).toContain('User declined');
+		expect(trusted(s.userId)).toEqual([]);
+	});
+
+	it('Allow runs the tool once without trusting it for later calls', async () => {
+		const s = seedPendingApproval();
+
+		await approve(s.conversationId, s.userId, [{ toolCallId: 'call_1', action: 'allow' }]);
+
+		expect(mocks.executions).toBe(1);
+		expect(trusted(s.userId)).not.toContain('mcp__srv__lookup');
+	});
+
+	it('Always allow saves the tool as trusted, once', async () => {
+		const s = seedPendingApproval();
+		setUserPreferences(s.userId, { trustedMcpTools: ['mcp__other__tool'] });
+
+		await approve(s.conversationId, s.userId, [{ toolCallId: 'call_1', action: 'allow_always' }]);
+
+		expect(mocks.executions).toBe(1);
+		expect(trusted(s.userId)).toEqual(['mcp__other__tool', 'mcp__srv__lookup']);
+	});
+
+	it('Always allow on a tool already trusted does not list it twice', async () => {
+		const s = seedPendingApproval();
+		setUserPreferences(s.userId, { trustedMcpTools: ['mcp__srv__lookup'] });
+
+		await approve(s.conversationId, s.userId, [{ toolCallId: 'call_1', action: 'allow_always' }]);
+
+		expect(trusted(s.userId)).toEqual(['mcp__srv__lookup']);
+	});
+
+	it("refuses another user's decision on the conversation's pending call", async () => {
+		const s = seedPendingApproval();
+		const intruder = seedUser();
+
+		const status = await Promise.resolve(
+			approve(s.conversationId, intruder.id, [{ toolCallId: 'call_1', action: 'allow' }]),
+		).then(
+			() => 'ok',
+			(e: { status?: number }) => e.status,
+		);
+
+		expect(status).toBe(404);
+		expect(mocks.executions).toBe(0);
+		expect(resultOf(s.conversationId)).toMatchObject({ status: 'pending_approval' });
+		expect(mocks.relayCalls).toHaveLength(0);
 	});
 });
 
