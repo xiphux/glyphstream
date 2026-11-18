@@ -31,7 +31,7 @@
 		approvalBusy?: boolean;
 		onApprovalSelect?: (toolCallId: string, action: ApprovalAction) => void;
 		/** Copy buttons on code blocks. Off while the text is still streaming:
-		 *  each frame re-creates every node in the html block, so a button is
+		 *  the growing element is re-created every frame, so a button in it is
 		 *  replaced mid-click and the click lands on nothing. */
 		codeCopy?: boolean;
 	}
@@ -75,10 +75,20 @@
 		<!-- HTML is either server-rendered (shiki, persisted assistant)
 		     or client-rendered via renderLiveMarkdown (in-flight).
 		     Both pass through markdown-it with html=false; safe to {@html}.
-		     withCodeCopyButtons adds only markup of its own. -->
+		     withCodeCopyButtons adds only markup of its own.
+		     A live render comes in parts so that a finished element, whose
+		     string is unchanged, is not rebuilt every frame; they share one
+		     wrapper because a RenderBlock per part would space them apart. -->
 		<div class="gs-prose mt-1" {@attach codeCopy && codeCopyClicks}>
-			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-			{@html codeCopy ? withCodeCopyButtons(block.html) : block.html}
+			{#if block.parts}
+				{#each block.parts as part, p (p)}
+					<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+					{@html codeCopy ? withCodeCopyButtons(part) : part}
+				{/each}
+			{:else}
+				<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+				{@html codeCopy ? withCodeCopyButtons(block.html) : block.html}
+			{/if}
 		</div>
 	{:else if block.type === 'plain-text'}
 		<div class="mt-1 whitespace-pre-wrap break-words">{block.text}</div>

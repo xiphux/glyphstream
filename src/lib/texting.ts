@@ -237,7 +237,7 @@ export function withoutCheckInMarkers(blocks: RenderBlock[]): RenderBlock[] {
 			const kept = splitTopLevelHtml(block.html, true).filter(
 				(chunk) => !checkInMarker(extractSpeaker(chunk)),
 			);
-			return kept.length ? [{ ...block, html: kept.join('\n') }] : [];
+			return kept.length ? [{ ...block, html: kept.join('\n'), parts: block.parts && kept }] : [];
 		}
 		if (block.type === 'plain-text') {
 			const kept = block.text

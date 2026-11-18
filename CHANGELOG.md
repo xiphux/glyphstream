@@ -49,6 +49,7 @@ arrived.
 - A developing photo, or a check-in that has come due, is picked up even when one check went unanswered after the app was resumed. Before, that one request stopped the page from asking again.
 - Confirmation dialogs, the delete-conversation dialog, the debug panel and the avatar/photo dialog now take keyboard focus when they open, keep Tab inside, and hand focus back when they close.
 - On iOS, reopening the installed app after a long time in the background checks for an update at once, instead of up to an hour later.
+- A streaming reply no longer rebuilds its finished paragraphs and code blocks on every frame, so a long reply with code stutters less as it grows. Highlighting a Python block that is still being written is as costly as before.
 
 ## v0.54.0
 

@@ -72,7 +72,16 @@ export type RenderBlock =
 	/** Pre-rendered markdown HTML — server-side shiki for persisted
 	 *  assistant rows, client-side markdown-it for live streaming.
 	 *  Both pass through markdown-it with html=false so {@html} is safe. */
-	| { type: 'html'; html: string }
+	| {
+			type: 'html';
+			html: string;
+			/** `html` cut into its top-level elements (`splitTopLevelHtml` with
+			 *  breaks kept). Set only for a live render: RenderBlocks writes each
+			 *  part through its own `{@html}`, so a finished block whose string is
+			 *  unchanged keeps its DOM while the tail grows. Whoever rewrites
+			 *  `html` must rewrite or drop this. */
+			parts?: string[];
+	  }
 	/** Plain-text fallback for messages without rendered HTML (user
 	 *  rows, just-arrived in-flight text whose rAF render hasn't fired). */
 	| {
@@ -141,6 +150,9 @@ export interface InFlightTextSegment {
 	 *  construct segments without it; the rAF effect treats missing as
 	 *  "needs render." */
 	htmlFromText?: string;
+	/** `html` cut into top-level elements, written alongside it by the rAF
+	 *  effect; becomes the html block's `parts`. */
+	htmlParts?: string[];
 }
 
 export interface InFlightToolCallSegment {
@@ -176,7 +188,15 @@ export function appendText(segments: InFlightSegment[], chunk: string): InFlight
 	}
 	const last = segments[segments.length - 1];
 	if (last.kind === 'text') {
-		return [...segments.slice(0, -1), { kind: 'text', text: last.text + chunk, html: last.html }];
+		return [
+			...segments.slice(0, -1),
+			{
+				kind: 'text',
+				text: last.text + chunk,
+				html: last.html,
+				htmlParts: last.htmlParts,
+			},
+		];
 	}
 	return [...segments, { kind: 'text', text: chunk, html: '' }];
 }
@@ -393,7 +413,7 @@ export function inFlightToBlocks(segments: InFlightSegment[]): RenderBlock[] {
 				blocks.push({ type: 'reasoning', text: seg.text, open: true });
 				break;
 			case 'text':
-				if (seg.html) blocks.push({ type: 'html', html: seg.html });
+				if (seg.html) blocks.push({ type: 'html', html: seg.html, parts: seg.htmlParts });
 				else if (seg.text) blocks.push({ type: 'plain-text', text: seg.text });
 				break;
 			case 'tool_call':

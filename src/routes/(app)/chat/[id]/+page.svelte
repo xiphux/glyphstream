@@ -73,7 +73,7 @@
 	import { PhotoComparisonGrid, PhotoVersionTriage } from '#lib/photo-comparison-grid.svelte.js';
 	import { watchDevelopingPhotos } from '#lib/photo-develop-watch.js';
 	import { photoMarkers } from '#lib/texting-photos.js';
-	import type { TextingPhotos } from '#lib/texting.js';
+	import { splitTopLevelHtml, type TextingPhotos } from '#lib/texting.js';
 	import { CheckInController } from '#lib/check-in-controller.svelte.js';
 	import { isCheckInMessage, type PendingCheckInNote } from '#lib/check-ins.js';
 	import { withoutCheckInText } from '#lib/texting-check-ins.js';
@@ -1596,7 +1596,9 @@
 	// rAF-coalesced per-segment markdown render. Each text segment grows
 	// independently; we render each segment's HTML on the next frame
 	// rather than on every chunk to cap markdown-it cost at ~60Hz no
-	// matter how fast the upstream streams tokens.
+	// matter how fast the upstream streams tokens. The HTML is also cut into
+	// its top-level elements, so RenderBlocks rebuilds only the ones whose
+	// markup changed rather than every finished code block each frame.
 	//
 	// Critically the callback does NOT reassign `turn.inFlightSegments` — Svelte
 	// 5's $state proxy wraps each array element, so mutating `s.html` in
@@ -1620,6 +1622,7 @@
 				if (s.kind !== 'text') continue;
 				if (s.htmlFromText === s.text) continue;
 				s.html = renderLiveMarkdown(s.text);
+				s.htmlParts = splitTopLevelHtml(s.html, true);
 				s.htmlFromText = s.text;
 			}
 		});
