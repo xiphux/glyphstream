@@ -16,6 +16,7 @@ arrived.
 - `[code_interpreter] enabled = false` now turns the interpreter off completely. Before, it only stopped offering the tool, and a model that called `run_python` anyway still ran Python.
 - A captured passkey sign-in or app-lock unlock request could be replayed to start a new session, indefinitely for synced passkeys. Each passkey challenge is now signed, expires after five minutes, works only for the ceremony it was issued for, and is accepted once.
 - Python run by the code interpreter could make the server hold arbitrarily large messages in memory, even after its run had returned. An interpreter that sends a package-cache message outside a run, or one that is malformed or oversized, is now stopped.
+- A hostile page read by `fetch_url` can no longer freeze the server for every user: page extraction runs in a worker that is stopped after a few seconds, and the model is told the page took too long to process.
 
 ### Fixed
 

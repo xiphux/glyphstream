@@ -18,12 +18,11 @@
  * Body capped at 2 MB, extracted text capped at 20K chars.
  */
 
-import { Readability } from '@mozilla/readability';
-import { parseHTML } from 'linkedom';
 import { register } from './registry';
 import type { Tool, ToolExecution } from './types';
 import { composeSignals } from '../util/abort';
-import { chunkArticleHtml, chunkPlainText } from '../retrieval/chunker';
+import { chunkPlainText, type Chunk } from '../retrieval/chunker';
+import { extractInWorker } from './extract-in-worker';
 import { selectRelevant } from '../retrieval/select';
 import { resolveRelevanceConfig } from '../retrieval/embeddings-config';
 import { resolveRerankConfig } from '../retrieval/rerank-config';
@@ -194,14 +193,19 @@ async function processResponse(
 	const raw = await readBodyWithCap(res, MAX_BODY_BYTES, parseCharset(contentType));
 
 	// `text` is the flattened readable view (the `content` of the full /
-	// truncated paths); `structured` retains the article HTML + title so the
-	// relevance path can chunk on real heading structure. Non-HTML resources
-	// have no structure, so they fall through to the plain-text chunker.
+	// truncated paths). For an article page, the worker also hands back the
+	// article HTML's heading-aware chunks when the relevance path will want
+	// them. Non-HTML resources have no structure, so they fall through to the
+	// plain-text chunker.
 	let text: string;
-	let structured: ArticleStructured | null = null;
+	let title = '';
+	let htmlChunks: Chunk[] | null = null;
 	if (mime === 'text/html' || mime === 'application/xhtml+xml') {
-		structured = extractArticleStructured(raw);
-		text = structured ? structured.text : extractTextFromHtml(raw);
+		const page = await extractInWorker(
+			{ html: raw, chunkOver: find ? MAX_CONTENT_CHARS : null },
+			ctxSignal,
+		);
+		({ text, title, chunks: htmlChunks } = page);
 	} else {
 		// JSON passes through as-is (the model handles minified JSON fine);
 		// text/plain & text/markdown likewise.
@@ -210,7 +214,8 @@ async function processResponse(
 
 	const { content, mode, sections, outline } = await selectOrTruncate(
 		text,
-		structured,
+		title,
+		htmlChunks,
 		find,
 		ctxSignal,
 	);
@@ -237,7 +242,8 @@ async function processResponse(
  */
 async function selectOrTruncate(
 	text: string,
-	structured: ArticleStructured | null,
+	title: string,
+	htmlChunks: Chunk[] | null,
 	find: string | undefined,
 	signal: AbortSignal,
 ): Promise<{
@@ -253,10 +259,7 @@ async function selectOrTruncate(
 		return { content: text.slice(0, MAX_CONTENT_CHARS), mode: 'truncated' };
 	}
 
-	const chunks =
-		structured && structured.contentHtml
-			? chunkArticleHtml(structured.contentHtml, structured.title)
-			: chunkPlainText(text, structured?.title ?? '');
+	const chunks = htmlChunks ?? chunkPlainText(text, title);
 
 	// Nothing to choose among — fall back to head-truncation.
 	if (chunks.length <= 1) {
@@ -323,92 +326,8 @@ function concat(arrs: Uint8Array[]): Uint8Array {
 	return out;
 }
 
-export interface ArticleStructured {
-	title: string;
-	/** Cleaned article HTML (Readability `content`) — retains heading structure. */
-	contentHtml: string;
-	/** Flattened title + body text. */
-	text: string;
-}
-
-/**
- * Run Mozilla's Readability (the same algorithm Firefox Reader View uses) and
- * return both the flattened text and the cleaned article HTML, or null when
- * the page isn't article-shaped (search results, directory indexes, stubs).
- *
- * The HTML is kept so the relevance chunker can split on real heading
- * structure; the flattened text is what the full/truncated paths return.
- */
-export function extractArticleStructured(html: string): ArticleStructured | null {
-	try {
-		const { document } = parseHTML(html);
-		const article = new Readability(document).parse();
-		const text = article?.textContent?.trim();
-		if (text && text.length >= 200) {
-			const title = article?.title?.trim() ?? '';
-			const body = normalizeWhitespace(text);
-			return {
-				title,
-				contentHtml: article?.content ?? '',
-				text: title ? `${title}\n\n${body}` : body,
-			};
-		}
-	} catch {
-		// Malformed HTML, parser quirk, or DOM API mismatch — fall through.
-	}
-	return null;
-}
-
-function normalizeWhitespace(s: string): string {
-	return s
-		.replace(/[ \t]+/g, ' ')
-		.replace(/ ?\n ?/g, '\n')
-		.replace(/\n{3,}/g, '\n\n')
-		.trim();
-}
-
-export function extractTextFromHtml(html: string): string {
-	let s = html;
-	s = s.replace(/<!--[\s\S]*?-->/g, '');
-	s = s.replace(
-		/<(script|style|head|nav|footer|aside|noscript|template|svg|iframe)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
-		'',
-	);
-	s = s.replace(/<(?:br|hr)\s*\/?>/gi, '\n');
-	s = s.replace(/<\/(?:p|div|li|tr|h[1-6]|section|article|header|blockquote|pre)\s*>/gi, '\n\n');
-	s = s.replace(/<\/(?:td|th)\s*>/gi, '\t');
-	s = s.replace(/<\/?[^>]+>/g, ' ');
-	s = decodeEntities(s);
-	s = s.replace(/[ \t]+/g, ' ');
-	s = s.replace(/ ?\n ?/g, '\n');
-	s = s.replace(/\n{3,}/g, '\n\n');
-	return s.trim();
-}
-
-const NAMED_ENTITIES: Record<string, string> = {
-	amp: '&',
-	lt: '<',
-	gt: '>',
-	quot: '"',
-	apos: "'",
-	nbsp: ' ',
-};
-
-function decodeEntities(s: string): string {
-	return s.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (m, code: string) => {
-		if (code[0] === '#') {
-			const cp =
-				code[1] === 'x' || code[1] === 'X'
-					? parseInt(code.slice(2), 16)
-					: parseInt(code.slice(1), 10);
-			return Number.isFinite(cp) && cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : m;
-		}
-		const named = NAMED_ENTITIES[code.toLowerCase()];
-		return named ?? m;
-	});
-}
-
-// Tests import the pure predicate from here.
+// Tests import the pure predicate and the extractors from here.
 export { isPrivateIp };
+export { extractArticleStructured, extractTextFromHtml } from './html-extract';
 
 register(fetchUrlTool);

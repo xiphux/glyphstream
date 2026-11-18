@@ -22,6 +22,7 @@
  */
 import { copyFileSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { fork, spawnSync } from 'node:child_process';
+import { Worker } from 'node:worker_threads';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -33,7 +34,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 // handler calls `server.init`, which runs hooks.server's startup (sweepers, MCP
 // bootstrap, model listing), and its entry listens on the port the container's
 // server already holds. The code interpreter's worker refuses to load except
-// as a forked child with an IPC channel (codeInterpreter below starts it so).
+// as a forked child with an IPC channel (codeInterpreter below starts it so),
+// and fetch_url's extraction worker except as a worker thread (fetchExtract).
 // All of them are still proven by run.sh, whose server can't boot and answer
 // /api/health unless they load.
 //
@@ -54,6 +56,7 @@ const SKIP = [
 	/\/server\/handler\.js$/, // re-exports the handler above
 	/\/hooks\.server(\.js-[^/]*)?\.js$/, // entries/hooks.server.js (kit 3)
 	/\/worker\.js$/,
+	/\/fetch-extract-worker\.js$/,
 	/\/__vite-optional-peer-dep_[^/]*\.js$/,
 ];
 
@@ -195,6 +198,55 @@ const checks = {
 			if (result !== 42) throw new Error(`6 * 7 returned ${JSON.stringify(result)}`);
 		} finally {
 			child.kill('SIGKILL');
+		}
+	},
+
+	// fetch_url's HTML extraction as the server runs it: a worker thread at the
+	// URL extract-in-worker.ts's chunk resolves. The bundle carries linkedom and
+	// Readability, which the image's production install leaves out, so a
+	// dependency esbuild left external fails here; and as with the
+	// interpreter's worker, nothing but a live fetch_url call would start it.
+	async fetchExtract() {
+		const root = '/app/build/server';
+		const spawner = readdirSync(root, { recursive: true })
+			.filter((f) => f.endsWith('.js'))
+			.map((f) => join(root, f))
+			.find((f) =>
+				/new URL\(\s*["']\.\/fetch-extract-worker\.js["']\s*,\s*import\.meta\.url\s*\)/.test(
+					readFileSync(f, 'utf8'),
+				),
+			);
+		if (!spawner) throw new Error('no server chunk starts ./fetch-extract-worker.js');
+		const para = '<p>Readable article prose, long enough that Readability keeps it.</p>';
+		const html = `<html><head><title>Smoke</title></head><body><article>${para.repeat(8)}</article></body></html>`;
+		// Mirrors extractInWorker in src/lib/server/tools/extract-in-worker.ts.
+		const worker = new Worker(new URL('./fetch-extract-worker.js', pathToFileURL(spawner)), {
+			workerData: { html, chunkOver: 100 },
+		});
+		try {
+			const page = await new Promise((resolve, reject) => {
+				const timer = setTimeout(() => reject(new Error('no result within 30s')), 30_000);
+				worker.once('message', (m) => {
+					clearTimeout(timer);
+					resolve(m);
+				});
+				worker.once('error', (e) => {
+					clearTimeout(timer);
+					reject(e);
+				});
+				worker.once('exit', (code) => {
+					clearTimeout(timer);
+					reject(new Error(`worker exited (${code}) before replying`));
+				});
+			});
+			if (page.title !== 'Smoke' || !page.text.includes('Readable article prose')) {
+				throw new Error(`unexpected extraction: ${JSON.stringify(page).slice(0, 200)}`);
+			}
+			if (!Array.isArray(page.chunks) || page.chunks.length === 0) {
+				throw new Error('the chunker returned no chunks');
+			}
+		} finally {
+			await worker.terminate();
 		}
 	},
 

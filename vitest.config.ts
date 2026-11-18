@@ -50,6 +50,8 @@ export default defineConfig({
 					// The crash reports are in ~/Library/Logs/DiagnosticReports
 					// (node-*.ips) if this is ever re-tested on a newer Node.
 					pool: 'forks',
+					// fetch_url extracts HTML in an esbuild-bundled worker thread.
+					globalSetup: ['./tests/unit/_build-fetch-extract-worker.ts'],
 				},
 			},
 			{
