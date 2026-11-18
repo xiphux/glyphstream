@@ -1948,6 +1948,9 @@
 		// conversation's columns (if any) re-hydrate from its load data below.
 		fanout.teardown();
 		resetCompare();
+		// Stop streaming the old conversation's summary, and refuse the send
+		// parked behind it.
+		compaction.teardown();
 		// Close the draw dialog and drop its staged prompt: it was written against
 		// the conversation we're leaving, and pressing Draw here would send the old
 		// chat's text with this chat's source message.
@@ -2116,10 +2119,12 @@
 		// backs out, their typed message + attachments are still intact rather than
 		// discarded. (An edit resend can't reach here — the composer is unmounted
 		// while an edit session is open, and `edit.save()` goes straight to
-		// `turn.send`.)
+		// `turn.send`.) The compaction can take a minute; if the user opened another
+		// conversation meanwhile, this text was typed for the one they left.
 		if (!willFanOut) {
+			const typedIn = data.conversation.id;
 			const proceed = await compaction.maybeAutoCompact();
-			if (!proceed) return;
+			if (!proceed || data.conversation.id !== typedIn) return;
 		}
 
 		composerText = '';

@@ -84,6 +84,27 @@ export class CompactionController {
 
 	/** A send is parked on the compaction-failed prompt. Not rendered, so plain. */
 	#awaitingConfirm = false;
+	/** Bumped by `teardown()`; a flow that sees it change belongs to a
+	 *  conversation the page has left. */
+	#generation = 0;
+	/** Aborts the in-flight compaction request. */
+	#abort: AbortController | null = null;
+
+	/**
+	 * Detach from the conversation being left. The page reuses this controller
+	 * across a /chat/A -> /chat/B switch, so without this A's summary would keep
+	 * streaming into B's thread and a send parked in `maybeAutoCompact` would be
+	 * told to go ahead against B. Aborting is safe: a summary the server already
+	 * committed stays committed.
+	 */
+	teardown(): void {
+		this.#generation++;
+		this.#abort?.abort();
+		this.#abort = null;
+		this.compacting = false;
+		this.streaming = false;
+		this.streamText = '';
+	}
 
 	/**
 	 * The shared precondition for all three flows. Kept private and consulted by
@@ -134,6 +155,10 @@ export class CompactionController {
 	 */
 	async compact(opts: { silent?: boolean } = {}): Promise<CompactionOutcome> {
 		if (this.#blocked) return { status: 'noop' };
+		const generation = this.#generation;
+		const live = () => generation === this.#generation;
+		const abort = new AbortController();
+		this.#abort = abort;
 		this.compacting = true;
 		this.streaming = false;
 		this.streamText = '';
@@ -143,7 +168,9 @@ export class CompactionController {
 			const res = await fetch(`/api/conversations/${this.#deps.convId()}/compact?stream=1`, {
 				method: 'POST',
 				headers: { Accept: 'text/event-stream' },
+				signal: abort.signal,
 			});
+			if (!live()) return { status: 'noop' };
 			if (!res.ok || !res.body) {
 				// 409 = nothing worth compacting yet — not a failure on the auto path.
 				if (res.status === 409) {
@@ -155,12 +182,13 @@ export class CompactionController {
 			}
 			await consumeChatStream(res.body, {
 				onCompactionStart: () => {
-					this.streaming = true;
+					if (live()) this.streaming = true;
 				},
 				onCompactionText: (chunk) => {
-					this.streamText += chunk;
+					if (live()) this.streamText += chunk;
 				},
 				onCompactionDone: async (summaryMessage) => {
+					if (!live()) return;
 					doneSummaryId = summaryMessage.id;
 					await refreshAll();
 				},
@@ -168,6 +196,7 @@ export class CompactionController {
 					errored = msg;
 				},
 			});
+			if (!live()) return { status: 'noop' };
 			if (errored) {
 				if (!opts.silent) toast.error(errored);
 				return { status: 'error', error: errored };
@@ -185,12 +214,17 @@ export class CompactionController {
 			}
 			return doneSummaryId ? { status: 'compacted' } : { status: 'noop' };
 		} catch {
+			if (!live()) return { status: 'noop' };
 			if (!opts.silent) toast.error("Couldn't compact this conversation.");
 			return { status: 'error', error: "Couldn't compact this conversation." };
 		} finally {
-			this.compacting = false;
-			this.streaming = false;
-			this.streamText = '';
+			// After a teardown the state belongs to the next conversation.
+			if (live()) {
+				this.#abort = null;
+				this.compacting = false;
+				this.streaming = false;
+				this.streamText = '';
+			}
 		}
 	}
 
@@ -245,6 +279,8 @@ export class CompactionController {
 	 * swallowed: sending the full un-compacted context can push the conversation
 	 * past the window, so we ask the user whether to send anyway or hold off and
 	 * deal with it (e.g. retry, or compact manually) — false means they backed out.
+	 * Also false when the page left the conversation (`teardown()`) while this
+	 * waited: the send it would release was typed somewhere else.
 	 */
 	async maybeAutoCompact(): Promise<boolean> {
 		// A send is already waiting on the "could not be compacted" prompt. The
@@ -265,17 +301,20 @@ export class CompactionController {
 		) {
 			return true;
 		}
+		const generation = this.#generation;
 		const result = await this.compact({ silent: true });
+		if (generation !== this.#generation) return false;
 		if (result.status !== 'error') return true;
 		this.#awaitingConfirm = true;
 		try {
-			return await confirmDialog.ask({
+			const sendAnyway = await confirmDialog.ask({
 				title: 'Context could not be compacted',
 				message:
 					`Automatic compaction failed: ${result.error} Send your message anyway with the ` +
 					'full conversation? That may exceed the model’s context limit.',
 				confirmLabel: 'Send anyway',
 			});
+			return sendAnyway && generation === this.#generation;
 		} finally {
 			this.#awaitingConfirm = false;
 		}

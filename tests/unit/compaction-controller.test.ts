@@ -343,3 +343,77 @@ describe('auto-compaction before a send', () => {
 		vi.restoreAllMocks();
 	});
 });
+
+describe('teardown on a conversation switch', () => {
+	it("refuses the parked send and stops drawing the old conversation's summary", async () => {
+		const { deps, state } = makeDeps();
+		state.contextWindow = 7000;
+		const c = new CompactionController(deps);
+		const enc = new TextEncoder();
+		let ctl!: ReadableStreamDefaultController<Uint8Array>;
+		const body = new ReadableStream<Uint8Array>({ start: (s) => void (ctl = s) });
+		const emit = (e: unknown) => ctl.enqueue(enc.encode(`data: ${JSON.stringify(e)}\n\n`));
+		vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+			ok: true,
+			status: 200,
+			body,
+		} as unknown as Response);
+
+		const proceed = c.maybeAutoCompact();
+		emit({ type: 'compaction_start' });
+		emit({ type: 'compaction_text', chunk: 'summary of c1' });
+		await vi.waitFor(() => expect(c.streaming).toBe(true));
+
+		state.convId = 'c2';
+		state.messages = [];
+		c.teardown();
+		emit({ type: 'compaction_text', chunk: ' more' });
+		await new Promise((r) => setTimeout(r, 0));
+		expect({ streaming: c.streaming, text: c.streamText, compacting: c.compacting }).toEqual({
+			streaming: false,
+			text: '',
+			compacting: false,
+		});
+
+		emit({ type: 'compaction_done', summaryMessage: { id: 's1', role: 'assistant', parts: [] } });
+		ctl.close();
+		expect(await proceed).toBe(false);
+		expect(refreshAll).not.toHaveBeenCalled();
+		vi.restoreAllMocks();
+	});
+
+	it('refuses a "Send anyway" answered after the switch', async () => {
+		const { deps, state } = makeDeps();
+		state.contextWindow = 7000;
+		const c = new CompactionController(deps);
+		vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('upstream down'));
+		let answer!: (v: boolean) => void;
+		confirmAsk.mockImplementationOnce(() => new Promise<boolean>((r) => (answer = r)));
+
+		const proceed = c.maybeAutoCompact();
+		await vi.waitFor(() => expect(confirmAsk).toHaveBeenCalledTimes(1));
+		c.teardown();
+		answer(true);
+		expect(await proceed).toBe(false);
+		vi.restoreAllMocks();
+	});
+
+	it('does not ask "Send anyway" for a compaction the switch aborted', async () => {
+		const { deps, state } = makeDeps();
+		state.contextWindow = 7000;
+		const c = new CompactionController(deps);
+		vi.spyOn(globalThis, 'fetch').mockImplementation(
+			(_url, init) =>
+				new Promise<Response>((_resolve, reject) => {
+					init?.signal?.addEventListener('abort', () => reject(new DOMException('', 'AbortError')));
+				}),
+		);
+
+		const proceed = c.maybeAutoCompact();
+		await vi.waitFor(() => expect(c.compacting).toBe(true));
+		c.teardown();
+		expect(await proceed).toBe(false);
+		expect(confirmAsk).not.toHaveBeenCalled();
+		vi.restoreAllMocks();
+	});
+});
