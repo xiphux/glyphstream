@@ -45,6 +45,9 @@ if (mockPort !== 3001) {
 export default defineConfig({
 	testDir: './tests/e2e',
 	fullyParallel: false,
+	// A committed `test.describe.only` would shrink the required E2E check to
+	// that block. ESLint's preset only catches a bare `test.only`.
+	forbidOnly: !!process.env.CI,
 	workers: 1,
 	timeout: 30_000,
 	reporter: process.env.CI ? 'github' : 'list',
