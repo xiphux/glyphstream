@@ -419,4 +419,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["node", "build/index.js"]
+# --disable-sigusr1: SIGUSR1 would otherwise open the server's inspector, and
+# any process running as the server's uid can send it.
+CMD ["node", "--disable-sigusr1", "build/index.js"]

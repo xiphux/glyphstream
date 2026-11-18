@@ -58,17 +58,26 @@ process.on('disconnect', () => process.exit(0));
 	proc.binding = (name: string) => (name === 'constants' ? { fs: fsConstants } : realBinding(name));
 }
 
-// The permission model has no signal permission: `process.kill` would let
-// model-written code (via `js.process`) signal the host by `process.ppid`, or
-// any process the server's user owns. Nothing here needs to send a signal, so
-// replace both entry points and keep no reference to the originals.
+// The permission model gates neither signals nor scheduling, so model-written
+// code (via `js.process`) could reach the host by `process.ppid`, or any
+// process the server's user owns: `kill`/`_kill` send any signal,
+// `_debugProcess` sends SIGUSR1 (which opens a Node target's inspector),
+// `os.setPriority` renices. `v8.setFlagsFromString` would lift this process's
+// own `--wasm-max-mem-pages` ceiling at runtime. Nothing here needs any of
+// them, so replace each and keep no reference to the originals; the ESM
+// re-sync makes `import('node:os')` see the replacements too.
 {
 	const refuse = (): never => {
-		throw new Error('Sending signals is not permitted in the code interpreter');
+		throw new Error('This call is not permitted in the code interpreter');
 	};
-	const proc = process as unknown as { kill: unknown; _kill?: unknown };
-	proc.kill = refuse;
-	if ('_kill' in proc) proc._kill = refuse;
+	const proc = process as unknown as Record<string, unknown>;
+	for (const name of ['kill', '_kill', '_debugProcess', '_debugEnd']) {
+		if (name in proc) proc[name] = refuse;
+	}
+	(process.getBuiltinModule('node:os') as unknown as Record<string, unknown>).setPriority = refuse;
+	(process.getBuiltinModule('node:v8') as unknown as Record<string, unknown>).setFlagsFromString =
+		refuse;
+	syncBuiltinESMExports();
 }
 
 /**

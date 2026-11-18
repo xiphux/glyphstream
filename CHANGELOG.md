@@ -12,6 +12,7 @@ arrived.
 ### Security
 
 - Python run by the code interpreter could open SQLite files outside its sandbox, the app's own database included. It no longer can.
+- Python run by the code interpreter can no longer signal or renice other processes, or lift its own memory ceiling. The Docker image also starts the server with `--disable-sigusr1`, so a stray SIGUSR1 can't open its inspector.
 
 ## v0.54.0
 

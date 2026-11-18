@@ -36,7 +36,10 @@ environment variables, can read only its own code and the Pyodide package,
 cannot write files, cannot start processes or threads, and cannot open
 network connections. That boundary is enforced by Node, not by the
 interpreter, so it holds even for code that reaches past Python into the
-JavaScript runtime underneath. Files reach the interpreter only by being
+JavaScript runtime underneath. The few things Node's permission model
+doesn't cover are switched off in the interpreter process directly: it
+cannot open SQLite databases, signal or renice other processes, or raise
+its own memory ceiling. Files reach the interpreter only by being
 copied into its in-memory `/workspace/` (see below), and come back the same
 way.
 

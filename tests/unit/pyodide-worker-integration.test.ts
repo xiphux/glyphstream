@@ -276,6 +276,17 @@ describe('code-interpreter worker (real pyodide)', () => {
 			['starting a process', `js.process.getBuiltinModule("child_process").execSync("id")`],
 			['signalling the host', `js.process.kill(js.process.ppid, 0)`],
 			['signalling through the raw binding', `js.process._kill(js.process.ppid, 0)`],
+			// Aimed at the worker itself, so a regression can't touch the runner.
+			['opening an inspector by signal', `js.process._debugProcess(js.process.pid)`],
+			['renicing a process', `js.process.getBuiltinModule("os").setPriority(js.process.pid, 19)`],
+			[
+				'renicing through an ESM import',
+				`(await js.eval("import('node:os')")).setPriority(js.process.pid, 19)`,
+			],
+			[
+				'lifting its own memory ceiling',
+				`js.process.getBuiltinModule("v8").setFlagsFromString("--wasm-max-mem-pages=65536")`,
+			],
 		])('refuses %s', async (_name, expr) => {
 			const res = await run(probe(expr));
 			expect(res.type === 'result' && String(res.result)).toMatch(
