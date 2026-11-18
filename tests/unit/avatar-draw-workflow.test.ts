@@ -3,8 +3,8 @@
  * photos.
  *
  * The workflow runs its real runes (the sveltekit() vitest plugin compiles the
- * .svelte.ts module). The catalogue is a stub list, and the page's photo
- * refresh a recorded call.
+ * .svelte.ts module). The catalogue is a stub list. The thread's photos are a
+ * real ThreadPhotos over the test's page, with its photo read a recorded call.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -12,8 +12,9 @@ const toasts = vi.hoisted(() => ({ error: vi.fn() }));
 vi.mock('#lib/toast.svelte.js', () => ({ toast: { success: () => {}, error: toasts.error } }));
 
 import { AvatarDrawWorkflow } from '#lib/avatar-draw-workflow.svelte.js';
+import { ThreadPhotos, type PhotoDraws } from '#lib/thread-photos.svelte.js';
 import type { ModelCatalogue } from '#lib/model-catalogue.svelte.js';
-import type { ChatMessage, DevelopingImage, MessageImage, ModelEntry } from '#lib/types/api.js';
+import type { ChatMessage, MessageImage, ModelEntry } from '#lib/types/api.js';
 
 const model = (id: string, kind: ModelEntry['kind'] = 'image') =>
 	({ id, kind, displayName: id.toUpperCase() }) as ModelEntry;
@@ -66,13 +67,18 @@ function setup(
 		status: opts.status ?? 'full',
 		ensureAll: vi.fn(async () => {}),
 	} as unknown as ModelCatalogue;
-	const refreshPhotos = vi.fn(async (_ids: string[]) => opts.refreshes ?? true);
-	// As the page does: the draw joins its reply's.
-	const assumeDeveloping = vi.fn((replyId: string, draw: DevelopingImage) => {
-		page.messages = page.messages.map((m) =>
-			m.id === replyId ? { ...m, developing: [...(m.developing ?? []), draw] } : m,
-		);
+	const photos = new ThreadPhotos({
+		convId: () => page.convId,
+		messages: () => page.messages,
+		setMessages: (next) => (page.messages = next),
+		loaded: () => ({ id: page.convId, avatarMediaId: opts.face ?? null, photos: true }),
+		hasImageModel: () => true,
+		draws: (): PhotoDraws => w,
 	});
+	const refreshPhotos = vi
+		.spyOn(photos, 'refresh')
+		.mockImplementation(async (_ids: string[]) => opts.refreshes ?? true);
+	const assumeDeveloping = vi.spyOn(photos, 'assumeDeveloping');
 	const w = new AvatarDrawWorkflow({
 		convId: () => page.convId,
 		messages: () => page.messages,
@@ -80,10 +86,9 @@ function setup(
 		savedModelId: () => opts.saved,
 		enhanceByDefault: () => false,
 		avatarMediaId: () => opts.face ?? null,
-		refreshPhotos,
-		assumeDeveloping,
+		photos,
 	});
-	return { w, page, catalogue, refreshPhotos, assumeDeveloping };
+	return { w, page, catalogue, photos, refreshPhotos, assumeDeveloping };
 }
 
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -530,15 +535,15 @@ describe('developing a texting photo', () => {
 	});
 
 	it('switches versions at once, and back if the server refuses', async () => {
-		const { w } = setup({ messages: thread });
+		const { w, photos } = setup({ messages: thread });
 		const other = { ...reply.images![0], id: 'v1' };
 		await w.showPhoto('r1', other);
-		expect(w.shownVersion('r1', 1)).toBe('v1');
+		expect(photos.shownVersion('r1', 1)).toBe('v1');
 		expect(bodies()[0]).toEqual({ shown: true });
 
 		fetchMock.mockResolvedValueOnce(new Response('{"message":"nope"}', { status: 404 }));
 		await w.showPhoto('r1', reply.images![0]);
-		expect(w.shownVersion('r1', 1)).toBe('v1');
+		expect(photos.shownVersion('r1', 1)).toBe('v1');
 	});
 
 	it('removes a version by moving its image to the trash', async () => {

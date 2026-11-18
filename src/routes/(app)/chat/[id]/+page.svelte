@@ -71,9 +71,8 @@
 	import { hasCopyableText, partsToText } from '#lib/message-parts.js';
 	import { AvatarDrawWorkflow } from '#lib/avatar-draw-workflow.svelte.js';
 	import { PhotoComparisonGrid, PhotoVersionTriage } from '#lib/photo-comparison-grid.svelte.js';
-	import { watchDevelopingPhotos } from '#lib/photo-develop-watch.js';
-	import { photoMarkers } from '#lib/texting-photos.js';
-	import { splitTopLevelHtml, type TextingPhotos } from '#lib/texting.js';
+	import { ThreadPhotos, type PhotoDraws } from '#lib/thread-photos.svelte.js';
+	import { splitTopLevelHtml } from '#lib/texting.js';
 	import { CheckInController } from '#lib/check-in-controller.svelte.js';
 	import { isCheckInMessage, type PendingCheckInNote } from '#lib/check-ins.js';
 	import { withoutCheckInText } from '#lib/texting-check-ins.js';
@@ -101,12 +100,9 @@
 	import { isSnippetKind } from '#lib/types/api.js';
 	import type {
 		ChatMessage,
-		DevelopingImage,
 		EarlierMessagesResponse,
 		FeatureCategory,
-		MessageImage,
 		ModelKind,
-		PhotoStateResponse,
 	} from '#lib/types/api.js';
 
 	let { data }: { data: PageData } = $props();
@@ -158,18 +154,19 @@
 	);
 	const assistantLabel = $derived(data.assistantLabel);
 	const character = $derived(data.conversation.replyStyle === 'character');
-	// The conversation's own face, as the light photo read last reported it —
-	// a portrait going on show changes it, and that read is how the page hears
-	// (a reload of this route re-sends the whole window). Cleared whenever the
-	// load runs again, which then has the same answer.
-	let faceOverride = $state<{ conversationId: string; mediaId: string | null } | undefined>();
-	const conversationAvatarMediaId = $derived(
-		faceOverride && faceOverride.conversationId === data.conversation.id
-			? faceOverride.mediaId
-			: data.conversation.avatarMediaId,
-	);
-	// The face the assistant wears here: the conversation's own, else its preset's.
-	const assistantAvatarMediaId = $derived(conversationAvatarMediaId ?? data.presetAvatarMediaId);
+	// The photos on the thread's replies, and the conversation's face as the
+	// light photo read last reported it. The draw dialog below does the drawing.
+	const threadPhotos = new ThreadPhotos({
+		convId: () => convId,
+		messages: () => messages,
+		setMessages: (next) => (messages = next),
+		loaded: () => data.conversation,
+		hasImageModel: () => data.hasImageModel,
+		draws: (): PhotoDraws => avatarWorkflow,
+	});
+	// The face the assistant wears here: the conversation's own (a portrait
+	// going on show changes it — see ThreadPhotos), else its preset's.
+	const assistantAvatarMediaId = $derived(threadPhotos.avatarMediaId ?? data.presetAvatarMediaId);
 	// The conversation's own identity — the preset's name + avatar, or the
 	// friendly base-model name with no avatar.
 	const conversationIdentity = $derived({
@@ -269,7 +266,7 @@
 			kind: 'conversation' as const,
 			id: data.conversation.id,
 			name: 'This conversation',
-			avatarMediaId: conversationAvatarMediaId,
+			avatarMediaId: threadPhotos.avatarMediaId,
 		},
 		...data.customModels.map((c) => ({
 			kind: 'preset' as const,
@@ -513,7 +510,7 @@
 		serverInFlightSince = data.inFlightSince;
 		serverGeneratingSince = data.inFlightGeneratingSince;
 		// The page's word on the face again; the photo read's only outlived it.
-		faceOverride = undefined;
+		threadPhotos.forgetFace();
 		checkIns.syncFromServer(data.checkIn);
 		// Fully re-seed the canvas ONLY when switching conversations. A mid-turn
 		// refreshAll refreshes `data` with the same id — re-hydrating then
@@ -1411,9 +1408,8 @@
 		// offering a switch the server is going to refuse.
 		enhanceByDefault: () =>
 			!isPrivate && !data.conversation.disabledFeatures.includes('image_prompt_enhancement'),
-		avatarMediaId: () => conversationAvatarMediaId,
-		refreshPhotos: (replyIds) => refreshPhotos(replyIds),
-		assumeDeveloping: (replyId, draw) => assumeDeveloping(replyId, draw),
+		avatarMediaId: () => threadPhotos.avatarMediaId,
+		photos: threadPhotos,
 	});
 
 	// A photo comparison in the develop dialog, as a fan-out grid.
@@ -1650,143 +1646,12 @@
 			fanout.comparing,
 	);
 
-	// Photos, in a chat whose preset sends them (either reply style): each
-	// reply's developed versions, and the draws under way — the server's word
-	// (which a reload keeps) and this tab's own. A photo is kept on its reply,
-	// so it can be developed at any time, whatever else is running; the dialog
-	// above does the drawing.
-	function photosFor(m: ChatMessage, assistantLabel: string): TextingPhotos | undefined {
-		if (!data.conversation.photos || m.role !== 'assistant') return undefined;
-		const versions = new Map<number, MessageImage[]>();
-		for (const image of m.images ?? []) {
-			if (image.kind !== 'photo' || image.markerIndex === null) continue;
-			const list = versions.get(image.markerIndex);
-			if (list) list.push(image);
-			else versions.set(image.markerIndex, [image]);
-		}
-		// A version just put on show here, ahead of the data saying so.
-		for (const [index, list] of versions) {
-			const shown = avatarWorkflow.shownVersion(m.id, index);
-			if (shown && list.some((v) => v.id === shown && v.mediaId)) {
-				versions.set(
-					index,
-					list.map((v) => (v.shown === (v.id === shown) ? v : { ...v, shown: v.id === shown })),
-				);
-			}
-		}
-		const developing = avatarWorkflow.developingFor(m.id);
-		for (const d of m.developing ?? []) if (d.markerIndex !== null) developing.add(d.markerIndex);
-		return {
-			versions,
-			developing,
-			...developable((index: number) => developPhoto(m, index, assistantLabel)),
-			onShow: (image: MessageImage) => void avatarWorkflow.showPhoto(m.id, image),
-			onRemove: (image: MessageImage) => void avatarWorkflow.removePhoto(m.id, image),
-		};
-	}
-
-	// A photo's state lives on its reply, which may be above the window a
-	// reload would bring back — so a photo change patches the replies in place
-	// instead (`PhotoStateResponse`), wherever they are on the page.
-	function applyPhotoState(state: PhotoStateResponse) {
-		faceOverride = { conversationId: convId, mediaId: state.avatarMediaId };
-		const changed = (id: string) => Object.hasOwn(state.replies, id);
-		messages = messages.map((m) => {
-			if (!changed(m.id)) return m;
-			const { images, developing } = state.replies[m.id];
-			return {
-				...m,
-				images: images.length ? images : undefined,
-				developing: developing.length ? developing : undefined,
-			};
-		});
-	}
-
-	// A draw's end waits on this before it stops counting, so a request stalled on
-	// a socket a resume left dead gives up rather than hold "Developing…" up.
-	const PHOTO_REFRESH_TIMEOUT_MS = 15_000;
-
-	async function refreshPhotos(replyIds: string[]): Promise<boolean> {
-		const conversationId = convId;
-		try {
-			const res = await fetch(
-				`/api/conversations/${conversationId}/photos?messages=${replyIds.join(',')}`,
-				{ signal: AbortSignal.timeout(PHOTO_REFRESH_TIMEOUT_MS) },
-			);
-			if (!res.ok || convId !== conversationId) return false;
-			applyPhotoState((await res.json()) as PhotoStateResponse);
-			return true;
-		} catch {
-			// The develop watch, or the next look at the photo, catches up.
-			return false;
-		}
-	}
-
-	// A draw this tab lost track of, counted on its reply so the develop watch
-	// below asks the server about it — whose answer then replaces the guess.
-	function assumeDeveloping(replyId: string, draw: DevelopingImage) {
-		messages = messages.map((m) =>
-			m.id === replyId ? { ...m, developing: [...(m.developing ?? []), draw] } : m,
-		);
-	}
-
 	// Photos developing on screen, by the server's word. Watched until they
-	// land, since this tab may hold no stream that will say so — see
-	// photo-develop-watch.ts.
-	const developingReplies = $derived(messages.filter((m) => m.developing?.length));
-	$effect(() => {
-		const replies = developingReplies;
-		if (replies.length === 0) return;
-		const conversationId = convId;
-		return watchDevelopingPhotos({
-			conversationId,
-			replyIds: replies.map((m) => m.id),
-			expected: replies.reduce((n, m) => n + (m.developing?.length ?? 0), 0),
-			apply: (state) => {
-				if (convId === conversationId) applyPhotoState(state);
-			},
-		});
-	});
-
-	// The avatar portraits drawn from a reply — any reply, in any chat — as one
-	// picture at the end of it, wherever there are some or one is drawing.
-	function portraitFor(m: ChatMessage): TextingPhotos | undefined {
-		if (m.role !== 'assistant') return undefined;
-		let versions = (m.images ?? []).filter((i) => i.kind === 'portrait');
-		const developing =
-			avatarWorkflow.isDeveloping(m.id, null) || !!m.developing?.some((d) => d.kind === 'portrait');
-		if (versions.length === 0 && !developing) return undefined;
-		// A version just put on show here, ahead of the data saying so.
-		const shown = avatarWorkflow.shownVersion(m.id, null);
-		if (shown && versions.some((v) => v.id === shown && v.mediaId)) {
-			versions = versions.map((v) =>
-				v.shown === (v.id === shown) ? v : { ...v, shown: v.id === shown },
-			);
-		}
-		return {
-			versions: new Map([[0, versions]]),
-			developing: new Set(developing ? [0] : []),
-			...developable(() => avatarWorkflow.openDialog(m)),
-			onShow: (image: MessageImage) => void avatarWorkflow.showPhoto(m.id, image),
-			onRemove: (image: MessageImage) => void avatarWorkflow.removePhoto(m.id, image),
-		};
-	}
-
-	// Develop on offer where an image model can do it; otherwise the picture says
-	// why not. The server's word, not the catalogue's first-paint slice — see the
-	// header's avatar menu.
-	function developable(onDevelop: TextingPhotos['onDevelop']) {
-		return data.hasImageModel ? { onDevelop } : { noImageModel: true };
-	}
+	// land, since this tab may hold no stream that will say so.
+	$effect(() => threadPhotos.watch());
 
 	// The dialog is drawing the avatar, not a photo.
 	const drawingPortrait = $derived(avatarWorkflow.photo?.index === null);
-
-	function developPhoto(reply: ChatMessage, index: number, assistantLabel: string) {
-		const marker = photoMarkers(reply, assistantLabel).find((p) => p.index === index);
-		if (!marker) return;
-		avatarWorkflow.openPhotoDialog({ replyId: reply.id, index }, marker.description);
-	}
 
 	// Check-ins, where the conversation's preset allows them: the pending one
 	// shows under the reply that set it, and only while that reply is still the
@@ -1958,6 +1823,7 @@
 		// the conversation we're leaving, and pressing Draw here would send the old
 		// chat's text with this chat's source message.
 		avatarWorkflow.reset();
+		threadPhotos.reset();
 	}
 
 	// Publish "this tab is rendering a generation for convId" so the root
@@ -2849,8 +2715,8 @@
 									bottomCanvasCards={canvasCardsByGroupLast.get(m.id) ?? []}
 									onOpenCanvas={(artifactId: string | null) => canvas.show(artifactId ?? undefined)}
 									scene={character ? scenes.at.get(m.id) : undefined}
-									photos={photosFor(m, identity.label)}
-									portrait={portraitFor(m)}
+									photos={threadPhotos.photosFor(m, identity.label)}
+									portrait={threadPhotos.portraitFor(m)}
 									checkIn={checkInNoteFor(m)}
 								/>
 							{/if}

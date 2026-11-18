@@ -19,7 +19,8 @@ import { extractAvatarPrompt } from './avatar-prompt.js';
 import { toast } from './toast.svelte.js';
 import { randomUUID } from './uuid.js';
 import type { ModelCatalogue } from './model-catalogue.svelte.js';
-import type { ChatMessage, DevelopingImage, MessageImage } from './types/api.js';
+import type { ThreadPhotos } from './thread-photos.svelte.js';
+import type { ChatMessage, MessageImage } from './types/api.js';
 
 /** A picture the dialog is drawing: which reply, and which of its
  *  `[photo: …]` — null for the avatar portrait drawn from it. */
@@ -57,13 +58,9 @@ export interface AvatarDrawWorkflowDeps {
 	enhanceByDefault(): boolean;
 	/** The conversation's own avatar, as the page has it. */
 	avatarMediaId(): string | null;
-	/** Bring these replies' pictures (and the face) up to date on the page,
-	 *  wherever they are in it — a change needs no reload of the window.
-	 *  False when the server couldn't be asked. */
-	refreshPhotos(replyIds: string[]): Promise<boolean>;
-	/** Count a draw as still out on its reply until the server says otherwise —
-	 *  for one whose stream was lost with no word from the server since. */
-	assumeDeveloping(replyId: string, draw: DevelopingImage): void;
+	/** The thread's photos, which a draw or a switch changes — a change needs
+	 *  no reload of the window. */
+	photos: Pick<ThreadPhotos, 'refresh' | 'drawEnded' | 'showAhead' | 'forgetShown'>;
 }
 
 export class AvatarDrawWorkflow {
@@ -107,15 +104,6 @@ export class AvatarDrawWorkflow {
 	/** Draws THIS client has under way, by picture — the page also has the
 	 *  server's word for it (`ChatMessage.developing`), which a reload keeps. */
 	#drawing = new SvelteMap<string, number>();
-	/** Versions this tab put on show, by picture, ahead of the page's data —
-	 *  see `shownVersion`. A draw of the picture landing supersedes it. */
-	#shown = new SvelteMap<string, string>();
-	/** Draws whose streams were lost, by reply and draw, since a refresh here
-	 *  last had the server's word on the reply — how many the reply's
-	 *  `developing` has to account for. The page's watch can have that word
-	 *  first; a count left high then guesses one draw too many, which the
-	 *  watch's next look corrects. Not reactive: only the guess reads it. */
-	#lost = new Map<string, number>();
 	#modelOverride = $state<string | null>(null);
 
 	/** The image models this user can draw with. */
@@ -267,7 +255,6 @@ export class AvatarDrawWorkflow {
 		this.prompt = '';
 		this.photo = null;
 		this.photoComparison = null;
-		this.#shown.clear();
 	}
 
 	setModel(id: string): void {
@@ -392,23 +379,21 @@ export class AvatarDrawWorkflow {
 			if (!compareId) this.photoSubmitting = false;
 			// What lands goes on show by the data's rules (a new draw, or a
 			// comparison's first result), not by an earlier switch here.
-			this.#shown.delete(key);
+			this.#deps.photos.forgetShown(photo.replyId, photo.index);
 			// The server's word first, and only then stop counting the draw as this
-			// tab's: the picture and the grid go from developing straight to what
-			// the server has — the result, or a draw it's still making — with no
-			// gap between. A draw whose stream was lost, with no word to be had
-			// either, stays counted on the reply until the page's watch gets one.
+			// tab's: the picture and the grid go straight from developing to it.
 			if (this.#deps.convId() === cid) {
-				const fresh = await this.#deps.refreshPhotos([photo.replyId]);
-				if (fresh) this.#forgetLost(photo.replyId);
-				else if (lost && this.#deps.convId() === cid) {
-					this.#assumeLost(photo.replyId, {
-						kind: photo.index === null ? PORTRAIT : 'photo',
-						markerIndex: photo.index,
-						modelId,
-						compareId,
-					});
-				}
+				await this.#deps.photos.drawEnded(
+					photo.replyId,
+					lost
+						? {
+								kind: photo.index === null ? PORTRAIT : 'photo',
+								markerIndex: photo.index,
+								modelId,
+								compareId,
+							}
+						: null,
+				);
 			}
 			const left = (this.#drawing.get(key) ?? 1) - 1;
 			if (left > 0) this.#drawing.set(key, left);
@@ -427,43 +412,6 @@ export class AvatarDrawWorkflow {
 	}
 
 	/**
-	 * Count a lost draw on its reply — unless the reply already lists one for
-	 * it. The server's last word often does (a suspended PWA loses every stream
-	 * at once, after earlier results' refreshes listed the rest), and a guess on
-	 * top would show the draw twice. Counted per draw, so two lost draws of one
-	 * model need two entries.
-	 */
-	#assumeLost(replyId: string, draw: DevelopingImage): void {
-		const key = `${replyId}|${draw.kind}|${draw.markerIndex}|${draw.modelId}|${draw.compareId}`;
-		const lost = (this.#lost.get(key) ?? 0) + 1;
-		this.#lost.set(key, lost);
-		const reply = this.#deps.messages().find((m) => m.id === replyId);
-		const listed = (reply?.developing ?? []).filter(
-			(d) =>
-				d.kind === draw.kind &&
-				d.markerIndex === draw.markerIndex &&
-				d.modelId === draw.modelId &&
-				d.compareId === draw.compareId,
-		).length;
-		if (listed < lost) this.#deps.assumeDeveloping(replyId, draw);
-	}
-
-	/** The server's word on a reply has replaced whatever was guessed on it. */
-	#forgetLost(replyId: string): void {
-		for (const key of this.#lost.keys()) {
-			if (key.startsWith(`${replyId}|`)) this.#lost.delete(key);
-		}
-	}
-
-	/**
-	 * The version a picture shows, where this tab has just put one on show and
-	 * the page's data may not say so yet. Undefined to go by the data.
-	 */
-	shownVersion(replyId: string, index: number | null): string | undefined {
-		return this.#shown.get(photoKey(replyId, index));
-	}
-
-	/**
 	 * Put a version of a picture on show — the arrows, or a comparison's pick,
 	 * which also counts toward the models' stats and closes the dialog if it's
 	 * up for this picture (the full-size view can pick another's). A
@@ -478,8 +426,7 @@ export class AvatarDrawWorkflow {
 	async showPhoto(replyId: string, image: MessageImage, pick = false): Promise<void> {
 		const cid = this.#deps.convId();
 		const key = photoKey(replyId, image.markerIndex);
-		const before = this.#shown.get(key);
-		this.#shown.set(key, image.id);
+		const undo = this.#deps.photos.showAhead(replyId, image.markerIndex, image.id);
 		try {
 			const res = await fetch(`/api/conversations/${cid}/photos/${image.id}`, {
 				method: 'PATCH',
@@ -492,16 +439,12 @@ export class AvatarDrawWorkflow {
 			const forThis = !this.photo || photoKey(this.photo.replyId, this.photo.index) === key;
 			if (pick && forThis && this.#deps.convId() === cid) this.close();
 		} catch (e) {
-			// Back to what was showing, unless a later switch has moved on since.
-			if (this.#shown.get(key) === image.id) {
-				if (before === undefined) this.#shown.delete(key);
-				else this.#shown.set(key, before);
-			}
+			undo();
 			toast.error(e instanceof Error ? e.message : String(e));
 			return;
 		}
 		if ((pick || image.kind === 'portrait') && this.#deps.convId() === cid) {
-			await this.#deps.refreshPhotos([replyId]);
+			await this.#deps.photos.refresh([replyId]);
 		}
 	}
 
@@ -523,7 +466,7 @@ export class AvatarDrawWorkflow {
 			return false;
 		}
 		if (this.#deps.convId() !== cid) return true;
-		await this.#deps.refreshPhotos([replyId]);
+		await this.#deps.photos.refresh([replyId]);
 		if (!wasFace || this.#deps.convId() !== cid) return true;
 		const next = this.#deps
 			.messages()
@@ -539,7 +482,7 @@ export class AvatarDrawWorkflow {
 		} catch (e) {
 			toast.error(e instanceof Error ? e.message : String(e));
 		}
-		if (this.#deps.convId() === cid) await this.#deps.refreshPhotos([replyId]);
+		if (this.#deps.convId() === cid) await this.#deps.photos.refresh([replyId]);
 		return true;
 	}
 }

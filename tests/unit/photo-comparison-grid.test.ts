@@ -52,8 +52,12 @@ function setup() {
 		savedModelId: () => 'img-1',
 		enhanceByDefault: () => false,
 		avatarMediaId: () => null,
-		refreshPhotos: async () => true,
-		assumeDeveloping: () => {},
+		photos: {
+			refresh: async () => true,
+			drawEnded: async () => {},
+			showAhead: () => () => {},
+			forgetShown: () => {},
+		},
 	});
 	const grid = new PhotoComparisonGrid({
 		workflow,
