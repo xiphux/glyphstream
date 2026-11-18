@@ -537,7 +537,15 @@
 	// re-keys the run (`p:<leaderId>`), so re-opening with the old key would fetch
 	// an empty set and strand a phantom stack. `drillItems` already holds the full
 	// member set, so the survivors are known without a refetch.
+	//
+	// Ranked search renders `searchItems`, not the feed, so there the deleted rows
+	// are dropped locally (which also corrects the "N results" count) and the
+	// browse feed nobody is looking at is left alone.
 	async function refreshAfterMutation(deleted: Set<string>) {
+		if (searching) {
+			if (deleted.size > 0) searchItems = searchItems.filter((m) => !deleted.has(m.id));
+			return;
+		}
 		await reloadFeed();
 		if (!drillUnit) return;
 		// Nothing left the library, so there is no survivor set to re-derive — and

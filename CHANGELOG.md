@@ -28,6 +28,7 @@ arrived.
 - A message sent while a check-in's reply was still thinking could be deleted, taking the reachable history of the thread with it. A second message stopped before its reply started no longer drops off the thread either.
 - Media generated while the gallery was open could break its lightbox once you scrolled past the first screenfuls; the gallery now refreshes itself in place when the library changes underneath it.
 - Escape now closes only the topmost layer: cancelling "Delete this media?" no longer also closes the gallery lightbox, and closing the model picker in the avatar draw dialog no longer discards the dialog.
+- Deleting media from gallery search results now removes its tile and updates the result count.
 
 ## v0.54.0
 
