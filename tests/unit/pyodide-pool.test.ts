@@ -115,6 +115,21 @@ function replyOk(worker: MockWorker, callId: number, result: unknown = null): vo
 	});
 }
 
+describe('runPython with the interpreter disabled', () => {
+	it('refuses without spawning a worker', async () => {
+		testConfig.enabled = false;
+		await expect(
+			runPython({
+				conversationId: 'c-off',
+				userId: 'u-off',
+				code: 'print(1)',
+				disabledFeatures: [],
+			}),
+		).rejects.toThrow(/not enabled/);
+		expect(createdWorkers).toHaveLength(0);
+	});
+});
+
 describe('runPython — happy path + isolation', () => {
 	it('routes a single call: spawns one worker, posts init+run, resolves with the result', async () => {
 		setWorkerFactoryForTests(() => {

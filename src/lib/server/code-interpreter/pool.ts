@@ -26,7 +26,7 @@
 
 import { isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getCodeInterpreterConfig } from './config';
+import { getCodeInterpreterConfig, isCodeInterpreterEnabled } from './config';
 import { listForbiddenHosts } from '../tools/url-policy';
 import { acceptGeneratedFiles } from './generated-files';
 import { proxyInterpreterFetch, type FetchBudget, type ProxyFetchRequest } from './net-proxy';
@@ -272,6 +272,10 @@ export function reserveInterpreterTurn(conversationId: string): InterpreterTurn 
  * the tool description tells the model this can happen).
  */
 export async function runPython(params: RunPythonParams): Promise<WorkerRunResult> {
+	// `enabled = false` is the operator's hard off: no caller spawns a worker.
+	if (!isCodeInterpreterEnabled()) {
+		throw new Error('The code interpreter is not enabled on this server.');
+	}
 	const turn = params.turn ?? reserveInterpreterTurn(params.conversationId);
 	try {
 		await waitForTurn(turn, params.ctxSignal);

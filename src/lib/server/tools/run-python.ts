@@ -128,6 +128,14 @@ export const runPythonTool: Tool = {
 		return getCodeInterpreterConfig().callTimeoutSeconds * 1000 + 30_000;
 	},
 	async execute(args, ctx): Promise<ToolExecution> {
+		// Not only `isAvailable`: a call is resolved by name, so a model can
+		// still name a tool that was never advertised to it.
+		if (!isCodeInterpreterEnabled()) {
+			return {
+				content: JSON.stringify({ error: 'The code interpreter is not enabled on this server.' }),
+				isError: true,
+			};
+		}
 		if (!args || typeof args !== 'object' || typeof (args as { code: unknown }).code !== 'string') {
 			return {
 				content: JSON.stringify({ error: 'Missing or invalid `code` argument (string).' }),
