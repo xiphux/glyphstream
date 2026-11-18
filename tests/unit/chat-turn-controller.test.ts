@@ -914,3 +914,45 @@ describe('ChatTurnController — a reload while the turn is queued', () => {
 		vi.unstubAllGlobals();
 	});
 });
+
+describe('ChatTurnController — a retry or edit the server refuses outright', () => {
+	// 429 / 400 / a proxy's 502: refused before anything is persisted, so the
+	// rows the optimistic trim removed are still the server's active branch.
+	const refused = () =>
+		vi.fn(
+			async () =>
+				new Response(JSON.stringify({ message: 'Too many generations' }), {
+					status: 429,
+					headers: { 'Content-Type': 'application/json' },
+				}),
+		);
+	const thread = () => [userMsg('u1'), assistantMsg('a1'), userMsg('u2'), assistantMsg('a2')];
+
+	it('retry: puts the retried reply back', async () => {
+		vi.stubGlobal('fetch', refused());
+		const { deps, state } = makeDeps();
+		state.messages = thread();
+		const turn = new ChatTurnController(deps);
+
+		await turn.send('', [], { retryFromMessageId: 'a2' });
+
+		expect(state.error).toBeTruthy();
+		expect(state.messages.map((m) => m.id)).toEqual(['u1', 'a1', 'u2', 'a2']);
+		expect(refreshAll).not.toHaveBeenCalled();
+		vi.unstubAllGlobals();
+	});
+
+	it('edit: puts the edited message and everything after it back', async () => {
+		vi.stubGlobal('fetch', refused());
+		const { deps, state } = makeDeps();
+		state.messages = thread();
+		const turn = new ChatTurnController(deps);
+
+		await turn.send('u1 reworded', [], { editedMessageId: 'u1' });
+
+		expect(state.error).toBeTruthy();
+		expect(state.messages.map((m) => m.id)).toEqual(['u1', 'a1', 'u2', 'a2']);
+		expect(refreshAll).not.toHaveBeenCalled();
+		vi.unstubAllGlobals();
+	});
+});

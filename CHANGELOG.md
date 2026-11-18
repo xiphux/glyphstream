@@ -36,6 +36,7 @@ arrived.
 - In a long conversation, each Python run and each delete that also removes media could stall the whole server for up to seconds on a large media library. Both now cost a few milliseconds.
 - A message sent while the conversation was being compacted no longer ends up in whichever conversation you switched to before the compaction finished, wiping that conversation's draft.
 - Returning to the tab while a reply was still queued could freeze the thread, so the reply never appeared until a reload.
+- A retry or edit the server turned away (too busy, unreachable) no longer leaves the reply, or the messages after the edit, missing from the thread until a reload.
 
 ## v0.54.0
 

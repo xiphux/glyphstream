@@ -342,6 +342,8 @@ export class ChatTurnController {
 		ctx: {
 			turnConvId: string;
 			optimisticId: string | null;
+			/** Fired when `start` arrives: the server has accepted the turn. */
+			onStart?: () => void;
 			/** Fired when `done` arrives so the caller can flip its busy flag
 			 *  mid-stream (background title delivery keeps the SSE open past done). */
 			onDone?: () => void;
@@ -360,6 +362,7 @@ export class ChatTurnController {
 				this.inFlightMcpUnavailable = servers;
 			},
 			onStart: async (userMessage) => {
+				ctx.onStart?.();
 				this.inFlightQueued = null;
 				this.inFlightStatus = null;
 				// The gate granted this turn a slot — both relays emit `start` only
@@ -501,12 +504,17 @@ export class ChatTurnController {
 	 * connectivity artifact, not a server failure, so re-sync against the
 	 * conversation instead of a misleading toast. All of this is render state for
 	 * `turnConvId`'s thread — skip it if the user has since navigated away.
+	 *
+	 * `untrimmed` is the thread as it was before a retry / edit trimmed it, when
+	 * the server refused the turn before `start`: nothing changed server-side,
+	 * so the trimmed rows go back rather than staying gone until a reload.
 	 */
-	#handleSendError(e: unknown, turnConvId: string): void {
+	#handleSendError(e: unknown, turnConvId: string, untrimmed: ChatMessage[] | null): void {
 		if (this.#deps.convId() !== turnConvId) return;
 		if (isAbortError(e) || this.interrupted) {
 			void refreshAll();
 		} else {
+			if (untrimmed) this.#deps.setMessages(untrimmed);
 			this.#deps.setError(e instanceof Error ? e.message : String(e));
 		}
 		this.inFlightOpen = false;
@@ -549,6 +557,8 @@ export class ChatTurnController {
 		const isRetry = !!options.retryFromMessageId;
 		let optimisticId: string | null = null;
 		let sawToolCalls: boolean;
+		const untrimmed = isRetry || options.editedMessageId ? this.#deps.getMessages() : null;
+		let started = false;
 		if (isRetry) {
 			// Trim the retry target AND everything in its multi-iteration tool chain
 			// — walk back from the target through preceding assistant/tool rows until
@@ -621,6 +631,9 @@ export class ChatTurnController {
 			const consumed = await this.#runChatStream(res.body, {
 				turnConvId,
 				optimisticId,
+				onStart: () => {
+					started = true;
+				},
 				onDone: () => {
 					// Release the composer now — `done` means the response is complete.
 					// The relay keeps the SSE stream open past this point so the
@@ -668,7 +681,7 @@ export class ChatTurnController {
 				}
 			}
 		} catch (e) {
-			this.#handleSendError(e, turnConvId);
+			this.#handleSendError(e, turnConvId, started ? null : untrimmed);
 		} finally {
 			// The stream has closed — the title task (if any) has delivered or timed
 			// out. Drop the sidebar spinner. Gated on isFirstExchange so a fast
