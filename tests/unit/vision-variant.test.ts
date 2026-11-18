@@ -40,7 +40,9 @@ vi.mock('#lib/server/endpoints/config.js', () => ({
 	}),
 }));
 
-const slot = vi.hoisted(() => ({ calls: 0, running: 0, peak: 0 }));
+/** `holdMs`: how long each slot is held past its work, so a test can see
+ *  overlap that small fixtures would otherwise finish too fast to show. */
+const slot = vi.hoisted(() => ({ calls: 0, running: 0, peak: 0, holdMs: 0 }));
 vi.mock('#lib/server/media/thumbnail.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('#lib/server/media/thumbnail.js')>();
 	return {
@@ -51,7 +53,9 @@ vi.mock('#lib/server/media/thumbnail.js', async (importOriginal) => {
 				slot.running++;
 				slot.peak = Math.max(slot.peak, slot.running);
 				try {
-					return await fn();
+					const out = await fn();
+					if (slot.holdMs) await new Promise((r) => setTimeout(r, slot.holdMs));
+					return out;
 				} finally {
 					slot.running--;
 				}
@@ -74,7 +78,7 @@ function write(storagePath: string, bytes: Buffer): void {
 }
 
 beforeEach(() => {
-	Object.assign(slot, { calls: 0, running: 0, peak: 0 });
+	Object.assign(slot, { calls: 0, running: 0, peak: 0, holdMs: 0 });
 	mocks.mediaDir = mkdtempSync(join(tmpdir(), 'gs-vision-test-'));
 	mocks.maxImageDim = 1568;
 	mocks.imageQuality = 82;
@@ -317,10 +321,15 @@ describe('getVisionVariant under concurrency', () => {
 	});
 
 	it('decodes at most three different images at once', async () => {
-		for (let i = 0; i < 6; i++) write(`ab/cd/img${i}.png`, await photoPng(2400, 1600));
+		// The bound doesn't depend on image size: small images, each slot held
+		// long enough that six unbounded decodes would all overlap.
+		mocks.maxImageDim = 64;
+		slot.holdMs = 30;
+		const png = await photoPng(240, 160);
+		for (let i = 0; i < 6; i++) write(`ab/cd/img${i}.png`, png);
 		await Promise.all(Array.from({ length: 6 }, (_, i) => getVisionVariant(`ab/cd/img${i}.png`)));
 		expect(slot.calls).toBe(6);
-		expect(slot.peak).toBeLessThanOrEqual(3);
+		expect(slot.peak).toBe(3);
 	});
 });
 
