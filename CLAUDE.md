@@ -127,6 +127,21 @@ tests/e2e/            # playwright (production-build webServer)
   outside `src/lib/server`, `+server.ts`, `*.server.ts` and `app.d.ts`.
 - Per-endpoint secrets use the `*_env` field convention in `config.toml`:
   the field stores the _name_ of an env var, never the secret itself.
+- **`run_python` runs without approval only because its child is sandboxed**:
+  `spawnInterpreterProcess` (`code-interpreter/spawn.ts`) forks it under
+  `--permission` (fs reads only to its own paths), `--no-experimental-sqlite`
+  (node:sqlite ignores the permission model and could open the app's DB) and
+  an empty environment (no secrets). Loosening any of these reopens whether
+  the tool needs an approval prompt; that is the owner's call, not a refactor.
+- **Disabling an account stops its work as deleting it does**: the admin
+  PATCH aborts its running and queued generations, and the background sweeps
+  (summaries, memory consolidation, scheduled tasks, check-ins) skip a user
+  whose `users.disabled_at` is set. Nobody can sign in to see the results. A
+  new per-user background job filters on `disabled_at` too.
+- **An unknown `config.toml` key warns; it never stops boot.** The known keys
+  are a hand-kept table, `CONFIG_SECTIONS` in `config/toml.ts`: a new key goes
+  there and in `config.toml.example` (`config-unknown-keys.test.ts` checks the
+  two agree), or every deployment that sets it logs it as a typo.
 - **Server env vars are read from `process.env`, never a Kit env module.**
   SvelteKit 3's `$app/env/private` (and the `$env/dynamic/private` alias)
   holds only names declared up front in `src/env.ts`; any other name reads as
