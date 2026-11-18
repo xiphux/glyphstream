@@ -43,3 +43,15 @@ services:
       # Anything else lives in .env so secrets stay out of compose.
       HOST: 0.0.0.0
       PORT: 3000
+    # A memory ceiling for the whole container. The code interpreter's
+    # heap flags bound Python's own memory, but code that reaches past
+    # Python into JavaScript can allocate outside them, and the
+    # interpreter processes share this container with the server. So the
+    # limit protects the host, not the app: hitting it kills the container
+    # and `restart: unless-stopped` brings it back, dropping every
+    # in-flight reply. No default, because the right size depends on the
+    # host: ~1 GB for the server, plus up to `worker_memory_mb` +
+    # `python_memory_mb` (~1.5 GB at the defaults) for each interpreter
+    # you expect to be busy at once (`[code_interpreter] pool_max` caps
+    # how many can be).
+    # mem_limit: 6g

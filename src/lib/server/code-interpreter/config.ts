@@ -42,7 +42,9 @@ export interface LoadedCodeInterpreterConfig {
 	/** Ceiling on Python's own memory (Pyodide's WebAssembly heap), in
 	 *  megabytes. Enforced by V8 (`--wasm-max-mem-pages`), so an allocation
 	 *  past it raises MemoryError inside Python rather than killing the
-	 *  process. `workerMemoryMb` does not bound this heap. */
+	 *  process. `workerMemoryMb` does not bound this heap. Neither bounds
+	 *  everything: buffers Python allocates on the JavaScript side through
+	 *  Pyodide's `js` module sit outside both (docs/code-interpreter.md). */
 	pythonMemoryMb: number;
 	/** Optional override for Pyodide's `indexURL`. Empty string = resolve
 	 *  from the installed `pyodide` package's `node_modules` location.

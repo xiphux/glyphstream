@@ -109,7 +109,10 @@ default leaves headroom; raise it for big data work. These two limits bound the
 ordinary heaps, not every byte: Python can still reach JavaScript through
 Pyodide's `js` module and allocate buffers outside both. A process-level limit
 (`mem_limit` in docker-compose, `MemoryMax=` under systemd) is still a sensible
-backstop for the whole server.
+backstop for the whole server; the shipped `docker-compose.yml` has a commented
+`mem_limit` with a sizing note to start from. The interpreters run inside the
+server's container, so the limit protects the host rather than the app: hitting
+it restarts the container.
 
 Files attached to a conversation are mounted into `/workspace/` on every call,
 capped at 25 MB per file and 50 MB per call. Anything over budget is skipped
