@@ -302,6 +302,24 @@ describe('the light photo read', () => {
 		expect(photos.avatarMediaId).toBeNull();
 	});
 
+	it('drops an answer whose body arrives after a switch', async () => {
+		const { photos, page } = setup();
+		let release!: (s: PhotoStateResponse) => void;
+		const res = new Response('{}');
+		vi.spyOn(res, 'json').mockReturnValueOnce(
+			new Promise<PhotoStateResponse>((r) => (release = r)),
+		);
+		fetchMock.mockResolvedValueOnce(res);
+		const read = photos.refresh(['r1']);
+		await vi.waitFor(() => expect(release).toBeDefined());
+		page.convId = 'B';
+		page.loaded = { id: 'B', avatarMediaId: null, photos: true };
+		release(state({ r1: { images: [image('a')], developing: [] } }, 'face-A'));
+		expect(await read).toBe(false);
+		expect(page.messages[0].images).toBeUndefined();
+		expect(photos.avatarMediaId).toBeNull();
+	});
+
 	it('is false when refused or unreachable', async () => {
 		const { photos } = setup();
 		fetchMock.mockResolvedValueOnce(new Response('{}', { status: 500 }));

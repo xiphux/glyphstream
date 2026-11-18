@@ -213,8 +213,12 @@ export class ThreadPhotos {
 				`/api/conversations/${conversationId}/photos?messages=${replyIds.join(',')}`,
 				{ signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS) },
 			);
-			if (!res.ok || this.#deps.convId() !== conversationId) return false;
-			this.apply((await res.json()) as PhotoStateResponse);
+			if (!res.ok) return false;
+			const state = (await res.json()) as PhotoStateResponse;
+			// The body is read after the headers: the reader can have moved on
+			// during either wait.
+			if (this.#deps.convId() !== conversationId) return false;
+			this.apply(state);
 			return true;
 		} catch {
 			// The develop watch, or the next look at the photo, catches up.
