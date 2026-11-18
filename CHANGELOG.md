@@ -54,6 +54,7 @@ arrived.
 - Stopping a scheduled run while its model was still loading recorded it as failed, sent a "Didn't finish" notification and counted toward turning the schedule off. It is now recorded as stopped.
 - An image used as a preset's or conversation's avatar could be moved to Recently deleted by "also delete media" on another chat, once it had been deleted and restored. Restoring it now keeps it protected while it is an avatar.
 - Deleting a user now also removes their skills' files from disk; before, only the database rows went.
+- An attached image that can't be downscaled for the model (corrupt, or too large to decode) is no longer re-read and re-decoded on every turn, logging a warning each time.
 
 ## v0.54.0
 

@@ -264,6 +264,30 @@ describe('getVisionVariant', () => {
 		expect(await getVisionVariant('ab/cd/corrupt.png')).toBeNull();
 	});
 
+	it('remembers an image sharp cannot decode instead of re-reading it every turn', async () => {
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+		write('ab/cd/broken.png', Buffer.alloc(4096, 7));
+		expect(await getVisionVariant('ab/cd/broken.png')).toBeNull();
+		expect(await getVisionVariant('ab/cd/broken.png')).toBeNull();
+		expect(slot.calls).toBe(1);
+	});
+
+	it('does not remember a failed write: the volume may come back', async () => {
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+		write('ab/cd/unsaved.png', await photoPng(2400, 1600));
+		// A DERIVED_DIR that is a file, so creating the variant's directory fails.
+		const blocked = join(mocks.mediaDir, 'not-a-dir');
+		writeFileSync(blocked, '');
+		mocks.derivedDir = blocked;
+		try {
+			expect(await getVisionVariant('ab/cd/unsaved.png')).toBeNull();
+		} finally {
+			mocks.derivedDir = '';
+		}
+		expect(await getVisionVariant('ab/cd/unsaved.png')).not.toBeNull();
+		expect(slot.calls).toBe(2);
+	});
+
 	it('returns null for a source that is not on disk', async () => {
 		expect(await getVisionVariant('no/su/ch.png')).toBeNull();
 	});

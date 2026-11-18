@@ -28,7 +28,7 @@
 import sharp from 'sharp';
 import { Buffer } from 'node:buffer';
 import { mkdirSync } from 'node:fs';
-import { readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { derivedDir, mediaDir } from '../env';
@@ -70,11 +70,13 @@ export async function cachedVisionVariantSize(storagePath: string): Promise<numb
 }
 
 /**
- * Storage paths whose re-encode came out no smaller than the original, so the
- * variant was declined. WITHOUT this, every such image is fully decoded and
- * mozjpeg-encoded again on EVERY turn, forever — paying the most expensive part
- * of the pipeline to reach the same "no thanks" each time. There's no cached
- * artifact to short-circuit on, precisely because we decided not to write one.
+ * Storage paths whose re-encode came out no smaller than the original, or that
+ * sharp couldn't encode at all, so the variant was declined. WITHOUT this, every
+ * such image is fully read and decoded again on EVERY turn, forever — paying the
+ * most expensive part of the pipeline to reach the same "no thanks" each time.
+ * There's no cached artifact to short-circuit on, precisely because we decided
+ * not to write one. A failed WRITE isn't remembered: that's the volume, not the
+ * image, and it may be fixed without a restart.
  *
  * In-memory rather than an on-disk marker: it costs one wasted re-encode per
  * image per process restart, and it adds no new file to reap in `disk-store.delete`.
@@ -82,6 +84,11 @@ export async function cachedVisionVariantSize(storagePath: string): Promise<numb
  */
 const declined = new Set<string>();
 const DECLINED_MAX = 4096;
+
+function decline(storagePath: string): void {
+	if (declined.size >= DECLINED_MAX) declined.clear();
+	declined.add(storagePath);
+}
 
 /**
  * Read a file, or null if reading it didn't work.
@@ -164,21 +171,13 @@ async function generateVisionVariant(
 	imageQuality: number,
 	maxImageDim: number,
 ): Promise<VisionVariant | null> {
+	let job: { encoded: Buffer; originalBytes: number } | null;
 	try {
-		// Inside the try. This creates a directory under DERIVED_DIR, which, being
-		// separately configurable, may be a volume that is absent, read-only, or
-		// unmounted while MEDIA_DIR is perfectly healthy — EACCES and
-		// EROFS are reachable here. Throwing would break this function's contract
-		// (see the header: a send must not fail over a cache that didn't cooperate)
-		// and take down the request; the catch below degrades to inlining the
-		// original, which is the right answer.
-		mkdirSync(dirname(variantAbs), { recursive: true });
-
 		// Under the thumbnail module's generation slots, so a burst of fresh images
 		// (a fan-out, a long thread's first send) decodes at most a few at a time.
 		// The original is read INSIDE the slot: read ahead of it, every queued
 		// image would hold its whole file in memory while it waited.
-		const job = await withGenerationSlot(async () => {
+		job = await withGenerationSlot(async () => {
 			// A media row can outlive its bytes, so a MISSING original is ordinary
 			// and `readFileOrNull` stays quiet about it. An original that is present
 			// but unreadable is not ordinary, and it is the failure a remote
@@ -201,40 +200,52 @@ async function generateVisionVariant(
 				.toBuffer();
 			return { encoded, originalBytes: original.byteLength };
 		});
-		if (job === null) return null;
-		const { encoded, originalBytes } = job;
+	} catch (e) {
+		// Corrupt file, exotic codec, past the pixel limit: it fails the same way
+		// every time, so remember it, or every turn re-reads and re-decodes the
+		// whole original only to inline it anyway.
+		decline(storagePath);
+		log.warn(`could not encode ${storagePath}:`, e);
+		return null;
+	}
+	if (job === null) return null;
+	const { encoded, originalBytes } = job;
 
-		// Re-encoding a small, already-efficient image can come out BIGGER (a 200px
-		// JPEG icon round-tripped through sharp, say). Inlining that would make the
-		// payload worse while also losing quality, so keep the original instead —
-		// and remember, so we don't pay the decode again next turn.
-		if (encoded.byteLength >= originalBytes) {
-			if (declined.size >= DECLINED_MAX) declined.clear();
-			declined.add(storagePath);
-			return null;
-		}
+	// Re-encoding a small, already-efficient image can come out BIGGER (a 200px
+	// JPEG icon round-tripped through sharp, say). Inlining that would make the
+	// payload worse while also losing quality, so keep the original instead —
+	// and remember, so we don't pay the decode again next turn.
+	if (encoded.byteLength >= originalBytes) {
+		decline(storagePath);
+		return null;
+	}
 
-		// Cache only what we'll actually use, and write the buffer verbatim — running
-		// it back through sharp would re-encode an already-lossy JPEG a second time.
-		// Atomic rename (as in disk-store) so a torn write can't poison the cache:
-		// a half-written variant would be served as a corrupt image on every
-		// subsequent turn.
-		//
-		// The temp name must be unique PER CALL, not per process: a multi-model
-		// fan-out sends the same fresh image from several concurrent requests, and a
-		// pid-keyed path would have them writing one file underneath each other. With
-		// distinct temps the renames are independent and whichever lands last wins —
-		// both hold identical, complete bytes.
-		const tmp = `${variantAbs}.${randomUUID()}.tmp`;
+	// Cache only what we'll actually use, and write the buffer verbatim — running
+	// it back through sharp would re-encode an already-lossy JPEG a second time.
+	// Atomic rename (as in disk-store) so a torn write can't poison the cache:
+	// a half-written variant would be served as a corrupt image on every
+	// subsequent turn.
+	//
+	// The temp name must be unique PER CALL, not per process: a multi-model
+	// fan-out sends the same fresh image from several concurrent requests, and a
+	// pid-keyed path would have them writing one file underneath each other. With
+	// distinct temps the renames are independent and whichever lands last wins —
+	// both hold identical, complete bytes.
+	const tmp = `${variantAbs}.${randomUUID()}.tmp`;
+	try {
+		// DERIVED_DIR is separately configurable, so it may be a volume that is
+		// absent, read-only or unmounted while MEDIA_DIR is healthy (EACCES,
+		// EROFS). That is the volume, not the image, so it isn't remembered, and
+		// the send degrades to inlining the original.
+		mkdirSync(dirname(variantAbs), { recursive: true });
 		await writeFile(tmp, encoded);
 		await rename(tmp, variantAbs);
 		// See derived-orphan.ts: a delete mid-encode would otherwise strand it.
 		if (await discardIfOriginalGone(sourceAbs, variantAbs)) return null;
 		return { bytes: encoded, contentType: 'image/jpeg' };
 	} catch (e) {
-		// Corrupt file, exotic codec, unreadable — degrade to the original rather
-		// than take down the send.
-		log.warn(`generation failed for ${storagePath}:`, e);
+		await unlink(tmp).catch(() => {});
+		log.warn(`could not save the variant of ${storagePath}:`, e);
 		return null;
 	}
 }
