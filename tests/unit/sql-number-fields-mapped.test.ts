@@ -30,8 +30,8 @@ function tsFiles(dir: string): string[] {
 	return out;
 }
 
-/** A `sql<number>` / `sql<number | null>` template not followed by `.mapWith(`. */
-const UNMAPPED = /sql<number(?:\s*\|\s*null)?>`[^`]*`(?!\.mapWith\()/g;
+/** A `sql<…number…>` template (any union spelling) not followed by `.mapWith(`. */
+const UNMAPPED = /sql<[^>]*\bnumber\b[^>]*>`[^`]*`(?!\.mapWith\()/g;
 
 describe('sql<number> fragments', () => {
 	it('all carry .mapWith(Number)', () => {
@@ -46,13 +46,15 @@ describe('sql<number> fragments', () => {
 		expect(offenders).toEqual([]);
 	});
 
-	it('the scan recognises both spellings', () => {
+	it('the scan recognises every spelling of a numeric fragment', () => {
 		const sample = [
 			'a: sql<number>`count(*)`,',
 			'b: sql<number | null>`nullif(x, 0)`,',
 			'c: sql<number>`count(*)`.mapWith(Number),',
 			'd: sql<number>`(\n  select 1\n)`,',
+			'e: sql<null | number>`max(x)`,',
+			'f: sql<string>`name`,',
 		].join('\n');
-		expect([...sample.matchAll(UNMAPPED)]).toHaveLength(3);
+		expect([...sample.matchAll(UNMAPPED)]).toHaveLength(4);
 	});
 });
