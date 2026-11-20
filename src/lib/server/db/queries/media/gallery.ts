@@ -134,7 +134,7 @@ export function listDistinctSourceModelsForUser(
 	].filter(Boolean) as Array<Parameters<typeof and>[number]>;
 
 	const rows = db
-		.select({ value: media.sourceModel, count: sql<number>`count(*)` })
+		.select({ value: media.sourceModel, count: sql<number>`count(*)`.mapWith(Number) })
 		.from(media)
 		.where(and(...conditions))
 		.groupBy(media.sourceModel)

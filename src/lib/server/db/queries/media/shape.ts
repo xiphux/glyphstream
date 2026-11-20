@@ -37,8 +37,8 @@ export const assignedConversationId = sql<
  * `media/dimensions.ts`), so a client never sizes a box to nothing.
  */
 export const MEDIA_DIMENSIONS_SELECT = {
-	width: sql<number | null>`NULLIF(${media.width}, 0)`,
-	height: sql<number | null>`NULLIF(${media.height}, 0)`,
+	width: sql<number | null>`NULLIF(${media.width}, 0)`.mapWith(Number),
+	height: sql<number | null>`NULLIF(${media.height}, 0)`.mapWith(Number),
 };
 
 /**

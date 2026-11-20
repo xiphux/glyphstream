@@ -126,8 +126,8 @@ export function memoryStats(userId: string): { count: number; totalChars: number
 	const db = getDb();
 	const row = db
 		.select({
-			count: sql<number>`count(*)`,
-			totalChars: sql<number>`coalesce(sum(length(${memories.content})), 0)`,
+			count: sql<number>`count(*)`.mapWith(Number),
+			totalChars: sql<number>`coalesce(sum(length(${memories.content})), 0)`.mapWith(Number),
 		})
 		.from(memories)
 		.where(and(eq(memories.userId, userId), isNull(memories.deletedAt)))
@@ -154,7 +154,7 @@ export function listMemoryTierRows(userId: string): MemoryTierRow[] {
 			id: memories.id,
 			topic: memories.topic,
 			snippet: sql<string>`substr(${memories.content}, 1, 80)`,
-			len: sql<number>`length(${memories.content})`,
+			len: sql<number>`length(${memories.content})`.mapWith(Number),
 			recallCount: memories.recallCount,
 			lastRecalledAt: memories.lastRecalledAt,
 			createdAt: memories.createdAt,

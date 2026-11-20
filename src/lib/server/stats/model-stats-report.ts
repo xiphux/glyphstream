@@ -145,8 +145,8 @@ export function buildModelStatsReport(input: BuildReportInput): ModelStatsReport
 			endpointId: modelStatsDaily.endpointId,
 			modelId: modelStatsDaily.modelId,
 			metric: modelStatsDaily.metric,
-			count: sql<number>`sum(${modelStatsDaily.count})`,
-			sum: sql<number>`sum(${modelStatsDaily.sum})`,
+			count: sql<number>`sum(${modelStatsDaily.count})`.mapWith(Number),
+			sum: sql<number>`sum(${modelStatsDaily.sum})`.mapWith(Number),
 		})
 		.from(modelStatsDaily)
 		.where(since === null ? undefined : gte(modelStatsDaily.day, since))
@@ -173,11 +173,11 @@ export function buildModelStatsReport(input: BuildReportInput): ModelStatsReport
 		.select({
 			endpointId: modelUserUsage.endpointId,
 			modelId: modelUserUsage.modelId,
-			lastUsedAt: sql<number>`max(${modelUserUsage.lastUsedAt})`,
+			lastUsedAt: sql<number>`max(${modelUserUsage.lastUsedAt})`.mapWith(Number),
 			usedBy:
 				sinceMs === null
-					? sql<number>`count(*)`
-					: sql<number>`sum(${modelUserUsage.lastUsedAt} >= ${sinceMs})`,
+					? sql<number>`count(*)`.mapWith(Number)
+					: sql<number>`sum(${modelUserUsage.lastUsedAt} >= ${sinceMs})`.mapWith(Number),
 		})
 		.from(modelUserUsage)
 		.groupBy(modelUserUsage.endpointId, modelUserUsage.modelId)

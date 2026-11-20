@@ -234,7 +234,7 @@ export function listScheduledTasks(userId: string): ScheduledTask[] {
 
 export function countScheduledTasks(userId: string): number {
 	const row = getDb()
-		.select({ n: sql<number>`count(*)` })
+		.select({ n: sql<number>`count(*)`.mapWith(Number) })
 		.from(scheduledTasks)
 		.where(eq(scheduledTasks.userId, userId))
 		.get();

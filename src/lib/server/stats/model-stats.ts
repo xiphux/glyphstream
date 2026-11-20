@@ -220,7 +220,7 @@ export function recordMediaEvent(
 	try {
 		const db = opts.tx ?? getDb();
 		const rows = db
-			.select({ sourceModel: media.sourceModel, n: sql<number>`count(*)` })
+			.select({ sourceModel: media.sourceModel, n: sql<number>`count(*)`.mapWith(Number) })
 			.from(media)
 			.where(and(inArray(media.id, [...mediaIds]), eq(media.origin, 'generated')))
 			.groupBy(media.sourceModel)

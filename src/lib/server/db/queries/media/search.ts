@@ -155,8 +155,8 @@ export type DenseCorpusOpts = {
 export function denseCorpusSignature(userId: string, opts: DenseCorpusOpts): string {
 	const sig = getDb()
 		.select({
-			n: sql<number>`count(*)`,
-			s: sql<number>`coalesce(sum(${media}.rowid), 0)`,
+			n: sql<number>`count(*)`.mapWith(Number),
+			s: sql<number>`coalesce(sum(${media}.rowid), 0)`.mapWith(Number),
 		})
 		.from(media)
 		.where(and(...mediaEmbeddingConditions(userId, opts)))

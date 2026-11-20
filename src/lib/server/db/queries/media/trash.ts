@@ -86,7 +86,7 @@ export function bulkTrashMediaForUser(ids: readonly string[], userId: string): s
 const avatarRefs = sql<number>`(
 	(SELECT COUNT(*) FROM ${conversations} WHERE ${conversations.avatarMediaId} = ${media.id})
 	+ (SELECT COUNT(*) FROM ${customModels} WHERE ${customModels.avatarMediaId} = ${media.id})
-)`;
+)`.mapWith(Number);
 
 /**
  * The user's "Recently deleted": generated images and videos in the trash,

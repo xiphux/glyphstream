@@ -37,7 +37,7 @@ export interface CanvasDoc {
 function countVersions(artifactId: string): number {
 	const db = getDb();
 	const row = db
-		.select({ n: sql<number>`count(*)` })
+		.select({ n: sql<number>`count(*)`.mapWith(Number) })
 		.from(artifactVersions)
 		.where(eq(artifactVersions.artifactId, artifactId))
 		.get();
@@ -55,7 +55,7 @@ function countVersions(artifactId: string): number {
 function countVersionsFor(artifactIds: string[]): Map<string, number> {
 	if (artifactIds.length === 0) return new Map();
 	const rows = getDb()
-		.select({ artifactId: artifactVersions.artifactId, n: sql<number>`count(*)` })
+		.select({ artifactId: artifactVersions.artifactId, n: sql<number>`count(*)`.mapWith(Number) })
 		.from(artifactVersions)
 		.where(inArray(artifactVersions.artifactId, artifactIds))
 		.groupBy(artifactVersions.artifactId)

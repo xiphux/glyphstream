@@ -408,8 +408,10 @@ function galleryUserFingerprint(
 ): { base: string; fav: string } {
 	const row = getDb()
 		.select({
-			total: sql<number>`count(*)`,
-			live: sql<number>`coalesce(sum(case when ${media.deletedAt} is null then 1 else 0 end), 0)`,
+			total: sql<number>`count(*)`.mapWith(Number),
+			live: sql<number>`coalesce(sum(case when ${media.deletedAt} is null then 1 else 0 end), 0)`.mapWith(
+				Number,
+			),
 			// `live` alone isn't enough because deletes are reversible: delete A then
 			// restore B leaves both counts where they were, over a different set.
 			// Every delete stamps a fresh `deleted_at` and every restore removes
@@ -419,9 +421,11 @@ function galleryUserFingerprint(
 			// need two distinct sets to agree mod 1e9+7, and still only costs one TTL
 			// of staleness. `deleted_at` is in `idx_media_user_gallery`, so this
 			// keeps the query covering.
-			deletedSig: sql<number>`coalesce(sum(${media.deletedAt} % 1000000007), 0)`,
-			favs: sql<number>`coalesce(sum(case when ${media.favoritedAt} is not null then 1 else 0 end), 0)`,
-			favAt: sql<number>`coalesce(max(${media.favoritedAt}), 0)`,
+			deletedSig: sql<number>`coalesce(sum(${media.deletedAt} % 1000000007), 0)`.mapWith(Number),
+			favs: sql<number>`coalesce(sum(case when ${media.favoritedAt} is not null then 1 else 0 end), 0)`.mapWith(
+				Number,
+			),
+			favAt: sql<number>`coalesce(max(${media.favoritedAt}), 0)`.mapWith(Number),
 		})
 		.from(media)
 		.where(and(eq(media.userId, userId), eq(media.origin, 'generated')))
@@ -440,8 +444,8 @@ function galleryUserFingerprint(
 		? null
 		: getDb()
 				.select({
-					n: sql<number>`count(*)`,
-					at: sql<number>`coalesce(max(${conversations.updatedAt}), 0)`,
+					n: sql<number>`count(*)`.mapWith(Number),
+					at: sql<number>`coalesce(max(${conversations.updatedAt}), 0)`.mapWith(Number),
 				})
 				.from(conversations)
 				.where(eq(conversations.userId, userId))

@@ -10,7 +10,7 @@
  * savepoint — are load-bearing in media, snippets import and the join flows,
  * and would change silently if drizzle started (or stopped) promoting nesting.
  */
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { isUniqueViolation } from '#lib/server/db/errors.js';
@@ -84,6 +84,34 @@ describe('query errors, as drizzle actually throws them', () => {
 		);
 		expect(isUniqueViolation(fk)).toBe(false);
 		expect(isUniqueViolation(notNull)).toBe(false);
+	});
+});
+
+describe('raw sql select fields', () => {
+	it('a .mapWith(Number) field is a number, and NULL stays null', () => {
+		db.insert(users)
+			.values([user('a'), user('b')])
+			.run();
+		const row = db
+			.select({
+				n: sql<number>`count(*)`.mapWith(Number),
+				none: sql<number | null>`nullif(count(*), 2)`.mapWith(Number),
+			})
+			.from(users)
+			.get();
+		expect(row).toEqual({ n: 2, none: null });
+	});
+
+	it('an unmapped integer field is a number on this driver version', () => {
+		// rc.6 reads decoded queries with setReadBigInts(true), which makes this a
+		// bigint. When it fails that way, flip the expectation: it is why every
+		// sql<number> carries .mapWith(Number) (sql-number-fields-mapped.test.ts).
+		db.insert(users).values(user('a')).run();
+		const row = db
+			.select({ n: sql<number>`count(*)` })
+			.from(users)
+			.get();
+		expect(typeof row?.n).toBe('number');
 	});
 });
 
