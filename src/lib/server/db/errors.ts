@@ -2,8 +2,9 @@
  * Recognising SQLite constraint failures behind drizzle's error wrapping.
  *
  * Since drizzle-orm 1.0.0-rc.4, a failing sqlite query throws a
- * `DrizzleQueryError` whose message is `Failed query: <sql>\nparams: <values>`,
- * with the driver's error on `.cause`. Matching the top-level message for
+ * `DrizzleQueryError` whose message is `Failed query: <sql>` (plus
+ * `\nparams: <values>` when the `paramsInErrors` option is on, as it always was
+ * before rc.5), with the driver's error on `.cause`. Matching the top-level message for
  * "UNIQUE" therefore stops working — and a loose pattern can match the SQL text
  * or a bound value instead of the failure. Walk the cause chain and trust
  * SQLite's extended result code, which node:sqlite puts on `errcode`.
