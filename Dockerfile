@@ -24,7 +24,7 @@
 # ----------------------------------------------------------------------
 
 # --- builder ----------------------------------------------------------
-FROM node:26-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS builder
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS builder
 
 WORKDIR /app
 
@@ -57,7 +57,7 @@ RUN pnpm rebuild esbuild \
 
 
 # --- proddeps ---------------------------------------------------------
-FROM node:26-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS proddeps
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS proddeps
 
 WORKDIR /app
 
@@ -145,7 +145,7 @@ RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
 # failure is silent by construction: a missing/unloadable ffmpeg is just another
 # decode failure, so the symptom would be every video tile in every deployment
 # going blank after an unrelated base-image refresh, with a green build.
-FROM node:26-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS ffmpeg
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS ffmpeg
 # Bump these two together. The digest is what makes the version a pin rather
 # than a label — without it, `9.0.1` means "whatever that URL serves today".
 ARG FFMPEG_VERSION=9.0.1
@@ -281,7 +281,7 @@ RUN apk add --no-cache ffmpeg \
 # this one's (see there), and a pinned `alpine:3.x` would be bumped by Renovate
 # on a different schedule from `node:26-alpine` — as a minor, which automerges.
 # Deriving from node:26-alpine keeps one moving part.
-FROM node:26-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS runtime-base
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS runtime-base
 
 # tini = PID 1 with proper signal handling. Without it, SIGTERM doesn't
 # reach the Node process cleanly, which means the media purger interval
