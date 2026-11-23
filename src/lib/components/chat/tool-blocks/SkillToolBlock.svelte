@@ -40,9 +40,9 @@
 		{:else}
 			<FileText size={13} strokeWidth={2.25} class="shrink-0 text-accent" aria-hidden="true" />
 			<span class="text-[10px] font-semibold uppercase tracking-wider opacity-70">Skill file</span>
-			<span class="font-mono text-xs text-fg-secondary"
-				>{display.path ?? display.skillName ?? ''}</span
-			>
+			<span class="font-mono text-xs text-fg-secondary">
+				{display.path ?? display.skillName ?? ''}
+			</span>
 		{/if}
 	{/snippet}
 	{#snippet body()}

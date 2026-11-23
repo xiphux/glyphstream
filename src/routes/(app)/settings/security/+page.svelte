@@ -470,8 +470,9 @@
 											<span
 												class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-fg-muted"
 												title="An admin has turned this provider off — the binding stays, but you can't sign in with it."
-												>Sign-in off</span
 											>
+												Sign-in off
+											</span>
 										{/if}
 									</div>
 									<div class="text-xs text-fg-muted">
@@ -575,8 +576,9 @@
 											{#if p.backedUp}
 												<span
 													class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-fg-muted"
-													>Synced</span
 												>
+													Synced
+												</span>
 											{/if}
 											<span
 												class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-fg-muted"
@@ -705,8 +707,9 @@
 								{#if s.id === data.currentSessionId}
 									<span
 										class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-fg-muted"
-										>This device</span
 									>
+										This device
+									</span>
 								{/if}
 							</div>
 							<div class="mt-1 text-xs text-fg-muted">

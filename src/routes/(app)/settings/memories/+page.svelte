@@ -100,9 +100,9 @@
 							class="flex items-start gap-3 rounded-md py-2.5 pl-3 pr-10 text-sm transition hover:bg-surface-sunken/70"
 						>
 							<span class="min-w-0 flex-1 whitespace-pre-wrap break-words">{m.content}</span>
-							<span class="shrink-0 pt-0.5 text-xs text-fg-muted"
-								>{formatShortDate(m.createdAt)}</span
-							>
+							<span class="shrink-0 pt-0.5 text-xs text-fg-muted">
+								{formatShortDate(m.createdAt)}
+							</span>
 						</div>
 						<button
 							type="button"
@@ -138,8 +138,9 @@
 							<span class="min-w-0 flex-1">
 								<span
 									class="whitespace-pre-wrap break-words text-fg-muted line-through decoration-fg-muted/40"
-									>{m.content}</span
 								>
+									{m.content}
+								</span>
 								<span class="mt-0.5 block text-xs text-fg-muted/80">
 									{#if m.supersededByContent}
 										Merged into: {truncate(m.supersededByContent, 80)}
@@ -148,9 +149,9 @@
 									{/if}
 								</span>
 							</span>
-							<span class="shrink-0 pt-0.5 text-xs text-fg-muted"
-								>{formatShortDate(m.deletedAt)}</span
-							>
+							<span class="shrink-0 pt-0.5 text-xs text-fg-muted">
+								{formatShortDate(m.deletedAt)}
+							</span>
 						</div>
 						<button
 							type="button"

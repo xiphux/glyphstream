@@ -237,10 +237,10 @@ character-focused design language…`;
 
 <SettingsPage title="Prompt snippets">
 	{#snippet description()}
-		Reusable pieces of a prompt — a visual style, a tone instruction, a recurring character. Type <code
-			>{SNIPPET_TRIGGER}</code
-		> in the message box to insert one at the cursor, then keep typing around it. Several can be stacked
-		in a single prompt.
+		Reusable pieces of a prompt — a visual style, a tone instruction, a recurring character. Type <code>
+			{SNIPPET_TRIGGER}
+		</code> in the message box to insert one at the cursor, then keep typing around it. Several can be
+		stacked in a single prompt.
 	{/snippet}
 
 	<div class="mx-auto flex max-w-2xl flex-col gap-4">
@@ -403,8 +403,9 @@ character-focused design language…`;
 											{#each s.kinds as k (k)}
 												<span
 													class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] text-fg-muted"
-													>{k}</span
 												>
+													{k}
+												</span>
 											{/each}
 											{#if s.kinds.length === 0}
 												<!-- No kinds means generic, and that's exactly what the
@@ -413,8 +414,9 @@ character-focused design language…`;
 												     failed to load. -->
 												<span
 													class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] text-fg-muted italic"
-													>everywhere</span
 												>
+													everywhere
+												</span>
 											{/if}
 											{#each s.tags as t (t)}
 												<span class="text-[10px] text-fg-muted">#{t}</span>

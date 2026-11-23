@@ -1001,8 +1001,9 @@
 						{m.sourceModel ? friendlyModelName(m.sourceModel) : 'Unknown model'}
 					</span>
 					{#if showCarousel}
-						<span class="ml-1 opacity-60 tabular-nums">{displayIndex + 1} / {siblings!.length}</span
-						>
+						<span class="ml-1 opacity-60 tabular-nums">
+							{displayIndex + 1} / {siblings!.length}
+						</span>
 					{/if}
 				</span>
 				<span class="opacity-70">{metaLine(m)}</span>
@@ -1273,8 +1274,9 @@
 							: 'invisible'}"
 						disabled={stale || !m.originalPrompt}
 						onclick={() => (showOriginal = !showOriginal)}
-						>{showOriginal ? 'Hide original' : 'Enhanced — show original'}</button
 					>
+						{showOriginal ? 'Hide original' : 'Enhanced — show original'}
+					</button>
 
 					{#if showOriginal && m.originalPrompt}
 						<p class="mt-1 text-xs text-media-fg-subtle italic line-clamp-4">

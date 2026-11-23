@@ -758,8 +758,10 @@
 					<span
 						bind:this={pillEl}
 						class="{PILL_CLASS} {pillTone(triggerPill.attachment)}"
-						title={triggerPill.title}>{triggerPill.label}</span
+						title={triggerPill.title}
 					>
+						{triggerPill.label}
+					</span>
 				{/if}
 			</span>
 			<ChevronDown
@@ -1051,8 +1053,9 @@
 										class="{PILL_CLASS} {pillTone(pill?.attachment ?? 'unknown')}"
 										title={pill?.title ??
 											(item.kind === 'video' ? 'Outputs video' : 'Outputs image')}
-										>{pill ? pill.label : `2${item.kind === 'video' ? 'V' : 'I'}`}</span
 									>
+										{pill ? pill.label : `2${item.kind === 'video' ? 'V' : 'I'}`}
+									</span>
 								{:else if item.kind === 'chat' && acceptsImageInput(item.capabilities)}
 									<!-- Vision chat: the model reported an image-to-text route. Shown
 										only when positively reported; absent for llama.cpp and other
@@ -1065,9 +1068,9 @@
 								{/if}
 								{#if compareMode}
 									{#if compareCount > 0}
-										<span class="shrink-0 text-xs font-medium text-accent tabular-nums"
-											>×{compareCount}</span
-										>
+										<span class="shrink-0 text-xs font-medium text-accent tabular-nums">
+											×{compareCount}
+										</span>
 									{/if}
 									<Plus size={14} strokeWidth={2.5} class="shrink-0 text-fg-muted" />
 								{:else if isSelected}

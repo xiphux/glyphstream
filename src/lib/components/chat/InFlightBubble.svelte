@@ -107,10 +107,10 @@
 {#snippet mcpNotice()}
 	{#if mcpUnavailable.length > 0}
 		<div class="mt-1 mb-2 rounded-md border px-3 py-2 text-xs alert-danger">
-			<span class="font-medium"
-				>{mcpUnavailable.map((s) => s.displayName).join(', ')}
-				{mcpUnavailable.length === 1 ? 'is' : 'are'} unavailable</span
-			>
+			<span class="font-medium">
+				{mcpUnavailable.map((s) => s.displayName).join(', ')}
+				{mcpUnavailable.length === 1 ? 'is' : 'are'} unavailable
+			</span>
 			— tools from {mcpUnavailable.length === 1 ? 'it' : 'them'} were skipped this turn. Reconnect in
 			Settings → MCP.
 		</div>

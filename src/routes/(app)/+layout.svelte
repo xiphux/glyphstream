@@ -859,8 +859,10 @@
 					<span class="flex-1">Search</span>
 					<kbd
 						class="hidden rounded border border-border-strong bg-surface-panel px-1 text-[10px] font-medium text-fg-muted sm:inline"
-						aria-hidden="true">⌘K</kbd
+						aria-hidden="true"
 					>
+						⌘K
+					</kbd>
 				{/if}
 			</button>
 			<a

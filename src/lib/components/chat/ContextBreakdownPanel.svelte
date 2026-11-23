@@ -120,9 +120,9 @@
 		<div class="border-t border-border pt-2 text-fg-muted">
 			{#if data.reportedPromptTokens !== null}
 				<p>
-					Upstream reported <span class="tabular-nums text-fg-secondary"
-						>{tokenFmt.format(data.reportedPromptTokens)}</span
-					>
+					Upstream reported <span class="tabular-nums text-fg-secondary">
+						{tokenFmt.format(data.reportedPromptTokens)}
+					</span>
 					prompt tokens last turn; the estimate above is
 					<span class="tabular-nums">{tokenFmt.format(data.estimatedTokens)}</span>.
 				</p>

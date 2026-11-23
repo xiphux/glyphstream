@@ -229,8 +229,9 @@
 												<a
 													href={resolve(`chat/${s.lastRun.conversationId}`)}
 													class="{toneClass[last.tone]} underline-offset-2 hover:underline"
-													>{last.label}</a
 												>
+													{last.label}
+												</a>
 											{:else}
 												<span class={toneClass[last.tone]}>{last.label}</span>
 											{/if}
@@ -303,8 +304,10 @@
 													href={resolve(`chat/${run.conversationId}`)}
 													class="min-w-0 truncate {toneClass[
 														r.tone
-													]} underline-offset-2 hover:underline">{r.label}</a
+													]} underline-offset-2 hover:underline"
 												>
+													{r.label}
+												</a>
 											{:else}
 												<span class="min-w-0 truncate {toneClass[r.tone]}">{r.label}</span>
 											{/if}

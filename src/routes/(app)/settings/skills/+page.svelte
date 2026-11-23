@@ -202,8 +202,9 @@
 										{#if !s.enabled}
 											<span
 												class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] text-fg-muted"
-												>disabled</span
 											>
+												disabled
+											</span>
 										{/if}
 									</div>
 									<p class="mt-0.5 break-words text-xs text-fg-muted">{s.description}</p>

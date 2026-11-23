@@ -82,7 +82,7 @@
 		"lint-staged": "^17.5.0",
 		"markdown-it": "^15.0.1",
 		"prettier": "^3.9.6",
-		"prettier-plugin-svelte": "^4.1.1",
+		"prettier-plugin-svelte": "^4.2.0",
 		"rollup-plugin-visualizer": "^7.1.1",
 		"smol-toml": "^1.8.0",
 		"svelte": "^5.57.1",

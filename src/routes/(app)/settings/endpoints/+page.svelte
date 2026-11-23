@@ -649,9 +649,9 @@
 									></span>
 									<span class="shrink-0 font-medium">{purposeLabel(slot.purpose)}</span>
 									{#if slot.modelId}
-										<span class="min-w-0 flex-1 truncate font-mono text-fg-muted"
-											>{slot.modelId}</span
-										>
+										<span class="min-w-0 flex-1 truncate font-mono text-fg-muted">
+											{slot.modelId}
+										</span>
 									{:else}
 										<span class="min-w-0 flex-1"></span>
 									{/if}
@@ -673,9 +673,9 @@
 									></span>
 									<span class="shrink-0 font-medium">{purposeLabel(slot.purpose)}</span>
 									{#if slot.modelId}
-										<span class="min-w-0 flex-1 truncate font-mono text-fg-muted"
-											>{slot.modelId}</span
-										>
+										<span class="min-w-0 flex-1 truncate font-mono text-fg-muted">
+											{slot.modelId}
+										</span>
 									{:else}
 										<span class="min-w-0 flex-1"></span>
 									{/if}

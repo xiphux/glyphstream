@@ -250,14 +250,18 @@
 				type="button"
 				aria-pressed={cadenceKind === 'daily'}
 				class={chipClass(cadenceKind === 'daily')}
-				onclick={() => (cadenceKind = 'daily')}>At a time of day</button
+				onclick={() => (cadenceKind = 'daily')}
 			>
+				At a time of day
+			</button>
 			<button
 				type="button"
 				aria-pressed={cadenceKind === 'interval'}
 				class={chipClass(cadenceKind === 'interval')}
-				onclick={() => (cadenceKind = 'interval')}>Every few hours</button
+				onclick={() => (cadenceKind = 'interval')}
 			>
+				Every few hours
+			</button>
 		</div>
 		{#if cadenceKind === 'daily'}
 			<div class="flex flex-wrap items-center gap-2">
@@ -273,20 +277,26 @@
 							type="button"
 							aria-pressed={days.includes(d)}
 							class={chipClass(days.includes(d))}
-							onclick={() => toggleDay(d)}>{label}</button
+							onclick={() => toggleDay(d)}
 						>
+							{label}
+						</button>
 					{/each}
 				</div>
 				<button
 					type="button"
 					class="text-xs text-fg-muted underline"
-					onclick={() => (days = [...WEEKDAYS])}>Weekdays</button
+					onclick={() => (days = [...WEEKDAYS])}
 				>
+					Weekdays
+				</button>
 				<button
 					type="button"
 					class="text-xs text-fg-muted underline"
-					onclick={() => (days = [...EVERY_DAY])}>Every day</button
+					onclick={() => (days = [...EVERY_DAY])}
 				>
+					Every day
+				</button>
 			</div>
 		{:else}
 			<label class="flex items-center gap-2 text-sm">
@@ -370,9 +380,9 @@
 						<span class="ml-auto flex gap-1 text-[10px] text-fg-muted">
 							All:
 							{#each ['off', 'ask', 'allow'] as const as st (st)}
-								<button type="button" class="underline" onclick={() => setServer(server, st)}
-									>{st}</button
-								>
+								<button type="button" class="underline" onclick={() => setServer(server, st)}>
+									{st}
+								</button>
 							{/each}
 						</span>
 					{/if}
@@ -384,9 +394,9 @@
 					{#each server.tools as tool (tool.registeredName)}
 						{@const current = toolStates[tool.registeredName] ?? 'off'}
 						<li class="flex items-center gap-2">
-							<span class="min-w-0 flex-1 truncate font-mono text-xs" title={tool.description}
-								>{tool.name}</span
-							>
+							<span class="min-w-0 flex-1 truncate font-mono text-xs" title={tool.description}>
+								{tool.name}
+							</span>
 							<span class="flex shrink-0 gap-0.5" role="radiogroup" aria-label="{tool.name} access">
 								{#each ['off', 'ask', 'allow'] as const as st (st)}
 									<button
