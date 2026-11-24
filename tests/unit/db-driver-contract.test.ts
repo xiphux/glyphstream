@@ -102,16 +102,33 @@ describe('raw sql select fields', () => {
 		expect(row).toEqual({ n: 2, none: null });
 	});
 
-	it('an unmapped integer field is a number on this driver version', () => {
-		// rc.6 reads decoded queries with setReadBigInts(true), which makes this a
-		// bigint. When it fails that way, flip the expectation: it is why every
-		// sql<number> carries .mapWith(Number) (sql-number-fields-mapped.test.ts).
+	it('an unmapped integer field is a bigint, despite its sql<number> type', () => {
+		// Since rc.6 decoded queries read with setReadBigInts(true). This is why
+		// every sql<number> carries .mapWith(Number)
+		// (sql-number-fields-mapped.test.ts).
 		db.insert(users).values(user('a')).run();
 		const row = db
 			.select({ n: sql<number>`count(*)` })
 			.from(users)
 			.get();
-		expect(typeof row?.n).toBe('number');
+		expect(typeof row?.n).toBe('bigint');
+	});
+});
+
+describe('raw db.all / db.get', () => {
+	it('returns integers as numbers', () => {
+		// The FTS5 searches (queries/search.ts, media/search.ts) are raw SQL with
+		// no codecs, typed `number` on integer columns. rc.6 made raw queries
+		// honour the driver's own setting, which for node:sqlite is readBigInts
+		// off; if that default moves, those results turn to bigints unannounced.
+		db.insert(users).values(user('a')).run();
+		const one = db.get<{ n: number; t: number }>(
+			sql`SELECT count(*) AS n, created_at AS t FROM users`,
+		);
+		const all = db.all<{ n: number }>(sql`SELECT count(*) AS n FROM users`);
+		expect(typeof one?.n).toBe('number');
+		expect(typeof one?.t).toBe('number');
+		expect(typeof all[0]?.n).toBe('number');
 	});
 });
 

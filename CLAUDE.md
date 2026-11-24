@@ -374,7 +374,7 @@ exact-match `apple-touch-startup-image` media query.
   GitHub releases). The updater ignores it (`renovate.json5`, and Dependabot
   before it): drizzle publishes snapshot builds of
   internal branches (`1.0.0-rc.5-<hash>`) that semver ranks above the real RC.
-  Two behaviours (since rc.4) to keep in mind:
+  Three behaviours (since rc.4/rc.6) to keep in mind:
   - **A bare `blob()` is JSON mode** — reads `JSON.parse`, writes
     `JSON.stringify`. Every byte column needs `blob(name, { mode: 'buffer' })`;
     without it, stored bytes decode to `[]` silently and new writes are
@@ -384,6 +384,10 @@ exact-match `apple-touch-startup-image` media query.
     rc.5), the driver error is on `.cause`. Never match
     constraint failures on message text — use `isUniqueViolation()`
     (`db/errors.ts`), which checks the SQLite `errcode` through the chain.
+  - **An integer `sql` select field without `.mapWith(Number)` is a `bigint`**
+    (rc.6), whatever its `sql<number>` says — arithmetic and `JSON.stringify`
+    throw, `===` goes false. Column fields and raw `db.all`/`db.get` are
+    unaffected. `sql-number-fields-mapped.test.ts` scans for unmapped ones.
 - **drizzle-kit v1 emits column `.unique()` as an inline table constraint**,
   not a standalone `UNIQUE INDEX` like v0 did. On an existing DB that diff is
   a destructive table rebuild for a no-op. Declare uniqueness as an explicit
